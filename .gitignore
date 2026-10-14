@@ -1,0 +1,7 @@
+/target
+/work
+*.dem
+local-fixtures.json
+fuzz/target
+fuzz/corpus
+fuzz/artifacts

@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "fixtures": [
+    {
+      "role": "long interval test",
+      "path": "F:/HLScreeniesDemos/09aug2018/naz_crossfire_pb_01.dem",
+      "bytes": 97633668,
+      "blake3": "09c31cabbfab0fde200185461ab78a2558a1261304fb7e3243b687c65208740e",
+      "expect": {
+        "demo_protocol": 5,
+        "network_protocol": 48,
+        "game_dir": "ag",
+        "map_name": "crossfire",
+        "entries": [
+          { "entry_type": 0, "description": "LOADING", "offset": 544, "length": 28793 },
+          { "entry_type": 1, "description": "Playback", "offset": 29337, "length": 97604143, "frame_count": 151207, "network_records": 151207 }
+        ]
+      },
+      "notes": "Not a known-positive gauss fixture."
+    },
+    {
+      "role": "campaign-map candidate, mode unverified",
+      "path": "F:/HLScreeniesDemos/01apr2020/run_108.dem",
+      "bytes": 110210,
+      "blake3": "1a1c6bb7cceb0b2568ca073446fcbe8e27f301569456c9ab9d6a23a8eec3e105",
+      "expect": { "demo_protocol": 5, "network_protocol": 48, "game_dir": "ag", "map_name": "c1a0e" }
+    },
+    {
+      "role": "minimal local recording",
+      "path": "F:/HLScreeniesDemos/01apr2020/qe_9.dem",
+      "bytes": 39812,
+      "blake3": "cafad91264753121e936070b7e9b63a14572a74993e84a79fc01d92ff4796fa6",
+      "expect": { "demo_protocol": 5, "network_protocol": 48, "game_dir": "ag", "map_name": "c2a4f" }
+    },
+    {
+      "role": "streaming stress",
+      "path": "F:/SteamLibrary/steamapps/common/Half-Life/ag/20220319_194739_fastrun.dem",
+      "bytes": 415096974,
+      "blake3": "4dd3f12e52e34d45dfdbb652414be5e254968bf4625b758c3bd04bfdd858173a",
+      "expect": {
+        "demo_protocol": 5,
+        "network_protocol": 48,
+        "game_dir": "ag",
+        "map_name": "fastrun",
+        "entries": [
+          { "entry_type": 0 },
+          { "entry_type": 1, "frame_count": 578699, "network_records": 578699 }
+        ]
+      }
+    },
+    {
+      "role": "short movement attempt; 89 repeated LOADING terminal records",
+      "path": "F:/SteamLibrary/steamapps/common/Half-Life/ag/20220413_171130_prochallenge_bhop_skip.dem",
+      "bytes": 222147,
+      "blake3": "a462e26f33ce5c65a675bebb996795260c57f78c510e8ec552dc814d8645a81a",
+      "expect": { "demo_protocol": 5, "network_protocol": 48, "game_dir": "ag", "map_name": "prochallenge_bhop" }
+    }
+  ]
+}

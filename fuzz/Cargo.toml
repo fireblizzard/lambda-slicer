@@ -1,0 +1,22 @@
+[package]
+name = "lambda-slicer-fuzz"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+lambda-slicer-core = { path = "../crates/lambda-slicer-core" }
+
+# Not part of the main workspace; needs nightly + cargo-fuzz.
+[workspace]
+
+[[bin]]
+name = "container_reader"
+path = "fuzz_targets/container_reader.rs"
+test = false
+doc = false
+bench = false
