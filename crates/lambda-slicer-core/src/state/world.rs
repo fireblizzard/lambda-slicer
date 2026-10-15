@@ -225,6 +225,9 @@ pub struct DecodeStats {
     pub inferred_snapshots: u64,
     /// Where the first inferred delta base was needed
     pub first_inferred: Option<FrameLocation>,
+    /// Delta entity packets the client drops because their base is too old.
+    /// Their entity and client state are not kept
+    pub discarded_packets: u64,
     /// Removals of entities absent from the delta base (ignored, as the
     /// engine does)
     pub removed_absent_entities: u64,
@@ -246,6 +249,28 @@ pub struct DecodeStats {
 /// most `backup` packets old
 const SINGLEPLAYER_BACKUP: usize = 8;
 const MULTIPLAYER_BACKUP: usize = 64;
+
+/// A delta reference this many packets back or more is too old for the
+/// client, which drops the packet. This is the client's frame mask, 64 - 1
+const CLIENT_REJECTS_BACK: u8 = 63;
+
+/// Whether the client would delta from `from` for a packet with this
+/// sequence in its own numbering
+fn client_accepts(from: u8, sequence: u32) -> bool {
+    let back = (sequence as u8).wrapping_sub(from);
+
+    (1..CLIENT_REJECTS_BACK).contains(&back)
+}
+
+/// The last delta entity packet of a session, to follow runs the client
+/// rejects
+#[derive(Clone, Copy, Debug)]
+struct LastDelta {
+    sequence: u32,
+    /// Packets between it and its base in the recorded numbering
+    back: u8,
+    discarded: bool,
+}
 
 /// How many recent frames a count search may try
 const COUNT_SEARCH_DEPTH: usize = 64;
@@ -275,6 +300,7 @@ pub struct Decoder {
     /// own numbering, so no base in it can be strict any more. A same-byte
     /// match would name the wrong frame
     numbering_suspect: bool,
+    last_delta: Option<LastDelta>,
 
     /// Current occupant of each player slot in this session
     pub players: BTreeMap<u8, PlayerInfo>,
@@ -308,6 +334,9 @@ struct Building {
     entity_base: Option<(u8, Arc<Snapshot>, BaseResolution)>,
     /// Some part of this packet's state rests on an inferred base
     inferred: bool,
+    /// The client rejects this packet's delta entity update as too old, so
+    /// the packet's entity and client state never reach the client
+    discarded: bool,
     entities: Option<Arc<Vec<Arc<EntityState>>>>,
     clientdata: Option<Arc<StructState>>,
     weapons: Option<Arc<Vec<Option<Arc<StructState>>>>>,
@@ -349,6 +378,7 @@ impl Decoder {
             history: std::collections::VecDeque::new(),
             sequence_offset: 0,
             numbering_suspect: false,
+            last_delta: None,
 
             players: BTreeMap::new(),
             name_history: Vec::new(),
@@ -410,7 +440,7 @@ impl Decoder {
     /// `backup` back happens when the slot is the one being written, and the
     /// delta then carries no updates
     fn strict_base(&self, from: u8, sequence: u32) -> Option<Arc<Snapshot>> {
-        if self.numbering_suspect {
+        if self.numbering_suspect || !client_accepts(from, sequence) {
             return None;
         }
 
@@ -427,6 +457,48 @@ impl Decoder {
         }
 
         Some(occupant.clone())
+    }
+
+    /// Whether the client drops a delta entity packet as too old. It counts
+    /// back from the packet's own sequence in its numbering and rejects a
+    /// reference to the packet itself or 63 or more packets back, then
+    /// treats the frame as invalid and asks for a full update. The server
+    /// keeps referencing the last frame the client acknowledged however old
+    /// it is, so a lagging client receives runs of such packets.
+    ///
+    /// A run starts only where the distance grows across the limit, from an
+    /// accepted packet at most two sequences earlier. It lasts until a
+    /// reference names a frame the client kept, because the client only
+    /// acknowledges those. A run longer than 255 packets wraps the byte back
+    /// into range, but it then names a dropped frame. A far reference that
+    /// appears suddenly points to shifted numbering instead and goes to the
+    /// count search. Once the numbering is suspect the recorded sequences
+    /// are not the client's, so the rule stays off and the inferred state is
+    /// reported
+    fn client_rejects(&self, from: u8, sequence: u32) -> bool {
+        if self.numbering_suspect {
+            return false;
+        }
+
+        let Some(previous) = self.last_delta else {
+            return false;
+        };
+        let accepts = client_accepts(from, sequence);
+        if previous.discarded {
+            let back = (sequence as u8).wrapping_sub(from);
+            let named = sequence.wrapping_sub(u32::from(back));
+            let kept = self.history.iter().any(|s| s.sequence == named);
+
+            return !accepts || !kept;
+        }
+
+        if accepts {
+            return false;
+        }
+
+        let gap = sequence.wrapping_sub(previous.sequence);
+
+        (1..=2).contains(&gap) && u32::from(previous.back) + gap >= u32::from(CLIENT_REJECTS_BACK)
     }
 
     /// A frame matching `from` under an offset inferred earlier in this
@@ -477,6 +549,7 @@ impl Decoder {
             pending_clientdata: None,
             entity_base: None,
             inferred: false,
+            discarded: false,
             entities: None,
             clientdata: None,
             weapons: None,
@@ -545,7 +618,7 @@ impl Decoder {
     }
 
     fn finish_packet(&mut self, b: Building, location: FrameLocation) {
-        if b.entities.is_none() && b.clientdata.is_none() {
+        if b.discarded || (b.entities.is_none() && b.clientdata.is_none()) {
             return;
         }
 
@@ -601,6 +674,7 @@ impl Decoder {
         self.history.clear();
         self.sequence_offset = 0;
         self.numbering_suspect = false;
+        self.last_delta = None;
 
         // A new server info starts a new client state, and the server sends
         // every player's userinfo again during sign-on. Until then a slot has
@@ -683,6 +757,7 @@ impl Decoder {
                     None => Vec::new(),
                 };
             }
+            Message::ClientData(_) if building.discarded => {}
             Message::ClientData(cd) => match (cd.delta_from, &cd.client) {
                 (Some(_), Some(_)) => {
                     building.pending_clientdata = Some((cd.clone(), ordinal, parsed.start));
@@ -691,12 +766,27 @@ impl Decoder {
             },
             Message::PacketEntities(p) => {
                 self.stats.full_packets += 1;
+                self.last_delta = None;
                 let ents = self.full_entities(p)?;
                 self.stats.max_entities = self.stats.max_entities.max(ents.len());
                 building.entities = Some(Arc::new(ents));
             }
             Message::DeltaPacketEntities(p) => {
                 self.stats.delta_packets += 1;
+                let from = p.delta_from.unwrap_or(0);
+                let discarded = self.client_rejects(from, building.sequence);
+                self.last_delta = Some(LastDelta {
+                    sequence: building.sequence,
+                    back: (building.sequence as u8).wrapping_sub(from),
+                    discarded,
+                });
+                if discarded {
+                    self.stats.discarded_packets += 1;
+                    building.discarded = true;
+                    building.pending_clientdata = None;
+                    return Ok(());
+                }
+
                 let ents = self.delta_entities(p, building)?;
                 if let Some((cd, _, _)) = building.pending_clientdata.take() {
                     self.apply_clientdata(&cd, building)?;

@@ -62,6 +62,8 @@ fn main() {
     let mut cats = BTreeMap::<String, (u64, Vec<String>)>::new();
     let (mut msgs, mut frames, mut dist, mut inferred, mut dup) = (0u64, 0u64, 0u32, 0u64, 0u64);
     let mut opcodes = BTreeMap::<String, u64>::new();
+    let mut inferred_files = Vec::new();
+    let (mut discarded, mut discarding_files) = (0u64, 0u64);
 
     for p in &files {
         let opts = DecodeOptions {
@@ -76,6 +78,12 @@ fn main() {
         dist = dist.max(r.stats.max_delta_distance);
         if r.inferred_delta_bases {
             inferred += 1;
+            let at = r.stats.first_inferred.map(|l| (l.entry, l.time()));
+            inferred_files.push(format!("{at:?} {}", p.display()));
+        }
+        if r.stats.discarded_packets > 0 {
+            discarding_files += 1;
+            discarded += r.stats.discarded_packets;
         }
         dup += r.stats.duplicate_sequences;
         for (k, v) in &r.stats.by_opcode {
@@ -101,11 +109,17 @@ fn main() {
     println!(
         "max delta distance {dist}, files with inferred delta bases {inferred}, duplicate sequences {dup}"
     );
+    println!("discarded too-old delta packets {discarded} in {discarding_files} files");
     println!("opcodes {opcodes:?}");
     for (k, (n, ex)) in &cats {
         println!("{n:6}  {k}");
         for e in ex {
             println!("          {e}");
         }
+    }
+
+    println!("inferred files (first inferred entry and time):");
+    for f in &inferred_files {
+        println!("  {f}");
     }
 }

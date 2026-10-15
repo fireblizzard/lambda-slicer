@@ -174,12 +174,32 @@ Each network record with an entity or clientdata update stores a snapshot under 
 **8 frames when `max_clients == 1`, else 64** (ReHLDS `SV_UPDATE_BACKUP`). The base is the newest
 frame occupying the reference's slot. Usually that is the frame carrying the reference's low byte.
 
-**Observed: references past the ring.** In `20221127_173627_bhop_crossfire_cup_us.dem` four packets
-in one burst all reference byte 76. For the first three, the frame with that byte is 62–64
-packets back and still in its slot. The 64-back case has 0 updates, because the server's slot is
-the one it is writing. For the fourth, it is 65 back, so slot `76 & 63` already holds the frame
-received just before, and that newer occupant is the base. A rule requiring the exact byte (tried
-during development) rejected these, fell into inference, and failed later in the file.
+**The client drops deltas from 63 or more packets back.** The server deltas from whatever its
+ring slot holds and never checks how old the client's acknowledgement is (ReHLDS `SV_ParseDelta`,
+`SV_CreatePacketEntities`). The client counts back from the packet's own sequence, modulo 256,
+and drops the packet when the reference is the packet itself or 63 or more packets back. It then
+treats the frame as invalid, stops acknowledging deltas and so gets full updates. The GoldSrc
+client is not available as source. The rule matches Xash3D's client (`subtracted >=
+CL_UPDATE_MASK`) and is **observed** here:
+
+- `20230806_231756_kzmo_downhopunvis.dem`, 662 s: a lag burst references byte 178 from 61, 62, 63
+  and 64 packets back, and later bytes from up to 128 back. The client-recorded origin follows the
+  62-back packet and then stays frozen for 616 records. The server's last delta reference is 240,
+  the 62-back packet itself, and full updates start at sequence 129649, where the frozen origin
+  ends. Applying the dropped packets put the decoded origin up to 1,275 units off, on bases that
+  were all reported strict. A second episode at 1,674 s behaves the same way.
+- `20230814_215314_bhop_mann.dem`, 17.5 s: a run passes 255 packets, so the reference byte wraps
+  back into range while naming a frame the client dropped.
+- `20221127_173627_bhop_crossfire_cup_us.dem`: a burst references byte 76 from 62 to 65 back. An
+  earlier rule applied the 63+ packets through the ring slot's newer occupant, and the file
+  stopped with an entity count mismatch at 351 s.
+
+The decoder drops such packets with their clientdata. They store no snapshot and are never a
+base. A run starts only where the distance grows across the limit, from an accepted delta at
+most two sequences earlier, and lasts until a reference names a frame that was kept or a full
+update arrives. A far reference without such a run may be shifted numbering, so it is never
+strict and goes to the count search. While the numbering is suspect the rule is off. Reports
+count `discarded_packets`.
 
 **Observed: recorded sequences can drift from the server's numbering.** In some recordings
 (44 files in the corpus, mostly 2023–2026 bhop/kz demos, plus a few 2019–2022 matches), the
@@ -190,11 +210,19 @@ at a sequence unrelated to the loading segment (e.g. 134 → 59138), so the reco
 stores a counter rather than the live netchan sequence. Which client builds do this is not
 established.
 
+Not every suspected shift is one. The `kzmo_downhopunvis` disagreements once put down to
+undetected drift were dropped packets (above). And in 23 of the 26 sample files that still need
+inference, it starts within the first 0.08 s of playback. In `20250705_121955_kz_cargo.dem` the
+first playback delta references sequence 83456, while the first recorded playback packet is
+83458, and every later reference is 5 or 6 back in the recorded numbering. That fits a delta
+from a frame received before recording began, which the count search mistakes for an offset,
+making the whole session inferred. Such files are reported *inconclusive*.
+
 ### Base selection: strict versus inferred
 
 | Resolution | Rule | Proven? |
 |---|---|---|
-| `strict` | the newest snapshot in ring slot `from & (backup − 1)`, if it is 1 to `backup` packets old, and (for entity packets) its rebuild reproduces the declared entity count. An older occupant means the slot's real content was never recorded | yes, unless the session's numbering is already suspect |
+| `strict` | the newest snapshot in ring slot `from & (backup − 1)`, if the reference is 1 to 62 packets back (anything else the client drops), the occupant is at most `backup` packets old, and (for entity packets) its rebuild reproduces the declared entity count. An older occupant means the slot's real content was never recorded | yes, unless the session's numbering is already suspect |
 | `offset` | matched under the sequence offset inferred earlier in the session, rebuild reproduces the declared count | no |
 | `count_search` | the nearest of the last 64 snapshots whose rebuild reproduces the declared count; its offset is adopted | no |
 | `empty` | nothing received yet, so an empty base | no |
@@ -437,6 +465,22 @@ hundreds of samples whose bases were all strict. That fits a drifting sequence o
 caused a count failure, which this rule cannot detect (a drift of `k` makes a same-slot match
 name the frame `k` packets too old, with the same entity count). They need their own
 investigation before anything built on them is trusted.
+
+### After the client drop rule (2026-10-15)
+
+The `kzmo_downhopunvis` disagreements were not drift but packets the client drops as too old
+(see the entity packet section). Same sample and command, 515 s:
+
+| Outcome | Before | After |
+|---|---:|---:|
+| verified | 1,893 | 1,910 |
+| inconclusive | 37 | 28 |
+| failed | 66 | 58 |
+| no directory | 4 | 4 |
+
+Server-copy disagreements fell from 6,006 to 401 samples, and files with inferred bases from 45
+to 26. Both `kzmo_downhopunvis` files, `bhop_crossfire_cup_us` and the `bhop_mann` file that
+stopped on a count mismatch are now verified. 1,401 packets in 19 files were dropped.
 
 ## What M2 validation does and does not establish
 

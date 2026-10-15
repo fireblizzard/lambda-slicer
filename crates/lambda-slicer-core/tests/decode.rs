@@ -495,10 +495,89 @@ fn equal_count_base_without_an_exact_reference_is_inferred() {
 }
 
 #[test]
-fn frame_exactly_one_ring_old_is_strict() {
-    // A reference 64 packets back still names the frame in the client's
-    // ring slot. The server does this when the slot is the one it is
-    // writing, and sends no updates
+fn client_drops_deltas_once_their_base_is_63_packets_back() {
+    // A lagging client keeps acknowledging frame 10 while the server streams
+    // on. Up to 62 packets back the client applies the delta, from 63 it
+    // drops the packet as too old until a full update arrives
+    let mut d = Decoder::new();
+    d.network_frame(loc(0), &frame(1, setup()), |_, _| {})
+        .unwrap();
+    d.network_frame(loc(1), &frame(10, full_packet(10)), |_, _| {})
+        .unwrap();
+    for seq in 11..=72 {
+        d.network_frame(loc(2), &frame(seq, model_update(10, 5, 8)), |_, _| {})
+            .unwrap();
+    }
+    assert_eq!(model_of(&d, 72, 5), Some(Value::Int(8)));
+
+    for seq in 73..=80 {
+        d.network_frame(loc(3), &frame(seq, model_update(10, 1, 3)), |_, _| {})
+            .unwrap();
+    }
+
+    // The dropped packets left no state and are not used as bases
+    let latest = d.latest_snapshot().unwrap();
+    assert_eq!(latest.sequence, 72);
+    assert!(!latest.inferred);
+    assert_eq!(d.stats.discarded_packets, 8);
+    assert_eq!(d.stats.bases_strict, 62);
+
+    // A full update ends the run, and deltas from it apply again
+    d.network_frame(loc(4), &frame(81, full_packet(81)), |_, _| {})
+        .unwrap();
+    d.network_frame(loc(5), &frame(82, model_update(81, 1, 3)), |_, _| {})
+        .unwrap();
+    assert_eq!(model_of(&d, 82, 1), Some(Value::Int(3)));
+    assert_eq!(d.stats.discarded_packets, 8);
+}
+
+#[test]
+fn a_dropped_run_ends_at_a_reference_to_a_kept_frame() {
+    // The client's next acknowledgement names frame 72, which it kept, so
+    // the packet after the dropped one applies again
+    let mut d = Decoder::new();
+    d.network_frame(loc(0), &frame(1, setup()), |_, _| {})
+        .unwrap();
+    d.network_frame(loc(1), &frame(10, full_packet(10)), |_, _| {})
+        .unwrap();
+    for seq in 11..=73 {
+        d.network_frame(loc(2), &frame(seq, model_update(10, 5, 8)), |_, _| {})
+            .unwrap();
+    }
+    assert_eq!(d.stats.discarded_packets, 1);
+
+    d.network_frame(loc(3), &frame(74, model_update(72, 1, 3)), |_, _| {})
+        .unwrap();
+
+    assert_eq!(model_of(&d, 74, 1), Some(Value::Int(3)));
+    assert_eq!(model_of(&d, 74, 5), Some(Value::Int(8)));
+    assert!(!d.latest_snapshot().unwrap().inferred);
+    assert_eq!(d.stats.discarded_packets, 1);
+}
+
+#[test]
+fn a_dropped_run_past_255_packets_stays_dropped_when_the_byte_wraps() {
+    // After 256 packets the reference byte comes back into range, but it
+    // names a frame the client dropped, so the run goes on
+    let mut d = Decoder::new();
+    d.network_frame(loc(0), &frame(1, setup()), |_, _| {})
+        .unwrap();
+    d.network_frame(loc(1), &frame(10, full_packet(10)), |_, _| {})
+        .unwrap();
+    for seq in 11..=270 {
+        d.network_frame(loc(2), &frame(seq, model_update(10, 5, 8)), |_, _| {})
+            .unwrap();
+    }
+
+    assert_eq!(d.latest_snapshot().unwrap().sequence, 72);
+    assert_eq!(d.stats.discarded_packets, 270 - 72);
+}
+
+#[test]
+fn a_sudden_far_reference_is_inferred_not_dropped() {
+    // Byte 10 is 64 packets back, but no run led there, so this is not the
+    // client dropping a lagging packet. It may be shifted numbering, and the
+    // ring occupant is not trusted either
     let mut d = Decoder::new();
     d.network_frame(loc(0), &frame(1, setup()), |_, _| {})
         .unwrap();
@@ -507,27 +586,12 @@ fn frame_exactly_one_ring_old_is_strict() {
     d.network_frame(loc(2), &frame(74, model_update(10, 5, 8)), |_, _| {})
         .unwrap();
 
-    assert!(!d.latest_snapshot().unwrap().inferred);
-    assert_eq!(d.stats.bases_strict, 1);
-}
-
-#[test]
-fn reference_past_the_ring_uses_the_newer_slot_occupant() {
-    // Byte 10 names frame 10, but frame 74 has since taken ring slot 10, so
-    // the engine deltas from 74
-    let mut d = Decoder::new();
-    d.network_frame(loc(0), &frame(1, setup()), |_, _| {})
-        .unwrap();
-    d.network_frame(loc(1), &frame(10, full_packet(10)), |_, _| {})
-        .unwrap();
-    d.network_frame(loc(2), &frame(74, model_update(10, 1, 3)), |_, _| {})
-        .unwrap();
-    d.network_frame(loc(3), &frame(75, model_update(10, 5, 8)), |_, _| {})
-        .unwrap();
-
-    assert_eq!(model_of(&d, 75, 1), Some(Value::Int(3)));
-    assert!(!d.latest_snapshot().unwrap().inferred);
-    assert_eq!(d.stats.bases_strict, 2);
+    let latest = d.latest_snapshot().unwrap();
+    assert_eq!(latest.sequence, 74);
+    assert!(latest.inferred);
+    assert_eq!(d.stats.discarded_packets, 0);
+    assert_eq!(d.stats.bases_strict, 0);
+    assert_eq!(d.stats.bases_count_search, 1);
 }
 
 #[test]
