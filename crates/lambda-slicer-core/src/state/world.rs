@@ -276,12 +276,13 @@ pub struct Decoder {
     /// match would name the wrong frame
     numbering_suspect: bool,
 
-    /// Current occupant of each player slot
+    /// Current occupant of each player slot in this session
     pub players: BTreeMap<u8, PlayerInfo>,
-    /// Joins, renames and departures in recording order
+    /// Joins, renames and departures in recording order. Each session starts
+    /// with no players, so its occupants join again
     pub name_history: Vec<NameChange>,
-    /// Last incarnation per slot, kept after the slot is vacated so the next
-    /// occupant gets a new one
+    /// Last incarnation per slot in this session, kept after the slot is
+    /// vacated so the next occupant gets a new one
     incarnations: BTreeMap<u8, u32>,
     pub segment: u32,
     pub stats: DecodeStats,
@@ -600,6 +601,12 @@ impl Decoder {
         self.history.clear();
         self.sequence_offset = 0;
         self.numbering_suspect = false;
+
+        // A new server info starts a new client state, and the server sends
+        // every player's userinfo again during sign-on. Until then a slot has
+        // no known occupant, so no identity outlives its session
+        self.players.clear();
+        self.incarnations.clear();
 
         self.hltv = false;
     }

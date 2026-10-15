@@ -680,6 +680,61 @@ fn events_keep_the_player_identity_of_their_time() {
 }
 
 #[test]
+fn player_identities_do_not_cross_a_session_boundary() {
+    // Alice holds slot 1 in the first session. In the second, an event from
+    // entity 2 arrives before any userinfo and must not be credited to her
+    let mut first = BitWriter::new();
+    userinfo(&mut first, 1, 5, r"\name\Alice");
+    reliable_event(&mut first, 2);
+
+    let mut early = BitWriter::new();
+    reliable_event(&mut early, 2);
+
+    let mut late = BitWriter::new();
+    userinfo(&mut late, 1, 9, r"\name\Carol");
+    reliable_event(&mut late, 2);
+
+    let mut d = Decoder::new();
+    d.network_frame(loc(0), &frame(1, setup()), |_, _| {})
+        .unwrap();
+    d.network_frame(loc(1), &frame(2, first.finish()), |_, _| {})
+        .unwrap();
+    d.network_frame(loc(2), &frame(3, setup()), |_, _| {})
+        .unwrap();
+    assert!(d.players.is_empty());
+
+    d.network_frame(loc(3), &frame(4, early.finish()), |_, _| {})
+        .unwrap();
+    d.network_frame(loc(4), &frame(5, late.finish()), |_, _| {})
+        .unwrap();
+
+    let who: Vec<_> = d
+        .events
+        .iter()
+        .map(|e| {
+            e.player
+                .as_ref()
+                .map(|p| (p.segment, p.name.as_str(), p.incarnation))
+        })
+        .collect();
+    assert_eq!(who, [Some((1, "Alice", 0)), None, Some((2, "Carol", 0))]);
+
+    // The session change itself is not a departure
+    let history: Vec<_> = d
+        .name_history
+        .iter()
+        .map(|c| (c.kind, c.player.segment, c.player.name.as_str()))
+        .collect();
+    assert_eq!(
+        history,
+        [
+            (NameChangeKind::Joined, 1, "Alice"),
+            (NameChangeKind::Joined, 2, "Carol"),
+        ]
+    );
+}
+
+#[test]
 fn non_player_entities_have_no_player_identity() {
     let mut w = BitWriter::new();
     userinfo(&mut w, 1, 5, r"\name\Alice");

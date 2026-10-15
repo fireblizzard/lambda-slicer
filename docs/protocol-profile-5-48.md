@@ -258,6 +258,12 @@ entity whose slot is empty is reported as an unknown player.
 - A slot's incarnation increments when its user id changes or after it was vacated, so a reused
   slot is a different player. The same match shows `JrFury` leaving and rejoining as user 80 (slot 3,
   incarnation 1) and `tarrhium` later taking slot 3 (incarnation 2).
+- Identities are scoped to their session. A new `svc_serverinfo` empties the player table and
+  restarts incarnations, and the server resends every player's userinfo during sign-on. An event
+  before that has no known player instead of inheriting the previous session's occupant. Each
+  session's occupants therefore appear as joins again in the history, and a level change records
+  no departures. In 300 sample demos no event fell between a server info and the resent userinfo,
+  and only incarnation numbers changed with this rule (2026-10-15).
 - Reports carry a `name_history` of joins, renames and departures with their locations. Resent
   identical userinfo is not a change.
 
