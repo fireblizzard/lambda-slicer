@@ -242,6 +242,44 @@ fn truncate_errors_for_empty_and_out_of_range() {
 }
 
 #[test]
+fn truncate_up_to_the_terminal_keeps_every_group() {
+    // Groups at 0, 0.5, 1.0 and 1.5 with the terminal at 2.0. Ending at the
+    // terminal, or after the last group but before it, keeps everything and
+    // reproduces the source byte for byte
+    let dir = tempfile::tempdir().unwrap();
+    let src = write(dir.path(), "src.dem", &demo(4));
+    let src_bytes = std::fs::read(&src).unwrap();
+
+    for (name, end) in [("at.dem", "2"), ("between.dem", "1.8")] {
+        let out = dir.path().join(name);
+        let rep = run_control(
+            &src,
+            &out,
+            Control::TruncateEnd(end.parse().unwrap()),
+            Limits::default(),
+        )
+        .unwrap();
+
+        let cut = rep.cut.unwrap();
+        assert_eq!(cut.retained_network_records, 4, "{end}");
+        assert_eq!(cut.effective_end_us, 2_000_000, "{end}");
+        assert_eq!(cut.terminal_frame_number, 4, "{end}");
+        assert!(std::fs::read(&out).unwrap() == src_bytes, "{end}");
+    }
+
+    let just_past = run_control(
+        &src,
+        &dir.path().join("past.dem"),
+        Control::TruncateEnd("2.001".parse().unwrap()),
+        Limits::default(),
+    );
+    assert!(
+        matches!(just_past, Err(ExportError::RangeBeyondEnd { .. })),
+        "{just_past:?}"
+    );
+}
+
+#[test]
 fn export_never_overwrites() {
     let dir = tempfile::tempdir().unwrap();
     let src = write(dir.path(), "src.dem", &demo(2));

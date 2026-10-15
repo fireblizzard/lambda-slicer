@@ -84,6 +84,11 @@ previous record and whose time is ≥ end**, and writes a NextSection with that 
 frame number. This grouping is provisional until confirmed by the S0c in-game test and by the
 network-layer audit (plan §4.3).
 
+If no group starts at or after the end, the cut reaches the playback entry's own NextSection. An
+end up to and including that record's time keeps every group and reuses the source terminal
+unchanged, so trimming `naz_crossfire_pb_01.dem` at `00:20:06.301` reproduces the source byte for
+byte. Only an end after the terminal time is `RangeBeyondEnd`.
+
 ## Corpus scan (2026-10-14)
 
 `corpus_scan` example, read-only, over `F:\HLScreeniesDemos` and

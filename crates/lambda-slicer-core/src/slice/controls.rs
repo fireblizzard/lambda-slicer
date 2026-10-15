@@ -148,7 +148,8 @@ fn to_i32(v: u64, what: &str) -> Result<i32, ExportError> {
 }
 
 /// Re-encode every entry frame by frame. With `cut`, the playback entry stops
-/// before the first frame group at or after `cut`
+/// before the first frame group at or after `cut`, or at its own terminal
+/// record when `cut` is at or before the terminal time but after every group
 fn rebuild(
     source: &Path,
     out: &mut File,
@@ -197,9 +198,18 @@ fn rebuild(
             let f = lf.frame;
 
             if let Some(end) = truncate_at {
+                // Reaching the terminal record means every frame group starts
+                // before `end`. Any end up to the terminal time keeps them all
+                // and reuses the source's own terminal, so only a later end
+                // is outside the recording
                 if matches!(f.body, FrameBody::NextSection) {
                     let segment_end = DemoTime::from_f32(f.time()).unwrap_or(DemoTime::ZERO);
-                    return Err(ExportError::RangeBeyondEnd { end, segment_end });
+                    if end > segment_end {
+                        return Err(ExportError::RangeBeyondEnd { end, segment_end });
+                    }
+
+                    terminal = Some(f);
+                    break;
                 }
 
                 let t = DemoTime::from_f32(f.time()).unwrap_or(DemoTime::ZERO);
