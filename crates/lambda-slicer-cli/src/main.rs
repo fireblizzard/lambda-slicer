@@ -14,7 +14,7 @@ use lambda_slicer_core::library::fingerprint::full_fingerprint;
 use lambda_slicer_core::protocol::messages::{Message, svc};
 use lambda_slicer_core::slice::controls::{Control, run_control};
 use lambda_slicer_core::state::{
-    ActorResolution, DecodeOptions, DecodeStatus, Decoder, decode_demo,
+    ActorResolution, DecodeOptions, DecodeStatus, DecodedEvent, Decoder, decode_demo,
 };
 use lambda_slicer_core::timeline::time::DemoTime;
 use lambda_slicer_core::validate::crosscheck::{CrossCheckReport, Outcome, crosscheck_demo};
@@ -385,22 +385,23 @@ fn describe(d: &Decoder, m: &Message) -> String {
     }
 }
 
-fn actor_text(d: &Decoder, a: &ActorResolution) -> String {
-    let player = |e: i64| {
-        u8::try_from(e - 1)
-            .ok()
-            .and_then(|slot| d.players.get(&slot))
-            .map(|p| format!(" ({})", p.name))
-            .unwrap_or_default()
+/// Actor of an event, named as the player was called when the event
+/// happened, not at the end of the recording
+fn actor_text(d: &Decoder, e: &DecodedEvent) -> String {
+    let named = |entity: i64| match &e.player {
+        Some(p) => format!(
+            "entity {entity} ({}, slot {} #{})",
+            p.name, p.slot, p.incarnation
+        ),
+        None if entity >= 1 && entity <= i64::from(d.max_clients) => {
+            format!("unknown player (entity {entity})")
+        }
+        None => format!("entity {entity}"),
     };
 
-    match a {
-        ActorResolution::PacketEntity { entity, .. } => {
-            format!("entity {entity}{}", player((*entity).into()))
-        }
-        ActorResolution::Explicit { entity } => {
-            format!("entity {entity}{}", player((*entity).into()))
-        }
+    match &e.actor {
+        ActorResolution::PacketEntity { entity, .. } => named((*entity).into()),
+        ActorResolution::Explicit { entity } => named((*entity).into()),
         ActorResolution::OutOfRange {
             packet_index,
             entities,
@@ -483,6 +484,22 @@ fn decode_cmd(
             println!("  player slot {} user {} {:?}", p.slot, p.user_id, p.name);
         }
 
+        const SHOWN: usize = 30;
+        for c in report.name_history.iter().take(SHOWN) {
+            let t =
+                DemoTime::from_f32(c.location.time()).map_or_else(|| "?".into(), |t| t.to_string());
+            println!(
+                "  {t} {:?} slot {} #{} user {} {:?}",
+                c.kind, c.player.slot, c.player.incarnation, c.player.user_id, c.player.name
+            );
+        }
+        if report.name_history.len() > SHOWN {
+            println!(
+                "  ... {} more name changes (see --json)",
+                report.name_history.len() - SHOWN
+            );
+        }
+
         let mut ev: Vec<_> = s.events_by_resource.iter().collect();
         ev.sort_by(|a, b| b.1.cmp(a.1));
         for (name, n) in ev {
@@ -526,7 +543,7 @@ fn decode_cmd(
                 "{t} {:<12} {:<22} {:<32} {args}",
                 format!("{:?}", e.source),
                 name,
-                actor_text(&decoder, &e.actor)
+                actor_text(&decoder, e)
             );
         }
     }

@@ -83,8 +83,39 @@ pub struct PlayerInfo {
     #[serde(skip)]
     pub info: Vec<u8>,
     pub name: String,
-    /// Increments when the slot's user id changes
+    /// Increments when the slot's user id changes or after the slot was
+    /// vacated, so a reused slot is a different player
     pub incarnation: u32,
+}
+
+/// Who a player was at one moment. Name is the name at that moment, so
+/// later renames and slot reuse do not rewrite it
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct PlayerIdentity {
+    pub segment: u32,
+    pub slot: u8,
+    pub user_id: u32,
+    pub incarnation: u32,
+    pub name: String,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NameChangeKind {
+    /// A new player in the slot, or the first userinfo seen for it
+    Joined,
+    /// Same player with a different name
+    Renamed,
+    /// Userinfo cleared, which the server sends when a client drops
+    Left,
+}
+
+/// One entry of the name history
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct NameChange {
+    pub location: FrameLocation,
+    pub kind: NameChangeKind,
+    pub player: PlayerIdentity,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
@@ -129,6 +160,9 @@ pub struct DecodedEvent {
     /// Standalone demo event record
     pub demo: Option<EventRecord>,
     pub actor: ActorResolution,
+    /// The player behind the actor entity when the event was decoded, if the
+    /// actor is a player entity with a known occupant
+    pub player: Option<PlayerIdentity>,
     /// For network events, the fire time or reliable delay, ×100. For demo
     /// events, the delay f32 bits
     pub delay_raw: Option<u32>,
@@ -239,7 +273,13 @@ pub struct Decoder {
     /// match would name the wrong frame
     numbering_suspect: bool,
 
+    /// Current occupant of each player slot
     pub players: BTreeMap<u8, PlayerInfo>,
+    /// Joins, renames and departures in recording order
+    pub name_history: Vec<NameChange>,
+    /// Last incarnation per slot, kept after the slot is vacated so the next
+    /// occupant gets a new one
+    incarnations: BTreeMap<u8, u32>,
     pub segment: u32,
     pub stats: DecodeStats,
     pub events: Vec<DecodedEvent>,
@@ -307,6 +347,8 @@ impl Decoder {
             numbering_suspect: false,
 
             players: BTreeMap::new(),
+            name_history: Vec::new(),
+            incarnations: BTreeMap::new(),
             segment: 0,
             stats: DecodeStats::default(),
             events: Vec::new(),
@@ -602,7 +644,7 @@ impl Decoder {
                 user_id,
                 info,
                 ..
-            } => self.update_player(*slot, *user_id, info),
+            } => self.update_player(*slot, *user_id, info, location),
             Message::SpawnBaseline(b) => {
                 self.baselines.clear();
                 for e in &b.entities {
@@ -689,6 +731,7 @@ impl Decoder {
                         args: Some(args),
                         demo: None,
                         actor,
+                        player: None,
                         delay_raw: e.fire_time.map(u32::from),
                         server_time_bits: self.time_bits,
                     });
@@ -719,6 +762,7 @@ impl Decoder {
                     } else {
                         ActorResolution::Unknown
                     },
+                    player: None,
                     delay_raw: e.delay.map(u32::from),
                     server_time_bits: self.time_bits,
                 });
@@ -729,29 +773,87 @@ impl Decoder {
         Ok(())
     }
 
-    fn update_player(&mut self, slot: u8, user_id: u32, info: &[u8]) {
-        let name = userinfo_value(info, b"name")
-            .map(|n| String::from_utf8_lossy(&n).into_owned())
-            .unwrap_or_default();
-        let incarnation = match self.players.get(&slot) {
-            Some(p) if p.user_id == user_id => p.incarnation,
-            Some(p) => p.incarnation + 1,
-            None => 0,
+    fn update_player(&mut self, slot: u8, user_id: u32, info: &[u8], location: FrameLocation) {
+        let name = userinfo_value(info, b"name").map(|n| String::from_utf8_lossy(&n).into_owned());
+
+        // The server clears a dropped client's userinfo
+        let Some(name) = name else {
+            if let Some(gone) = self.players.remove(&slot) {
+                self.incarnations.insert(slot, gone.incarnation);
+                let player = self.identity(&gone);
+                self.name_history.push(NameChange {
+                    location,
+                    kind: NameChangeKind::Left,
+                    player,
+                });
+            }
+            return;
         };
 
-        self.players.insert(
+        let previous = self.players.get(&slot);
+        let same_player = previous.is_some_and(|p| p.user_id == user_id);
+        let kind = match previous {
+            Some(p) if same_player && p.name == name => None,
+            Some(_) if same_player => Some(NameChangeKind::Renamed),
+            _ => Some(NameChangeKind::Joined),
+        };
+
+        let incarnation = match (previous, self.incarnations.get(&slot)) {
+            (Some(p), _) if same_player => p.incarnation,
+            (Some(p), _) => p.incarnation + 1,
+            (None, Some(&last)) => last + 1,
+            (None, None) => 0,
+        };
+        self.incarnations.insert(slot, incarnation);
+
+        let info = PlayerInfo {
             slot,
-            PlayerInfo {
-                slot,
-                user_id,
-                info: info.to_vec(),
-                name,
-                incarnation,
-            },
-        );
+            user_id,
+            info: info.to_vec(),
+            name,
+            incarnation,
+        };
+        if let Some(kind) = kind {
+            let player = self.identity(&info);
+            self.name_history.push(NameChange {
+                location,
+                kind,
+                player,
+            });
+        }
+
+        self.players.insert(slot, info);
     }
 
-    fn record_event(&mut self, ev: DecodedEvent) {
+    fn identity(&self, p: &PlayerInfo) -> PlayerIdentity {
+        PlayerIdentity {
+            segment: self.segment,
+            slot: p.slot,
+            user_id: p.user_id,
+            incarnation: p.incarnation,
+            name: p.name.clone(),
+        }
+    }
+
+    /// The player occupying an entity's slot right now, when the entity is a
+    /// player entity (1 to `max_clients`)
+    pub fn player_for_entity(&self, entity: i64) -> Option<PlayerIdentity> {
+        if entity < 1 || entity > i64::from(self.max_clients) {
+            return None;
+        }
+
+        let slot = u8::try_from(entity - 1).ok()?;
+        self.players.get(&slot).map(|p| self.identity(p))
+    }
+
+    fn record_event(&mut self, mut ev: DecodedEvent) {
+        let entity = match ev.actor {
+            ActorResolution::PacketEntity { entity, .. } => Some(i64::from(entity)),
+            ActorResolution::Explicit { entity } => Some(i64::from(entity)),
+            _ => None,
+        };
+        ev.player = entity.and_then(|e| self.player_for_entity(e));
+
         let key = ev.resource.as_ref().map_or_else(
             || format!("#{}", ev.index),
             |r| String::from_utf8_lossy(r).into_owned(),
@@ -788,6 +890,7 @@ impl Decoder {
             } else {
                 ActorResolution::Unknown
             },
+            player: None,
             delay_raw: Some(record.delay_bits),
             server_time_bits: self.time_bits,
         });

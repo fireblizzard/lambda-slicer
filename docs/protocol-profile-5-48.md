@@ -233,6 +233,22 @@ in the packet; the explicit `entindex` in the arguments is used then. Reliable e
 standalone demo `Event` records use their explicit `entindex`. Anything else is reported as
 unresolved, never guessed.
 
+### Player identity at event time
+
+Each event records the player behind its actor entity *when the event was decoded*: segment,
+slot (entity − 1 for entities 1 to `max_clients`), user id, incarnation and name. Later renames or
+slot reuse never rewrite it. Entities outside the player range get no identity, and a player
+entity whose slot is empty is reported as an unknown player.
+
+- `svc_updateuserinfo` with a cleared userinfo string means the client dropped. **Observed** in
+  `20250927_182948_dm_dust2_match_tdm.dem`: the server's `McCree dropped` print arrives in the same
+  packet as the cleared userinfo for that slot.
+- A slot's incarnation increments when its user id changes or after it was vacated, so a reused
+  slot is a different player. The same match shows `JrFury` leaving and rejoining as user 80 (slot 3,
+  incarnation 1) and `tarrhium` later taking slot 3 (incarnation 2).
+- Reports carry a `name_history` of joins, renames and departures with their locations. Resent
+  identical userinfo is not a change.
+
 **Observed** in `naz_crossfire_pb_01.dem` (two players): the recorder's own weapon events appear
 as standalone demo events (entity 1), the opponent's as `svc_event` resolved through the packet
 array (entity 2), and OpenAG's delayed gauss stop as `svc_event_reliable` with `bparam2 = 1`.

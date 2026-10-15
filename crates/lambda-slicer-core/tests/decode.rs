@@ -6,7 +6,7 @@ use lambda_slicer_core::protocol::bitwrite::BitWriter;
 use lambda_slicer_core::protocol::delta::{Value, dt};
 use lambda_slicer_core::protocol::messages::svc;
 use lambda_slicer_core::state::{
-    ActorResolution, DecodeErrorKind, Decoder, EventSource, FrameLocation,
+    ActorResolution, DecodeErrorKind, Decoder, EventSource, FrameLocation, NameChangeKind,
 };
 
 type Field = (&'static str, u32, u32, u32, u32); // name, flags, offset, bits, premultiply
@@ -596,4 +596,97 @@ fn truncated_messages_never_panic() {
         let mut d = Decoder::new();
         let _ = d.network_frame(loc(0), &frame(1, payload[..cut].to_vec()), |_, _| {});
     }
+}
+
+fn userinfo(w: &mut BitWriter, slot: u8, user_id: u32, info: &str) {
+    w.u8(svc::UPDATEUSERINFO);
+    w.u8(slot);
+    w.u32(user_id);
+    w.bytes(info.as_bytes());
+    w.bytes(&[0]);
+    w.bytes(&[0; 16]);
+}
+
+fn reliable_event(w: &mut BitWriter, entity: i64) {
+    w.u8(svc::EVENT_RELIABLE);
+    w.bits(3, 10);
+    delta(w, EVENT, &[(0, entity)]);
+    w.bit(false);
+    w.align();
+}
+
+#[test]
+fn events_keep_the_player_identity_of_their_time() {
+    // Alice fires from slot 1 (entity 2), renames, leaves, and Bob takes
+    // the slot. Each event must keep the name it had when it happened
+    let mut w = BitWriter::new();
+    userinfo(&mut w, 1, 5, r"\name\Alice\model\gordon");
+    reliable_event(&mut w, 2);
+    userinfo(&mut w, 1, 5, r"\name\Ally\model\gordon");
+    reliable_event(&mut w, 2);
+    userinfo(&mut w, 1, 5, "");
+    reliable_event(&mut w, 2);
+    userinfo(&mut w, 1, 6, r"\name\Bob");
+    reliable_event(&mut w, 2);
+    // Resending identical userinfo is not a change
+    userinfo(&mut w, 1, 6, r"\name\Bob");
+
+    let mut d = Decoder::new();
+    d.network_frame(loc(0), &frame(1, setup()), |_, _| {})
+        .unwrap();
+    d.network_frame(loc(1), &frame(2, w.finish()), |_, _| {})
+        .unwrap();
+
+    let who: Vec<_> = d
+        .events
+        .iter()
+        .map(|e| {
+            e.player
+                .as_ref()
+                .map(|p| (p.name.as_str(), p.incarnation, p.user_id))
+        })
+        .collect();
+    assert_eq!(
+        who,
+        [
+            Some(("Alice", 0, 5)),
+            Some(("Ally", 0, 5)),
+            None,
+            Some(("Bob", 1, 6)),
+        ]
+    );
+
+    let history: Vec<_> = d
+        .name_history
+        .iter()
+        .map(|c| (c.kind, c.player.name.as_str(), c.player.incarnation))
+        .collect();
+    assert_eq!(
+        history,
+        [
+            (NameChangeKind::Joined, "Alice", 0),
+            (NameChangeKind::Renamed, "Ally", 0),
+            (NameChangeKind::Left, "Ally", 0),
+            (NameChangeKind::Joined, "Bob", 1),
+        ]
+    );
+
+    // Only the current occupant remains in the player table
+    assert_eq!(d.players[&1].name, "Bob");
+}
+
+#[test]
+fn non_player_entities_have_no_player_identity() {
+    let mut w = BitWriter::new();
+    userinfo(&mut w, 1, 5, r"\name\Alice");
+    reliable_event(&mut w, 40);
+
+    let mut d = Decoder::new();
+    d.network_frame(loc(0), &frame(1, setup()), |_, _| {})
+        .unwrap();
+    d.network_frame(loc(1), &frame(2, w.finish()), |_, _| {})
+        .unwrap();
+
+    assert_eq!(d.events[0].actor, ActorResolution::Explicit { entity: 40 });
+    assert_eq!(d.events[0].player, None);
 }

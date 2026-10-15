@@ -9,5 +9,5 @@ pub use run::{DecodeOptions, DecodeReport, DecodeStatus, decode_demo};
 
 pub use world::{
     ActorResolution, DecodeError, DecodeErrorKind, DecodeStats, DecodedEvent, Decoder, EntityState,
-    EventSource, FrameLocation, PlayerInfo, Snapshot,
+    EventSource, FrameLocation, NameChange, NameChangeKind, PlayerIdentity, PlayerInfo, Snapshot,
 };

@@ -7,7 +7,7 @@ use std::path::Path;
 
 use serde::Serialize;
 
-use super::world::{DecodeStats, Decoder, FrameLocation, PlayerInfo};
+use super::world::{DecodeStats, Decoder, FrameLocation, NameChange, PlayerInfo};
 use crate::container::{DemoReader, FrameBody, Limits};
 use crate::protocol::messages::ParsedMessage;
 
@@ -45,7 +45,10 @@ pub struct DecodeReport {
     pub inferred_delta_bases: bool,
     pub stats: DecodeStats,
     pub delta_schemas: Vec<SchemaSummary>,
+    /// Occupants at the end of the recording
     pub players: Vec<PlayerInfo>,
+    /// Joins, renames and departures, so earlier events keep their names
+    pub name_history: Vec<NameChange>,
 }
 
 pub struct DecodeOptions {
@@ -84,6 +87,7 @@ pub fn decode_demo(
         stats: DecodeStats::default(),
         delta_schemas: Vec::new(),
         players: Vec::new(),
+        name_history: Vec::new(),
     };
 
     let reader = File::open(path).map_err(|e| e.to_string()).and_then(|f| {
@@ -167,6 +171,7 @@ pub fn decode_demo(
     schemas.sort_by(|a, b| a.name.cmp(&b.name));
     report.delta_schemas = schemas;
     report.players = decoder.players.values().cloned().collect();
+    report.name_history = decoder.name_history.clone();
 
     (report, decoder)
 }
