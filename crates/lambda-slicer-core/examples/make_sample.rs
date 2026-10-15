@@ -81,7 +81,21 @@ fn main() {
     for r in roots {
         walk(Path::new(r), &mut files);
     }
-    let by_key: BTreeMap<String, PathBuf> = files.iter().map(|p| (key(p), p.clone())).collect();
+
+    // Candidates sorted by normalised path, one per file, so the sample
+    // depends only on the files and the seed, not on enumeration order. Of
+    // several spellings of one file the smallest is kept
+    let mut by_key: BTreeMap<String, PathBuf> = BTreeMap::new();
+    for p in files {
+        by_key
+            .entry(key(&p))
+            .and_modify(|kept| {
+                if p < *kept {
+                    *kept = p.clone();
+                }
+            })
+            .or_insert(p);
+    }
 
     let mut chosen = Vec::new();
     let mut taken = BTreeSet::new();
@@ -96,8 +110,8 @@ fn main() {
     let problem_count = chosen.len();
 
     let mut maps: BTreeMap<String, Vec<PathBuf>> = BTreeMap::new();
-    for p in &files {
-        if !taken.contains(&key(p)) {
+    for (k, p) in &by_key {
+        if !taken.contains(k) {
             maps.entry(map_name(p)).or_default().push(p.clone());
         }
     }
@@ -134,6 +148,6 @@ fn main() {
         chosen.len(),
         chosen.len() - problem_count,
         groups.len(),
-        files.len()
+        by_key.len()
     );
 }
