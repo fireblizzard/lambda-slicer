@@ -402,14 +402,26 @@ message name in the 2,000-demo sample is classified. The AG-specific ones (`Coun
 `Splash`, `ShowMenu`, `CTFSound`, `VGUIMenu` dropped) are classified from their names and
 observed use, not from the AG client source, so the game test is their check.
 
-**Ongoing gauss charge.** The recorder's charge starts with a spin-up view model animation
-(`WeaponAnim` 3) and a `gaussspin` event with `bparam1 = 0`, which starts the spin sound. Every
-later frame sends `gaussspin` with `bparam1 = 1`, which in the HL client only changes the pitch
-of a sound already playing, and a `gauss` event ends it. A slice starting mid-charge would keep
-only the pitch changes. When the latest spin event is at most 0.1 s before the start and no shot
-followed it, the bootstrap group therefore ends with the spin-up animation and that spin event
-with `bparam1 = 0`, restarting the sound at the current pitch. In `naz_crossfire_pb_01.dem` all
-71,675 spin events are the recorder's own demo events. Opponents' charges send none.
+**Effects under way at the start** (`slice::ongoing`). Events, sounds and temp entities before the
+start already happened and are not replayed, but some started something that lasts past the
+start. The classification covers every event script and temp entity kind in the 2,000-demo
+sample (15 one-shot weapon events, 4 with a lifecycle, 28 temp entity kinds):
+
+| Effect | At the start |
+|---|---|
+| Recorder's gauss charge | The spin-up animation and the latest `gaussspin` event as a sound start (`bparam1 = 0`), when that event is at most 0.1 s old and no shot followed. **Observed** in the game: the spin sound plays from the first frame |
+| Recorder's egon fire | The latest `egon_fire` demo event as a startup event (`bparam1 = 1`), unless `egon_stop` followed. `EV_EgonFire` creates the local beam only on startup, so this also plays the wind-up sound |
+| Server sound loops | A sound started before the start whose stop (same entity, channel and sample) arrives after it, before any other sound replaces it on that channel, was still playing. Its message is sent again. Packets past the end are decoded until every such sound is resolved |
+| Beams, lights, lines | Still alive at the start: sent again with the remaining life (kinds 0, 1, 7, 8, 19 to 22, 24, 27, 28, 30, 31). Those attached to an entity only if the entity is in the bootstrap state, and `TE_KILLBEAM` ends them |
+| HUD text (`TE_TEXTMESSAGE`) | The latest per text channel, still showing at the start: sent again with no fade-in and the remaining hold and fade-out |
+| Gibs, thrown models, projectiles | Still moving at the start: the export is refused (`ActiveEffect`), since they cannot be restarted where they are |
+| Train sounds | Nothing. The engine starts a sound that a pitch or volume change finds not playing, and trains send such a change every think |
+| Decals | Not yet, see `docs/deferred.md` |
+| Unknown event script or temp entity kind | The export is refused |
+
+Network messages of carried effects go in the record after the bootstrap group, with the HUD
+messages, once entities exist and a frame was drawn. Demo records (gauss, egon) end the bootstrap
+group. The report lists every carried effect.
 
 **Decisions taken for S1** (plan §10):
 

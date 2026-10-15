@@ -163,4 +163,33 @@ Regenerate `work\ls_s1_vote.dem` with the command above to retest.
 
 | Test | Date | Result | Observations |
 |---|---|---|---|
-| S1 vengeance vote, HUD group | — | not yet played | |
+| S1 vengeance vote, HUD group | 2026-10-15 | pass | Vote display and timer show from the first frame, with everything else as before. |
+
+### S1 effects under way at the start
+
+Effects that started before the cut are carried over it (see "Effects under way at the start"
+in `docs/protocol-profile-5-48.md`). Two slices from the sample exercise the common cases:
+
+```powershell
+.\target\release\lambda-slicer.exe slice 'F:\HLScreeniesDemos\09aug2018\dblcross_salchi_naz.dem' --start 2:00 --end 2:20 --output work\ls_s1_loop.dem
+.\target\release\lambda-slicer.exe slice 'F:\HLScreeniesDemos\09aug2018\ag_bhop_master_beta_naz1.dem' --start 1:00 --end 1:20 --output work\ls_s1_text.dem
+```
+
+- `ls_s1_loop`: the ambient loop `ambience/alien_blipper.wav` on entity 23 is playing at 2:00
+  and stopped later, so it is started again at the start.
+- `ls_s1_text`: the HUD text "Time: 00:56 | CPs: 0 | TPs: 0" (channel 1, held 256 s) is sent
+  again with its remaining time.
+
+Both decode identical to the source and cross-check *verified*. Check, against the original at
+the same times:
+
+- the blipper sound is audible from the first frame near its source, like in the original;
+- the timer text shows from the first frame and keeps counting as in the original.
+
+Not yet tested in the game: the recorder's egon fire across the cut, which is carried as a
+startup event and should show the beam (with a wind-up sound) from the first frame.
+
+| Test | Date | Result | Observations |
+|---|---|---|---|
+| S1 sound loop `[2:00, 2:20)` | 2026-10-16 | matches original, not audible | The loop (started 1:57.8, stopped 2:20.2) is not audible at this point in the original either, so the carry cannot be judged by ear here. |
+| S1 HUD text `[1:00, 1:20)` | 2026-10-16 | pass | The timer text shows from the first frame and updates like the original. |

@@ -82,12 +82,16 @@ pub fn setup() -> Vec<u8> {
 }
 
 pub fn setup_with_protocol(protocol: u32) -> Vec<u8> {
-    setup_with(protocol, &[("events/gauss.sc", 3)])
+    setup_with(protocol, &[(EVENT_RESOURCE, "events/gauss.sc", 3)])
 }
 
-/// Session setup announcing `protocol`, with these event scripts as
-/// (name, resource index)
-pub fn setup_with(protocol: u32, events: &[(&str, u32)]) -> Vec<u8> {
+/// Resource types of the resource list
+pub const SOUND_RESOURCE: u32 = 0;
+pub const EVENT_RESOURCE: u32 = 5;
+
+/// Session setup announcing `protocol`, with these resources as (type,
+/// name, resource index)
+pub fn setup_with(protocol: u32, resources: &[(u32, &str, u32)]) -> Vec<u8> {
     let mut w = BitWriter::new();
 
     w.u8(svc::SERVERINFO);
@@ -116,12 +120,11 @@ pub fn setup_with(protocol: u32, events: &[(&str, u32)]) -> Vec<u8> {
     description(&mut w, "event_t", EVENT);
     w.align();
 
-    // Resource list of event scripts, each with no extra data, and no
-    // consistency list
+    // Resource list, each with no extra data, and no consistency list
     w.u8(svc::RESOURCELIST);
-    w.bits(events.len() as u32, 12);
-    for &(name, index) in events {
-        w.bits(5, 4);
+    w.bits(resources.len() as u32, 12);
+    for &(kind, name, index) in resources {
+        w.bits(kind, 4);
         w.string(name.as_bytes());
         w.bits(index, 12);
         w.bits(0, 24);

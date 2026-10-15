@@ -26,6 +26,7 @@ use std::sync::Arc;
 use serde::Serialize;
 
 use super::ExportError;
+use super::ongoing::{Ongoing, PendingSounds};
 use super::output::{Counting, Published, io_err, publish_new, to_i32};
 use super::persistent::Persistent;
 use crate::container::{
@@ -77,8 +78,8 @@ pub struct RestartReport {
     /// Persistent messages replayed before them (user info, light styles,
     /// HUD state), and their size
     pub persistent_messages: usize,
-    /// Demo records of an ongoing gauss charge carried over the start
-    pub carried_records: usize,
+    /// Effects under way at the start that were carried over it
+    pub carried: Vec<String>,
     pub persistent_bytes: usize,
     pub bootstrap_bytes: usize,
     pub kept_records: u64,
@@ -103,9 +104,14 @@ struct Plan {
     start_sequence: u32,
     /// DemoBuffer and ClientData records of the last group before the start
     prelude: Vec<Frame>,
-    /// Records of ongoing activity carried over the start, written after
-    /// the bootstrap updates
+    /// Demo records of effects under way at the start, written after the
+    /// bootstrap updates
     carried: Vec<Frame>,
+    /// Network messages of effects under way at the start (sound loops,
+    /// beams, HUD text), written in the record after the bootstrap group
+    late: Vec<u8>,
+    /// One line per carried effect
+    notes: Vec<String>,
     /// (snapshot, the source record that carried it) per bootstrap frame
     bootstrap: Vec<(Arc<Snapshot>, NetworkFrame)>,
     /// Persistent messages replayed before the bootstrap updates, and how
@@ -196,8 +202,13 @@ fn plan(
     let mut session = 0;
     let mut dropped = 0;
     let mut persistent = Persistent::default();
-    let mut charge = Charge::default();
+    let mut ongoing = Ongoing::default();
+    let mut pending: Option<PendingSounds> = None;
     let loading_session = d.segment;
+
+    // Past the end, packets are still decoded until every sound that may
+    // be playing at the start is confirmed or ruled out
+    let mut past_end = false;
 
     for item in reader.frames(1)? {
         let lf = item?;
@@ -205,7 +216,14 @@ fn plan(
         let t = DemoTime::from_f32(f.time()).unwrap_or(DemoTime::ZERO);
         let new_group = previous.map(|(n, _)| n) != Some(f.frame_number);
 
+        if past_end && !pending.as_ref().is_some_and(PendingSounds::unresolved) {
+            break;
+        }
+
         if matches!(f.body, FrameBody::NextSection) {
+            if past_end {
+                break;
+            }
             let Some(p) = kept.as_mut() else {
                 return Err(ExportError::RangeBeyondEnd {
                     end: start,
@@ -243,12 +261,25 @@ fn plan(
             };
 
             // Bootstrap candidates are the stored frames just before the start
-            if let Some(latest) = d.latest_snapshot() {
+            let latest = d.latest_snapshot().cloned();
+            if let Some(latest) = &latest {
                 let newest = latest.sequence;
                 window = (newest.saturating_sub(BOOTSTRAP_WINDOW)..=newest)
                     .filter_map(|s| d.snapshot(s).cloned())
                     .collect();
             }
+
+            let present = |e: u16| {
+                latest
+                    .as_ref()
+                    .and_then(|s| s.entities.as_ref())
+                    .is_some_and(|list| list.iter().any(|x| x.number == e))
+            };
+            let (carried, sounds) = ongoing
+                .at_start(f.time(), present)
+                .map_err(ExportError::ActiveEffect)?;
+            pending = Some(sounds);
+
             session = d.segment;
             dropped = d.stats.discarded_packets;
             kept = Some(Plan {
@@ -260,7 +291,9 @@ fn plan(
                 end_time: f.time(),
                 start_sequence: 0,
                 prelude: std::mem::take(&mut prelude),
-                carried: charge.carried(f.time()),
+                carried: carried.records,
+                late: carried.messages,
+                notes: carried.notes,
                 bootstrap: Vec::new(),
                 persistent: engine,
                 persistent_count: engine_count,
@@ -273,12 +306,13 @@ fn plan(
         }
 
         if new_group
+            && !past_end
             && let (Some(p), Some(e)) = (kept.as_mut(), end)
             && t >= e
         {
             p.end_ordinal = lf.ordinal;
             p.end_time = f.time();
-            break;
+            past_end = true;
         }
 
         if new_group && kept.is_none() {
@@ -288,9 +322,10 @@ fn plan(
 
         let FrameBody::Network(n) = &f.body else {
             match kept.as_mut() {
-                Some(p) => p.kept_records += 1,
+                Some(p) if !past_end => p.kept_records += 1,
+                Some(_) => {}
                 None => {
-                    charge.observe(&d, f);
+                    ongoing.observe_record(&d, f);
 
                     // Only the client's state records, never its events,
                     // sounds or commands, which already happened
@@ -306,9 +341,13 @@ fn plan(
         let loc = location(1, lf.ordinal, lf.offset, f);
         let mut froms: Vec<u8> = Vec::new();
         let before = kept.is_none();
+        let time = f.time();
         d.network_frame(loc, n, |dec, m| {
             if before {
                 persistent.observe(dec, m, &n.message);
+                ongoing.observe_message(dec, m, &n.message, time);
+            } else if let Some(s) = pending.as_mut() {
+                s.observe(m);
             }
             match &m.message {
                 Message::DeltaPacketEntities(p) => froms.extend(p.delta_from),
@@ -325,6 +364,9 @@ fn plan(
             }
             continue;
         };
+        if past_end {
+            continue;
+        }
 
         if p.kept_network_records == 0 {
             p.start_sequence = sequence;
@@ -366,6 +408,13 @@ fn plan(
         ));
     }
 
+    // Sound loops still playing at the start go with the other effects
+    if let Some(s) = &pending {
+        let (bytes, notes) = s.confirmed(&d);
+        p.late.extend_from_slice(&bytes);
+        p.notes.extend(notes);
+    }
+
     // The newest frame before the start is the state the client shows until
     // the first kept packet, so it is written even when nothing references it
     if let Some(newest) = window.last() {
@@ -391,66 +440,6 @@ fn plan(
     }
 
     Ok(p)
-}
-
-/// Spin events come every frame while charging, so a charge whose latest
-/// spin is older than this has ended some other way
-const CHARGE_GAP: f32 = 0.1;
-
-/// The recorder's gauss charge, followed through its demo records. The
-/// charge starts with a spin-up view model animation and a spin event that
-/// starts the sound, then sends spin events that only change its pitch, and
-/// ends with a shot. A slice starting mid-charge would keep only the pitch
-/// changes, so the client would play no spin sound and show no spin-up
-#[derive(Default)]
-struct Charge {
-    last_anim: Option<Frame>,
-    spin_up: Option<Frame>,
-    spin: Option<Frame>,
-}
-
-impl Charge {
-    fn observe(&mut self, d: &Decoder, f: &Frame) {
-        match &f.body {
-            FrameBody::WeaponAnim { .. } => self.last_anim = Some(f.clone()),
-            FrameBody::Event(e) => {
-                let name = u16::try_from(e.index).ok().and_then(|i| d.event_name(i));
-                match name {
-                    Some(b"events/gaussspin.sc") => {
-                        if e.bparam1() == 0 {
-                            let same_group = |a: &&Frame| a.frame_number == f.frame_number;
-                            self.spin_up = self.last_anim.as_ref().filter(same_group).cloned();
-                        }
-                        self.spin = Some(f.clone());
-                    }
-                    Some(b"events/gauss.sc") => {
-                        self.spin_up = None;
-                        self.spin = None;
-                    }
-                    _ => {}
-                }
-            }
-            _ => {}
-        }
-    }
-
-    /// The spin-up animation and a spin event that starts the sound at the
-    /// current pitch, when a charge is under way at `start`
-    fn carried(&self, start: f32) -> Vec<Frame> {
-        let Some(spin) = &self.spin else {
-            return Vec::new();
-        };
-        if start - spin.time() > CHARGE_GAP {
-            return Vec::new();
-        }
-
-        let mut restart = spin.clone();
-        if let FrameBody::Event(e) = &mut restart.body {
-            e.args[64..68].copy_from_slice(&0i32.to_le_bytes());
-        }
-
-        self.spin_up.iter().cloned().chain([restart]).collect()
-    }
 }
 
 /// `svc_time`, full clientdata and full packet entities for one frame
@@ -606,7 +595,7 @@ fn write(path: &Path, out: &mut File, p: &Plan, limits: Limits) -> Result<Writte
     // when a frame is drawn. Read in the bootstrap group, a message would be
     // timed from the clock before the restart and expire at once, so HUD
     // messages arrive in a group of their own once a frame was drawn
-    let hud_group = i32::from(!p.hud.is_empty());
+    let hud_group = i32::from(!p.hud.is_empty() || !p.late.is_empty());
     if hud_group > 0 {
         // The newest bootstrap frame's numbers, so the sequence never steps back
         let newest = p.bootstrap.last().map(|(_, r)| r);
@@ -618,7 +607,7 @@ fn write(path: &Path, out: &mut File, p: &Plan, limits: Limits) -> Result<Writte
         let network = NetworkFrame {
             demo_info: record.demo_info.clone(),
             sequence: record.sequence,
-            message: p.hud.clone(),
+            message: [p.late.as_slice(), p.hud.as_slice()].concat(),
         };
         let lead = f32::from_bits(rebased(p, p.first_time));
         put(
@@ -753,8 +742,9 @@ fn validate(
     // Output network records in order, decoding the bootstrap group as it
     // passes. The kept records pair up with the source's one for one
     let mut out_frames = out.frames(1)?;
+    let late = !p.hud.is_empty() || !p.late.is_empty();
     let mut bootstrap_left =
-        p.bootstrap.len() + usize::from(!p.persistent.is_empty()) + usize::from(!p.hud.is_empty());
+        p.bootstrap.len() + usize::from(!p.persistent.is_empty()) + usize::from(late);
     let mut next_output = |out_d: &mut Decoder| -> Result<Option<NetworkFrame>, ExportError> {
         for item in out_frames.by_ref() {
             let lf = item?;
@@ -899,7 +889,7 @@ pub fn run_restart(
         start_sequence: p.start_sequence,
         bootstrap_sequences: p.bootstrap.iter().map(|(s, _)| s.sequence).collect(),
         persistent_messages: p.persistent_count + p.hud_count,
-        carried_records: p.carried.len(),
+        carried: p.notes.clone(),
         persistent_bytes: p.persistent.len() + p.hud.len(),
         bootstrap_bytes: written.bootstrap_bytes,
         kept_records: p.kept_records,

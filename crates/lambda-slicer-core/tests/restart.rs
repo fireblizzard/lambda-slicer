@@ -4,7 +4,9 @@ mod common;
 
 use std::path::{Path, PathBuf};
 
-use common::stream::{CLIENT, ENTITY, delta, full_packet, setup_with, time};
+use common::stream::{
+    CLIENT, ENTITY, EVENT_RESOURCE, SOUND_RESOURCE, delta, full_packet, setup_with, time,
+};
 use common::{build, frame};
 use lambda_slicer_core::container::{
     DemoReader, DirectoryEntry, EventRecord, FrameBody, Limits, NetworkFrame, tag,
@@ -17,8 +19,16 @@ use lambda_slicer_core::slice::restart::run_restart;
 use lambda_slicer_core::state::{DecodeOptions, DecodeStatus, decode_demo};
 use lambda_slicer_core::timeline::time::DemoTime;
 
-/// Event scripts of the synthetic session, as (name, resource index)
-const EVENTS: &[(&str, u32)] = &[("events/gauss.sc", 3), ("events/gaussspin.sc", 4)];
+/// Resources of the synthetic session, as (type, name, resource index)
+const RESOURCES: &[(u32, &str, u32)] = &[
+    (EVENT_RESOURCE, "events/gauss.sc", 3),
+    (EVENT_RESOURCE, "events/gaussspin.sc", 4),
+    (EVENT_RESOURCE, "events/egon_fire.sc", 5),
+    (EVENT_RESOURCE, "events/egon_stop.sc", 6),
+    (EVENT_RESOURCE, "events/mystery.sc", 7),
+    (SOUND_RESOURCE, "doors/doormove1.wav", 20),
+    (SOUND_RESOURCE, "common/null.wav", 21),
+];
 
 /// Seconds between playback groups
 const STEP: f32 = 0.1;
@@ -118,7 +128,7 @@ impl Recording {
 
     fn bytes(&self) -> Vec<u8> {
         let loading = vec![
-            network(tag::NETWORK_START, 3., 100, 5, setup_with(48, EVENTS)),
+            network(tag::NETWORK_START, 3., 100, 5, setup_with(48, RESOURCES)),
             frame(tag::NEXT_SECTION, 3.1, 101, FrameBody::NextSection),
         ];
 
@@ -370,7 +380,7 @@ fn bootstrap_records(path: &Path) -> Vec<FrameBody> {
 #[test]
 fn a_gauss_charge_under_way_at_the_start_is_carried_over() {
     let (out, _dir, r) = slice(&charging(), 30, None).unwrap();
-    assert_eq!(r.carried_records, 2);
+    assert_eq!(r.carried, ["gauss charge (spin-up and spin sound)"]);
 
     // The spin-up animation, then the latest spin turned into a sound start
     // at its pitch, after the client's state records
@@ -394,7 +404,7 @@ fn a_gauss_charge_under_way_at_the_start_is_carried_over() {
 #[test]
 fn a_finished_charge_is_not_carried_over() {
     let (out, _dir, r) = slice(&charging(), 40, None).unwrap();
-    assert_eq!(r.carried_records, 0);
+    assert!(r.carried.is_empty(), "{:?}", r.carried);
     assert_eq!(bootstrap_records(&out).len(), 2);
 }
 
@@ -444,4 +454,113 @@ fn replayed_hud_messages_arrive_after_the_bootstrap_group() {
 
     let first_kept = frames.iter().find(|f| f.frame_number == 2).unwrap();
     assert!(hud[0].time() > 0. && hud[0].time() < first_kept.time());
+}
+
+#[test]
+fn egon_fire_under_way_is_carried_as_a_startup_event() {
+    // The local beam exists only when the startup event runs
+    let mut rec = Recording::steady(60, 1);
+    for g in 20..40 {
+        rec.records.push((g, event(5, i32::from(g == 20), 0)));
+    }
+
+    let (out, _dir, r) = slice(&rec, 30, None).unwrap();
+    assert_eq!(r.carried, ["egon fire (startup event)"]);
+    let records = bootstrap_records(&out);
+    let FrameBody::Event(e) = records.last().unwrap() else {
+        panic!("{records:?}");
+    };
+    assert_eq!((e.index, e.bparam1()), (5, 1));
+
+    // Once stopped, nothing is carried
+    rec.records.push((25, event(6, 0, 0)));
+    rec.records
+        .retain(|(g, b)| !(*g > 25 && matches!(b, FrameBody::Event(_))));
+    let (_out, _dir, r) = slice(&rec, 30, None).unwrap();
+    assert!(r.carried.is_empty(), "{:?}", r.carried);
+}
+
+/// `svc_sound` of `sample` on entity 5's static channel, started or stopped
+fn sound(sample: u32, stop: bool) -> Vec<u8> {
+    let mut w = BitWriter::new();
+    w.u8(svc::SOUND);
+    w.bits(if stop { 1 << 5 } else { 0 }, 9);
+    w.bits(6, 3);
+    w.bits(5, 11);
+    w.bits(sample, 8);
+    w.bits(0, 3);
+    w.finish()
+}
+
+#[test]
+fn a_sound_loop_stopped_after_the_start_is_started_again() {
+    let mut rec = Recording::steady(60, 1);
+    rec.groups[19].1 = sound(20, false);
+    rec.groups[44].1 = sound(20, true);
+
+    let (_out, _dir, r) = slice(&rec, 30, Some(40)).unwrap();
+    assert_eq!(r.carried, ["sound doors/doormove1.wav on entity 5"]);
+}
+
+#[test]
+fn a_sound_stopped_before_the_start_or_never_is_not_restarted() {
+    let mut rec = Recording::steady(60, 1);
+    rec.groups[9].1 = sound(20, false);
+    rec.groups[14].1 = sound(20, true);
+    // A one-shot nothing ever stops
+    rec.groups[19].1 = sound(21, false);
+
+    let (_out, _dir, r) = slice(&rec, 30, None).unwrap();
+    assert!(r.carried.is_empty(), "{:?}", r.carried);
+}
+
+/// `svc_temp_entity` of `kind` with this body
+fn temp(kind: u8, body: &[u8]) -> Vec<u8> {
+    let mut w = BitWriter::new();
+    w.u8(svc::TEMPENTITY);
+    w.u8(kind);
+    w.bytes(body);
+    w.finish()
+}
+
+#[test]
+fn a_beam_still_alive_is_sent_again_with_its_remaining_life() {
+    // TE_BEAMPOINTS with a 2 s life at group 29, 0.1 s before the start
+    let mut body = [0u8; 24];
+    body[16] = 20;
+    let mut rec = Recording::steady(60, 1);
+    rec.groups[28].1 = temp(0, &body);
+
+    let (_out, _dir, r) = slice(&rec, 30, None).unwrap();
+    assert_eq!(r.carried, ["temp entity 0 (1.9 s left)"]);
+
+    // Started 2.5 s before the start, it has ended
+    rec.groups[28].1 = Vec::new();
+    rec.groups[4].1 = temp(0, &body);
+    let (_out, _dir, r) = slice(&rec, 30, None).unwrap();
+    assert!(r.carried.is_empty(), "{:?}", r.carried);
+}
+
+#[test]
+fn gibs_still_flying_at_the_start_are_refused() {
+    // TE_BREAKMODEL with a 2 s life, which moves under physics
+    let mut body = [0u8; 24];
+    body[22] = 20;
+    let mut rec = Recording::steady(60, 1);
+    rec.groups[28].1 = temp(108, &body);
+
+    let err = slice(&rec, 30, None).unwrap_err();
+    assert!(matches!(err, ExportError::ActiveEffect(_)), "{err}");
+}
+
+#[test]
+fn an_unknown_event_script_before_the_start_is_refused() {
+    let mut rec = Recording::steady(60, 1);
+    rec.records.push((10, event(7, 0, 0)));
+
+    let err = slice(&rec, 30, None).unwrap_err();
+    assert!(
+        matches!(&err, ExportError::ActiveEffect(m) if m.contains("mystery")),
+        "{err}"
+    );
 }

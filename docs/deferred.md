@@ -37,6 +37,15 @@ survive being moved.
 **Fix:** recognise the supported buffer formats (size and client) and refuse a restart over
 unknown ones (`UnknownDemoBufferSemantics`).
 
+### Decals are not carried over the start
+
+Bullet holes, blood and sprays (temp entity kinds 13, 104, 109, 112, 116 to 118) are lasting world
+state, but `slice/ongoing.rs` treats them as already applied, so a slice starts with clean walls.
+`naz_crossfire_pb_01.dem` has about 600 of them and the vengeance match about 1,600.
+
+**Fix:** replay the most recent decals up to the engine's decal limit, after measuring the
+limit in this install, within the packet size limit above.
+
 ### Restarts refused for now
 
 Not review findings, but known gaps of the same kind:

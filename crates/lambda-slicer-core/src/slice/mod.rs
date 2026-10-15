@@ -3,6 +3,7 @@
 //! audited state decoder and is not implemented yet
 
 pub mod controls;
+pub mod ongoing;
 pub mod output;
 pub mod persistent;
 pub mod restart;
@@ -58,4 +59,6 @@ pub enum ExportError {
     MissingDeltaBase(u32),
     #[error("{0} before the start sets state a restart cannot carry over yet")]
     UnknownPersistentMessage(String),
+    #[error("{0} is under way at the start and cannot be carried over it yet")]
+    ActiveEffect(String),
 }
