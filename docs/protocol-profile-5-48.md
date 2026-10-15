@@ -514,3 +514,18 @@ stopped on a count mismatch are now verified. 1,401 packets in 19 files were dro
   base with the same entity count.
 - Per-file verdicts come from `lambda-slicer crosscheck` (`verified` exit 0, `failed` exit 1,
   `inconclusive` exit 2). Client-view checks never affect the verdict.
+
+### What arbitrary-start slicing may rely on
+
+These limits carry into M3 (`IMPLEMENTATION_PLAN.md` §6.2). An arbitrary-start export writes
+reconstructed state, so it uses only state that is proven:
+
+- never from a `failed` source, because a disagreement on proven state means the proven flags
+  themselves are not trustworthy for that file;
+- only where the boundary snapshot and every snapshot the export writes are proven, with no
+  inferred base back to the last full update;
+- never across a run of packets the client dropped as too old.
+
+An `inconclusive` source can still be sliced where these hold, typically after the first full
+update following its opening frames. Remote entities and weapon data stay unvalidated even
+then, as listed above, so game playback remains the final check for each exported slice.

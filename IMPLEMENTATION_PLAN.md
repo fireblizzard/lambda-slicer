@@ -358,6 +358,17 @@ Capture state **immediately before** the first retained atomic group. Applying t
 
 “Keep the last message of every opcode” is not a correct persistent-state reducer: resets and lifecycle messages change the meaning of subsequent updates. Build typed reducers with reset behavior and tests. Unknown registered messages and DemoBuffer payloads can carry client DLL private state. Valve exposes a separate opaque demo buffer API, so generic networking alone cannot prove their restart behavior. ([Valve demo API](https://raw.githubusercontent.com/ValveSoftware/halflife/blob/master/common/demo_api.h))
 
+#### Which reconstructed state an export may use
+
+The decoder reports, per snapshot, whether its state is proven (every base back to the last full update resolved strictly) or inferred, and M2 cross-checks each source against client-recorded values (`verified`, `inconclusive`, `failed`; see `docs/protocol-profile-5-48.md`). An arbitrary-start export writes reconstructed state, so it may use only state that is proven:
+
+- **The source must not be `failed`.** A disagreement on proven state means the decoder misread something it believed, so none of its proven flags can be trusted for that file. Refuse with `SourceFailedCrossCheck`.
+- **The boundary snapshot must be proven.** The state captured immediately before the first retained group, and every snapshot in its base chain back to the last full update, must not be inferred. Otherwise refuse with `UnprovenState`, naming the first inferred location.
+- **Every reconstructed state the export emits must be proven too.** The first prototype (§6.4) replaces each retained entity update with a complete packet from reconstructed state, so an inferred snapshot anywhere inside the interval blocks the export the same way. A later delta-preserving encoder must apply the same rule to every state it derives.
+- **No boundary or retained packet may fall in a run the client dropped as too old.** During such a run the client's state is frozen at an older frame while the source keeps carrying packets it ignored. Refuse with `ClientDroppedPackets` until the export reproduces that behaviour and it is validated in the game.
+
+An `inconclusive` source is therefore usable wherever these conditions hold. Typically that is everything after the first full update that follows a recording's opening frames. Exact copies and end-only trims rebuild no state and are not subject to this rule. `plan_slice` reports which of the requested range is eligible, so the GUI can explain a refusal and suggest the nearest eligible start.
+
 Pending delayed events need a queue with source schedule identity: events dispatched before the boundary but due inside the interval require tested reconstruction; events scheduled beyond the exclusive end must not extend the requested clip. Do not silently drop them or replay them immediately. Likewise, charging that started before the cut needs the correct observed ongoing state, not a fabricated new shot at zero.
 
 ### 6.3 Synthesize legal startup and first state
@@ -390,13 +401,14 @@ A slice that plays 96 seconds of invisible/fast-forwarded source prefix before s
 
 Every parsed message/frame type receives one profile policy: static initialization, durable reducer/re-emitter, state snapshot transformation, retained transient, proven-safe opaque pass-through, or unsupported. Bounded length alone does not prove an opaque payload is safe to copy after a time/sequence transformation. Unknown semantics that can affect restart state or transformed fields block the affected export, even if analysis is complete.
 
-Use typed blockers with context, including `UnsupportedProtocol`, `MissingDeltaBase`, `UnknownOpcode`, `UnknownPersistentMessage`, `UnknownDemoBufferSemantics`, `MissingRestartHandler`, `UnrepresentableTimeField`, `PacketOverflow`, `CrossSegmentRange`, `SourceChanged`, and `EmptyRange`. Explain them in the GUI. Do not replace this list with a generic “failed” toast.
+Use typed blockers with context, including `UnsupportedProtocol`, `MissingDeltaBase`, `UnknownOpcode`, `UnknownPersistentMessage`, `UnknownDemoBufferSemantics`, `MissingRestartHandler`, `UnrepresentableTimeField`, `PacketOverflow`, `CrossSegmentRange`, `SourceChanged`, `EmptyRange`, and the reconstructed-state blockers `SourceFailedCrossCheck`, `UnprovenState`, and `ClientDroppedPackets` (§6.2). Explain them in the GUI. Do not replace this list with a generic “failed” toast.
 
 ```text
 plan_slice(request):
   open immutable source; validate requested segment/range/profile
   index and sequentially decode to the exclusive end
   resolve atomic groups; snapshot state before first retained group
+  require a non-failed source and proven, undropped state at the boundary and throughout
   build bootstrap recipe and message transformation policy
   check all restart/time/sequence/opaque-state coverage and output limits
   return requested/actual bounds, recipe, source fingerprint, blockers
@@ -495,7 +507,7 @@ Implement in order. Each milestone ends with a committed, reproducible state and
 | M0: scaffold and evidence | Workspace manifests, CLI skeleton, `docs/dependency-audit.md`, fixture manifest format, CI | None | Windows/Linux core build; licenses/version choice recorded; local sources untouched; fixture metadata/hash inspection works |
 | M1: bounded container and controls | `container/*`, CLI inspect/validate, container tests | M0 | Known fixture header/table assertions; malformed input safe; S0a exact copy, S0b raw roundtrip, S0c end-only export play in Windows game |
 | M2: audited state decoder | `protocol/*`, `state/*`, profile documentation | M1 | Dynamic schemas, resources, baselines, source sequence map, complete entity/client/weapon state; codec audit fixtures and trace comparisons pass |
-| M3: arbitrary-start feasibility | `slice/*`, `validate/*`, clock/groups, engine-validation record | M2 | Simple restart then two-player gauss restart; actual `[96,288)` long-file test; no hidden prefix/original dependency; packet-limit/clock/signon decisions documented |
+| M3: arbitrary-start feasibility | `slice/*`, `validate/*`, clock/groups, engine-validation record | M2 | Simple restart then two-player gauss restart; actual `[96,288)` long-file test; no hidden prefix/original dependency; packet-limit/clock/signon decisions documented; exports use only proven, undropped state from non-failed sources (§6.2), with tests for each refusal |
 | M4: action/actor analysis | `analysis/*`, identity history, JSON CLI | M2; M3 remains release prerequisite | Gauss false-positive fixtures, full weapon catalog action types, unknown actor/visibility labels, singleplayer analysis fixtures |
 | M5: library and cache | `library/*`, jobs, scan CLI | M4 | Recursive bounded scan at corpus scale; cache invalidation, cancellation, failure isolation; selected file priority |
 | M6: desktop workflow | GUI modules and settings | M3–M5 | Open/drop file/folder, filters/timeline/evidence, multiple clips, no-clobber export, responsive UI |
