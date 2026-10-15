@@ -8,6 +8,7 @@ pub mod output;
 use std::path::PathBuf;
 
 use crate::container::ContainerError;
+use crate::protocol::profile::UnsupportedProfile;
 use crate::timeline::time::DemoTime;
 
 #[derive(Debug, thiserror::Error)]
@@ -30,6 +31,8 @@ pub enum ExportError {
     SourceChanged(PathBuf),
     #[error("unsupported: {0}")]
     Unsupported(String),
+    #[error(transparent)]
+    UnsupportedProtocol(#[from] UnsupportedProfile),
     #[error("selected range retains no network frames")]
     EmptyRange,
     #[error("end {end} is beyond the segment end {segment_end}")]

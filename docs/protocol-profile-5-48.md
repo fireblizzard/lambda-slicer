@@ -4,6 +4,13 @@ Status: **container layer and network decoder (M2) implemented and checked again
 recordings.** Sections: container (header, directory, outer records), then network messages and
 reconstructed state. Sources and licenses are in `dependency-audit.md`.
 
+**Profile enforcement.** Inspection (`inspect`, `validate`) reads any profile and warns about
+non-5/48 headers. Decoding refuses anything but demo protocol 5 with network protocol 48
+(`unsupported` status, cross-check *inconclusive*), and stops if a `svc_serverinfo` announces
+another network protocol. Roundtrip and end-only trims refuse other profiles with
+`UnsupportedProtocol`. The exact copy interprets nothing and stays available. The rule lives in
+`protocol::profile`.
+
 All integers are little-endian. Floats are IEEE-754 binary32 and are preserved as raw bits.
 
 ## Header (544 bytes)

@@ -15,6 +15,7 @@ use std::sync::Arc;
 use serde::Serialize;
 
 use crate::container::{ClientDataRecord, DemoReader, FrameBody, Limits, NetworkFrame};
+use crate::protocol::profile;
 use crate::state::{Decoder, FrameLocation, Snapshot};
 
 pub const CROSSCHECK_SCHEMA: u32 = 1;
@@ -106,6 +107,9 @@ pub struct CrossCheckReport {
     /// Why the outcome is not `verified`
     pub reasons: Vec<String>,
     pub decode_error: Option<String>,
+    /// Set when the recording's protocol is not supported, so nothing was
+    /// decoded or compared
+    pub unsupported: Option<String>,
     pub inferred_delta_bases: bool,
     /// Frames skipped because the client was spectating or in
     /// intermission, where recorded view values follow another entity
@@ -173,10 +177,13 @@ impl CrossCheckReport {
             }
         }
 
+        if let Some(u) = &self.unsupported {
+            inconclusive.push(u.clone());
+        }
         if self.inferred_delta_bases {
             inconclusive.push("some delta bases were inferred, not proven".to_owned());
         }
-        if self.server_copy_agreement().1 == 0 {
+        if self.server_copy_agreement().1 == 0 && self.unsupported.is_none() {
             inconclusive.push("no server-copy samples to compare".to_owned());
         }
 
@@ -624,6 +631,7 @@ pub fn crosscheck_demo(path: &Path, limits: Limits) -> CrossCheckReport {
         outcome: Outcome::Failed,
         reasons: Vec::new(),
         decode_error: None,
+        unsupported: None,
         inferred_delta_bases: false,
         skipped_spectator_frames: 0,
         skipped_before_first_packet: 0,
@@ -648,6 +656,12 @@ pub fn crosscheck_demo(path: &Path, limits: Limits) -> CrossCheckReport {
             return report;
         }
     };
+
+    if let Err(e) = profile::check(&reader.header) {
+        report.unsupported = Some(e.to_string());
+        report.judge();
+        return report;
+    }
 
     let mut pending: Option<Pending> = None;
     let mut playback_started = false;
@@ -928,6 +942,7 @@ mod tests {
             outcome: Outcome::Failed,
             reasons: Vec::new(),
             decode_error: None,
+            unsupported: None,
             inferred_delta_bases: inferred,
             skipped_spectator_frames: 0,
             skipped_before_first_packet: 0,

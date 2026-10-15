@@ -82,10 +82,14 @@ fn delta(w: &mut BitWriter, fields: &[Field], sent: &[(usize, i64)]) {
 }
 
 fn setup() -> Vec<u8> {
+    setup_with_protocol(48)
+}
+
+fn setup_with_protocol(protocol: u32) -> Vec<u8> {
     let mut w = BitWriter::new();
 
     w.u8(svc::SERVERINFO);
-    w.u32(48);
+    w.u32(protocol);
     w.u32(1);
     w.u32(0);
     w.bytes(&[0; 16]);
@@ -689,4 +693,15 @@ fn non_player_entities_have_no_player_identity() {
 
     assert_eq!(d.events[0].actor, ActorResolution::Explicit { entity: 40 });
     assert_eq!(d.events[0].player, None);
+}
+
+#[test]
+fn serverinfo_with_another_protocol_stops_decoding() {
+    let mut d = Decoder::new();
+    let err = d
+        .network_frame(loc(0), &frame(1, setup_with_protocol(47)), |_, _| {})
+        .unwrap_err();
+
+    assert_eq!(err.kind, DecodeErrorKind::UnsupportedProtocol(47));
+    assert_eq!(err.opcode, svc::SERVERINFO);
 }

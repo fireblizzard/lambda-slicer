@@ -21,6 +21,7 @@ use crate::container::{
     DemoReader, Frame, FrameBody, HEADER_DIR_OFFSET_FIELD, Limits, encode_directory, encode_frame,
     encode_header, tag,
 };
+use crate::protocol::profile;
 use crate::timeline::time::DemoTime;
 use crate::validate::structural::{InspectStatus, inspect};
 
@@ -158,6 +159,7 @@ fn rebuild(
 ) -> Result<(Vec<WrittenEntry>, Option<CutReport>), ExportError> {
     let src = File::open(source).map_err(io_err(source))?;
     let mut reader = DemoReader::new(BufReader::new(src), limits)?;
+    profile::check(&reader.header)?;
     let mut header = reader.header.clone();
     let mut directory = reader.directory.clone();
 

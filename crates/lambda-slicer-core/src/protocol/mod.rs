@@ -4,3 +4,4 @@ pub mod bit;
 pub mod bitwrite;
 pub mod delta;
 pub mod messages;
+pub mod profile;

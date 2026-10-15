@@ -8,7 +8,9 @@ use lambda_slicer_core::container::{
 };
 use lambda_slicer_core::slice::ExportError;
 use lambda_slicer_core::slice::controls::{Control, run_control};
+use lambda_slicer_core::state::{DecodeOptions, DecodeStatus, decode_demo};
 use lambda_slicer_core::timeline::time::DemoTime;
+use lambda_slicer_core::validate::crosscheck::{Outcome, crosscheck_demo};
 use lambda_slicer_core::validate::structural::{InspectStatus, inspect};
 use proptest::prelude::*;
 
@@ -477,3 +479,47 @@ proptest! {
 }
 
 use common::demo;
+
+/// The synthetic demo with its header claiming network protocol 47
+fn protocol_47_demo() -> Vec<u8> {
+    let mut b = demo(4);
+    b[12..16].copy_from_slice(&47i32.to_le_bytes());
+    b
+}
+
+#[test]
+fn other_protocols_are_inspected_but_not_decoded_or_transformed() {
+    let dir = tempfile::tempdir().unwrap();
+    let src = write(dir.path(), "p47.dem", &protocol_47_demo());
+
+    // Metadata inspection still works and warns
+    let r = inspect(&src, Limits::default());
+    assert_eq!(r.status, InspectStatus::Complete);
+    assert!(r.findings.iter().any(|f| f.code == "unsupported_profile"));
+
+    let options = DecodeOptions::default();
+    let (report, decoder) = decode_demo(&src, &options, |_, _, _| {});
+    assert_eq!(report.status, DecodeStatus::Unsupported);
+    assert!(report.error.unwrap().contains("5/47"));
+    assert_eq!(decoder.stats.network_frames, 0);
+
+    let check = crosscheck_demo(&src, Limits::default());
+    assert_eq!(check.outcome, Outcome::Inconclusive);
+    assert!(check.unsupported.is_some());
+
+    for control in [
+        Control::Roundtrip,
+        Control::TruncateEnd("1".parse().unwrap()),
+    ] {
+        let r = run_control(&src, &dir.path().join("x.dem"), control, Limits::default());
+        assert!(
+            matches!(r, Err(ExportError::UnsupportedProtocol(_))),
+            "{r:?}"
+        );
+    }
+
+    // The exact copy interprets nothing, so it stays available
+    let copy = dir.path().join("copy.dem");
+    run_control(&src, &copy, Control::ExactCopy, Limits::default()).unwrap();
+    assert_eq!(std::fs::read(&copy).unwrap(), protocol_47_demo());
+}

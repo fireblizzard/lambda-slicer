@@ -13,6 +13,7 @@ use serde::Serialize;
 use crate::container::{
     ContainerError, DemoReader, HEADER_LEN, Limits, TagCounts, c_string_lossy, index_entry,
 };
+use crate::protocol::profile;
 
 pub const REPORT_SCHEMA: u32 = 1;
 
@@ -98,7 +99,7 @@ impl InspectReport {
 }
 
 /// Supported demo/network protocol profile for the initial implementation
-pub const SUPPORTED_PROFILE: (i32, i32) = (5, 48);
+pub const SUPPORTED_PROFILE: (i32, i32) = (profile::DEMO_PROTOCOL, profile::NETWORK_PROTOCOL);
 
 pub fn inspect(path: &Path, limits: Limits) -> InspectReport {
     let mut report = InspectReport {

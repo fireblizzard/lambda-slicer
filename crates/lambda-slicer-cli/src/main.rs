@@ -557,6 +557,9 @@ fn decode_cmd(
 
 fn print_crosscheck(r: &CrossCheckReport) {
     println!("{}", r.path);
+    if let Some(e) = &r.unsupported {
+        println!("  not decoded: {e}");
+    }
     if let Some(e) = &r.decode_error {
         println!("  decode stopped: {e}");
     }

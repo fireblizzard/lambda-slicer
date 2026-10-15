@@ -10,6 +10,7 @@ use serde::Serialize;
 use super::world::{DecodeStats, Decoder, FrameLocation, NameChange, PlayerInfo};
 use crate::container::{DemoReader, FrameBody, Limits};
 use crate::protocol::messages::ParsedMessage;
+use crate::protocol::profile;
 
 pub const DECODE_REPORT_SCHEMA: u32 = 1;
 
@@ -22,6 +23,9 @@ pub enum DecodeStatus {
     Partial,
     /// Header or directory unusable
     Failed,
+    /// The recording uses a protocol this decoder does not support, so it
+    /// was not decoded. Inspection still reads its metadata
+    Unsupported,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -100,6 +104,12 @@ pub fn decode_demo(
             return (report, decoder);
         }
     };
+
+    if let Err(e) = profile::check(&reader.header) {
+        report.status = DecodeStatus::Unsupported;
+        report.error = Some(e.to_string());
+        return (report, decoder);
+    }
 
     report.status = DecodeStatus::Complete;
     'entries: for entry in 0..reader.directory.len() as u32 {
