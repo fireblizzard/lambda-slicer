@@ -178,6 +178,9 @@ fn engine_treatment(m: &Message) -> Treatment {
     }
 }
 
+/// User messages take the opcodes from 64 up
+const FIRST_USER_MESSAGE: u8 = 64;
+
 struct Entry {
     opcode: u8,
     key: Vec<u8>,
@@ -252,15 +255,20 @@ impl Persistent {
         }
     }
 
-    /// The kept messages in the order their latest versions arrived
-    pub fn messages(&self) -> Vec<u8> {
+    /// The kept engine messages, then the kept user messages, each in the
+    /// order their latest versions arrived, with how many of each
+    pub fn split(&self) -> (Vec<u8>, usize, Vec<u8>, usize) {
         let mut entries: Vec<&Entry> = self.entries.iter().collect();
         entries.sort_by_key(|e| e.order);
 
-        entries
-            .iter()
-            .flat_map(|e| e.bytes.iter().copied())
-            .collect()
+        let (user, engine): (Vec<&Entry>, Vec<&Entry>) = entries
+            .into_iter()
+            .partition(|e| e.opcode >= FIRST_USER_MESSAGE);
+        let bytes = |list: &[&Entry]| -> Vec<u8> {
+            list.iter().flat_map(|e| e.bytes.iter().copied()).collect()
+        };
+
+        (bytes(&engine), engine.len(), bytes(&user), user.len())
     }
 
     pub fn len(&self) -> usize {

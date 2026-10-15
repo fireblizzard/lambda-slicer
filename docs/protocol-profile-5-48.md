@@ -369,11 +369,21 @@ starts with `svc_time`, full clientdata and a full `svc_packetentities`.
   The bootstrap group holds the DemoBuffer and ClientData records of the last group before the
   start (never its events, sounds or commands, which already happened), a record of persistent
   messages, and a full update for every frame before the start that a kept packet still
-  references as a delta base. Each full update travels under that
+  references as a delta base, plus the newest frame before the start. Without that frame the
+  client would show the previous frame's state until the first kept packet. In the vengeance
+  test below that was one ClientData record 2.5 units off. Each full update travels under that
   frame's own sequence numbers and demo info, so the client stores it in the ring slot the kept
   deltas name.
+- **HUD group:** persistent user messages (HUD state) in a network record of their own, frame 1,
+  halfway between the bootstrap group and the first kept group. HUD elements time their display
+  from the HUD clock (`gHUD.m_flTime`), which only moves when a frame is drawn. OpenAG's Timer
+  and Vote set `draw_until = gHUD.m_flTime + 5` (4 for Vote). Read in the bootstrap group, they
+  were timed from the clock before the restart and expired at once. **Observed** in the game:
+  the vote and timer appeared only with the next real message, about 1 and 0.5 s in. A replayed
+  Timer or Vote now shows for its full window from the start, until the next real message
+  replaces it.
 - **Kept groups:** their bytes unchanged, outer times rebased so the first keeps its original
-  spacing after the bootstrap group, frame numbers from 1. `svc_time` and every other server
+  spacing after the bootstrap group, frame numbers from 1 (from 2 after a HUD group). `svc_time` and every other server
   clock stay in the source's coordinates.
 - **Terminal and directory:** a NextSection record at the rebased time of the first excluded
   group (or of the source terminal), then the directory with the playback entry's network record
@@ -409,7 +419,7 @@ with `bparam1 = 0`, restarting the sound at the current pitch. In `naz_crossfire
 | Server clocks | `svc_time`, entity, clientdata and weapon timers, demo info and event delays stay in the source's coordinates |
 | Time windows | Bootstrap values re-encoded against the bootstrap frame's own `svc_time`, exact where the window allows, clamped and counted otherwise |
 | Sequences | All seven sequence fields kept. Bootstrap frames reuse their source sequence numbers, so kept deltas resolve in the client's ring unchanged |
-| Bootstrap | Full updates only for referenced pre-start frames, plus replayed persistent messages and carried charge records |
+| Bootstrap | Full updates for referenced pre-start frames and the newest one, plus replayed persistent messages and carried charge records |
 | Packet size | Full updates measured up to 1,048 bytes, and real LOADING records exceed 11,000, so no splitting was needed |
 
 **Refusals** follow the rule in `IMPLEMENTATION_PLAN.md` §6.2: a `failed` source

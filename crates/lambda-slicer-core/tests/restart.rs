@@ -411,3 +411,37 @@ fn events_just_before_the_start_are_not_replayed() {
         "{records:?}"
     );
 }
+
+#[test]
+fn the_newest_frame_before_the_start_is_written_even_if_unreferenced() {
+    // Kept packets reference 37 and 38, then sequence 42 jumps to the kept
+    // frame 40, so nothing names 39. The client still showed 39 last
+    let mut rec = Recording::steady(60, 3);
+    rec.groups[31].0 = (FIRST + 30) as u8;
+
+    let (_out, _dir, r) = slice(&rec, 30, None).unwrap();
+    assert_eq!(r.bootstrap_sequences, [37, 38, 39]);
+}
+
+#[test]
+fn replayed_hud_messages_arrive_after_the_bootstrap_group() {
+    // HUD elements time their display from the HUD clock, which moves only
+    // when a frame is drawn, so the HUD record is a later group of its own
+    let mut rec = Recording::steady(60, 1);
+    rec.groups[4].1 = cur_weapon([1, 2]);
+
+    let (out, _dir, _) = slice(&rec, 30, None).unwrap();
+    let f = std::io::BufReader::new(std::fs::File::open(&out).unwrap());
+    let mut r = DemoReader::new(f, Limits::default()).unwrap();
+    let frames: Vec<_> = r.frames(1).unwrap().map(|lf| lf.unwrap().frame).collect();
+
+    let hud: Vec<_> = frames.iter().filter(|f| f.frame_number == 1).collect();
+    assert_eq!(hud.len(), 1);
+    let FrameBody::Network(n) = &hud[0].body else {
+        panic!("{:?}", hud[0].body);
+    };
+    assert_eq!(n.message, cur_weapon([1, 2]));
+
+    let first_kept = frames.iter().find(|f| f.frame_number == 2).unwrap();
+    assert!(hud[0].time() > 0. && hud[0].time() < first_kept.time());
+}

@@ -112,6 +112,10 @@ struct Plan {
     /// many there are
     persistent: Vec<u8>,
     persistent_count: usize,
+    /// Persistent user messages (HUD state), written in their own group
+    /// after the bootstrap group
+    hud: Vec<u8>,
+    hud_count: usize,
     /// The record whose sequence fields the persistent messages travel with
     persistent_record: Option<NetworkFrame>,
     kept_records: u64,
@@ -231,6 +235,7 @@ fn plan(
             if let Some(b) = persistent.blocker.take() {
                 return Err(ExportError::UnknownPersistentMessage(b));
             }
+            let (engine, engine_count, hud, hud_count) = persistent.split();
             let Some((_, previous_time)) = previous else {
                 return Err(ExportError::Unsupported(
                     "the start is at the first frame group, which an exact copy covers".into(),
@@ -257,8 +262,10 @@ fn plan(
                 prelude: std::mem::take(&mut prelude),
                 carried: charge.carried(f.time()),
                 bootstrap: Vec::new(),
-                persistent: persistent.messages(),
-                persistent_count: persistent.len(),
+                persistent: engine,
+                persistent_count: engine_count,
+                hud,
+                hud_count,
                 persistent_record: recent.back().cloned(),
                 kept_records: 0,
                 kept_network_records: 0,
@@ -357,6 +364,12 @@ fn plan(
         return Err(ExportError::Unsupported(
             "the playback entry has no terminal record".into(),
         ));
+    }
+
+    // The newest frame before the start is the state the client shows until
+    // the first kept packet, so it is written even when nothing references it
+    if let Some(newest) = window.last() {
+        referenced.insert(newest.sequence);
     }
 
     for sequence in referenced {
@@ -589,7 +602,37 @@ fn write(path: &Path, out: &mut File, p: &Plan, limits: Limits) -> Result<Writte
         put(&mut w, &zero(f.body.clone(), f.tag))?;
     }
 
-    let persistent_records = u64::from(!p.persistent.is_empty());
+    // HUD elements time their display from the HUD clock, which only moves
+    // when a frame is drawn. Read in the bootstrap group, a message would be
+    // timed from the clock before the restart and expire at once, so HUD
+    // messages arrive in a group of their own once a frame was drawn
+    let hud_group = i32::from(!p.hud.is_empty());
+    if hud_group > 0 {
+        // The newest bootstrap frame's numbers, so the sequence never steps back
+        let newest = p.bootstrap.last().map(|(_, r)| r);
+        let Some(record) = newest.or(p.persistent_record.as_ref()) else {
+            return Err(ExportError::Unsupported(
+                "no record before the start to carry HUD state".into(),
+            ));
+        };
+        let network = NetworkFrame {
+            demo_info: record.demo_info.clone(),
+            sequence: record.sequence,
+            message: p.hud.clone(),
+        };
+        let lead = f32::from_bits(rebased(p, p.first_time));
+        put(
+            &mut w,
+            &Frame {
+                tag: tag::NETWORK,
+                time_bits: (lead / 2.).to_bits(),
+                frame_number: 1,
+                body: FrameBody::Network(Box::new(network)),
+            },
+        )?;
+    }
+
+    let persistent_records = u64::from(!p.persistent.is_empty()) + hud_group as u64;
     let mut network_records = p.bootstrap.len() as u64 + persistent_records;
     for item in reader.frames(1)? {
         let lf = item?;
@@ -605,7 +648,7 @@ fn write(path: &Path, out: &mut File, p: &Plan, limits: Limits) -> Result<Writte
             network_records += 1;
         }
         f.time_bits = rebased(p, f.time());
-        f.frame_number = f.frame_number - p.first_frame_number + 1;
+        f.frame_number = f.frame_number - p.first_frame_number + 1 + hud_group;
         put(&mut w, &f)?;
     }
 
@@ -710,7 +753,8 @@ fn validate(
     // Output network records in order, decoding the bootstrap group as it
     // passes. The kept records pair up with the source's one for one
     let mut out_frames = out.frames(1)?;
-    let mut bootstrap_left = p.bootstrap.len() + usize::from(!p.persistent.is_empty());
+    let mut bootstrap_left =
+        p.bootstrap.len() + usize::from(!p.persistent.is_empty()) + usize::from(!p.hud.is_empty());
     let mut next_output = |out_d: &mut Decoder| -> Result<Option<NetworkFrame>, ExportError> {
         for item in out_frames.by_ref() {
             let lf = item?;
@@ -854,9 +898,9 @@ pub fn run_restart(
         effective_end: time(p.end_time),
         start_sequence: p.start_sequence,
         bootstrap_sequences: p.bootstrap.iter().map(|(s, _)| s.sequence).collect(),
-        persistent_messages: p.persistent_count,
+        persistent_messages: p.persistent_count + p.hud_count,
         carried_records: p.carried.len(),
-        persistent_bytes: p.persistent.len(),
+        persistent_bytes: p.persistent.len() + p.hud.len(),
         bootstrap_bytes: written.bootstrap_bytes,
         kept_records: p.kept_records,
         kept_network_records: p.kept_network_records,

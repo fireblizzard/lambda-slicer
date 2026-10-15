@@ -121,3 +121,46 @@ Check, comparing with the original from 1:59.8:
 | Test | Date | Result | Observations |
 |---|---|---|---|
 | S1 gauss `[1:59.8, 2:10)` | 2026-10-15 | pass | Spin sound present from the first frame, charged shot has its sound, nothing odd. The view model spin-up was not checked: the custom gauss model in this install has no visible spin-up (a single colour). |
+
+### S1 AG match HUD state
+
+Source: `F:\HLScreeniesDemos\01jan2022\20210418_004941_vengeance.dem`, a 41-minute AG team
+match with five players. Two slices test the replayed AG messages:
+
+```powershell
+.\target\release\lambda-slicer.exe slice F:\HLScreeniesDemos\01jan2022\20210418_004941_vengeance.dem --start 13:21 --end 13:51 --output work\ls_s1_vote.dem
+.\target\release\lambda-slicer.exe slice F:\HLScreeniesDemos\01jan2022\20210418_004941_vengeance.dem --start 20:05 --end 20:15 --output work\ls_s1_sudden.dem
+```
+
+- `ls_s1_vote` starts during a vote (Vote messages at 13:18, 13:20 and 13:22). Its bootstrap
+  group replays the user info of all five players (slot 4 joined at 4:35), `Settings`, the
+  latest `Vote`, `Location` for teammates, `Timer` and the scores. 10 bootstrap frames.
+- `ls_s1_sudden` starts one second after `SuddenDeath` at 20:04. 13 bootstrap frames.
+
+Both decode identical to the source apart from time windows, and their own cross-checks are
+*verified*.
+
+Check, comparing with the original at the same times:
+
+- the vote display is on screen from the first frame and updates at about 0:01;
+- the AG timer shows the right remaining time from the start (it may lag by up to a second
+  until the next `Timer` message);
+- the scoreboard (Tab) lists all five players with the right names, teams and scores;
+- teammate locations show as in the original;
+- in `ls_s1_sudden`, the sudden-death notice or state shows as in the original;
+- health, armour, ammo and the current weapon are right from the first frame.
+
+| Test | Date | Result | Observations |
+|---|---|---|---|
+| S1 vengeance vote `[13:21, 13:51)` | 2026-10-15 | partial | Scoreboard and teammate locations right from the start. The vote display appeared only about 1 s in and the timer about 0.5 s in, with the next real messages. Cause and fix below, retest pending. |
+| S1 vengeance sudden death `[20:05, 20:15)` | 2026-10-15 | not testable | 20:05 is already the end-of-match screen, which hides the HUD, so the sudden-death state cannot show. |
+
+Cause: OpenAG shows Timer and Vote for a window after each message, timed from the HUD clock,
+which only moves when a frame is drawn. The replayed messages were read before any frame at the
+restart time, so their window had already passed. HUD messages now arrive in a group of their
+own after the bootstrap group (see "Restart export" in `docs/protocol-profile-5-48.md`).
+Regenerate `work\ls_s1_vote.dem` with the command above to retest.
+
+| Test | Date | Result | Observations |
+|---|---|---|---|
+| S1 vengeance vote, HUD group | — | not yet played | |
