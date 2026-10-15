@@ -82,6 +82,12 @@ pub fn setup() -> Vec<u8> {
 }
 
 pub fn setup_with_protocol(protocol: u32) -> Vec<u8> {
+    setup_with(protocol, &[("events/gauss.sc", 3)])
+}
+
+/// Session setup announcing `protocol`, with these event scripts as
+/// (name, resource index)
+pub fn setup_with(protocol: u32, events: &[(&str, u32)]) -> Vec<u8> {
     let mut w = BitWriter::new();
 
     w.u8(svc::SERVERINFO);
@@ -110,15 +116,18 @@ pub fn setup_with_protocol(protocol: u32) -> Vec<u8> {
     description(&mut w, "event_t", EVENT);
     w.align();
 
-    // Resource list with one event script at index 3
+    // Resource list of event scripts, each with no extra data, and no
+    // consistency list
     w.u8(svc::RESOURCELIST);
-    w.bits(1, 12);
-    w.bits(5, 4);
-    w.string(b"events/gauss.sc");
-    w.bits(3, 12);
-    w.bits(0, 24);
-    w.bits(0, 3);
-    w.bit(false);
+    w.bits(events.len() as u32, 12);
+    for &(name, index) in events {
+        w.bits(5, 4);
+        w.string(name.as_bytes());
+        w.bits(index, 12);
+        w.bits(0, 24);
+        w.bits(0, 3);
+        w.bit(false);
+    }
     w.bit(false);
     w.align();
 

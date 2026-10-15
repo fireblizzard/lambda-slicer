@@ -274,8 +274,8 @@ fn run() -> Result<ExitCode> {
                         r.start_sequence
                     );
                     println!(
-                        "  persistent state: {} messages ({} bytes) replayed",
-                        r.persistent_messages, r.persistent_bytes
+                        "  persistent state: {} messages ({} bytes) replayed, {} records of an ongoing gauss charge carried",
+                        r.persistent_messages, r.persistent_bytes, r.carried_records
                     );
                     println!(
                         "  time windows: {} inexact, {} outside the window",

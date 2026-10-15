@@ -77,6 +77,8 @@ pub struct RestartReport {
     /// Persistent messages replayed before them (user info, light styles,
     /// HUD state), and their size
     pub persistent_messages: usize,
+    /// Demo records of an ongoing gauss charge carried over the start
+    pub carried_records: usize,
     pub persistent_bytes: usize,
     pub bootstrap_bytes: usize,
     pub kept_records: u64,
@@ -99,8 +101,11 @@ struct Plan {
     /// Time of the first excluded group or of the source terminal
     end_time: f32,
     start_sequence: u32,
-    /// Non-network records of the last group before the start
+    /// DemoBuffer and ClientData records of the last group before the start
     prelude: Vec<Frame>,
+    /// Records of ongoing activity carried over the start, written after
+    /// the bootstrap updates
+    carried: Vec<Frame>,
     /// (snapshot, the source record that carried it) per bootstrap frame
     bootstrap: Vec<(Arc<Snapshot>, NetworkFrame)>,
     /// Persistent messages replayed before the bootstrap updates, and how
@@ -187,6 +192,7 @@ fn plan(
     let mut session = 0;
     let mut dropped = 0;
     let mut persistent = Persistent::default();
+    let mut charge = Charge::default();
     let loading_session = d.segment;
 
     for item in reader.frames(1)? {
@@ -249,6 +255,7 @@ fn plan(
                 end_time: f.time(),
                 start_sequence: 0,
                 prelude: std::mem::take(&mut prelude),
+                carried: charge.carried(f.time()),
                 bootstrap: Vec::new(),
                 persistent: persistent.messages(),
                 persistent_count: persistent.len(),
@@ -275,8 +282,15 @@ fn plan(
         let FrameBody::Network(n) = &f.body else {
             match kept.as_mut() {
                 Some(p) => p.kept_records += 1,
-                None if !matches!(f.body, FrameBody::DemoStart) => prelude.push(f.clone()),
-                None => {}
+                None => {
+                    charge.observe(&d, f);
+
+                    // Only the client's state records, never its events,
+                    // sounds or commands, which already happened
+                    if matches!(f.body, FrameBody::DemoBuffer(_) | FrameBody::ClientData(_)) {
+                        prelude.push(f.clone());
+                    }
+                }
             }
             continue;
         };
@@ -364,6 +378,66 @@ fn plan(
     }
 
     Ok(p)
+}
+
+/// Spin events come every frame while charging, so a charge whose latest
+/// spin is older than this has ended some other way
+const CHARGE_GAP: f32 = 0.1;
+
+/// The recorder's gauss charge, followed through its demo records. The
+/// charge starts with a spin-up view model animation and a spin event that
+/// starts the sound, then sends spin events that only change its pitch, and
+/// ends with a shot. A slice starting mid-charge would keep only the pitch
+/// changes, so the client would play no spin sound and show no spin-up
+#[derive(Default)]
+struct Charge {
+    last_anim: Option<Frame>,
+    spin_up: Option<Frame>,
+    spin: Option<Frame>,
+}
+
+impl Charge {
+    fn observe(&mut self, d: &Decoder, f: &Frame) {
+        match &f.body {
+            FrameBody::WeaponAnim { .. } => self.last_anim = Some(f.clone()),
+            FrameBody::Event(e) => {
+                let name = u16::try_from(e.index).ok().and_then(|i| d.event_name(i));
+                match name {
+                    Some(b"events/gaussspin.sc") => {
+                        if e.bparam1() == 0 {
+                            let same_group = |a: &&Frame| a.frame_number == f.frame_number;
+                            self.spin_up = self.last_anim.as_ref().filter(same_group).cloned();
+                        }
+                        self.spin = Some(f.clone());
+                    }
+                    Some(b"events/gauss.sc") => {
+                        self.spin_up = None;
+                        self.spin = None;
+                    }
+                    _ => {}
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// The spin-up animation and a spin event that starts the sound at the
+    /// current pitch, when a charge is under way at `start`
+    fn carried(&self, start: f32) -> Vec<Frame> {
+        let Some(spin) = &self.spin else {
+            return Vec::new();
+        };
+        if start - spin.time() > CHARGE_GAP {
+            return Vec::new();
+        }
+
+        let mut restart = spin.clone();
+        if let FrameBody::Event(e) = &mut restart.body {
+            e.args[64..68].copy_from_slice(&0i32.to_le_bytes());
+        }
+
+        self.spin_up.iter().cloned().chain([restart]).collect()
+    }
 }
 
 /// `svc_time`, full clientdata and full packet entities for one frame
@@ -464,7 +538,8 @@ fn write(path: &Path, out: &mut File, p: &Plan, limits: Limits) -> Result<Writte
     directory[0].offset = to_i32(start, "entry offset")?;
     directory[0].length = to_i32(w.pos - start, "entry length")?;
 
-    // Playback: DemoStart, the bootstrap group, then the kept groups
+    // The playback entry opens with DemoStart and the bootstrap group, and
+    // the kept groups follow
     let start = w.pos;
     let zero = |body: FrameBody, tag: u8| Frame {
         tag,
@@ -508,6 +583,10 @@ fn write(path: &Path, out: &mut File, p: &Plan, limits: Limits) -> Result<Writte
             &mut w,
             &zero(FrameBody::Network(Box::new(network)), tag::NETWORK),
         )?;
+    }
+
+    for f in &p.carried {
+        put(&mut w, &zero(f.body.clone(), f.tag))?;
     }
 
     let persistent_records = u64::from(!p.persistent.is_empty());
@@ -776,6 +855,7 @@ pub fn run_restart(
         start_sequence: p.start_sequence,
         bootstrap_sequences: p.bootstrap.iter().map(|(s, _)| s.sequence).collect(),
         persistent_messages: p.persistent_count,
+        carried_records: p.carried.len(),
         persistent_bytes: p.persistent.len(),
         bootstrap_bytes: written.bootstrap_bytes,
         kept_records: p.kept_records,

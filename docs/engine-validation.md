@@ -96,3 +96,28 @@ values older than the 8-bit window allows. The output's own cross-check is *veri
 | Test | Date | Result | Observations |
 |---|---|---|---|
 | S1 crossfire `[1:36, 4:48)` | 2026-10-15 | pass | Plays on its own from the 1:36 scene to the 4:48 scene and stops cleanly. No problems seen. |
+
+That output was generated before the bootstrap group stopped copying the events of the last
+group before the start. Regenerated outputs differ from it only in that group.
+
+### S1 gauss charge across the start
+
+```powershell
+.\target\release\lambda-slicer.exe slice F:\HLScreeniesDemos\09aug2018\naz_crossfire_pb_01.dem --start 1:59.8 --end 2:10 --output work\ls_s1_gauss.dem
+```
+
+The recorder starts charging the gauss at 1:59.119 (spin-up animation and spin sound) and fires
+at 2:00.338. The slice starts 0.7 s into the charge, so its bootstrap group carries the spin-up
+animation and restarts the spin sound at the current pitch (see "Ongoing gauss charge" in
+`docs/protocol-profile-5-48.md`).
+
+Check, comparing with the original from 1:59.8:
+
+- the spin sound is audible from the first frame and keeps rising in pitch;
+- the view model shows the gauss spinning up, not idle;
+- the charged shot at about 0:00.5 of the slice has its sound, beam and effects;
+- the rest plays like the original until 2:10.
+
+| Test | Date | Result | Observations |
+|---|---|---|---|
+| S1 gauss `[1:59.8, 2:10)` | 2026-10-15 | pass | Spin sound present from the first frame, charged shot has its sound, nothing odd. The view model spin-up was not checked: the custom gauss model in this install has no visible spin-up (a single colour). |

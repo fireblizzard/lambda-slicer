@@ -367,8 +367,9 @@ starts with `svc_time`, full clientdata and a full `svc_packetentities`.
 - **LOADING:** the source's entry, byte for byte.
 - **Playback:** `DemoStart`, then one bootstrap group at time 0 and frame 0, then the kept groups.
   The bootstrap group holds the DemoBuffer and ClientData records of the last group before the
-  start, a record of persistent messages, and a full update for every frame before the start
-  that a kept packet still references as a delta base. Each full update travels under that
+  start (never its events, sounds or commands, which already happened), a record of persistent
+  messages, and a full update for every frame before the start that a kept packet still
+  references as a delta base. Each full update travels under that
   frame's own sequence numbers and demo info, so the client stores it in the ring slot the kept
   deltas name.
 - **Kept groups:** their bytes unchanged, outer times rebased so the first keeps its original
@@ -390,6 +391,26 @@ message name in the 2,000-demo sample is classified. The AG-specific ones (`Coun
 `Location`, `CTF`, `CTFFlag`, `TeamScore`, `Timeout` kept; `CheatCheck`, `MapList`, `MOTD`,
 `Splash`, `ShowMenu`, `CTFSound`, `VGUIMenu` dropped) are classified from their names and
 observed use, not from the AG client source, so the game test is their check.
+
+**Ongoing gauss charge.** The recorder's charge starts with a spin-up view model animation
+(`WeaponAnim` 3) and a `gaussspin` event with `bparam1 = 0`, which starts the spin sound. Every
+later frame sends `gaussspin` with `bparam1 = 1`, which in the HL client only changes the pitch
+of a sound already playing, and a `gauss` event ends it. A slice starting mid-charge would keep
+only the pitch changes. When the latest spin event is at most 0.1 s before the start and no shot
+followed it, the bootstrap group therefore ends with the spin-up animation and that spin event
+with `bparam1 = 0`, restarting the sound at the current pitch. In `naz_crossfire_pb_01.dem` all
+71,675 spin events are the recorder's own demo events. Opponents' charges send none.
+
+**Decisions taken for S1** (plan §10):
+
+| Topic | Decision |
+|---|---|
+| Outer clock | Kept groups rebased so the first keeps its original spacing after the bootstrap group at 0. Frame numbers restart at 1 |
+| Server clocks | `svc_time`, entity, clientdata and weapon timers, demo info and event delays stay in the source's coordinates |
+| Time windows | Bootstrap values re-encoded against the bootstrap frame's own `svc_time`, exact where the window allows, clamped and counted otherwise |
+| Sequences | All seven sequence fields kept. Bootstrap frames reuse their source sequence numbers, so kept deltas resolve in the client's ring unchanged |
+| Bootstrap | Full updates only for referenced pre-start frames, plus replayed persistent messages and carried charge records |
+| Packet size | Full updates measured up to 1,048 bytes, and real LOADING records exceed 11,000, so no splitting was needed |
 
 **Refusals** follow the rule in `IMPLEMENTATION_PLAN.md` §6.2: a `failed` source
 (`SourceFailedCrossCheck`), inferred state at a bootstrap frame or kept packet

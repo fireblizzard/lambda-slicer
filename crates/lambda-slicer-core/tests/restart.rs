@@ -4,9 +4,11 @@ mod common;
 
 use std::path::{Path, PathBuf};
 
-use common::stream::{CLIENT, ENTITY, delta, full_packet, setup, time};
+use common::stream::{CLIENT, ENTITY, delta, full_packet, setup_with, time};
 use common::{build, frame};
-use lambda_slicer_core::container::{DirectoryEntry, FrameBody, Limits, NetworkFrame, tag};
+use lambda_slicer_core::container::{
+    DemoReader, DirectoryEntry, EventRecord, FrameBody, Limits, NetworkFrame, tag,
+};
 use lambda_slicer_core::protocol::bitwrite::BitWriter;
 use lambda_slicer_core::protocol::delta::Value;
 use lambda_slicer_core::protocol::messages::svc;
@@ -14,6 +16,9 @@ use lambda_slicer_core::slice::ExportError;
 use lambda_slicer_core::slice::restart::run_restart;
 use lambda_slicer_core::state::{DecodeOptions, DecodeStatus, decode_demo};
 use lambda_slicer_core::timeline::time::DemoTime;
+
+/// Event scripts of the synthetic session, as (name, resource index)
+const EVENTS: &[(&str, u32)] = &[("events/gauss.sc", 3), ("events/gaussspin.sc", 4)];
 
 /// Seconds between playback groups
 const STEP: f32 = 0.1;
@@ -93,6 +98,8 @@ struct Recording {
     groups: Vec<(u8, Vec<u8>)>,
     /// Weapon bits in the client's ClientData records
     recorded_weapons: u32,
+    /// Demo records written before the network record of a group, by group
+    records: Vec<(i32, FrameBody)>,
 }
 
 impl Recording {
@@ -105,12 +112,13 @@ impl Recording {
         Self {
             groups,
             recorded_weapons: 1 << 9,
+            records: Vec::new(),
         }
     }
 
     fn bytes(&self) -> Vec<u8> {
         let loading = vec![
-            network(tag::NETWORK_START, 3., 100, 5, setup()),
+            network(tag::NETWORK_START, 3., 100, 5, setup_with(48, EVENTS)),
             frame(tag::NEXT_SECTION, 3.1, 101, FrameBody::NextSection),
         ];
 
@@ -119,6 +127,7 @@ impl Recording {
         client[24..28].copy_from_slice(&self.recorded_weapons.to_le_bytes());
 
         let mut playback = vec![frame(tag::DEMO_START, 0., 0, FrameBody::DemoStart)];
+        let records = &self.records;
         let mut group = |t: f32, n: i32, payload: Vec<u8>| {
             playback.push(frame(
                 tag::DEMO_BUFFER,
@@ -127,6 +136,13 @@ impl Recording {
                 FrameBody::DemoBuffer(vec![n as u8; 8]),
             ));
             playback.push(frame(tag::CLIENT_DATA, t, n, FrameBody::ClientData(client)));
+            for (_, body) in records.iter().filter(|(g, _)| *g == n) {
+                let tag = match body {
+                    FrameBody::WeaponAnim { .. } => tag::WEAPON_ANIM,
+                    _ => tag::EVENT,
+                };
+                playback.push(frame(tag, t, n, body.clone()));
+            }
             playback.push(network(tag::NETWORK, t, n, FIRST + n, payload));
         };
 
@@ -301,4 +317,97 @@ fn a_source_that_fails_its_cross_check_is_refused() {
 
     let err = slice(&rec, 30, None).unwrap_err();
     assert!(matches!(err, ExportError::SourceFailedCrossCheck), "{err}");
+}
+
+/// A demo event record of the recorder (entity 1)
+fn event(index: i32, bparam1: i32, pitch: i32) -> FrameBody {
+    let mut args = [0u8; 72];
+    args[4..8].copy_from_slice(&1i32.to_le_bytes());
+    args[56..60].copy_from_slice(&pitch.to_le_bytes());
+    args[64..68].copy_from_slice(&bparam1.to_le_bytes());
+
+    FrameBody::Event(EventRecord {
+        flags: 0,
+        index,
+        delay_bits: 0,
+        args,
+    })
+}
+
+/// A charge from group 25 with spin-up and spin start, pitch updates in
+/// every group, and the shot in group 36
+fn charging() -> Recording {
+    let mut rec = Recording::steady(60, 1);
+    rec.records.push((
+        25,
+        FrameBody::WeaponAnim {
+            sequence: 3,
+            body: 0,
+        },
+    ));
+    rec.records.push((25, event(4, 0, 110)));
+    for g in 26..36 {
+        rec.records.push((g, event(4, 1, 110 + g)));
+    }
+    rec.records.push((36, event(3, 0, 0)));
+
+    rec
+}
+
+/// Records of the output's bootstrap group (frame 0 after DemoStart)
+fn bootstrap_records(path: &Path) -> Vec<FrameBody> {
+    let f = std::io::BufReader::new(std::fs::File::open(path).unwrap());
+    let mut r = DemoReader::new(f, Limits::default()).unwrap();
+    r.frames(1)
+        .unwrap()
+        .map(|lf| lf.unwrap().frame)
+        .take_while(|f| f.frame_number == 0)
+        .map(|f| f.body)
+        .filter(|b| !matches!(b, FrameBody::DemoStart | FrameBody::Network(_)))
+        .collect()
+}
+
+#[test]
+fn a_gauss_charge_under_way_at_the_start_is_carried_over() {
+    let (out, _dir, r) = slice(&charging(), 30, None).unwrap();
+    assert_eq!(r.carried_records, 2);
+
+    // The spin-up animation, then the latest spin turned into a sound start
+    // at its pitch, after the client's state records
+    let records = bootstrap_records(&out);
+    assert!(matches!(records[0], FrameBody::DemoBuffer(_)));
+    assert!(matches!(records[1], FrameBody::ClientData(_)));
+    assert_eq!(
+        records[2],
+        FrameBody::WeaponAnim {
+            sequence: 3,
+            body: 0
+        }
+    );
+    let FrameBody::Event(spin) = &records[3] else {
+        panic!("{:?}", records[3]);
+    };
+    assert_eq!((spin.index, spin.bparam1(), spin.iparam1()), (4, 0, 139));
+    assert_eq!(records.len(), 4);
+}
+
+#[test]
+fn a_finished_charge_is_not_carried_over() {
+    let (out, _dir, r) = slice(&charging(), 40, None).unwrap();
+    assert_eq!(r.carried_records, 0);
+    assert_eq!(bootstrap_records(&out).len(), 2);
+}
+
+#[test]
+fn events_just_before_the_start_are_not_replayed() {
+    // A shot in the group right before the start already happened
+    let mut rec = Recording::steady(60, 1);
+    rec.records.push((29, event(3, 0, 0)));
+
+    let (out, _dir, _) = slice(&rec, 30, None).unwrap();
+    let records = bootstrap_records(&out);
+    assert!(
+        records.iter().all(|b| !matches!(b, FrameBody::Event(_))),
+        "{records:?}"
+    );
 }
