@@ -64,10 +64,12 @@ enum Command {
         /// Write the JSON report to a file, or `-` for stdout
         #[arg(long)]
         json: Option<PathBuf>,
-        /// List every decoded event (network and standalone demo events)
+        /// List every decoded event (network and standalone demo events). Not
+        /// allowed with `--json -`
         #[arg(long)]
         events: bool,
-        /// Print each message whose frame time is in [FROM, TO)
+        /// Print each message whose frame time is in [FROM, TO). Not allowed
+        /// with `--json -`
         #[arg(long, num_args = 2, value_names = ["FROM", "TO"])]
         trace: Option<Vec<DemoTime>>,
     },
@@ -99,9 +101,14 @@ enum ControlKind {
     TruncateEnd,
 }
 
+/// Whether a `--json` target names stdout
+fn is_stdout(target: &Path) -> bool {
+    target == Path::new("-")
+}
+
 fn write_json<T: Serialize>(target: &Path, value: &T) -> Result<()> {
     let text = serde_json::to_string_pretty(value)?;
-    if target == Path::new("-") {
+    if is_stdout(target) {
         let mut out = std::io::stdout().lock();
         writeln!(out, "{text}")?;
     } else {
@@ -419,6 +426,14 @@ fn decode_cmd(
     events: bool,
     trace: Option<&[DemoTime]>,
 ) -> Result<ExitCode> {
+    // The event and trace listings are text on stdout, so they would corrupt
+    // a JSON document written there
+    if json.is_some_and(is_stdout) && (events || trace.is_some()) {
+        bail!(
+            "--events and --trace print text to stdout, so use them with --json FILE, not --json -"
+        );
+    }
+
     let window = trace.map(|t| (t[0], t[1]));
     let options = DecodeOptions {
         collect_events: events,
