@@ -453,8 +453,17 @@ fn decode_cmd(
         let s = &report.stats;
         if report.inferred_delta_bases {
             println!(
-                "  delta bases inferred: {} sequence offset changes, {} empty bases (state not proven)",
-                s.sequence_offset_changes, s.empty_delta_bases
+                "  {} snapshots rest on inferred delta bases, first at {:?} (state not proven)",
+                s.inferred_snapshots,
+                s.first_inferred.map(|l| l.time())
+            );
+            println!(
+                "  bases: {} strict, {} by inferred offset, {} by count search, {} empty; {} offset changes",
+                s.bases_strict,
+                s.bases_offset,
+                s.bases_count_search,
+                s.bases_empty,
+                s.sequence_offset_changes
             );
         }
         println!(

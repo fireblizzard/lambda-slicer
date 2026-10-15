@@ -74,7 +74,7 @@ fn main() {
         msgs += r.stats.messages;
         frames += r.stats.network_frames;
         dist = dist.max(r.stats.max_delta_distance);
-        if r.stats.sequence_offset_changes > 0 || r.stats.empty_delta_bases > 0 {
+        if r.inferred_delta_bases {
             inferred += 1;
         }
         dup += r.stats.duplicate_sequences;

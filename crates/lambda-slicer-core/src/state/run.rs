@@ -144,8 +144,7 @@ pub fn decode_demo(
     report.max_clients = decoder.max_clients;
     report.player_num = decoder.player_num;
     report.hltv = decoder.hltv;
-    report.inferred_delta_bases =
-        decoder.stats.sequence_offset_changes > 0 || decoder.stats.empty_delta_bases > 0;
+    report.inferred_delta_bases = decoder.stats.inferred_snapshots > 0;
     report.stats = decoder.stats.clone();
 
     let mut schemas: Vec<SchemaSummary> = [

@@ -158,34 +158,61 @@ Layouts that differ between references, and the choice made:
 ## Entity packets and snapshots
 
 Each network record with an entity or clientdata update stores a snapshot under its recorded
-`incoming_sequence`. The server writes deltas from `frames[delta_sequence & mask]` with a ring
-of **8 frames when `max_clients == 1`, else 64** (ReHLDS `SV_UPDATE_BACKUP`), so the delta
-byte names a ring slot, not an exact sequence. The decoder resolves it the same way: the most
-recent snapshot in that slot. An exact-low-byte lookup was tried first and produced wrong bases
-where references were more than 64 frames old (`bkz_goldbhop` failed under it, passes under the
-ring model).
+`incoming_sequence`. Server and client delta from `frames[delta_sequence & mask]`, a ring of
+**8 frames when `max_clients == 1`, else 64** (ReHLDS `SV_UPDATE_BACKUP`). The base is the newest
+frame occupying the reference's slot. Usually that is the frame carrying the reference's low byte.
+
+**Observed: references past the ring.** In `20221127_173627_bhop_crossfire_cup_us.dem` four packets
+in one burst all reference byte 76. For the first three, the frame with that byte is 62–64
+packets back and still in its slot. The 64-back case has 0 updates, because the server's slot is
+the one it is writing. For the fourth, it is 65 back, so slot `76 & 63` already holds the frame
+received just before, and that newer occupant is the base. A rule requiring the exact byte (tried
+during development) rejected these, fell into inference, and failed later in the file.
 
 **Observed: recorded sequences can drift from the server's numbering.** In some recordings
-(44 files in the corpus, mostly 2023–2026 bhop/kz demos, plus a few 2019–2022 matches), the recorded
-`incoming_sequence` rises by exactly 1 per recorded packet while the server's numbering, visible
-through the delta bytes, sometimes rises by more. The offset starts at a small constant (2–5)
-and shifts later, consistent with lost packets. In those files the playback segment starts at a
-sequence unrelated to the loading segment (e.g. 134 → 59138), so the recorder evidently stores a
-counter rather than the live netchan sequence. Which client builds do this is not established.
+(44 files in the corpus, mostly 2023–2026 bhop/kz demos, plus a few 2019–2022 matches), the
+recorded `incoming_sequence` rises by exactly 1 per recorded packet while the server's numbering,
+visible through the delta bytes, sometimes rises by more. The offset starts at a small constant
+(2–5) and shifts later, consistent with lost packets. In those files the playback segment starts
+at a sequence unrelated to the loading segment (e.g. 134 → 59138), so the recorder evidently
+stores a counter rather than the live netchan sequence. Which client builds do this is not
+established.
 
-Base selection therefore is:
+### Base selection: strict versus inferred
 
-1. Resolve the slot under the current offset (initially 0). Accept it if the rebuilt entity
-   count equals the server's declared count.
-2. Otherwise try the last 64 received snapshots, nearest first, and adopt the offset of the first
-   one whose rebuild reproduces the declared count.
-3. Otherwise report `CountMismatch`.
+| Resolution | Rule | Proven? |
+|---|---|---|
+| `strict` | the newest snapshot in ring slot `from & (backup − 1)`, if it is 1 to `backup` packets old, and (for entity packets) its rebuild reproduces the declared entity count. An older occupant means the slot's real content was never recorded | yes, unless the session's numbering is already suspect |
+| `offset` | matched under the sequence offset inferred earlier in the session, rebuild reproduces the declared count | no |
+| `count_search` | the nearest of the last 64 snapshots whose rebuild reproduces the declared count; its offset is adopted | no |
+| `empty` | nothing received yet, so an empty base | no |
 
-Clientdata in the same packet carries the same delta byte, so it waits for the entity packet's
-choice. Reports flag `inferred_delta_bases` whenever step 2 was needed or a slot was empty: that
-state is **inferred, not proven**, and must not be trusted for export without further evidence.
-An empty slot (nothing received yet) gives an empty base, as for a fresh client. Removing an
-entity that is not in the base is ignored, as the engine does, and counted.
+- **Equal counts prove nothing.** Two snapshots with the same entities but different values both
+  pass the count check, so a count-search or offset base is a guess.
+- **Once any count search happens, the session's numbering is suspect** and strict resolution is
+  disabled until the next `svc_serverinfo`. A same-byte match would name a frame offset by the
+  drift; it passes the count check and goes unnoticed by the client-recorded checks, because
+  origin is resent every frame. In `20230921_185958_bkz_goldbhop.dem` that path would have
+  claimed 633 strict bases.
+- **Uncertainty propagates.** Every snapshot carries `inferred`: set when its base was not
+  strict or was itself inferred, or when clientdata had no base clientdata to delta from. Only a
+  full update (no delta base) clears it. Reports give `inferred_snapshots`, the first location
+  needing inference, and counts per resolution.
+- Clientdata in the same packet carries the same delta byte, so it uses the entity packet's choice.
+  Clientdata in a packet without entities uses strict or offset resolution only, else an empty base.
+- The cross-check counts disagreements on inferred state separately. They make a file
+  *inconclusive*, not *failed*, and disagreements on proven state make it *failed*.
+
+**History of this rule.** An earlier version resolved the reference like the engine ring
+(`delta & mask`, newest snapshot in that slot) without limiting how old that occupant was, and
+accepted any base that reproduced the declared count. In goldbhop that accepted a stale
+loading-segment snapshot (sequence 128, slot `64 & 63`, about 212,000 packets older) with the
+same 22 entities, so every later delta lacked the `weapons` value the server had sent:
+weapon bits disagreed with the client in 1,608 of 1,638 records while being reported as complete
+and uninferred. With the current rule the file reports 0 strict and 634 offset bases, its weapon
+bits and origin agree 1,638 of 1,638, and its verdict is *inconclusive*.
+
+Removing an entity that is not in the base is ignored, as the engine does, and counted.
 
 - `svc_packetentities` (full): each entity is built from an instanced baseline, an earlier entity
   in the same packet (`offset`), or the spawn baseline of its number.
@@ -327,8 +354,8 @@ of 3. The ring slot `64 & 63 = 0` still held a stale **loading-segment** snapsho
 with the same entity count (22), so the count check passed, nothing was flagged, and every later
 delta built on a base without `weapons`. This is the failure mode an external review predicted:
 an entity-count match does not prove the base is right, and a stale slot can be accepted
-silently. Base selection and uncertainty tracking are being reworked; until then such files can
-look complete and uninferred while being wrong.
+silently. **Fixed** by the strict/inferred base selection above: the file now agrees 1,638 of
+1,638 and is reported as inferred (*inconclusive*), not as proven.
 
 Movevars identity misses come from:
 
@@ -358,6 +385,24 @@ changes; single `ClientData` origin records with jumps of hundreds to thousands 
 (`20230921_185958_bkz_goldbhop.dem`, the `kzmo_downhopunvis` and `bhop_mann` recordings, files
 with inferred bases). The goldbhop case is the confirmed delta-base fault above; the others are
 expected to share it until shown otherwise.
+
+### After strict/inferred base selection (2026-10-15)
+
+Same sample and command, 664 s:
+
+| Outcome | Before | After |
+|---|---:|---:|
+| verified | 1,894 | 1,893 |
+| inconclusive | 19 | 37 |
+| failed | 83 | 66 |
+| no directory | 4 | 4 |
+
+Most remaining failures are single records, an origin jump of hundreds to thousands of units or
+one movevars frame at a level change. The `kzmo_downhopunvis` recordings still disagree on
+hundreds of samples whose bases were all strict. That fits a drifting sequence offset that never
+caused a count failure, which this rule cannot detect (a drift of `k` makes a same-slot match
+name the frame `k` packets too old, with the same entity count). They need their own
+investigation before anything built on them is trusted.
 
 ## What M2 validation does and does not establish
 

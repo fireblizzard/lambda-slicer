@@ -34,12 +34,40 @@ pub struct EntityState {
     pub fields: StructState,
 }
 
+/// How the base of a delta was chosen
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BaseResolution {
+    /// The frame whose recorded sequence has the reference's low byte, within
+    /// the server's frame window. That is the frame the server deltas from,
+    /// and for entity packets its rebuild also reproduces the declared count
+    Strict,
+    /// Matched under a sequence offset inferred earlier in the recording
+    Offset,
+    /// The nearest recent frame whose rebuild reproduces the declared entity
+    /// count. Equal counts do not prove the frame is the right one
+    CountSearch,
+    /// No frame was available, so the base is empty
+    Empty,
+}
+
+impl BaseResolution {
+    /// Whether state built on this base is a guess rather than proven
+    pub fn inferred(self) -> bool {
+        self != BaseResolution::Strict
+    }
+}
+
 /// Complete decoded state carried by one received packet
 #[derive(Clone, Debug)]
 pub struct Snapshot {
     /// Netchan incoming sequence of the packet
     pub sequence: u32,
     pub server_time_bits: u32,
+    /// Some part of this state was built on an inferred delta base, directly
+    /// or through an earlier inferred snapshot. Only a full update, rebuilt
+    /// from baselines alone, clears it
+    pub inferred: bool,
     /// Ordered by entity number, `None` if the packet had no entity update
     pub entities: Option<Arc<Vec<Arc<EntityState>>>>,
     pub clientdata: Option<Arc<StructState>>,
@@ -149,14 +177,17 @@ pub struct DecodeStats {
     pub max_entities: usize,
     pub snapshots: u64,
     pub duplicate_sequences: u64,
-    /// Largest sequence distance between a packet and its delta base
+    /// Largest sequence distance between a packet and a strict delta base
     pub max_delta_distance: u32,
-    /// Delta references whose ring slot was empty. These are decoded against an
-    /// empty base, as a client that had not received that frame would
-    pub empty_delta_bases: u64,
-    /// Delta references whose low byte differs from the sequence found in
-    /// the ring slot (the engine uses the slot regardless)
-    pub delta_base_byte_mismatches: u64,
+    /// Delta bases by how they were chosen, see [`BaseResolution`]
+    pub bases_strict: u64,
+    pub bases_offset: u64,
+    pub bases_count_search: u64,
+    pub bases_empty: u64,
+    /// Snapshots whose state is inferred rather than proven
+    pub inferred_snapshots: u64,
+    /// Where the first inferred delta base was needed
+    pub first_inferred: Option<FrameLocation>,
     /// Removals of entities absent from the delta base (ignored, as the
     /// engine does)
     pub removed_absent_entities: u64,
@@ -172,11 +203,15 @@ pub struct DecodeStats {
     pub max_payload: usize,
 }
 
-/// Frame ring sizes. The server deltas from `frames[delta & (backup - 1)]`
+/// Frame ring sizes. Server and client delta from `frames[delta & (backup - 1)]`
 /// with 8 frames when `max_clients == 1`, otherwise 64 (ReHLDS
-/// `SV_UPDATE_BACKUP`). The decoder mirrors that ring
+/// `SV_UPDATE_BACKUP`). A referenced frame is still in its slot while it is at
+/// most `backup` packets old
 const SINGLEPLAYER_BACKUP: usize = 8;
 const MULTIPLAYER_BACKUP: usize = 64;
+
+/// How many recent frames a count search may try
+const COUNT_SEARCH_DEPTH: usize = 64;
 
 pub struct Decoder {
     meta: DeltaSchema,
@@ -199,6 +234,10 @@ pub struct Decoder {
     history: std::collections::VecDeque<Arc<Snapshot>>,
     /// Recorded minus server sequence, modulo 256
     sequence_offset: u8,
+    /// This session's recorded sequences were shown not to be the server's
+    /// own numbering, so no base in it can be strict any more. A same-byte
+    /// match would name the wrong frame
+    numbering_suspect: bool,
 
     pub players: BTreeMap<u8, PlayerInfo>,
     pub segment: u32,
@@ -220,6 +259,11 @@ struct Building {
     /// Delta clientdata waiting for the entity packet of the same frame to
     /// select the delta base, stored as (message, ordinal, payload offset)
     pending_clientdata: Option<(ClientDataMessage, u32, u32)>,
+    /// Base chosen by this frame's delta entity packet, reused by its
+    /// clientdata, which carries the same reference byte
+    entity_base: Option<(u8, Arc<Snapshot>, BaseResolution)>,
+    /// Some part of this packet's state rests on an inferred base
+    inferred: bool,
     entities: Option<Arc<Vec<Arc<EntityState>>>>,
     clientdata: Option<Arc<StructState>>,
     weapons: Option<Arc<Vec<Option<Arc<StructState>>>>>,
@@ -260,6 +304,7 @@ impl Decoder {
             backup: MULTIPLAYER_BACKUP,
             history: std::collections::VecDeque::new(),
             sequence_offset: 0,
+            numbering_suspect: false,
 
             players: BTreeMap::new(),
             segment: 0,
@@ -285,7 +330,7 @@ impl Decoder {
         self.user_messages[usize::from(id)].as_ref()
     }
 
-    /// Frame ring size in use (8 or 64)
+    /// Server frame window in use (8 or 64)
     pub fn backup(&self) -> usize {
         self.backup
     }
@@ -299,15 +344,74 @@ impl Decoder {
         self.history.back()
     }
 
-    /// The snapshot a delta reference byte resolves to, which is the most recent
-    /// one occupying its ring slot, as on the server (`frames[delta & mask]`)
+    /// The newest stored snapshot whose sequence, under the current inferred
+    /// offset, has this low byte
     pub fn snapshot_for_byte(&self, byte: u8) -> Option<&Arc<Snapshot>> {
-        let mask = self.backup - 1;
         self.history
             .iter()
             .rev()
-            .take(self.backup)
-            .find(|s| self.server_sequence(s.sequence) as usize & mask == usize::from(byte) & mask)
+            .find(|s| self.server_sequence(s.sequence) as u8 == byte)
+    }
+
+    /// The frame the client resolves reference `from` to, when the recorded
+    /// sequences are the client's own. Like the engine, that is the newest
+    /// frame in ring slot `from & (backup - 1)`. It must be at most `backup`
+    /// packets old, because an older occupant means the slot's real content
+    /// was never recorded, like a loading-segment frame from far earlier.
+    ///
+    /// A reference more than `backup` packets back names a slot the server
+    /// has since overwritten, so the newer occupant is right. Exactly
+    /// `backup` back happens when the slot is the one being written, and the
+    /// delta then carries no updates
+    fn strict_base(&self, from: u8, sequence: u32) -> Option<Arc<Snapshot>> {
+        if self.numbering_suspect {
+            return None;
+        }
+
+        let mask = self.backup as u32 - 1;
+        let occupant = self
+            .history
+            .iter()
+            .rev()
+            .find(|s| s.sequence & mask == u32::from(from) & mask)?;
+
+        let distance = sequence.wrapping_sub(occupant.sequence);
+        if distance == 0 || distance > self.backup as u32 {
+            return None;
+        }
+
+        Some(occupant.clone())
+    }
+
+    /// A frame matching `from` under an offset inferred earlier in this
+    /// session
+    fn offset_base(&self, from: u8) -> Option<Arc<Snapshot>> {
+        if !self.numbering_suspect {
+            return None;
+        }
+
+        self.snapshot_for_byte(from).cloned()
+    }
+
+    fn count_resolution(&mut self, resolution: BaseResolution) {
+        let counter = match resolution {
+            BaseResolution::Strict => &mut self.stats.bases_strict,
+            BaseResolution::Offset => &mut self.stats.bases_offset,
+            BaseResolution::CountSearch => &mut self.stats.bases_count_search,
+            BaseResolution::Empty => &mut self.stats.bases_empty,
+        };
+        *counter += 1;
+    }
+
+    fn empty_snapshot(sequence: u32) -> Arc<Snapshot> {
+        Arc::new(Snapshot {
+            sequence,
+            server_time_bits: 0,
+            inferred: true,
+            entities: None,
+            clientdata: None,
+            weapons: None,
+        })
     }
 
     /// Decode one network record. `on_message` sees each message after it
@@ -325,6 +429,8 @@ impl Decoder {
         let mut building = Building {
             sequence,
             pending_clientdata: None,
+            entity_base: None,
+            inferred: false,
             entities: None,
             clientdata: None,
             weapons: None,
@@ -388,13 +494,18 @@ impl Decoder {
                 })?;
         }
 
-        self.finish_packet(building);
+        self.finish_packet(building, location);
         Ok(())
     }
 
-    fn finish_packet(&mut self, b: Building) {
+    fn finish_packet(&mut self, b: Building, location: FrameLocation) {
         if b.entities.is_none() && b.clientdata.is_none() {
             return;
+        }
+
+        if b.inferred {
+            self.stats.inferred_snapshots += 1;
+            self.stats.first_inferred.get_or_insert(location);
         }
 
         if self
@@ -411,6 +522,7 @@ impl Decoder {
         self.history.push_back(Arc::new(Snapshot {
             sequence: b.sequence,
             server_time_bits: self.time_bits,
+            inferred: b.inferred,
             entities: b.entities,
             clientdata: b.clientdata,
             weapons: b.weapons,
@@ -418,30 +530,19 @@ impl Decoder {
         self.stats.snapshots += 1;
     }
 
-    /// The delta base for reference byte `from`, resolved like the engine
-    /// through the frame ring. An empty slot yields an empty base
-    fn delta_base(&mut self, from: u8, sequence: u32) -> Arc<Snapshot> {
-        match self.snapshot_for_byte(from).cloned() {
-            Some(snap) => {
-                if self.server_sequence(snap.sequence) as u8 != from {
-                    self.stats.delta_base_byte_mismatches += 1;
-                }
-
-                let distance = sequence.wrapping_sub(snap.sequence);
-                self.stats.max_delta_distance = self.stats.max_delta_distance.max(distance);
-                snap
-            }
-            None => {
-                self.stats.empty_delta_bases += 1;
-                Arc::new(Snapshot {
-                    sequence,
-                    server_time_bits: 0,
-                    entities: None,
-                    clientdata: None,
-                    weapons: None,
-                })
-            }
+    /// Base for a clientdata delta with no entity packet to settle it. Only
+    /// the strict and earlier-offset rules apply because there is no count to
+    /// check against
+    fn clientdata_base(&mut self, from: u8, sequence: u32) -> (Arc<Snapshot>, BaseResolution) {
+        if let Some(snap) = self.strict_base(from, sequence) {
+            return (snap, BaseResolution::Strict);
         }
+
+        if let Some(snap) = self.offset_base(from) {
+            return (snap, BaseResolution::Offset);
+        }
+
+        (Self::empty_snapshot(sequence), BaseResolution::Empty)
     }
 
     fn new_segment(&mut self) {
@@ -453,6 +554,7 @@ impl Decoder {
         self.event_names.clear();
         self.history.clear();
         self.sequence_offset = 0;
+        self.numbering_suspect = false;
 
         self.hltv = false;
     }
@@ -539,7 +641,7 @@ impl Decoder {
             }
             Message::DeltaPacketEntities(p) => {
                 self.stats.delta_packets += 1;
-                let ents = self.delta_entities(p, building.sequence)?;
+                let ents = self.delta_entities(p, building)?;
                 if let Some((cd, _, _)) = building.pending_clientdata.take() {
                     self.apply_clientdata(&cd, building)?;
                 }
@@ -703,10 +805,25 @@ impl Decoder {
         let empty = || (Arc::new(StructState::default()), Arc::new(vec![None; 64]));
         let (base_client, base_weapons) = match cd.delta_from {
             Some(from) => {
-                let snap = self.delta_base(from, building.sequence);
+                // The entity packet of the same frame carries the same
+                // reference and has already chosen, with a count to check
+                let (snap, resolution) = match &building.entity_base {
+                    Some((f, snap, resolution)) if *f == from => (snap.clone(), *resolution),
+                    _ => {
+                        let (snap, resolution) = self.clientdata_base(from, building.sequence);
+                        self.count_resolution(resolution);
+                        (snap, resolution)
+                    }
+                };
+                building.inferred |= resolution.inferred() || snap.inferred;
+
                 match (snap.clientdata.clone(), snap.weapons.clone()) {
                     (Some(c), Some(w)) => (c, w),
-                    _ => empty(),
+                    // A base without clientdata leaves nothing to delta from
+                    _ => {
+                        building.inferred = true;
+                        empty()
+                    }
                 }
             }
             None => empty(),
@@ -801,44 +918,87 @@ impl Decoder {
         Ok(out)
     }
 
+    /// Rebuild a delta entity packet, choosing its base strictly when the
+    /// recording allows and by inference otherwise. The choice is recorded in
+    /// `building` so the frame's clientdata uses the same base
     fn delta_entities(
         &mut self,
         p: &EntityPacket,
-        sequence: u32,
+        building: &mut Building,
     ) -> Result<Vec<Arc<EntityState>>, DecodeErrorKind> {
         let from = p.delta_from.unwrap_or(0);
-        let snap = self.delta_base(from, sequence);
+        let sequence = building.sequence;
+        let entities_of = |s: &Arc<Snapshot>| s.entities.clone().unwrap_or_default();
 
-        let first = self.rebuild(p, &snap.entities.clone().unwrap_or_default());
-        if let Ok(r) = first {
-            return Ok(self.accept(r));
-        }
-
-        // The base under the current sequence offset does not reproduce the
-        // declared entity count. Some recordings store a sequence counter
-        // that drifts from the server's numbering, so search recent frames,
-        // nearest first, for the base that does
-        let tries = self.history.len().min(MULTIPLAYER_BACKUP);
-        for back in 0..tries {
-            let cand = self.history[self.history.len() - 1 - back].clone();
-            if Arc::ptr_eq(&cand, &snap) {
+        // Strict and offset bases must also reproduce the declared count, or
+        // they are not the frame the server used
+        let mut first_error = None;
+        let named = [
+            (self.strict_base(from, sequence), BaseResolution::Strict),
+            (self.offset_base(from), BaseResolution::Offset),
+        ];
+        for (candidate, resolution) in named {
+            let Some(snap) = candidate else {
                 continue;
-            }
+            };
 
-            if let Ok(r) = self.rebuild(p, &cand.entities.clone().unwrap_or_default()) {
-                self.sequence_offset = (cand.sequence as u8).wrapping_sub(from);
-                self.stats.sequence_offset = self.sequence_offset;
-                self.stats.sequence_offset_changes += 1;
-                return Ok(self.accept(r));
+            match self.rebuild(p, &entities_of(&snap)) {
+                Ok(r) => {
+                    if resolution == BaseResolution::Strict {
+                        let distance = sequence.wrapping_sub(snap.sequence);
+                        self.stats.max_delta_distance = self.stats.max_delta_distance.max(distance);
+                    }
+
+                    return Ok(self.accept(r, from, snap, resolution, building));
+                }
+                Err(e) => {
+                    first_error.get_or_insert(e);
+                }
             }
         }
 
-        first.map(|r| self.accept(r))
+        // No named frame works. Some recordings store a sequence counter that
+        // drifts from the server's numbering, so try recent frames, nearest
+        // first, and keep the first whose rebuild has the declared count
+        let depth = self.history.len().min(COUNT_SEARCH_DEPTH);
+        for back in 0..depth {
+            let snap = self.history[self.history.len() - 1 - back].clone();
+            let Ok(r) = self.rebuild(p, &entities_of(&snap)) else {
+                continue;
+            };
+
+            self.numbering_suspect = true;
+            self.sequence_offset = (snap.sequence as u8).wrapping_sub(from);
+            self.stats.sequence_offset = self.sequence_offset;
+            self.stats.sequence_offset_changes += 1;
+            return Ok(self.accept(r, from, snap, BaseResolution::CountSearch, building));
+        }
+
+        if let Some(e) = first_error {
+            return Err(e);
+        }
+
+        // Nothing received yet, so rebuild from an empty base
+        let snap = Self::empty_snapshot(sequence);
+        let r = self.rebuild(p, &[])?;
+        Ok(self.accept(r, from, snap, BaseResolution::Empty, building))
     }
 
-    fn accept(&mut self, r: Rebuilt) -> Vec<Arc<EntityState>> {
+    fn accept(
+        &mut self,
+        r: Rebuilt,
+        from: u8,
+        base: Arc<Snapshot>,
+        resolution: BaseResolution,
+        building: &mut Building,
+    ) -> Vec<Arc<EntityState>> {
         self.stats.removed_absent_entities += r.removed_absent;
         self.stats.entities_without_baseline += r.without_baseline;
+
+        self.count_resolution(resolution);
+        building.inferred |= resolution.inferred() || base.inferred;
+        building.entity_base = Some((from, base, resolution));
+
         r.entities
     }
 

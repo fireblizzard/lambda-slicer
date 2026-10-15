@@ -367,7 +367,6 @@ fn delta_without_any_reproducing_base_is_an_error() {
         ),
         "{err}"
     );
-    assert_eq!(d.stats.empty_delta_bases, 1);
 }
 
 #[test]
@@ -383,9 +382,12 @@ fn shifted_sequence_numbering_is_recovered_by_entity_count() {
 
     assert_eq!(d.stats.sequence_offset_changes, 1);
     assert_eq!(d.stats.sequence_offset, 10u8.wrapping_sub(99));
+    assert_eq!(d.stats.bases_count_search, 1);
+    assert_eq!(d.stats.inferred_snapshots, 1);
 
     let snap = d.snapshot_for_byte(100).unwrap();
     assert_eq!(snap.sequence, 11);
+    assert!(snap.inferred);
     let ents = snap.entities.as_ref().unwrap();
     assert_eq!(ents.iter().map(|e| e.number).collect::<Vec<_>>(), [0, 1, 7]);
 
@@ -401,21 +403,147 @@ fn shifted_sequence_numbering_is_recovered_by_entity_count() {
     );
 }
 
+/// Delta entity packet from `from` that only sets `entity`'s model, so
+/// every candidate base keeps the same entity count
+fn model_update(from: u8, entity: u32, model: i64) -> Vec<u8> {
+    let mut w = BitWriter::new();
+    time(&mut w, 11.);
+
+    w.u8(svc::DELTAPACKETENTITIES);
+    w.u16(3);
+    w.u8(from);
+    w.bit(false);
+    w.bit(true);
+    w.bits(entity, 11);
+    w.bit(false);
+    delta(&mut w, ENTITY, &[(1, model)]);
+    w.bits(0, 16);
+
+    w.finish()
+}
+
+fn model_of(d: &Decoder, seq: u32, entity: u16) -> Option<Value> {
+    let snap = d.latest_snapshot().filter(|s| s.sequence == seq)?;
+    let e = snap
+        .entities
+        .as_ref()?
+        .iter()
+        .find(|e| e.number == entity)?;
+    d.entity_value(e, "modelindex")
+}
+
 #[test]
-fn delta_base_is_found_by_ring_slot() {
-    // With the multiplayer ring of 64, reference byte 74 resolves to
-    // sequence 10
+fn exact_reference_picks_the_named_frame_among_equal_count_candidates() {
+    // Frames 10 and 11 hold the same three entities with different models
+    // for entity 1. A delta naming 10 must build on 10, not on the newer 11
     let mut d = Decoder::new();
     d.network_frame(loc(0), &frame(1, setup()), |_, _| {})
         .unwrap();
     d.network_frame(loc(1), &frame(10, full_packet(10)), |_, _| {})
         .unwrap();
-    d.network_frame(loc(2), &frame(80, delta_packet(74)), |_, _| {})
+    d.network_frame(loc(2), &frame(11, model_update(10, 1, 3)), |_, _| {})
+        .unwrap();
+    assert_eq!(model_of(&d, 11, 1), Some(Value::Int(3)));
+
+    d.network_frame(loc(3), &frame(12, model_update(10, 5, 8)), |_, _| {})
+        .unwrap();
+
+    assert_eq!(model_of(&d, 12, 1), Some(Value::Int(2)));
+    assert_eq!(model_of(&d, 12, 5), Some(Value::Int(8)));
+    assert!(!d.latest_snapshot().unwrap().inferred);
+    assert_eq!(d.stats.bases_strict, 2);
+    assert_eq!(d.stats.inferred_snapshots, 0);
+}
+
+#[test]
+fn equal_count_base_without_an_exact_reference_is_inferred() {
+    // No frame carries byte 200, and frames 10 and 11 both reproduce the
+    // declared count. The search takes one of them, but the result must not
+    // be reported as proven
+    let mut d = Decoder::new();
+    d.network_frame(loc(0), &frame(1, setup()), |_, _| {})
+        .unwrap();
+    d.network_frame(loc(1), &frame(10, full_packet(10)), |_, _| {})
+        .unwrap();
+    d.network_frame(loc(2), &frame(11, model_update(10, 1, 3)), |_, _| {})
+        .unwrap();
+    d.network_frame(loc(3), &frame(12, model_update(200, 5, 8)), |_, _| {})
+        .unwrap();
+
+    let snap = d.latest_snapshot().unwrap();
+    assert_eq!(snap.sequence, 12);
+    assert!(snap.inferred);
+    assert_eq!(d.stats.bases_count_search, 1);
+    assert_eq!(d.stats.inferred_snapshots, 1);
+    assert_eq!(d.stats.first_inferred, Some(loc(3)));
+
+    // Inference carries into deltas built on the inferred frame, even when
+    // the reference to it is exact
+    d.network_frame(loc(4), &frame(13, model_update(12, 5, 9)), |_, _| {})
+        .unwrap();
+    assert!(d.latest_snapshot().unwrap().inferred);
+    assert_eq!(d.stats.inferred_snapshots, 2);
+
+    // A full update rebuilds from baselines alone and clears it
+    d.network_frame(loc(5), &frame(14, full_packet(14)), |_, _| {})
+        .unwrap();
+    assert!(!d.latest_snapshot().unwrap().inferred);
+}
+
+#[test]
+fn frame_exactly_one_ring_old_is_strict() {
+    // A reference 64 packets back still names the frame in the client's
+    // ring slot. The server does this when the slot is the one it is
+    // writing, and sends no updates
+    let mut d = Decoder::new();
+    d.network_frame(loc(0), &frame(1, setup()), |_, _| {})
+        .unwrap();
+    d.network_frame(loc(1), &frame(10, full_packet(10)), |_, _| {})
+        .unwrap();
+    d.network_frame(loc(2), &frame(74, model_update(10, 5, 8)), |_, _| {})
+        .unwrap();
+
+    assert!(!d.latest_snapshot().unwrap().inferred);
+    assert_eq!(d.stats.bases_strict, 1);
+}
+
+#[test]
+fn reference_past_the_ring_uses_the_newer_slot_occupant() {
+    // Byte 10 names frame 10, but frame 74 has since taken ring slot 10, so
+    // the engine deltas from 74
+    let mut d = Decoder::new();
+    d.network_frame(loc(0), &frame(1, setup()), |_, _| {})
+        .unwrap();
+    d.network_frame(loc(1), &frame(10, full_packet(10)), |_, _| {})
+        .unwrap();
+    d.network_frame(loc(2), &frame(74, model_update(10, 1, 3)), |_, _| {})
+        .unwrap();
+    d.network_frame(loc(3), &frame(75, model_update(10, 5, 8)), |_, _| {})
+        .unwrap();
+
+    assert_eq!(model_of(&d, 75, 1), Some(Value::Int(3)));
+    assert!(!d.latest_snapshot().unwrap().inferred);
+    assert_eq!(d.stats.bases_strict, 2);
+}
+
+#[test]
+fn stale_frame_outside_the_server_window_is_not_trusted() {
+    // Frame 10 has the reference's low byte and the right entity count, but
+    // it is 66 packets old, so the server's slot no longer held it
+    let mut d = Decoder::new();
+    d.network_frame(loc(0), &frame(1, setup()), |_, _| {})
+        .unwrap();
+    d.network_frame(loc(1), &frame(10, full_packet(10)), |_, _| {})
+        .unwrap();
+    d.network_frame(loc(2), &frame(75, full_packet(75)), |_, _| {})
+        .unwrap();
+    d.network_frame(loc(3), &frame(76, model_update(10, 5, 8)), |_, _| {})
         .unwrap();
 
     assert_eq!(d.backup(), 64);
-    assert_eq!(d.stats.delta_base_byte_mismatches, 2);
-    assert_eq!(d.stats.empty_delta_bases, 0);
+    assert!(d.latest_snapshot().unwrap().inferred);
+    assert_eq!(d.stats.bases_strict, 0);
+    assert_eq!(d.stats.bases_count_search, 1);
 }
 
 #[test]

@@ -74,6 +74,9 @@ pub struct ExactCheck {
     /// Samples matching only the state one or two packets earlier (the
     /// client applies the change late). Counted for lag-tolerant checks
     pub match_lagged: u64,
+    /// Samples that agree in no alignment while the decoded state compared
+    /// was inferred. They do not prove a decoder fault
+    pub misses_on_inferred: u64,
     pub examples: Vec<Example>,
 }
 
@@ -88,6 +91,8 @@ pub struct DistanceCheck {
     pub bins: Vec<f64>,
     pub counts: Vec<u64>,
     pub max: f64,
+    /// Inexact samples whose decoded state was inferred
+    pub inexact_on_inferred: u64,
     /// First samples farther than 1/32 unit, as (entry, frame number, time, distance)
     pub outliers: Vec<(u32, i32, f32, f64)>,
 }
@@ -130,25 +135,40 @@ impl CrossCheckReport {
         }
 
         for c in &self.exact {
-            let agree = c.match_either + c.match_lagged;
-            if c.kind != CheckKind::ClientView && agree < c.compared {
-                failed.push(format!(
-                    "{}: {} of {} disagree",
-                    c.name,
-                    c.compared - agree,
-                    c.compared
+            if c.kind == CheckKind::ClientView {
+                continue;
+            }
+
+            let disagree = c.compared - (c.match_either + c.match_lagged);
+            let proven = disagree - c.misses_on_inferred;
+            if proven > 0 {
+                failed.push(format!("{}: {proven} of {} disagree", c.name, c.compared));
+            }
+            if c.misses_on_inferred > 0 {
+                inconclusive.push(format!(
+                    "{}: {} of {} disagree on inferred state",
+                    c.name, c.misses_on_inferred, c.compared
                 ));
             }
         }
 
         for c in &self.distance {
-            if c.kind == CheckKind::ServerCopy && c.counts[0] < c.compared {
+            if c.kind != CheckKind::ServerCopy {
+                continue;
+            }
+
+            let inexact = c.compared - c.counts[0];
+            let proven = inexact - c.inexact_on_inferred;
+            if proven > 0 {
                 failed.push(format!(
-                    "{}: {} of {} not exact (max {:.4})",
-                    c.name,
-                    c.compared - c.counts[0],
-                    c.compared,
-                    c.max
+                    "{}: {proven} of {} not exact (max {:.4})",
+                    c.name, c.compared, c.max
+                ));
+            }
+            if c.inexact_on_inferred > 0 {
+                inconclusive.push(format!(
+                    "{}: {} of {} not exact on inferred state",
+                    c.name, c.inexact_on_inferred, c.compared
                 ));
             }
         }
@@ -211,11 +231,18 @@ impl DistanceCheck {
             bins: BINS.to_vec(),
             counts: vec![0; BINS.len() + 1],
             max: 0.,
+            inexact_on_inferred: 0,
             outliers: Vec::new(),
         }
     }
 
-    fn add(&mut self, at: &FrameLocation, d: f64) {
+    /// Record one distance. `inferred` marks a sample compared against
+    /// inferred decoded state
+    fn add(&mut self, at: &FrameLocation, d: f64, inferred: bool) {
+        if d > 0. && inferred {
+            self.inexact_on_inferred += 1;
+        }
+
         if d > 1. / 32. && self.outliers.len() < MAX_EXAMPLES {
             self.outliers
                 .push((at.entry, at.frame_number, at.time(), d));
@@ -244,6 +271,7 @@ impl Exact {
                 match_after: 0,
                 match_either: 0,
                 match_lagged: 0,
+                misses_on_inferred: 0,
                 examples: Vec::new(),
             },
         }
@@ -256,10 +284,11 @@ impl Exact {
         before: Option<T>,
         after: Option<T>,
     ) {
-        self.add_lagged(at, recorded, before, after, [None, None]);
+        self.add_lagged(at, recorded, before, after, [None, None], false);
     }
 
-    /// Like `add`, also accepting states up to two packets before `before`
+    /// Like `add`, also accepting states up to two packets before `before`.
+    /// `inferred` marks a sample compared against inferred decoded state
     fn add_lagged<T: PartialEq + std::fmt::Debug>(
         &mut self,
         at: &FrameLocation,
@@ -267,6 +296,7 @@ impl Exact {
         before: Option<T>,
         after: Option<T>,
         older: [Option<T>; 2],
+        inferred: bool,
     ) {
         if before.is_none() && after.is_none() {
             return;
@@ -283,6 +313,7 @@ impl Exact {
 
         let lagged = !(a || b) && older.iter().any(|o| o.as_ref() == Some(&recorded));
         c.match_lagged += u64::from(lagged);
+        c.misses_on_inferred += u64::from(!(a || b || lagged) && inferred);
 
         if !(a || b || lagged) && c.examples.len() < MAX_EXAMPLES {
             c.examples.push(Example {
@@ -446,12 +477,15 @@ impl Checks {
     ) {
         let r = ClientDataRecord(&p.record);
         let at = &p.location;
+        let inferred = [before, after].iter().flatten().any(|s| s.inferred);
 
-        self.weapon_bits.add(
+        self.weapon_bits.add_lagged(
             at,
             i64::from(r.weapon_bits()),
             cd(d, before, "weapons").map(|v| v as i64 as i32 as i64),
             cd(d, after, "weapons").map(|v| v as i64 as i32 as i64),
+            [None, None],
+            inferred,
         );
 
         let recorded_fov = r.fov().to_bits();
@@ -475,6 +509,7 @@ impl Checks {
             fov(before),
             fov(after),
             [fov(older[0]), fov(older[1])],
+            false,
         );
 
         // While the view is set to another entity (a camera), the record
@@ -493,7 +528,7 @@ impl Checks {
             .map(|o| dist(r.origin(), o))
             .min_by(f64::total_cmp);
         if let Some(b) = best {
-            self.record_origin.add(at, b);
+            self.record_origin.add(at, b, inferred);
         }
     }
 
@@ -575,7 +610,7 @@ impl Checks {
                 .map(|o| dist(rec, o))
                 .min_by(f64::total_cmp);
             if let Some(b) = best {
-                check.add(at, b);
+                check.add(at, b, false);
             }
         }
     }
@@ -793,8 +828,7 @@ pub fn crosscheck_demo(path: &Path, limits: Limits) -> CrossCheckReport {
         );
     }
 
-    report.inferred_delta_bases =
-        d.stats.sequence_offset_changes > 0 || d.stats.empty_delta_bases > 0;
+    report.inferred_delta_bases = d.stats.inferred_snapshots > 0;
     report.skipped_camera_view_records = checks.camera_view_records;
 
     let c = checks;
@@ -870,7 +904,8 @@ mod tests {
     #[test]
     fn exact_checks_count_both_alignments() {
         let mut e = Exact::new("x", CheckKind::Identity);
-        e.add_lagged(&loc(), 5, Some(1), Some(2), [None, Some(5)]);
+        e.add_lagged(&loc(), 5, Some(1), Some(2), [None, Some(5)], false);
+        e.add_lagged(&loc(), 6, Some(1), Some(2), [None, None], true);
         e.add(&loc(), 1, Some(1), Some(2));
         e.add(&loc(), 2, Some(1), Some(2));
         e.add(&loc(), 3, Some(1), Some(2));
@@ -879,10 +914,11 @@ mod tests {
         let c = e.check;
         assert_eq!(
             (c.compared, c.match_before, c.match_after, c.match_either),
-            (4, 1, 1, 2)
+            (5, 1, 1, 2)
         );
         assert_eq!(c.match_lagged, 1);
-        assert_eq!(c.examples.len(), 1);
+        assert_eq!(c.misses_on_inferred, 1);
+        assert_eq!(c.examples.len(), 2);
     }
 
     fn report(exact: Vec<ExactCheck>, inferred: bool) -> CrossCheckReport {
@@ -936,7 +972,16 @@ mod tests {
         r.judge();
         assert_eq!(r.outcome, Outcome::Inconclusive);
 
-        // Any identity or server-copy disagreement fails, even if inferred
+        // Disagreement only on inferred state is inconclusive, not failed
+        let mut miss = check(CheckKind::ServerCopy, 8, 10);
+        miss.misses_on_inferred = 2;
+        let mut r = report(vec![miss], true);
+        r.judge();
+        assert_eq!(r.outcome, Outcome::Inconclusive);
+        assert_eq!(r.reasons.len(), 2);
+
+        // Any identity or proven server-copy disagreement fails, even when
+        // other state was inferred
         for kind in [CheckKind::Identity, CheckKind::ServerCopy] {
             let mut r = report(
                 vec![check(kind, 9, 10), check(CheckKind::ServerCopy, 5, 5)],
@@ -957,7 +1002,7 @@ mod tests {
     fn distance_bins() {
         let mut d = DistanceCheck::new("x", CheckKind::ServerCopy);
         for v in [0., 0.005, 0.02, 0.3, 2., 50., 100.] {
-            d.add(&loc(), v);
+            d.add(&loc(), v, false);
         }
 
         assert_eq!(d.counts, vec![1, 1, 1, 1, 1, 1, 1]);

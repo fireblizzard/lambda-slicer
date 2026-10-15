@@ -9,7 +9,7 @@ them. The full design is in [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md).
 |---|---|
 | M0 scaffold | done: workspace, CLI, fixture manifest, docs, CI |
 | M1 container + S0 controls | done; S0 passed in game ([engine-validation](docs/engine-validation.md)) |
-| M2 network state decoder | decodes the whole corpus; validation found a delta-base fault being fixed ([protocol profile](docs/protocol-profile-5-48.md)) |
+| M2 network state decoder | decodes the whole corpus; delta bases are proven or flagged as inferred ([protocol profile](docs/protocol-profile-5-48.md)) |
 | M3 arbitrary-start slicing | not started |
 | M4–M7 analysis, library, GUI, release | not started |
 
