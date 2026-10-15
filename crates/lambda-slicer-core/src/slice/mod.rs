@@ -4,6 +4,8 @@
 
 pub mod controls;
 pub mod output;
+pub mod persistent;
+pub mod restart;
 
 use std::path::PathBuf;
 
@@ -40,6 +42,20 @@ pub enum ExportError {
         end: DemoTime,
         segment_end: DemoTime,
     },
-    #[error("output failed structural validation: {0}")]
+    #[error("output failed validation: {0}")]
     Validation(String),
+    #[error("source does not decode: {0}")]
+    Decode(String),
+    #[error("the source failed its cross-check, so its reconstructed state is not trusted")]
+    SourceFailedCrossCheck,
+    #[error("state at {0} rests on an inferred delta base")]
+    UnprovenState(String),
+    #[error("the client dropped packets as too old at {0}, which a restart cannot reproduce yet")]
+    ClientDroppedPackets(String),
+    #[error("a new session starts at {0} inside the range")]
+    CrossSegmentRange(String),
+    #[error("delta base {0} before the start is not in the recording")]
+    MissingDeltaBase(u32),
+    #[error("{0} before the start sets state a restart cannot carry over yet")]
+    UnknownPersistentMessage(String),
 }

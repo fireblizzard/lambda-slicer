@@ -24,6 +24,7 @@ cargo build --release
 .\target\release\lambda-slicer.exe control exact-copy   SRC --output OUT.dem
 .\target\release\lambda-slicer.exe control roundtrip    SRC --output OUT.dem
 .\target\release\lambda-slicer.exe control truncate-end SRC --end 4:48 --output OUT.dem
+.\target\release\lambda-slicer.exe slice SRC --start 1:36 --end 4:48 --output OUT.dem   # experimental S1 restart
 .\target\release\lambda-slicer.exe decode   'path\to\demo.dem'            # --events, --trace FROM TO, --json -
 .\target\release\lambda-slicer.exe crosscheck 'path\to\demo.dem'          # exit 0 verified, 1 failed, 2 inconclusive
 .\target\release\lambda-slicer.exe hash FILES...

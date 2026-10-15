@@ -13,6 +13,7 @@ use lambda_slicer_core::fixtures::{MANIFEST_ENV, check_fixture, load_manifest};
 use lambda_slicer_core::library::fingerprint::full_fingerprint;
 use lambda_slicer_core::protocol::messages::{Message, svc};
 use lambda_slicer_core::slice::controls::{Control, run_control};
+use lambda_slicer_core::slice::restart::run_restart;
 use lambda_slicer_core::state::{
     ActorResolution, DecodeOptions, DecodeStatus, DecodedEvent, Decoder, decode_demo,
 };
@@ -53,6 +54,21 @@ enum Command {
         #[arg(long)]
         output: PathBuf,
         /// Exclusive end for `truncate-end`, given as seconds, M:SS, or HH:MM:SS.fff
+        #[arg(long)]
+        end: Option<DemoTime>,
+        #[arg(long)]
+        json: Option<PathBuf>,
+    },
+    /// Experimental S1 restart, writing `[start, end)` as a demo that plays
+    /// on its own. Never overwrites
+    Slice {
+        source: PathBuf,
+        #[arg(long)]
+        output: PathBuf,
+        /// Inclusive start, given as seconds, M:SS, or HH:MM:SS.fff
+        #[arg(long)]
+        start: DemoTime,
+        /// Exclusive end, defaulting to the end of the recording
         #[arg(long)]
         end: Option<DemoTime>,
         #[arg(long)]
@@ -212,6 +228,66 @@ fn run() -> Result<ExitCode> {
                     }
 
                     let name = report
+                        .published
+                        .path
+                        .file_name()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                        .into_owned();
+                    println!(
+                        "  in-game: copy into the mod directory, then run: playdemo {}",
+                        name.trim_end_matches(".dem")
+                    );
+                }
+            }
+        }
+        Command::Slice {
+            source,
+            output,
+            start,
+            end,
+            json,
+        } => {
+            let r = run_restart(&source, &output, start, end, limits)?;
+            match &json {
+                Some(target) => write_json(target, &r)?,
+                None => {
+                    println!("slice -> {}", r.published.path.display());
+                    if let Some(h) = &r.published.source.full_hash {
+                        println!("  source blake3 {h}");
+                    }
+                    println!("  output blake3 {}", r.published.output_hash);
+                    println!(
+                        "  requested [{}, {}), effective [{}, {}); {} records, {} network frames kept",
+                        r.requested_start,
+                        r.requested_end.as_deref().unwrap_or("end"),
+                        r.effective_start,
+                        r.effective_end,
+                        r.kept_records,
+                        r.kept_network_records
+                    );
+                    println!(
+                        "  bootstrap: {} full updates ({} bytes) for sequences {:?}, start sequence {}",
+                        r.bootstrap_sequences.len(),
+                        r.bootstrap_bytes,
+                        r.bootstrap_sequences,
+                        r.start_sequence
+                    );
+                    println!(
+                        "  persistent state: {} messages ({} bytes) replayed",
+                        r.persistent_messages, r.persistent_bytes
+                    );
+                    println!(
+                        "  time windows: {} inexact, {} outside the window",
+                        r.inexact_time_windows, r.clamped_time_windows
+                    );
+                    let v = &r.validation;
+                    println!(
+                        "  validation: {} kept snapshots compared, {} time-window and {} other field differences",
+                        v.compared_snapshots, v.time_window_differences, v.other_differences
+                    );
+
+                    let name = r
                         .published
                         .path
                         .file_name()

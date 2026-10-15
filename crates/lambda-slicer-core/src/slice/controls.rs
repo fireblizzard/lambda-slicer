@@ -16,7 +16,7 @@ use std::path::Path;
 use serde::Serialize;
 
 use super::ExportError;
-use super::output::{Published, io_err, publish_new};
+use super::output::{Counting, Published, io_err, publish_new, to_i32};
 use crate::container::{
     DemoReader, Frame, FrameBody, HEADER_DIR_OFFSET_FIELD, Limits, encode_directory, encode_frame,
     encode_header, tag,
@@ -87,7 +87,7 @@ pub fn run_control(
     let published = publish_new(
         source,
         dest,
-        |snapshot, out| match control {
+        |snapshot, _, out| match control {
             Control::ExactCopy => {
                 io::copy(snapshot, out).map_err(io_err(dest))?;
                 Ok(())
@@ -127,24 +127,6 @@ pub fn run_control(
         entries,
         cut,
     })
-}
-
-/// Counts bytes written so entry offsets can be assigned while streaming
-struct Counting<W> {
-    inner: W,
-    pos: u64,
-}
-
-impl<W: Write> Counting<W> {
-    fn put(&mut self, bytes: &[u8]) -> io::Result<()> {
-        self.inner.write_all(bytes)?;
-        self.pos += bytes.len() as u64;
-        Ok(())
-    }
-}
-
-fn to_i32(v: u64, what: &str) -> Result<i32, ExportError> {
-    i32::try_from(v).map_err(|_| ExportError::Unsupported(format!("{what} {v} exceeds i32")))
 }
 
 /// Re-encode every entry of the source snapshot frame by frame. With `cut`, the playback entry stops

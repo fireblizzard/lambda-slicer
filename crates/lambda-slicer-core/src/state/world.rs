@@ -457,6 +457,11 @@ impl Decoder {
         self.history.back()
     }
 
+    /// The newest stored snapshot with exactly this recorded sequence
+    pub fn snapshot(&self, sequence: u32) -> Option<&Arc<Snapshot>> {
+        self.history.iter().rev().find(|s| s.sequence == sequence)
+    }
+
     /// The newest stored snapshot whose sequence, under the current inferred
     /// offset, has this low byte
     pub fn snapshot_for_byte(&self, byte: u8) -> Option<&Arc<Snapshot>> {

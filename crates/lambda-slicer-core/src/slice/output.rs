@@ -24,13 +24,14 @@ pub struct Published {
 /// Write a new file at `dest` derived from `source`
 ///
 /// `write` reads the source snapshot, positioned at its start, and fills the
-/// temporary output. `validate` re-reads the output by path. A source that
+/// temporary output. It also gets the snapshot's path, for passes that open
+/// the snapshot again. `validate` re-reads the output by path. A source that
 /// changes while the snapshot is taken aborts the export. Nothing is left at
 /// `dest` on failure
 pub fn publish_new(
     source: &Path,
     dest: &Path,
-    write: impl FnOnce(&mut File, &mut File) -> Result<(), ExportError>,
+    write: impl FnOnce(&mut File, &Path, &mut File) -> Result<(), ExportError>,
     validate: impl FnOnce(&Path) -> Result<(), ExportError>,
 ) -> Result<Published, ExportError> {
     let parent = match dest.parent() {
@@ -53,7 +54,8 @@ pub fn publish_new(
 
     let mut tmp =
         NamedTempFile::with_prefix_in(".lambda-slicer-", parent).map_err(io_err(parent))?;
-    write(snapshot.as_file_mut(), tmp.as_file_mut())?;
+    let snapshot_path = snapshot.path().to_path_buf();
+    write(snapshot.as_file_mut(), &snapshot_path, tmp.as_file_mut())?;
     tmp.as_file_mut().sync_all().map_err(io_err(tmp.path()))?;
     validate(tmp.path())?;
     let output_hash = hash_file(tmp.path()).map_err(io_err(tmp.path()))?;
@@ -141,6 +143,24 @@ fn unchanged(before: &SourceFingerprint, after: &SourceFingerprint, copied: u64)
         && copied == before.size
 }
 
+/// Counts bytes written so entry offsets can be assigned while streaming
+pub(super) struct Counting<W> {
+    pub inner: W,
+    pub pos: u64,
+}
+
+impl<W: Write> Counting<W> {
+    pub fn put(&mut self, bytes: &[u8]) -> io::Result<()> {
+        self.inner.write_all(bytes)?;
+        self.pos += bytes.len() as u64;
+        Ok(())
+    }
+}
+
+pub(super) fn to_i32(v: u64, what: &str) -> Result<i32, ExportError> {
+    i32::try_from(v).map_err(|_| ExportError::Unsupported(format!("{what} {v} exceeds i32")))
+}
+
 pub(crate) fn io_err(path: &Path) -> impl FnOnce(io::Error) -> ExportError + '_ {
     move |source| ExportError::Io {
         path: path.to_path_buf(),
@@ -195,7 +215,7 @@ mod tests {
         let published = publish_new(
             &source,
             &dest,
-            |snapshot, out| {
+            |snapshot, _, out| {
                 std::fs::write(&source, b"replaced after the snapshot").unwrap();
                 io::copy(snapshot, out).map_err(io_err(&source))?;
                 Ok(())
@@ -223,7 +243,7 @@ mod tests {
         let failed = publish_new(
             &source,
             &dir.path().join("out.bin"),
-            |_, _| Err(ExportError::EmptyRange),
+            |_, _, _| Err(ExportError::EmptyRange),
             |_| Ok(()),
         );
         assert!(matches!(failed, Err(ExportError::EmptyRange)));

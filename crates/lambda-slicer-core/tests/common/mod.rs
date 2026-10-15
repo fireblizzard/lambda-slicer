@@ -3,6 +3,8 @@
 
 #![allow(dead_code)]
 
+pub mod stream;
+
 use lambda_slicer_core::container::{
     DirectoryEntry, EventRecord, Frame, FrameBody, Header, NetworkFrame, SoundRecord,
     encode_directory, encode_frame, encode_header, tag,

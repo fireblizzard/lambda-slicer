@@ -358,6 +358,60 @@ largest update was 1,048 bytes. Of 8,860 inexact time windows, 4,725 lie outside
 (`animtime` more than 1.27 s old, which a real full update cannot send either) and the rest
 differ only by float rounding. Exports report both counts.
 
+## Restart export (M3, experimental)
+
+`lambda-slicer slice SOURCE --start T [--end T] --output OUT` writes `[start, end)` as a demo that
+plays on its own (`slice::restart`). The layout copies how a real recording opens, where playback
+starts with `svc_time`, full clientdata and a full `svc_packetentities`.
+
+- **LOADING:** the source's entry, byte for byte.
+- **Playback:** `DemoStart`, then one bootstrap group at time 0 and frame 0, then the kept groups.
+  The bootstrap group holds the DemoBuffer and ClientData records of the last group before the
+  start, a record of persistent messages, and a full update for every frame before the start
+  that a kept packet still references as a delta base. Each full update travels under that
+  frame's own sequence numbers and demo info, so the client stores it in the ring slot the kept
+  deltas name.
+- **Kept groups:** their bytes unchanged, outer times rebased so the first keeps its original
+  spacing after the bootstrap group, frame numbers from 1. `svc_time` and every other server
+  clock stay in the source's coordinates.
+- **Terminal and directory:** a NextSection record at the rebased time of the first excluded
+  group (or of the source terminal), then the directory with the playback entry's network record
+  count and track time.
+
+**Persistent messages** before the start (`slice::persistent`) are reduced to the last one per
+type and key and replayed in the order those last ones arrived: light styles by index, user info
+by slot, `AmmoX`, `ScoreInfo`, `TeamInfo` and similar by their first byte, `CurWeapon` by weapon
+id, `WeaponList` by weapon name, and single values such as `Health`, `Battery`, `Timer` and AG
+settings. Lifecycle messages (`ResetHUD`, `InitHUD`) are kept the same way, so whatever they
+cleared in the source is cleared again. Static entities and ambient sounds spawned during play
+are replayed once each. Sounds, effects, chat, pickups, menus and death notices are not
+replayed. Any other message blocks the export with `UnknownPersistentMessage`. Every user
+message name in the 2,000-demo sample is classified. The AG-specific ones (`Countdown`, `Vote`,
+`Location`, `CTF`, `CTFFlag`, `TeamScore`, `Timeout` kept; `CheatCheck`, `MapList`, `MOTD`,
+`Splash`, `ShowMenu`, `CTFSound`, `VGUIMenu` dropped) are classified from their names and
+observed use, not from the AG client source, so the game test is their check.
+
+**Refusals** follow the rule in `IMPLEMENTATION_PLAN.md` §6.2: a `failed` source
+(`SourceFailedCrossCheck`), inferred state at a bootstrap frame or kept packet
+(`UnprovenState`), a kept packet the client drops (`ClientDroppedPackets`), a new session inside
+the range (`CrossSegmentRange`), and a referenced base that is not in the recording
+(`MissingDeltaBase`).
+
+**Validation before publishing:** structural inspection, then the output and the source are
+decoded side by side. Every kept record must have the source's bytes, and every kept snapshot
+must decode to the source's values. Only time-window fields may differ, inherited from bootstrap
+values the window cannot express. They are counted in the report.
+
+**Measured (2026-10-15):** `naz_crossfire_pb_01.dem`, `[1:36, 4:48)`: one bootstrap frame (602
+bytes), 54 persistent messages (850 bytes), 24,067 kept snapshots with no differing field
+outside time windows (5,433 time-window differences from 4 clamped `animtime` values), and the
+output's own cross-check is *verified* with 48,134 of 48,134 server-copy samples.
+
+`[60 s, 80 s)` from 200 sample demos: 162 are shorter than 80 s. Of the other 38, 30 exported
+with no differing field outside time windows (bootstraps of 1 to 9 frames), 7 were refused
+because their source fails its cross-check, and 1 because the start lies in a later session than
+its LOADING entry, which restarts do not support yet.
+
 # Validation against client-recorded values (M2)
 
 The recording client writes its own view of the game into every demo: the 436-byte demo info

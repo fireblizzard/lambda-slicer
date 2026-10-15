@@ -62,4 +62,37 @@ Still to record: the console `version` output for the exact engine/client build.
 
 ## S1 (nonzero start)
 
-Not started. Requires the M2 network-state decoder.
+First restart output, generated 2026-10-15 (layout in `docs/protocol-profile-5-48.md`, "Restart
+export"):
+
+```powershell
+.\target\release\lambda-slicer.exe slice F:\HLScreeniesDemos\09aug2018\naz_crossfire_pb_01.dem --start 1:36 --end 4:48 --output work\ls_s1_crossfire.dem
+```
+
+Requested `[1:36, 4:48)`, effective `[00:01:36.002, 00:04:48.002)`. One bootstrap full update
+and 54 persistent messages precede 24,067 kept network records. Before publishing, every kept
+snapshot decoded identical to the source except time-window fields carried from 4 `animtime`
+values older than the 8-bit window allows. The output's own cross-check is *verified*.
+
+### Procedure (to run in the game)
+
+1. Copy `work\ls_s1_crossfire.dem` into `F:\SteamLibrary\steamapps\common\Half-Life\ag\`.
+2. Start AG, play any demo once first (the first playback of a session renders lighting
+   differently), then run `playdemo ls_s1_crossfire`.
+3. Check, comparing with the original from 1:36 if useful:
+   - it opens directly on the scene at 1:36 of the original, with no visible prefix;
+   - players, models, weapons and the camera are right from the first frame, and nothing is
+     frozen or missing;
+   - the HUD is right from the start: health, armour, ammo, current weapon and clip, timer and
+     scoreboard (Tab);
+   - gauss charge and discharge, sounds and effects behave like the original;
+   - it plays for about 3:12 and ends on the original's scene at 4:48 with a clean stop;
+   - no console errors, overflow or disconnect messages.
+4. Note anything that looks different in the first second, such as animation phases on
+   decorative entities (the clamped `animtime` values), and record the results below.
+
+### Results
+
+| Test | Date | Result | Observations |
+|---|---|---|---|
+| S1 crossfire `[1:36, 4:48)` | 2026-10-15 | pass | Plays on its own from the 1:36 scene to the 4:48 scene and stops cleanly. No problems seen. |
