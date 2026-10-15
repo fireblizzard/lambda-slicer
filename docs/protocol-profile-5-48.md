@@ -215,8 +215,27 @@ undetected drift were dropped packets (above). And in 23 of the 26 sample files 
 inference, it starts within the first 0.08 s of playback. In `20250705_121955_kz_cargo.dem` the
 first playback delta references sequence 83456, while the first recorded playback packet is
 83458, and every later reference is 5 or 6 back in the recorded numbering. That fits a delta
-from a frame received before recording began, which the count search mistakes for an offset,
-making the whole session inferred. Such files are reported *inconclusive*.
+from a frame received before recording began. `20230921_185958_bkz_goldbhop.dem` shows the same
+pattern: its first delta names 212544 while recording starts at 212546, and all 635 deltas are 4
+to 6 back. Read as drift, the client would be acknowledging frames 0 or 1 packets old,
+which no round trip allows.
+
+The decoder therefore tracks numbering runs. A run starts at the first recorded packet and again
+wherever the recorded sequence steps back or jumps 63 or more forward, since no reference the
+client accepts can span such a jump. A reference the client accepts that names a frame before
+the run start is to a frame never recorded. Its base is guessed by the count search, and the
+state is inferred, but no offset is adopted and the numbering stays trusted (`unrecorded_bases`
+in reports). Later references resolve strictly, and the next full update clears the inference.
+A lag burst can also leave such a jump (630076 to 630171 in `bhop_mann`), so a run of dropped
+packets carries on across it. In the 2,000-file sample this leaves the outcome counts unchanged
+(1,910 verified, 28 inconclusive, 58 failed) because any inferred base keeps a file
+inconclusive, but inference now ends at the next full update instead of covering the session.
+`hl_trick` and `20250705_121528_kz_cargo.dem` lost all their disagreements (7 and 227), while
+`20250705_121536_kz_cargo.dem` went from 2 to 10 on its few inferred snapshots. Goldbhop's 633
+bases now resolve strictly, but it has no full update after the first delta, so its state stays
+inferred. A recording that really drifts from its first
+packet would look the same, and nothing here separates the two at that point. Drift that shifts
+later still goes to the count search whenever the strict base fails the count check.
 
 ### Base selection: strict versus inferred
 
@@ -224,16 +243,17 @@ making the whole session inferred. Such files are reported *inconclusive*.
 |---|---|---|
 | `strict` | the newest snapshot in ring slot `from & (backup − 1)`, if the reference is 1 to 62 packets back (anything else the client drops), the occupant is at most `backup` packets old, and (for entity packets) its rebuild reproduces the declared entity count. An older occupant means the slot's real content was never recorded | yes, unless the session's numbering is already suspect |
 | `offset` | matched under the sequence offset inferred earlier in the session, rebuild reproduces the declared count | no |
-| `count_search` | the nearest of the last 64 snapshots whose rebuild reproduces the declared count; its offset is adopted | no |
+| `count_search` | the nearest of the last 64 snapshots whose rebuild reproduces the declared count; its offset is adopted, unless the reference names a frame from before the recorded run (counted as `unrecorded_bases`) | no |
 | `empty` | nothing received yet, so an empty base | no |
 
 - **Equal counts prove nothing.** Two snapshots with the same entities but different values both
   pass the count check, so a count-search or offset base is a guess.
-- **Once any count search happens, the session's numbering is suspect** and strict resolution is
-  disabled until the next `svc_serverinfo`. A same-byte match would name a frame offset by the
-  drift; it passes the count check and goes unnoticed by the client-recorded checks, because
-  origin is resent every frame. In `20230921_185958_bkz_goldbhop.dem` that path would have
-  claimed 633 strict bases.
+- **Once a count search happens for any other reason, the session's numbering is suspect** and
+  strict resolution is disabled until the next `svc_serverinfo`. A same-byte match would name a
+  frame offset by the drift; it passes the count check and goes unnoticed by the client-recorded checks, because
+  origin is resent every frame. A reference to a frame from before the recorded run is the
+  exception (above). Its count search once made `20230921_185958_bkz_goldbhop.dem` suspect, which
+  withheld 633 strict bases.
 - **Uncertainty propagates.** Every snapshot carries `inferred`: set when its base was not
   strict or was itself inferred, or when clientdata had no base clientdata to delta from. Only a
   full update (no delta base) clears it. Reports give `inferred_snapshots`, the first location

@@ -574,6 +574,28 @@ fn a_dropped_run_past_255_packets_stays_dropped_when_the_byte_wraps() {
 }
 
 #[test]
+fn a_dropped_run_goes_on_across_a_gap_in_the_recording() {
+    // A lag burst leaves sequences 74 to 139 unrecorded. That starts a new
+    // numbering run, but the client still drops packets naming frame 10
+    let mut d = Decoder::new();
+    d.network_frame(loc(0), &frame(1, setup()), |_, _| {})
+        .unwrap();
+    d.network_frame(loc(1), &frame(10, full_packet(10)), |_, _| {})
+        .unwrap();
+    for seq in 11..=73 {
+        d.network_frame(loc(2), &frame(seq, model_update(10, 5, 8)), |_, _| {})
+            .unwrap();
+    }
+    d.network_frame(loc(3), &frame(140, model_update(10, 1, 3)), |_, _| {})
+        .unwrap();
+
+    assert_eq!(d.latest_snapshot().unwrap().sequence, 72);
+    assert_eq!(d.stats.discarded_packets, 2);
+    assert_eq!(d.stats.bases_count_search, 0);
+    assert_eq!(d.stats.inferred_snapshots, 0);
+}
+
+#[test]
 fn a_sudden_far_reference_is_inferred_not_dropped() {
     // Byte 10 is 64 packets back, but no run led there, so this is not the
     // client dropping a lagging packet. It may be shifted numbering, and the
@@ -592,6 +614,46 @@ fn a_sudden_far_reference_is_inferred_not_dropped() {
     assert_eq!(d.stats.discarded_packets, 0);
     assert_eq!(d.stats.bases_strict, 0);
     assert_eq!(d.stats.bases_count_search, 1);
+}
+
+#[test]
+fn a_base_from_before_the_recording_is_inferred_without_suspecting_the_numbering() {
+    // Playback numbering starts at 1000, unrelated to the loading segment,
+    // and the first delta names 996, which the client received before
+    // recording began. The guess is inferred, but it is no offset
+    let before = 996u32 as u8;
+    let first = 1000u32 as u8;
+
+    let mut d = Decoder::new();
+    d.network_frame(loc(0), &frame(1, setup()), |_, _| {})
+        .unwrap();
+    d.network_frame(loc(1), &frame(10, full_packet(10)), |_, _| {})
+        .unwrap();
+    d.network_frame(loc(2), &frame(1000, full_packet(1000)), |_, _| {})
+        .unwrap();
+    d.network_frame(loc(3), &frame(1001, full_packet(1001)), |_, _| {})
+        .unwrap();
+    d.network_frame(loc(4), &frame(1002, model_update(before, 5, 8)), |_, _| {})
+        .unwrap();
+
+    let latest = d.latest_snapshot().unwrap();
+    assert_eq!(latest.sequence, 1002);
+    assert!(latest.inferred);
+    assert_eq!(d.stats.unrecorded_bases, 1);
+    assert_eq!(d.stats.bases_count_search, 1);
+    assert_eq!(d.stats.sequence_offset_changes, 0);
+    assert_eq!(d.stats.first_inferred, Some(loc(4)));
+
+    // The next reference names a recorded frame and stays strict
+    d.network_frame(loc(5), &frame(1003, model_update(first, 1, 3)), |_, _| {})
+        .unwrap();
+    let latest = d.latest_snapshot().unwrap();
+    assert!(!latest.inferred);
+    assert_eq!(model_of(&d, 1003, 1), Some(Value::Int(3)));
+    assert_eq!(model_of(&d, 1003, 5), Some(Value::Int(7)));
+    assert_eq!(d.stats.bases_strict, 1);
+    assert_eq!(d.stats.inferred_snapshots, 1);
+    assert_eq!(d.snapshot_for_byte(first).unwrap().sequence, 1000);
 }
 
 #[test]

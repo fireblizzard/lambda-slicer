@@ -228,6 +228,10 @@ pub struct DecodeStats {
     /// Delta entity packets the client drops because their base is too old.
     /// Their entity and client state are not kept
     pub discarded_packets: u64,
+    /// Delta bases from before the first recorded packet of the numbering
+    /// run, which the recording never received. They are guessed by count
+    /// without adopting an offset
+    pub unrecorded_bases: u64,
     /// Removals of entities absent from the delta base (ignored, as the
     /// engine does)
     pub removed_absent_entities: u64,
@@ -301,6 +305,13 @@ pub struct Decoder {
     /// match would name the wrong frame
     numbering_suspect: bool,
     last_delta: Option<LastDelta>,
+    /// Recorded sequence of the last network frame
+    last_recorded: Option<u32>,
+    /// First recorded sequence of the current numbering run. Playback
+    /// recordings continue the netchan numbering of a connection whose
+    /// earlier packets were never recorded, so it jumps from the loading
+    /// segment, for example from 134 to 83458
+    run_start: u32,
 
     /// Current occupant of each player slot in this session
     pub players: BTreeMap<u8, PlayerInfo>,
@@ -379,6 +390,8 @@ impl Decoder {
             sequence_offset: 0,
             numbering_suspect: false,
             last_delta: None,
+            last_recorded: None,
+            run_start: 0,
 
             players: BTreeMap::new(),
             name_history: Vec::new(),
@@ -501,6 +514,37 @@ impl Decoder {
         (1..=2).contains(&gap) && u32::from(previous.back) + gap >= u32::from(CLIENT_REJECTS_BACK)
     }
 
+    /// Follow the recorded numbering. A step back or 63 or more packets
+    /// forward starts a new run, because no reference the client accepts
+    /// can reach across it. A lag burst can leave such a gap too, and a run
+    /// of dropped packets goes on across it
+    fn note_recorded(&mut self, sequence: u32) {
+        let continues = self
+            .last_recorded
+            .is_some_and(|last| sequence.wrapping_sub(last) < u32::from(CLIENT_REJECTS_BACK));
+        if !continues {
+            self.run_start = sequence;
+        }
+
+        self.last_recorded = Some(sequence);
+    }
+
+    /// Whether `from` names a frame received before the first recorded
+    /// packet of this numbering run. Recording can begin while the client
+    /// still acknowledges such a frame, so the base exists but was never
+    /// recorded. That says nothing about the numbering, and later references
+    /// stay strict
+    fn unrecorded_base(&self, from: u8, sequence: u32) -> bool {
+        if self.numbering_suspect || !client_accepts(from, sequence) {
+            return false;
+        }
+
+        let back = (sequence as u8).wrapping_sub(from);
+        let into_run = sequence.wrapping_sub(self.run_start);
+
+        u32::from(back) > into_run
+    }
+
     /// A frame matching `from` under an offset inferred earlier in this
     /// session
     fn offset_base(&self, from: u8) -> Option<Arc<Snapshot>> {
@@ -544,6 +588,8 @@ impl Decoder {
         self.stats.max_payload = self.stats.max_payload.max(frame.message.len());
 
         let sequence = frame.sequence[0] as u32;
+        self.note_recorded(sequence);
+
         let mut building = Building {
             sequence,
             pending_clientdata: None,
@@ -1166,7 +1212,10 @@ impl Decoder {
 
         // No named frame works. Some recordings store a sequence counter that
         // drifts from the server's numbering, so try recent frames, nearest
-        // first, and keep the first whose rebuild has the declared count
+        // first, and keep the first whose rebuild has the declared count. A
+        // base from before the recording is guessed the same way, but its
+        // absence is no sign of drift
+        let unrecorded = self.unrecorded_base(from, sequence);
         let depth = self.history.len().min(COUNT_SEARCH_DEPTH);
         for back in 0..depth {
             let snap = self.history[self.history.len() - 1 - back].clone();
@@ -1174,10 +1223,15 @@ impl Decoder {
                 continue;
             };
 
-            self.numbering_suspect = true;
-            self.sequence_offset = (snap.sequence as u8).wrapping_sub(from);
-            self.stats.sequence_offset = self.sequence_offset;
-            self.stats.sequence_offset_changes += 1;
+            if unrecorded {
+                self.stats.unrecorded_bases += 1;
+            } else {
+                self.numbering_suspect = true;
+                self.sequence_offset = (snap.sequence as u8).wrapping_sub(from);
+                self.stats.sequence_offset = self.sequence_offset;
+                self.stats.sequence_offset_changes += 1;
+            }
+
             return Ok(self.accept(r, from, snap, BaseResolution::CountSearch, building));
         }
 
