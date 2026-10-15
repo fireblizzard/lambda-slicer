@@ -1,12 +1,19 @@
 //! Synthetic message streams through the decoder. Encodings follow the
 //! engine writers documented in docs/protocol-profile-5-48.md
 
+use std::sync::Arc;
+
 use lambda_slicer_core::container::NetworkFrame;
 use lambda_slicer_core::protocol::bitwrite::BitWriter;
-use lambda_slicer_core::protocol::delta::{Value, dt};
+use lambda_slicer_core::protocol::delta::{StructState, Value, dt};
+use lambda_slicer_core::protocol::encode::{
+    EncodeStats, FullEntity, differing_fields, write_full_clientdata, write_full_entities,
+    write_time,
+};
 use lambda_slicer_core::protocol::messages::svc;
 use lambda_slicer_core::state::{
-    ActorResolution, DecodeErrorKind, Decoder, EventSource, FrameLocation, NameChangeKind,
+    ActorResolution, DecodeErrorKind, Decoder, EntityState, EventSource, FrameLocation,
+    NameChangeKind, Snapshot,
 };
 
 type Field = (&'static str, u32, u32, u32, u32); // name, flags, offset, bits, premultiply
@@ -885,4 +892,192 @@ fn serverinfo_with_another_protocol_stops_decoding() {
 
     assert_eq!(err.kind, DecodeErrorKind::UnsupportedProtocol(47));
     assert_eq!(err.opcode, svc::SERVERINFO);
+}
+
+/// Encode the latest snapshot as a full update, the way a restart export
+/// bootstraps a slice
+fn encode_latest(d: &Decoder, stats: &mut EncodeStats) -> Vec<u8> {
+    let snap = d.latest_snapshot().unwrap();
+    let mut w = BitWriter::new();
+    write_time(&mut w, snap.server_time_bits);
+
+    let weapons: Vec<_> = snap
+        .weapons
+        .as_ref()
+        .unwrap()
+        .iter()
+        .map(|s| s.as_deref())
+        .collect();
+    write_full_clientdata(
+        &mut w,
+        &d.schema("clientdata_t").unwrap(),
+        snap.clientdata.as_ref().unwrap(),
+        d.schema("weapon_data_t").as_deref(),
+        &weapons,
+        snap.server_time_bits,
+        stats,
+    );
+
+    let empty = StructState::default();
+    let entities = snap.entities.as_ref().unwrap();
+    let schemas: Vec<_> = entities
+        .iter()
+        .map(|e| d.entity_schema(e.number, e.custom).unwrap())
+        .collect();
+    let full: Vec<_> = entities
+        .iter()
+        .zip(&schemas)
+        .map(|(e, schema)| FullEntity {
+            number: e.number,
+            custom: e.custom,
+            schema,
+            baseline: d.baseline(e.number).map_or(&empty, |b| &b.fields),
+            state: &e.fields,
+        })
+        .collect();
+    write_full_entities(
+        &mut w,
+        &full,
+        d.instanced_baselines() > 0,
+        snap.server_time_bits,
+        stats,
+    );
+
+    w.finish()
+}
+
+fn assert_same_state(d: &Decoder, a: &Snapshot, b: &Snapshot) {
+    let (ea, eb) = (a.entities.as_ref().unwrap(), b.entities.as_ref().unwrap());
+    let numbers = |e: &[Arc<EntityState>]| e.iter().map(|x| x.number).collect::<Vec<_>>();
+    assert_eq!(numbers(ea), numbers(eb));
+    for (x, y) in ea.iter().zip(eb.iter()) {
+        let schema = d.entity_schema(x.number, x.custom).unwrap();
+        assert_eq!(
+            differing_fields(&schema, &x.fields, &y.fields),
+            Vec::<usize>::new()
+        );
+    }
+
+    let client = d.schema("clientdata_t").unwrap();
+    let (ca, cb) = (
+        a.clientdata.as_ref().unwrap(),
+        b.clientdata.as_ref().unwrap(),
+    );
+    assert_eq!(differing_fields(&client, ca, cb), Vec::<usize>::new());
+
+    let weapon = d.schema("weapon_data_t").unwrap();
+    let empty = StructState::default();
+    let (wa, wb) = (a.weapons.as_ref().unwrap(), b.weapons.as_ref().unwrap());
+    for slot in 0..64 {
+        let left = wa[slot].as_deref().unwrap_or(&empty);
+        let right = wb[slot].as_deref().unwrap_or(&empty);
+        assert_eq!(differing_fields(&weapon, left, right), Vec::<usize>::new());
+    }
+}
+
+#[test]
+fn a_full_update_reencodes_the_decoded_state() {
+    // Entities 0, 1 and 7 after a delta that removed 5, with clientdata and
+    // weapon slot 9 built over two packets
+    let mut d = Decoder::new();
+    d.network_frame(loc(0), &frame(1, setup()), |_, _| {})
+        .unwrap();
+    d.network_frame(loc(1), &frame(10, full_packet(10)), |_, _| {})
+        .unwrap();
+    d.network_frame(loc(2), &frame(11, delta_packet(10)), |_, _| {})
+        .unwrap();
+    let before = d.latest_snapshot().unwrap().clone();
+
+    let mut stats = EncodeStats::default();
+    let payload = encode_latest(&d, &mut stats);
+    d.network_frame(loc(3), &frame(12, payload), |_, _| {})
+        .unwrap();
+
+    let after = d.latest_snapshot().unwrap().clone();
+    assert_eq!(after.sequence, 12);
+    assert!(!after.inferred);
+    assert_same_state(&d, &before, &after);
+    assert_eq!(stats, EncodeStats::default());
+}
+
+#[test]
+fn time_windows_are_reencoded_against_the_new_server_time() {
+    // animtime 10.45 arrives at server time 10.5 (offset 5). Encoded at
+    // 11.0 it needs offset 55 to decode to the same float
+    let mut w = BitWriter::new();
+    time(&mut w, 10.5);
+    w.u8(svc::DELTAPACKETENTITIES);
+    w.u16(3);
+    w.u8(10);
+    w.bit(false);
+    w.bit(true);
+    w.bits(5, 11);
+    w.bit(false);
+    delta(&mut w, ENTITY, &[(2, 5)]);
+    w.bits(0, 16);
+
+    let mut d = Decoder::new();
+    d.network_frame(loc(0), &frame(1, setup()), |_, _| {})
+        .unwrap();
+    d.network_frame(loc(1), &frame(10, full_packet(10)), |_, _| {})
+        .unwrap();
+    d.network_frame(loc(2), &frame(11, w.finish()), |_, _| {})
+        .unwrap();
+    let before = d.latest_snapshot().unwrap().clone();
+
+    let mut stats = EncodeStats::default();
+    let mut moved = (*before).clone();
+    moved.server_time_bits = 11f32.to_bits();
+    let mut w = BitWriter::new();
+    write_time(&mut w, moved.server_time_bits);
+    let entities = moved.entities.as_ref().unwrap();
+    let schemas: Vec<_> = entities
+        .iter()
+        .map(|e| d.entity_schema(e.number, e.custom).unwrap())
+        .collect();
+    let baselines: Vec<_> = entities
+        .iter()
+        .map(|e| {
+            d.baseline(e.number)
+                .map_or_else(StructState::default, |b| b.fields.clone())
+        })
+        .collect();
+    let full: Vec<_> = entities
+        .iter()
+        .zip(schemas.iter().zip(&baselines))
+        .map(|(e, (schema, baseline))| FullEntity {
+            number: e.number,
+            custom: e.custom,
+            schema,
+            baseline,
+            state: &e.fields,
+        })
+        .collect();
+    write_full_entities(&mut w, &full, false, moved.server_time_bits, &mut stats);
+    d.network_frame(loc(3), &frame(12, w.finish()), |_, _| {})
+        .unwrap();
+
+    let schema = d.entity_schema(5, false).unwrap();
+    let animtime = |s: &Snapshot| {
+        let e = s
+            .entities
+            .as_ref()
+            .unwrap()
+            .iter()
+            .find(|e| e.number == 5)
+            .unwrap();
+        e.fields.value(&schema, "animtime")
+    };
+    assert_eq!(animtime(&before), Some(Value::Float(10.45)));
+    assert_eq!(
+        animtime(d.latest_snapshot().unwrap()),
+        Some(Value::Float(10.45))
+    );
+    assert_eq!(stats.inexact_time_windows, 0);
+
+    // 2 s back is outside the 8-bit window, so the offset is clamped
+    let mut stats = EncodeStats::default();
+    let mut w = BitWriter::new();
+    write_full_entities(&mut w, &full, false, 12.5f32.to_bits(), &mut stats);
+    assert_eq!(stats.clamped_time_windows, 1);
 }

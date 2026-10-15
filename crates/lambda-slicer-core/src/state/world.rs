@@ -419,6 +419,30 @@ impl Decoder {
         self.user_messages[usize::from(id)].as_ref()
     }
 
+    /// Spawn baseline of an entity number in this session
+    pub fn baseline(&self, number: u16) -> Option<&Arc<EntityState>> {
+        self.baselines.get(&number)
+    }
+
+    /// Number of instanced baselines in this session
+    pub fn instanced_baselines(&self) -> usize {
+        self.instanced.len()
+    }
+
+    /// The schema an entity is sent with, like the engine's choice between
+    /// custom, player and ordinary entities
+    pub fn entity_schema(&self, number: u16, custom: bool) -> Option<Arc<DeltaSchema>> {
+        let name = if custom {
+            "custom_entity_state_t"
+        } else if number >= 1 && number <= u16::from(self.max_clients) {
+            "entity_state_player_t"
+        } else {
+            "entity_state_t"
+        };
+
+        self.schema(name)
+    }
+
     /// Server frame window in use (8 or 64)
     pub fn backup(&self) -> usize {
         self.backup

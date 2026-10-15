@@ -338,6 +338,26 @@ it does not prove every field value matches what the game client computed. That 
 engine trace comparison still open under M2. `max_delta_distance` is measured in recorded
 numbering and is meaningless for files with drifting sequences.
 
+## Encoding full updates (M3)
+
+`protocol::encode` writes the inverse of the decoders, following the engine writers:
+`DELTA_WriteDelta` (3-bit mask length, mask bytes, then each sent field in schema order),
+`SV_WriteDeltaHeader` and the full-update branch of `SV_CreatePacketEntities` (each entity from
+its spawn baseline, never an instanced baseline or an earlier entity), and
+`SV_WriteClientdataToMessage` without a delta base (every weapon slot that is not all zero).
+
+Values keep their wire form and re-encode exactly. Time-window fields are relative to the
+server time of the packet carrying them, so they are re-encoded against the new packet's time.
+The engine sends `(int)(time * 100) − (int)(value * 100)`. The encoder tries that offset, its
+neighbours and the rest of the range for one that decodes to the original float bits.
+
+**Measured (`encode_check`, 2026-10-15):** decoded snapshots re-encoded as full updates, decoded
+again and compared field by field. In `naz_crossfire_pb_01.dem` (1,512 snapshots) and 120 sample
+demos (13,170 snapshots, 308,452 entities), no field outside time windows differed and the
+largest update was 1,048 bytes. Of 8,860 inexact time windows, 4,725 lie outside the 8-bit window
+(`animtime` more than 1.27 s old, which a real full update cannot send either) and the rest
+differ only by float rounding. Exports report both counts.
+
 # Validation against client-recorded values (M2)
 
 The recording client writes its own view of the game into every demo: the 436-byte demo info
