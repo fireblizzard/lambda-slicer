@@ -87,18 +87,17 @@ pub fn run_control(
     let published = publish_new(
         source,
         dest,
-        |out| match control {
+        |snapshot, out| match control {
             Control::ExactCopy => {
-                let mut src = File::open(source).map_err(io_err(source))?;
-                io::copy(&mut src, out).map_err(io_err(dest))?;
+                io::copy(snapshot, out).map_err(io_err(dest))?;
                 Ok(())
             }
             Control::Roundtrip => {
-                rebuilt = Some(rebuild(source, out, None, limits)?);
+                rebuilt = Some(rebuild(snapshot, out, None, limits)?);
                 Ok(())
             }
             Control::TruncateEnd(end) => {
-                rebuilt = Some(rebuild(source, out, Some(end), limits)?);
+                rebuilt = Some(rebuild(snapshot, out, Some(end), limits)?);
                 Ok(())
             }
         },
@@ -148,17 +147,16 @@ fn to_i32(v: u64, what: &str) -> Result<i32, ExportError> {
     i32::try_from(v).map_err(|_| ExportError::Unsupported(format!("{what} {v} exceeds i32")))
 }
 
-/// Re-encode every entry frame by frame. With `cut`, the playback entry stops
+/// Re-encode every entry of the source snapshot frame by frame. With `cut`, the playback entry stops
 /// before the first frame group at or after `cut`, or at its own terminal
 /// record when `cut` is at or before the terminal time but after every group
 fn rebuild(
-    source: &Path,
+    source: &mut File,
     out: &mut File,
     cut: Option<DemoTime>,
     limits: Limits,
 ) -> Result<(Vec<WrittenEntry>, Option<CutReport>), ExportError> {
-    let src = File::open(source).map_err(io_err(source))?;
-    let mut reader = DemoReader::new(BufReader::new(src), limits)?;
+    let mut reader = DemoReader::new(BufReader::new(source), limits)?;
     profile::check(&reader.header)?;
     let mut header = reader.header.clone();
     let mut directory = reader.directory.clone();

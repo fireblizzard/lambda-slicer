@@ -31,7 +31,9 @@ cargo build --release
 ```
 
 Times accept `96`, `1:36`, or `00:01:36.250`. Exports never overwrite an existing file, never
-modify the source, and verify the source hash before and after.
+modify the source, and work from a private snapshot of it. The reported source hash is computed
+while that snapshot is copied, so it covers exactly the bytes the export read, and a source that
+changes during the copy aborts the export.
 
 ## Development
 
