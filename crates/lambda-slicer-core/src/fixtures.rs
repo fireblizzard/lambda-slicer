@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use crate::container::Limits;
 use crate::library::fingerprint::hash_file;
 use crate::state::{DecodeOptions, DecodeStatus, decode_demo};
-use crate::validate::crosscheck::crosscheck_demo;
+use crate::validate::crosscheck::{Outcome, crosscheck_demo};
 use crate::validate::structural::{InspectReport, InspectStatus, inspect};
 
 pub const MANIFEST_ENV: &str = "LAMBDA_SLICER_FIXTURE_MANIFEST";
@@ -46,9 +46,8 @@ pub struct Expectations {
     pub decode_complete: Option<bool>,
     /// Exact event counts by resource path, all sources combined.
     pub events: Option<BTreeMap<String, u64>>,
-    /// Every identity cross-check passes and every server-copy sample
-    /// agrees exactly (see `validate::crosscheck`).
-    pub crosscheck_exact: Option<bool>,
+    /// Expected cross-check outcome (see `validate::crosscheck::Outcome`).
+    pub crosscheck: Option<Outcome>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -184,17 +183,12 @@ pub fn check_fixture(f: &Fixture) -> FixtureResult {
             }
         }
     }
-    if report.is_some() && f.expect.crosscheck_exact.is_some() {
+    if let (Some(_), Some(want)) = (&report, f.expect.crosscheck) {
         let r = crosscheck_demo(&f.path, Limits::default());
-        let (ok, n) = r.server_copy_agreement();
-        let exact = r.decode_error.is_none() && r.identity_failures().is_empty() && ok == n;
-        if f.expect.crosscheck_exact != Some(exact) {
+        if r.outcome != want {
             m.push(format!(
-                "crosscheck: identity failures {:?}, server copy {ok}/{n}",
-                r.identity_failures()
-                    .iter()
-                    .map(|c| c.name)
-                    .collect::<Vec<_>>()
+                "crosscheck: expected {want:?}, found {:?}: {:?}",
+                r.outcome, r.reasons
             ));
         }
     }

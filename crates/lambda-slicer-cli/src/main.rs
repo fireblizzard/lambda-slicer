@@ -17,7 +17,7 @@ use lambda_slicer_core::state::{
     ActorResolution, DecodeOptions, DecodeStatus, Decoder, decode_demo,
 };
 use lambda_slicer_core::timeline::time::DemoTime;
-use lambda_slicer_core::validate::crosscheck::{CrossCheckReport, crosscheck_demo};
+use lambda_slicer_core::validate::crosscheck::{CrossCheckReport, Outcome, crosscheck_demo};
 use lambda_slicer_core::validate::structural::{InspectReport, Severity, inspect};
 
 #[derive(Parser)]
@@ -71,8 +71,8 @@ enum Command {
         #[arg(long, num_args = 2, value_names = ["FROM", "TO"])]
         trace: Option<Vec<DemoTime>>,
     },
-    /// Cross-check decoded state against client-recorded values; exits
-    /// non-zero when an identity check fails.
+    /// Cross-check decoded state against client-recorded values. Exit code:
+    /// 0 verified, 1 failed, 2 inconclusive.
     Crosscheck {
         path: PathBuf,
         #[arg(long)]
@@ -225,9 +225,11 @@ fn run() -> Result<ExitCode> {
                 Some(target) => write_json(target, &r)?,
                 None => print_crosscheck(&r),
             }
-            if r.decode_error.is_some() || !r.identity_failures().is_empty() {
-                return Ok(ExitCode::FAILURE);
-            }
+            return Ok(match r.outcome {
+                Outcome::Verified => ExitCode::SUCCESS,
+                Outcome::Failed => ExitCode::from(1),
+                Outcome::Inconclusive => ExitCode::from(2),
+            });
         }
         Command::Hash { paths } => {
             for p in paths {
@@ -550,6 +552,10 @@ fn print_crosscheck(r: &CrossCheckReport) {
     }
     let (ok, n) = r.server_copy_agreement();
     println!("  server-copy agreement {ok}/{n}");
+    println!("  outcome: {:?}", r.outcome);
+    for reason in &r.reasons {
+        println!("    {reason}");
+    }
 }
 
 fn main() -> ExitCode {

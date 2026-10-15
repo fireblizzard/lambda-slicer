@@ -34,7 +34,7 @@
           "events/glock1.sc": 87,
           "events/egon_stop.sc": 27
         },
-        "crosscheck_exact": true
+        "crosscheck": "verified"
       },
       "notes": "Two-player crossfire match with recorder gauss use (1,100 local gauss.sc records) and opponent events via svc_event. Gauss counts are raw records, not validated shots."
     },
@@ -49,7 +49,7 @@
         "game_dir": "ag",
         "map_name": "c1a0e",
         "decode_complete": true,
-        "crosscheck_exact": true
+        "crosscheck": "verified"
       }
     },
     {
@@ -63,8 +63,9 @@
         "game_dir": "ag",
         "map_name": "c2a4f",
         "decode_complete": true,
-        "crosscheck_exact": true
-      }
+        "crosscheck": "inconclusive"
+      },
+      "notes": "One playback network frame and no ClientData record after it: nothing to cross-check."
     },
     {
       "role": "streaming stress",
@@ -87,7 +88,7 @@
           }
         ],
         "decode_complete": true,
-        "crosscheck_exact": true
+        "crosscheck": "verified"
       }
     },
     {
@@ -101,7 +102,7 @@
         "game_dir": "ag",
         "map_name": "prochallenge_bhop",
         "decode_complete": true,
-        "crosscheck_exact": true
+        "crosscheck": "verified"
       }
     }
   ]

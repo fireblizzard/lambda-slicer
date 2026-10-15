@@ -19,7 +19,9 @@ fn main() {
     for entry in 0..r.directory.len() as u32 {
         for lf in r.frames(entry).unwrap() {
             let lf = lf.unwrap();
-            let FrameBody::Network(n) = &lf.frame.body else { continue };
+            let FrameBody::Network(n) = &lf.frame.body else {
+                continue;
+            };
             let at = FrameLocation {
                 entry,
                 ordinal: lf.ordinal,
@@ -28,10 +30,14 @@ fn main() {
                 frame_number: lf.frame.frame_number,
             };
             d.network_frame(at, n, |_, _| {}).unwrap();
-            let (Some(m), true) = (&d.movevars, entry > 0) else { continue };
+            let (Some(m), true) = (&d.movevars, entry > 0) else {
+                continue;
+            };
             let info = n.info_movevars();
             // 16 leading floats, then 8 trailing floats.
-            let pairs = (0..16).map(|i| (i, i * 4, i * 4)).chain((0..8).map(|i| (16 + i, 100 + i * 4, 65 + i * 4)));
+            let pairs = (0..16)
+                .map(|i| (i, i * 4, i * 4))
+                .chain((0..8).map(|i| (16 + i, 100 + i * 4, 65 + i * 4)));
             for (field, a, b) in pairs {
                 let (x, y) = (f(info, a), f(m, b));
                 if x.to_bits() != y.to_bits() {

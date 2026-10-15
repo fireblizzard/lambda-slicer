@@ -316,20 +316,58 @@ files must not be trusted for export without further evidence.
 | Client view | predicted simorg / simvel bit-exact | 35.9% / 36.7% (prediction) |
 
 **54,991 of 55,042 files have every server-copy sample in agreement.** Of the 51 that do not,
-18 have `inferred_delta_bases`; the rest have small counts of misses (typically 1–30 records),
-mostly in 2022–2023 bhop/kz recordings with the same recorder behavior as the drifting-sequence
-files.
+18 have `inferred_delta_bases`. The others are **not explained**; at least one is a confirmed
+decoder fault (below), and the rest must be treated the same way until investigated.
+
+**Confirmed decoder fault: `20230921_185958_bkz_goldbhop.dem`** (weapon bits disagree in 1,608 of
+1,638 records while origin is bit-exact; not flagged as inferred). The server sends
+`weapons = 0x80000000` in the first three full clientdata updates and never again. At sequence
+212,548 its delta references byte 64, meaning the previous packet under a recorded-sequence offset
+of 3. The ring slot `64 & 63 = 0` still held a stale **loading-segment** snapshot (sequence 128)
+with the same entity count (22), so the count check passed, nothing was flagged, and every later
+delta built on a base without `weapons`. This is the failure mode an external review predicted:
+an entity-count match does not prove the base is right, and a stale slot can be accepted
+silently. Base selection and uncertainty tracking are being reworked; until then such files can
+look complete and uninferred while being wrong.
 
 Movevars identity misses come from:
 
 - single frames right after a level change, where the client still holds the previous map's
-  movevars (e.g. `20221217_062714_kz_cg_venice.dem`, sky `green` vs `dusk`). The check now also
-  accepts the value from before the packet, a refinement made after this scan;
-- **genuine client-side differences:** in `20220102_191414_crossfire_match_tdm.dem` the recording
+  movevars (e.g. `20221217_062714_kz_cg_venice.dem`, sky `green` vs `dusk`), even compared with
+  the movevars from before the packet;
+- **client-side differences:** in `20220102_191414_crossfire_match_tdm.dem` the recording
   client used `stepsize` 224 for the whole demo while the server sent 18 and never resent
-  movevars. The identity check correctly flags this; it is not a decoding error.
+  movevars. The identity check correctly flags this.
 
-Conclusion for M2: decoded clientdata and weapon state equal what the recording client stored,
-bit for bit, in all but 0.002% of samples, and the remaining misses are explained by inferred
-delta bases, recording edges, or client-side behavior. Remote entities have no client-recorded
-counterpart in POV demos, so their state rests on the declared-count check and actor resolution.
+## Sample cross-check with verdicts (2026-10-15)
+
+Full-corpus passes take 20–35 minutes, so routine checks use a 2,000-demo sample
+(`make_sample`): the 81 demos earlier scans flagged plus 1,919 drawn round-robin across all 224
+maps with seed 20261015. `crosscheck_scan --list work/sample-2000.txt`, 530 s:
+
+| Outcome | Demos |
+|---|---:|
+| verified | 1,894 |
+| inconclusive | 19 |
+| failed | 83 |
+| no directory (not decoded) | 4 |
+
+Most failures are not yet triaged. They fall into: single movevars frames right after level
+changes; single `ClientData` origin records with jumps of hundreds to thousands of units
+(plausibly teleports or level edges, unconfirmed); and files with many disagreements
+(`20230921_185958_bkz_goldbhop.dem`, the `kzmo_downhopunvis` and `bhop_mann` recordings, files
+with inferred bases). The goldbhop case is the confirmed delta-base fault above; the others are
+expected to share it until shown otherwise.
+
+## What M2 validation does and does not establish
+
+- Compared and agreeing: decoded clientdata **origin** and **weapon possession bits** against the
+  client's own copies, plus server/session identities, in the files with outcome `verified`.
+- **Not compared:** the 64 reconstructed `weapon_data_t` slots (clip, attack and reload timers) and
+  any other clientdata field. Nothing in a POV demo records them independently, so their decoding
+  is unvalidated.
+- **Not compared:** remote entities. They have no client-recorded counterpart in POV demos; their
+  state rests on the declared-count check and event actor resolution, which cannot detect a wrong
+  base with the same entity count.
+- Per-file verdicts come from `lambda-slicer crosscheck` (`verified` exit 0, `failed` exit 1,
+  `inconclusive` exit 2). Client-view checks never affect the verdict.

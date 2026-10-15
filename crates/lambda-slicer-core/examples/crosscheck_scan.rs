@@ -1,10 +1,10 @@
 //! Development probe: run decode cross-checks over every `.dem` under the
-//! given roots (read-only) and aggregate the results.
+//! given roots or `--list FILE` (read-only) and aggregate the results.
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use lambda_slicer_core::container::Limits;
-use lambda_slicer_core::validate::crosscheck::crosscheck_demo;
+use lambda_slicer_core::validate::crosscheck::{Outcome, crosscheck_demo};
 
 fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
     let Ok(rd) = std::fs::read_dir(dir) else {
@@ -26,11 +26,26 @@ fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
 
 fn main() {
     let mut files = Vec::new();
-    for root in std::env::args().skip(1) {
-        walk(Path::new(&root), &mut files);
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if let [flag, list] = args.as_slice()
+        && flag == "--list"
+    {
+        // One path per line, e.g. the sample from `make_sample`.
+        let text = std::fs::read_to_string(list).expect("read list");
+        files.extend(
+            text.lines()
+                .filter(|l| !l.trim().is_empty())
+                .map(PathBuf::from),
+        );
+    } else {
+        for root in &args {
+            walk(Path::new(root), &mut files);
+        }
     }
     let start = std::time::Instant::now();
     let mut totals = BTreeMap::<String, (u64, u64)>::new();
+    let mut outcomes = BTreeMap::<String, u64>::new();
+    let mut failed: Vec<String> = Vec::new();
     let (mut errors, mut identity_fail, mut skipped_spec, mut skipped_first) =
         (0u64, Vec::new(), 0u64, 0u64);
     let mut imperfect: Vec<(f64, bool, u64, String)> = Vec::new();
@@ -40,6 +55,10 @@ fn main() {
         if r.decode_error.is_some() {
             errors += 1;
             continue;
+        }
+        *outcomes.entry(format!("{:?}", r.outcome)).or_default() += 1;
+        if r.outcome == Outcome::Failed && failed.len() < 60 {
+            failed.push(format!("{}: {}", p.display(), r.reasons.join("; ")));
         }
         skipped_spec += r.skipped_spectator_frames;
         skipped_first += r.skipped_before_first_packet;
@@ -89,6 +108,11 @@ fn main() {
         files.len(),
         start.elapsed().as_secs_f64()
     );
+    println!("outcomes {outcomes:?}");
+    println!("failed files (first 60):");
+    for f in &failed {
+        println!("  {f}");
+    }
     println!(
         "skipped spectator/intermission frames {skipped_spec}, records before first playback packet {skipped_first}"
     );

@@ -1,4 +1,4 @@
-//! Development probe: inspect every `.dem` under the given roots (read-only)
+//! Development probe: inspect every `.dem` under the given roots or `--list FILE` (read-only)
 //! and summarize container status and findings.
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -26,8 +26,21 @@ fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
 
 fn main() {
     let mut files = Vec::new();
-    for root in std::env::args().skip(1) {
-        walk(Path::new(&root), &mut files);
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if let [flag, list] = args.as_slice()
+        && flag == "--list"
+    {
+        // One path per line, e.g. the sample from `make_sample`.
+        let text = std::fs::read_to_string(list).expect("read list");
+        files.extend(
+            text.lines()
+                .filter(|l| !l.trim().is_empty())
+                .map(PathBuf::from),
+        );
+    } else {
+        for root in &args {
+            walk(Path::new(root), &mut files);
+        }
     }
     let start = std::time::Instant::now();
     let (mut bytes, mut status) = (0u64, BTreeMap::<String, u64>::new());

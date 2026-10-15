@@ -36,6 +36,21 @@ pub enum CheckKind {
     ClientView,
 }
 
+/// Overall verdict of a cross-check. Client-view checks never affect it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Outcome {
+    /// Decoding completed without inferred delta bases, and every identity
+    /// and server-copy sample agrees.
+    Verified,
+    /// Nothing contradicts the decode, but it cannot be called verified:
+    /// some delta bases were inferred, or there were no server-copy samples
+    /// to compare (e.g. spectator or HLTV recordings).
+    Inconclusive,
+    /// Decoding stopped, or an identity or server-copy sample disagrees.
+    Failed,
+}
+
 #[derive(Clone, Debug, Serialize)]
 pub struct Example {
     pub entry: u32,
@@ -81,6 +96,10 @@ pub struct DistanceCheck {
 pub struct CrossCheckReport {
     pub schema: u32,
     pub path: String,
+    /// Overall verdict; see [`Outcome`].
+    pub outcome: Outcome,
+    /// Why the outcome is not `verified`.
+    pub reasons: Vec<String>,
     pub decode_error: Option<String>,
     pub inferred_delta_bases: bool,
     /// Frames skipped because the client was spectating or in
@@ -101,6 +120,52 @@ pub struct CrossCheckReport {
 }
 
 impl CrossCheckReport {
+    /// Compute `outcome` and `reasons` from the collected checks.
+    fn judge(&mut self) {
+        let mut failed = Vec::new();
+        let mut inconclusive = Vec::new();
+        if let Some(e) = &self.decode_error {
+            failed.push(format!("decode stopped: {e}"));
+        }
+        for c in &self.exact {
+            let agree = c.match_either + c.match_lagged;
+            if c.kind != CheckKind::ClientView && agree < c.compared {
+                failed.push(format!(
+                    "{}: {} of {} disagree",
+                    c.name,
+                    c.compared - agree,
+                    c.compared
+                ));
+            }
+        }
+        for c in &self.distance {
+            if c.kind == CheckKind::ServerCopy && c.counts[0] < c.compared {
+                failed.push(format!(
+                    "{}: {} of {} not exact (max {:.4})",
+                    c.name,
+                    c.compared - c.counts[0],
+                    c.compared,
+                    c.max
+                ));
+            }
+        }
+        if self.inferred_delta_bases {
+            inconclusive.push("some delta bases were inferred, not proven".to_owned());
+        }
+        if self.server_copy_agreement().1 == 0 {
+            inconclusive.push("no server-copy samples to compare".to_owned());
+        }
+        self.outcome = if !failed.is_empty() {
+            Outcome::Failed
+        } else if !inconclusive.is_empty() {
+            Outcome::Inconclusive
+        } else {
+            Outcome::Verified
+        };
+        failed.extend(inconclusive);
+        self.reasons = failed;
+    }
+
     /// Identity checks with any sample that matched in neither alignment.
     pub fn identity_failures(&self) -> Vec<&ExactCheck> {
         self.exact
@@ -494,6 +559,8 @@ pub fn crosscheck_demo(path: &Path, limits: Limits) -> CrossCheckReport {
     let mut report = CrossCheckReport {
         schema: CROSSCHECK_SCHEMA,
         path: path.display().to_string(),
+        outcome: Outcome::Failed,
+        reasons: Vec::new(),
         decode_error: None,
         inferred_delta_bases: false,
         skipped_spectator_frames: 0,
@@ -513,6 +580,7 @@ pub fn crosscheck_demo(path: &Path, limits: Limits) -> CrossCheckReport {
         Ok(r) => r,
         Err(e) => {
             report.decode_error = Some(e);
+            report.judge();
             return report;
         }
     };
@@ -696,6 +764,7 @@ pub fn crosscheck_demo(path: &Path, limits: Limits) -> CrossCheckReport {
     .map(|e| e.check)
     .collect();
     report.distance = vec![c.simorg, c.simvel, c.record_origin];
+    report.judge();
     report
 }
 
@@ -755,6 +824,74 @@ mod tests {
         );
         assert_eq!(c.match_lagged, 1);
         assert_eq!(c.examples.len(), 1);
+    }
+
+    fn report(exact: Vec<ExactCheck>, inferred: bool) -> CrossCheckReport {
+        CrossCheckReport {
+            schema: CROSSCHECK_SCHEMA,
+            path: String::new(),
+            outcome: Outcome::Failed,
+            reasons: Vec::new(),
+            decode_error: None,
+            inferred_delta_bases: inferred,
+            skipped_spectator_frames: 0,
+            skipped_before_first_packet: 0,
+            skipped_transition_frames: 0,
+            skipped_camera_view_records: 0,
+            exact,
+            distance: Vec::new(),
+        }
+    }
+
+    fn check(kind: CheckKind, agree: u64, compared: u64) -> ExactCheck {
+        let mut e = Exact::new("x", kind).check;
+        e.compared = compared;
+        e.match_either = agree;
+        e
+    }
+
+    #[test]
+    fn outcome_rules() {
+        let mut r = report(vec![check(CheckKind::ServerCopy, 10, 10)], false);
+        r.judge();
+        assert_eq!(r.outcome, Outcome::Verified);
+
+        // Client-view disagreement never matters.
+        let mut r = report(
+            vec![
+                check(CheckKind::ServerCopy, 10, 10),
+                check(CheckKind::ClientView, 1, 10),
+            ],
+            false,
+        );
+        r.judge();
+        assert_eq!(r.outcome, Outcome::Verified);
+
+        // Inferred bases with full agreement are inconclusive.
+        let mut r = report(vec![check(CheckKind::ServerCopy, 10, 10)], true);
+        r.judge();
+        assert_eq!(r.outcome, Outcome::Inconclusive);
+
+        // Nothing compared is inconclusive.
+        let mut r = report(vec![check(CheckKind::ServerCopy, 0, 0)], false);
+        r.judge();
+        assert_eq!(r.outcome, Outcome::Inconclusive);
+
+        // Any identity or server-copy disagreement fails, even if inferred.
+        for kind in [CheckKind::Identity, CheckKind::ServerCopy] {
+            let mut r = report(
+                vec![check(kind, 9, 10), check(CheckKind::ServerCopy, 5, 5)],
+                true,
+            );
+            r.judge();
+            assert_eq!(r.outcome, Outcome::Failed);
+            assert_eq!(r.reasons.len(), 2);
+        }
+
+        let mut r = report(vec![check(CheckKind::ServerCopy, 10, 10)], false);
+        r.decode_error = Some("stopped".into());
+        r.judge();
+        assert_eq!(r.outcome, Outcome::Failed);
     }
 
     #[test]
