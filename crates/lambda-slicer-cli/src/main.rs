@@ -1,4 +1,4 @@
-//! Lambda Slicer diagnostic CLI.
+//! Lambda Slicer diagnostic CLI
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -33,54 +33,54 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Read the header, directory, and every frame record of a demo.
+    /// Read the header, directory, and every frame record of a demo
     Inspect {
         path: PathBuf,
-        /// Write the JSON report to a file, or `-` for stdout.
+        /// Write the JSON report to a file, or `-` for stdout
         #[arg(long)]
         json: Option<PathBuf>,
     },
-    /// Structural validation; exits non-zero when errors are found.
+    /// Structural validation, exits non-zero when errors are found
     Validate {
         path: PathBuf,
         #[arg(long)]
         json: Option<PathBuf>,
     },
-    /// Write an S0 control export for in-game validation. Never overwrites.
+    /// Write an S0 control export for in-game validation. Never overwrites
     Control {
         kind: ControlKind,
         source: PathBuf,
         #[arg(long)]
         output: PathBuf,
-        /// Exclusive end for `truncate-end`: seconds, M:SS, or HH:MM:SS.fff.
+        /// Exclusive end for `truncate-end`, given as seconds, M:SS, or HH:MM:SS.fff
         #[arg(long)]
         end: Option<DemoTime>,
         #[arg(long)]
         json: Option<PathBuf>,
     },
-    /// Decode network messages and reconstruct entity/client state.
+    /// Decode network messages and reconstruct entity/client state
     Decode {
         path: PathBuf,
-        /// Write the JSON report to a file, or `-` for stdout.
+        /// Write the JSON report to a file, or `-` for stdout
         #[arg(long)]
         json: Option<PathBuf>,
-        /// List every decoded event (network and standalone demo events).
+        /// List every decoded event (network and standalone demo events)
         #[arg(long)]
         events: bool,
-        /// Print each message whose frame time is in [FROM, TO).
+        /// Print each message whose frame time is in [FROM, TO)
         #[arg(long, num_args = 2, value_names = ["FROM", "TO"])]
         trace: Option<Vec<DemoTime>>,
     },
-    /// Cross-check decoded state against client-recorded values. Exit code:
-    /// 0 verified, 1 failed, 2 inconclusive.
+    /// Cross-check decoded state against client-recorded values. Exit codes are
+    /// 0 verified, 1 failed, 2 inconclusive
     Crosscheck {
         path: PathBuf,
         #[arg(long)]
         json: Option<PathBuf>,
     },
-    /// Size, modification time, and BLAKE3 hashes of files.
+    /// Size, modification time, and BLAKE3 hashes of files
     Hash { paths: Vec<PathBuf> },
-    /// Check the local fixture manifest (default: $LAMBDA_SLICER_FIXTURE_MANIFEST).
+    /// Check the local fixture manifest (defaults to $LAMBDA_SLICER_FIXTURE_MANIFEST)
     Fixtures {
         #[arg(long)]
         manifest: Option<PathBuf>,
@@ -91,11 +91,11 @@ enum Command {
 
 #[derive(Clone, Copy, ValueEnum)]
 enum ControlKind {
-    /// S0a: exact copy.
+    /// S0a, exact copy
     ExactCopy,
-    /// S0b: container rebuilt from decoded frames.
+    /// S0b, container rebuilt from decoded frames
     Roundtrip,
-    /// S0c: keep [0, end) and regenerate the terminal record and directory.
+    /// S0c, keep [0, end) and regenerate the terminal record and directory
     TruncateEnd,
 }
 
@@ -117,6 +117,7 @@ fn write_json<T: Serialize>(target: &Path, value: &T) -> Result<()> {
             })?;
         writeln!(f, "{text}")?;
     }
+
     Ok(())
 }
 
@@ -134,6 +135,7 @@ fn print_inspect(r: &InspectReport) {
             h.demo_protocol, h.network_protocol, h.game_dir, h.map_name, h.map_checksum
         );
     }
+
     for e in &r.entries {
         println!(
             "  entry {} {:?} type {}: offset {} length {}  directory frames {} time {}",
@@ -152,6 +154,7 @@ fn print_inspect(r: &InspectReport) {
             e.terminal_records,
         );
     }
+
     for f in &r.findings {
         let entry = f.entry.map_or(String::new(), |e| format!(" [entry {e}]"));
         println!("  {:?} {}{}: {}", f.severity, f.code, entry, f.message);
@@ -178,6 +181,7 @@ fn run() -> Result<ExitCode> {
                 (ControlKind::TruncateEnd, None) => bail!("truncate-end needs --end"),
                 (_, Some(_)) => bail!("--end applies only to truncate-end"),
             };
+
             let report = run_control(&source, &output, control, limits)?;
             match &json {
                 Some(target) => write_json(target, &report)?,
@@ -199,6 +203,7 @@ fn run() -> Result<ExitCode> {
                             c.retained_network_records
                         );
                     }
+
                     let name = report
                         .published
                         .path
@@ -225,6 +230,7 @@ fn run() -> Result<ExitCode> {
                 Some(target) => write_json(target, &r)?,
                 None => print_crosscheck(&r),
             }
+
             return Ok(match r.outcome {
                 Outcome::Verified => ExitCode::SUCCESS,
                 Outcome::Failed => ExitCode::from(1),
@@ -248,9 +254,11 @@ fn run() -> Result<ExitCode> {
                 Some(p) => p,
                 None => bail!("pass --manifest or set {MANIFEST_ENV}"),
             };
+
             let m = load_manifest(&path).map_err(anyhow::Error::msg)?;
             let results: Vec<_> = m.fixtures.iter().map(check_fixture).collect();
             let all_passed = results.iter().all(|r| r.passed());
+
             match &json {
                 Some(target) => write_json(target, &results)?,
                 None => {
@@ -275,22 +283,25 @@ fn run() -> Result<ExitCode> {
                     }
                 }
             }
+
             if !all_passed {
                 return Ok(ExitCode::FAILURE);
             }
         }
     }
+
     Ok(ExitCode::SUCCESS)
 }
 
-/// `inspect` fails only when the header is unreadable; `validate` fails on
-/// any structural error.
+/// `inspect` fails only when the header is unreadable, while `validate` fails
+/// on any structural error
 fn inspect_cmd(path: &Path, json: Option<&Path>, strict: bool) -> Result<ExitCode> {
     let report = inspect(path, Limits::default());
     match json {
         Some(target) => write_json(target, &report)?,
         None => print_inspect(&report),
     }
+
     let failed = if strict {
         report.has_errors()
     } else {
@@ -304,7 +315,7 @@ fn inspect_cmd(path: &Path, json: Option<&Path>, strict: bool) -> Result<ExitCod
 }
 
 /// Printable, escaped, truncated text from recorded bytes. Recorded commands
-/// are displayed, never executed.
+/// are displayed, never executed
 fn text(bytes: &[u8]) -> String {
     let s: String = String::from_utf8_lossy(bytes).escape_debug().collect();
     if s.chars().count() > 80 {
@@ -382,6 +393,7 @@ fn actor_text(d: &Decoder, a: &ActorResolution) -> String {
             .map(|p| format!(" ({})", p.name))
             .unwrap_or_default()
     };
+
     match a {
         ActorResolution::PacketEntity { entity, .. } => {
             format!("entity {entity}{}", player((*entity).into()))
@@ -413,12 +425,14 @@ fn decode_cmd(
     };
     let (report, decoder) = decode_demo(path, &options, |loc, d, m| {
         let Some((from, to)) = window else { return };
+
         let Some(t) = DemoTime::from_f32(loc.time()) else {
             return;
         };
         if loc.entry == 0 || t < from || t >= to {
             return;
         }
+
         println!(
             "{t} frame {:>7} {:<24} {}",
             loc.frame_number,
@@ -426,6 +440,7 @@ fn decode_cmd(
             describe(d, &m.message)
         );
     });
+
     if let Some(target) = json {
         write_json(target, &report)?;
     } else {
@@ -434,6 +449,7 @@ fn decode_cmd(
         if let Some(e) = &report.error {
             println!("  error: {e}");
         }
+
         let s = &report.stats;
         if report.inferred_delta_bases {
             println!(
@@ -457,11 +473,13 @@ fn decode_cmd(
         for p in &report.players {
             println!("  player slot {} user {} {:?}", p.slot, p.user_id, p.name);
         }
+
         let mut ev: Vec<_> = s.events_by_resource.iter().collect();
         ev.sort_by(|a, b| b.1.cmp(a.1));
         for (name, n) in ev {
             println!("  {n:>8} {name}");
         }
+
         if s.unresolved_event_actors > 0 {
             println!(
                 "  {} events without a resolved actor",
@@ -469,6 +487,7 @@ fn decode_cmd(
             );
         }
     }
+
     if events {
         let event_t = decoder.schema("event_t");
         for e in &decoder.events {
@@ -493,6 +512,7 @@ fn decode_cmd(
                 ),
                 _ => String::new(),
             };
+
             println!(
                 "{t} {:<12} {:<22} {:<32} {args}",
                 format!("{:?}", e.source),
@@ -501,6 +521,7 @@ fn decode_cmd(
             );
         }
     }
+
     Ok(if report.status == DecodeStatus::Complete {
         ExitCode::SUCCESS
     } else {
@@ -516,6 +537,7 @@ fn print_crosscheck(r: &CrossCheckReport) {
     if r.inferred_delta_bases {
         println!("  delta bases inferred: state around those packets is not proven");
     }
+
     println!(
         "  skipped: {} spectator/intermission frames, {} records before the first playback packet, {} level-change frames, {} camera-view origins",
         r.skipped_spectator_frames,
@@ -523,6 +545,7 @@ fn print_crosscheck(r: &CrossCheckReport) {
         r.skipped_transition_frames,
         r.skipped_camera_view_records
     );
+
     for c in &r.exact {
         println!(
             "  {:<12} {:>9}/{:<9} (before {}, after {})  {}",
@@ -540,6 +563,7 @@ fn print_crosscheck(r: &CrossCheckReport) {
             );
         }
     }
+
     for c in &r.distance {
         println!(
             "  {:<12} {:>9}/{:<9} exact, max distance {:.4}  {}",
@@ -550,6 +574,7 @@ fn print_crosscheck(r: &CrossCheckReport) {
             c.name
         );
     }
+
     let (ok, n) = r.server_copy_agreement();
     println!("  server-copy agreement {ok}/{n}");
     println!("  outcome: {:?}", r.outcome);

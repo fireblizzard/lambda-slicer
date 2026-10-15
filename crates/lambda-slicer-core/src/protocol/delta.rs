@@ -1,15 +1,15 @@
-//! Dynamic delta schemas and delta decoding.
+//! Dynamic delta schemas and delta decoding
 //!
 //! Schemas arrive in `svc_deltadescription`, themselves delta-encoded with a
 //! fixed meta-schema. Decoded values are kept in wire form so they can be
-//! re-encoded exactly; converted values are computed on demand with the
-//! engine's formulas (ReHLDS `DELTA_ParseDelta`, client side).
+//! re-encoded exactly. Converted values are computed on demand with the
+//! engine's formulas (ReHLDS `DELTA_ParseDelta`, client side)
 
 use std::sync::Arc;
 
 use super::bit::{BitError, BitReader, SignMagnitude};
 
-/// `fieldType` flags.
+/// `fieldType` flags
 pub mod dt {
     pub const BYTE: u32 = 1 << 0;
     pub const SHORT: u32 = 1 << 1;
@@ -22,9 +22,9 @@ pub mod dt {
     pub const SIGNED: u32 = 1 << 31;
 }
 
-/// The send mask is at most 7 bytes (3-bit count), so 56 fields.
+/// The send mask is at most 7 bytes (3-bit count), so 56 fields
 pub const MAX_SENDABLE_FIELDS: usize = 56;
-/// Hard cap on schema size accepted from a file.
+/// Hard cap on schema size accepted from a file
 pub const MAX_SCHEMA_FIELDS: usize = 64;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -56,20 +56,20 @@ pub enum DeltaError {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DeltaField {
     pub name: Vec<u8>,
-    /// Raw `fieldType` flags.
+    /// Raw `fieldType` flags
     pub flags: u32,
     pub offset: u32,
     pub size: u32,
     pub bits: u32,
-    /// Wire value; the multiplier is `raw / 4000`.
+    /// Wire value, and the multiplier is `raw / 4000`
     pub premultiply_raw: u32,
     pub postmultiply_raw: u32,
     kind: Kind,
 }
 
 fn multiplier(raw: u32) -> f64 {
-    // Meta-schema float with premultiply 4000, stored by the engine as f32.
-    f64::from((f64::from(raw) / 4000.0) as f32)
+    // Meta-schema float with premultiply 4000, stored by the engine as f32
+    f64::from((f64::from(raw) / 4000.) as f32)
 }
 
 fn not_one(m: f64) -> bool {
@@ -103,6 +103,7 @@ impl DeltaField {
                 });
             }
         };
+
         let needs_bits = !matches!(kind, Kind::String | Kind::TimeWindow8);
         if needs_bits && !(1..=32).contains(&bits) {
             return Err(DeltaError::BadBits {
@@ -110,6 +111,7 @@ impl DeltaField {
                 bits,
             });
         }
+
         Ok(Self {
             name: name.to_vec(),
             flags,
@@ -160,21 +162,21 @@ impl DeltaField {
     }
 }
 
-/// A field value exactly as transmitted.
+/// A field value exactly as transmitted
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Wire {
     Unsigned(u32),
     Signed(SignMagnitude),
     Str(Box<[u8]>),
     /// Time-window offset relative to the server time of the packet that
-    /// carried it (`svc_time`, kept as f32 bits).
+    /// carried it (`svc_time`, kept as f32 bits)
     TimeWindow {
         offset: SignMagnitude,
         base_time_bits: u32,
     },
 }
 
-/// Converted value as the engine would store it.
+/// Converted value as the engine would store it
 #[derive(Clone, Debug, PartialEq)]
 pub enum Value {
     Int(i64),
@@ -200,7 +202,7 @@ impl Value {
     }
 }
 
-/// Engine conversion for a field value decoded with `field`.
+/// Engine conversion for a field value decoded with `field`
 pub fn convert(field: &DeltaField, wire: &Wire) -> Value {
     let scaled = |d: f64| {
         let mut d = d;
@@ -208,12 +210,15 @@ pub fn convert(field: &DeltaField, wire: &Wire) -> Value {
         if not_one(pre) {
             d /= pre;
         }
+
         let post = field.postmultiply();
         if not_one(post) {
             d *= post;
         }
+
         d
     };
+
     let raw = match wire {
         Wire::Str(s) => return Value::Str(s.to_vec()),
         Wire::TimeWindow {
@@ -223,7 +228,7 @@ pub fn convert(field: &DeltaField, wire: &Wire) -> Value {
             let time = f64::from(f32::from_bits(*base_time_bits));
             let addt = offset.value() as f64;
             let t = match field.kind {
-                Kind::TimeWindow8 => (time * 100.0 - addt) / 100.0,
+                Kind::TimeWindow8 => (time * 100. - addt) / 100.,
                 _ => {
                     let pre = field.premultiply();
                     if not_one(pre) {
@@ -233,14 +238,16 @@ pub fn convert(field: &DeltaField, wire: &Wire) -> Value {
                     }
                 }
             };
+
             return Value::Float(t as f32);
         }
         Wire::Unsigned(u) => f64::from(*u),
         Wire::Signed(s) => s.value() as f64,
     };
+
     let signed = field.signed();
     match field.kind {
-        Kind::Angle => Value::Float((raw * (360.0 / (1u64 << field.bits) as f64)) as f32),
+        Kind::Angle => Value::Float((raw * (360. / (1u64 << field.bits) as f64)) as f32),
         Kind::Float => Value::Float(scaled(raw) as f32),
         Kind::Byte if signed => Value::Int(i64::from(scaled(raw) as i8)),
         Kind::Byte => Value::Int(i64::from(scaled(raw) as u8)),
@@ -267,11 +274,12 @@ impl DeltaSchema {
     }
 }
 
-/// The fixed schema used to transmit field descriptions.
+/// The fixed schema used to transmit field descriptions
 pub fn meta_schema() -> DeltaSchema {
     let f = |name: &str, flags, bits, pre| {
         Arc::new(DeltaField::new(name.as_bytes(), flags, 0, 0, bits, pre, 4000).unwrap())
     };
+
     DeltaSchema {
         name: b"delta_description_t".to_vec(),
         fields: vec![
@@ -286,12 +294,12 @@ pub fn meta_schema() -> DeltaSchema {
     }
 }
 
-/// One decoded delta: the transmitted mask and the sent field values.
+/// One decoded delta, holding the transmitted mask and the sent field values
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DeltaUpdate {
     pub mask_len: u8,
     pub mask: [u8; 8],
-    /// (field index, value) in field order.
+    /// (field index, value) in field order
     pub values: Vec<(u16, Wire)>,
 }
 
@@ -305,7 +313,7 @@ impl DeltaUpdate {
 }
 
 /// Decode one delta against `schema`. `time_base_bits` is the current
-/// `svc_time` as f32 bits, attached to time-window fields.
+/// `svc_time` as f32 bits, attached to time-window fields
 pub fn parse_delta(
     r: &mut BitReader<'_>,
     schema: &DeltaSchema,
@@ -316,12 +324,14 @@ pub fn parse_delta(
     for b in mask.iter_mut().take(mask_len.into()) {
         *b = r.bits(8)? as u8;
     }
+
     let mut values = Vec::new();
     for (i, field) in schema.fields.iter().enumerate().take(64) {
         if mask[i / 8] & (1 << (i % 8)) != 0 {
             values.push((i as u16, field.read(r, time_base_bits)?));
         }
     }
+
     Ok(DeltaUpdate {
         mask_len,
         mask,
@@ -329,7 +339,7 @@ pub fn parse_delta(
     })
 }
 
-/// Decode the body of `svc_deltadescription` after its name string.
+/// Decode the body of `svc_deltadescription` after its name string
 pub fn parse_description(
     r: &mut BitReader<'_>,
     name: Vec<u8>,
@@ -338,6 +348,7 @@ pub fn parse_description(
     if name.is_empty() {
         return Err(DeltaError::EmptyName);
     }
+
     let count = r.bits(16)? as usize;
     if count > MAX_SCHEMA_FIELDS {
         return Err(DeltaError::TooManyFields {
@@ -345,6 +356,7 @@ pub fn parse_description(
             count,
         });
     }
+
     let mut fields = Vec::with_capacity(count);
     for _ in 0..count {
         let u = parse_delta(r, meta, 0)?;
@@ -356,6 +368,7 @@ pub fn parse_description(
             Some(Wire::Str(s)) => s.to_vec(),
             _ => Vec::new(),
         };
+
         fields.push(Arc::new(DeltaField::new(
             &fname,
             uint(0),
@@ -366,21 +379,22 @@ pub fn parse_description(
             uint(6),
         )?));
     }
+
     Ok(DeltaSchema { name, fields })
 }
 
 /// Field values of one struct instance (entity_state_t, clientdata_t, ...),
 /// keyed by struct offset like the engine's byte copies. Absent offsets are
-/// zero.
+/// zero
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct StructState {
     entries: Vec<(u32, Arc<DeltaField>, Wire)>,
 }
 
 impl StructState {
-    /// Engine `ParseDelta(from, to)` into a zeroed `to`: sent fields take the
+    /// Engine `ParseDelta(from, to)` into a zeroed `to`. Sent fields take the
     /// new value, other fields of `schema` copy `base` at the same offset,
-    /// and offsets outside `schema` become zero.
+    /// and offsets outside `schema` become zero
     pub fn apply(base: &StructState, schema: &DeltaSchema, update: &DeltaUpdate) -> StructState {
         let mut sent = update.values.iter().peekable();
         let mut entries = Vec::with_capacity(schema.fields.len());
@@ -391,8 +405,10 @@ impl StructState {
                 entries.push(e.clone());
             }
         }
+
         entries.sort_by_key(|e| e.0);
         entries.dedup_by_key(|e| e.0);
+
         StructState { entries }
     }
 
@@ -407,7 +423,7 @@ impl StructState {
         self.entry(offset).map(|(_, f, w)| (f.as_ref(), w))
     }
 
-    /// Converted value of the named field of `schema`, zero when absent.
+    /// Converted value of the named field of `schema`, zero when absent
     pub fn value(&self, schema: &DeltaSchema, name: &str) -> Option<Value> {
         let field = &schema.fields[schema.field_index(name)?];
         Some(match self.entry(field.offset) {
@@ -418,7 +434,7 @@ impl StructState {
                 Kind::Float | Kind::Angle | Kind::TimeWindow8 | Kind::TimeWindowBig
             ) =>
             {
-                Value::Float(0.0)
+                Value::Float(0.)
             }
             None => Value::Int(0),
         })
@@ -444,9 +460,10 @@ mod tests {
     use crate::protocol::bitwrite::BitWriter;
 
     fn write_field(w: &mut BitWriter, name: &[u8], flags: u32, offset: u32, bits: u32, pre: u32) {
-        // Send all 7 meta fields: mask byte 0b0111_1111.
+        // Send all 7 meta fields, so the mask byte is 0b0111_1111
         w.bits(1, 3);
         w.bits(0x7F, 8);
+
         w.bits(flags, 32);
         w.string(name);
         w.bits(offset, 16);
@@ -470,15 +487,17 @@ mod tests {
         );
         write_field(&mut w, b"animtime", dt::TIMEWINDOW_8, 12, 8, 4000);
         write_field(&mut w, b"model", dt::STRING, 16, 1, 4000);
+
         let meta = meta_schema();
         let bytes = w.finish();
         let mut r = BitReader::new(&bytes);
         let schema = parse_description(&mut r, b"test_t".to_vec(), &meta).unwrap();
+
         assert_eq!(schema.fields.len(), 3);
-        assert_eq!(schema.fields[0].premultiply(), 8.0);
+        assert_eq!(schema.fields[0].premultiply(), 8.);
         assert_eq!(schema.fields[1].kind(), Kind::TimeWindow8);
 
-        // Delta: fields 0 and 1 sent; origin = -100.5 -> -804 at 1/8.
+        // Delta with fields 0 and 1 sent, where origin = -100.5 -> -804 at 1/8
         let mut w = BitWriter::new();
         w.bits(1, 3);
         w.bits(0b011, 8);
@@ -486,24 +505,28 @@ mod tests {
         w.bits(804, 17);
         w.bits(0, 1);
         w.bits(5, 7);
+
         let bytes = w.finish();
         let mut r = BitReader::new(&bytes);
         let time = 12.5f32.to_bits();
         let u = parse_delta(&mut r, &schema, time).unwrap();
         let s = StructState::apply(&StructState::default(), &schema, &u);
+
         assert_eq!(s.value(&schema, "origin[0]"), Some(Value::Float(-100.5)));
         assert_eq!(s.value(&schema, "animtime"), Some(Value::Float(12.45)));
         assert_eq!(s.value(&schema, "model"), Some(Value::Str(Vec::new())));
 
-        // Second delta sends only the string; others inherit by offset.
+        // Second delta sends only the string, so others inherit by offset
         let mut w = BitWriter::new();
         w.bits(1, 3);
         w.bits(0b100, 8);
         w.string(b"x");
+
         let bytes = w.finish();
         let mut r = BitReader::new(&bytes);
         let u2 = parse_delta(&mut r, &schema, 99f32.to_bits()).unwrap();
         let s2 = StructState::apply(&s, &schema, &u2);
+
         assert_eq!(s2.value(&schema, "origin[0]"), Some(Value::Float(-100.5)));
         assert_eq!(s2.value(&schema, "animtime"), Some(Value::Float(12.45)));
         assert_eq!(s2.value(&schema, "model"), Some(Value::Str(b"x".to_vec())));

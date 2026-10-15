@@ -1,5 +1,5 @@
-//! Optional local fixture manifest. Original demos stay outside Git; the
-//! manifest records their paths, hashes, and verified expectations.
+//! Optional local fixture manifest. Original demos stay outside Git, and the
+//! manifest records their paths, hashes, and verified expectations
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -25,7 +25,7 @@ pub struct Fixture {
     pub role: String,
     pub path: PathBuf,
     pub bytes: Option<u64>,
-    /// Full-file BLAKE3, lowercase hex.
+    /// Full-file BLAKE3, lowercase hex
     pub blake3: Option<String>,
     #[serde(default)]
     pub expect: Expectations,
@@ -33,8 +33,8 @@ pub struct Fixture {
     pub notes: String,
 }
 
-/// Container-level expectations. Every field is optional; only present
-/// fields are checked.
+/// Container-level expectations. Every field is optional, and only present
+/// fields are checked
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Expectations {
     pub demo_protocol: Option<i32>,
@@ -42,11 +42,11 @@ pub struct Expectations {
     pub game_dir: Option<String>,
     pub map_name: Option<String>,
     pub entries: Option<Vec<EntryExpectation>>,
-    /// Network decode must complete (`true`) or stop (`false`).
+    /// Network decode must complete (`true`) or stop (`false`)
     pub decode_complete: Option<bool>,
-    /// Exact event counts by resource path, all sources combined.
+    /// Exact event counts by resource path, all sources combined
     pub events: Option<BTreeMap<String, u64>>,
-    /// Expected cross-check outcome (see `validate::crosscheck::Outcome`).
+    /// Expected cross-check outcome (see `validate::crosscheck::Outcome`)
     pub crosscheck: Option<Outcome>,
 }
 
@@ -82,6 +82,7 @@ pub fn load_manifest(path: &Path) -> Result<Manifest, String> {
     if m.version != 1 {
         return Err(format!("unsupported manifest version {}", m.version));
     }
+
     Ok(m)
 }
 
@@ -99,7 +100,7 @@ fn check<T: PartialEq + std::fmt::Debug>(
 }
 
 /// Hash and inspect one fixture, comparing against its expectations. Reads
-/// the file only.
+/// the file only
 pub fn check_fixture(f: &Fixture) -> FixtureResult {
     let mut m = Vec::new();
     let hash = match hash_file(&f.path) {
@@ -109,17 +110,20 @@ pub fn check_fixture(f: &Fixture) -> FixtureResult {
             None
         }
     };
+
     if let (Some(expected), Some(actual)) = (&f.blake3, &hash)
         && !expected.eq_ignore_ascii_case(actual)
     {
         m.push(format!("blake3: expected {expected}, found {actual}"));
     }
+
     let report = hash.is_some().then(|| inspect(&f.path, Limits::default()));
     if let Some(r) = &report {
         check(&mut m, "bytes", &f.bytes, r.size);
         if r.status != InspectStatus::Complete || r.has_errors() {
             m.push(format!("inspect status {:?} with errors", r.status));
         }
+
         if let Some(h) = &r.header {
             let e = &f.expect;
             check(&mut m, "demo_protocol", &e.demo_protocol, h.demo_protocol);
@@ -132,6 +136,7 @@ pub fn check_fixture(f: &Fixture) -> FixtureResult {
             check(&mut m, "game_dir", &e.game_dir, h.game_dir.clone());
             check(&mut m, "map_name", &e.map_name, h.map_name.clone());
         }
+
         if let Some(entries) = &f.expect.entries {
             if entries.len() != r.entries.len() {
                 m.push(format!(
@@ -140,6 +145,7 @@ pub fn check_fixture(f: &Fixture) -> FixtureResult {
                     r.entries.len()
                 ));
             }
+
             for (i, (e, a)) in entries.iter().zip(&r.entries).enumerate() {
                 let p = |s: &str| format!("entry {i} {s}");
                 check(&mut m, &p("type"), &e.entry_type, a.entry_type);
@@ -161,12 +167,14 @@ pub fn check_fixture(f: &Fixture) -> FixtureResult {
             }
         }
     }
+
     if report.is_some() && (f.expect.decode_complete.is_some() || f.expect.events.is_some()) {
         let options = DecodeOptions {
             collect_events: false,
             ..Default::default()
         };
         let (d, _) = decode_demo(&f.path, &options, |_, _, _| {});
+
         let complete = d.status == DecodeStatus::Complete;
         if f.expect
             .decode_complete
@@ -174,6 +182,7 @@ pub fn check_fixture(f: &Fixture) -> FixtureResult {
         {
             m.push(format!("decode status {:?}: {:?}", d.status, d.error));
         }
+
         if let Some(want) = &f.expect.events {
             for (name, n) in want {
                 let got = d.stats.events_by_resource.get(name).copied().unwrap_or(0);
@@ -183,6 +192,7 @@ pub fn check_fixture(f: &Fixture) -> FixtureResult {
             }
         }
     }
+
     if let (Some(_), Some(want)) = (&report, f.expect.crosscheck) {
         let r = crosscheck_demo(&f.path, Limits::default());
         if r.outcome != want {
@@ -192,6 +202,7 @@ pub fn check_fixture(f: &Fixture) -> FixtureResult {
             ));
         }
     }
+
     FixtureResult {
         role: f.role.clone(),
         path: f.path.clone(),

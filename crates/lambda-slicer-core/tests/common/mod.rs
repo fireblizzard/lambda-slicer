@@ -1,5 +1,5 @@
 //! Synthetic demo builder for tests. Produces structurally valid containers
-//! with opaque network payloads; it says nothing about game playability.
+//! with opaque network payloads, but it says nothing about game playability
 
 #![allow(dead_code)]
 
@@ -11,8 +11,10 @@ use lambda_slicer_core::container::{
 pub fn header() -> Header {
     let mut map = Box::new([0u8; 260]);
     map[..9].copy_from_slice(b"crossfire");
+
     let mut game = Box::new([0u8; 260]);
     game[..2].copy_from_slice(b"ag");
+
     Header {
         demo_protocol: 5,
         network_protocol: 48,
@@ -35,6 +37,7 @@ pub fn frame(tag: u8, time: f32, frame_number: i32, body: FrameBody) -> Frame {
 pub fn network(tag: u8, time: f32, n: i32, payload: &[u8]) -> Frame {
     let mut demo_info = Box::new([0u8; 436]);
     demo_info[..4].copy_from_slice(&time.to_le_bytes());
+
     frame(
         tag,
         time,
@@ -50,6 +53,7 @@ pub fn network(tag: u8, time: f32, n: i32, payload: &[u8]) -> Frame {
 fn entry(entry_type: i32, desc: &str) -> DirectoryEntry {
     let mut description_raw = [0u8; 64];
     description_raw[..desc.len()].copy_from_slice(desc.as_bytes());
+
     DirectoryEntry {
         entry_type,
         description_raw,
@@ -62,10 +66,11 @@ fn entry(entry_type: i32, desc: &str) -> DirectoryEntry {
     }
 }
 
-/// One playback frame group at `time` with every record type.
+/// One playback frame group at `time` with every record type
 pub fn group(time: f32, n: i32) -> Vec<Frame> {
     let mut cmd = Box::new([0u8; 64]);
     cmd[..7].copy_from_slice(b"+attack");
+
     vec![
         frame(
             tag::CONSOLE_COMMAND,
@@ -117,16 +122,18 @@ pub fn group(time: f32, n: i32) -> Vec<Frame> {
     ]
 }
 
-/// A two-entry demo with `groups` playback frame groups 0.5 s apart.
+/// A two-entry demo with `groups` playback frame groups 0.5 s apart
 pub fn demo(groups: i32) -> Vec<u8> {
     let loading = vec![
-        network(tag::NETWORK_START, 3.0, 100, &[0xCD; 200]),
+        network(tag::NETWORK_START, 3., 100, &[0xCD; 200]),
         frame(tag::NEXT_SECTION, 3.1, 101, FrameBody::NextSection),
     ];
-    let mut playback = vec![frame(tag::DEMO_START, 0.0, 0, FrameBody::DemoStart)];
+
+    let mut playback = vec![frame(tag::DEMO_START, 0., 0, FrameBody::DemoStart)];
     for n in 0..groups {
         playback.extend(group(n as f32 * 0.5, n));
     }
+
     let end = groups as f32 * 0.5;
     playback.push(frame(
         tag::NEXT_SECTION,
@@ -134,6 +141,7 @@ pub fn demo(groups: i32) -> Vec<u8> {
         groups,
         FrameBody::NextSection,
     ));
+
     build(&[
         (entry(0, "LOADING"), loading),
         (entry(1, "Playback"), playback),
@@ -143,11 +151,13 @@ pub fn demo(groups: i32) -> Vec<u8> {
 pub fn build(entries: &[(DirectoryEntry, Vec<Frame>)]) -> Vec<u8> {
     let mut out = encode_header(&header()).to_vec();
     let mut dir = Vec::new();
+
     for (e, frames) in entries {
         let start = out.len();
         for f in frames {
             encode_frame(f, &mut out);
         }
+
         let mut e = e.clone();
         e.offset = start as i32;
         e.length = (out.len() - start) as i32;
@@ -158,10 +168,13 @@ pub fn build(entries: &[(DirectoryEntry, Vec<Frame>)]) -> Vec<u8> {
                 .count() as i32;
             e.track_time_bits = frames.last().map_or(0, |f| f.time_bits);
         }
+
         dir.push(e);
     }
+
     let dir_offset = out.len() as i32;
     out.extend(encode_directory(&dir));
     out[540..544].copy_from_slice(&dir_offset.to_le_bytes());
+
     out
 }

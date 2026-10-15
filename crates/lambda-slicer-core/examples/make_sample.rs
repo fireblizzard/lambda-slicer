@@ -1,10 +1,11 @@
-//! Development tool: build a reproducible scan sample.
+//! Development tool that builds a reproducible scan sample
 //!
-//! Usage: make_sample <problems.txt> <out.txt> <count> <seed> <roots...>
+//! Usage is `make_sample <problems.txt> <out.txt> <count> <seed> <roots...>`
 //!
-//! Every path in `problems.txt` is included; the rest are drawn from the
+//! Every path in `problems.txt` is included, and the rest are drawn from the
 //! roots round-robin across map names (read from each demo header), so
-//! common maps cannot dominate. Read-only.
+//! common maps cannot dominate. Read-only
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs::File;
 use std::io::{BufReader, Seek, SeekFrom};
@@ -16,11 +17,13 @@ fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
     let Ok(rd) = std::fs::read_dir(dir) else {
         return;
     };
+
     for e in rd.flatten() {
         let Ok(ft) = e.file_type() else { continue };
         if ft.is_symlink() {
             continue;
         }
+
         let p = e.path();
         if ft.is_dir() {
             walk(&p, out);
@@ -30,7 +33,7 @@ fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
-/// splitmix64: small, seedable, good enough for sampling.
+/// splitmix64, which is small, seedable, and good enough for sampling
 struct Rng(u64);
 
 impl Rng {
@@ -58,6 +61,7 @@ fn map_name(p: &Path) -> String {
     let Ok(len) = f.seek(SeekFrom::End(0)) else {
         return "<unreadable>".into();
     };
+
     match read_header(&mut f, len) {
         Ok(h) => h.map_name().to_lowercase(),
         Err(_) => "<no header>".into(),
@@ -97,8 +101,9 @@ fn main() {
             maps.entry(map_name(p)).or_default().push(p.clone());
         }
     }
+
     let mut groups: Vec<Vec<PathBuf>> = maps.into_values().collect();
-    // Random map order, then one random file per map per round.
+    // Random map order, then one random file per map per round
     for i in (1..groups.len()).rev() {
         let j = rng.below(i + 1);
         groups.swap(i, j);
@@ -108,18 +113,22 @@ fn main() {
             if chosen.len() >= count {
                 break;
             }
+
             if g.is_empty() {
                 continue;
             }
+
             let i = rng.below(g.len());
             chosen.push(g.swap_remove(i));
         }
     }
+
     let text: String = chosen
         .iter()
         .map(|p| format!("{}\n", p.display()))
         .collect();
     std::fs::write(out, text).expect("write");
+
     println!(
         "{} files: {problem_count} problem files, {} sampled across {} maps, from {} demos",
         chosen.len(),

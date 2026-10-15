@@ -11,7 +11,7 @@ use crate::protocol::messages::{
     UserMessageDef, parse_message, resource_type, svc,
 };
 
-/// Where a record came from in the source file.
+/// Where a record came from in the source file
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 pub struct FrameLocation {
     pub entry: u32,
@@ -34,16 +34,16 @@ pub struct EntityState {
     pub fields: StructState,
 }
 
-/// Complete decoded state carried by one received packet.
+/// Complete decoded state carried by one received packet
 #[derive(Clone, Debug)]
 pub struct Snapshot {
-    /// Netchan incoming sequence of the packet.
+    /// Netchan incoming sequence of the packet
     pub sequence: u32,
     pub server_time_bits: u32,
-    /// Ordered by entity number; `None` if the packet had no entity update.
+    /// Ordered by entity number, `None` if the packet had no entity update
     pub entities: Option<Arc<Vec<Arc<EntityState>>>>,
     pub clientdata: Option<Arc<StructState>>,
-    /// 64 weapon slots.
+    /// 64 weapon slots
     pub weapons: Option<Arc<Vec<Option<Arc<StructState>>>>>,
 }
 
@@ -51,11 +51,11 @@ pub struct Snapshot {
 pub struct PlayerInfo {
     pub slot: u8,
     pub user_id: u32,
-    /// Raw userinfo string.
+    /// Raw userinfo string
     #[serde(skip)]
     pub info: Vec<u8>,
     pub name: String,
-    /// Increments when the slot's user id changes.
+    /// Increments when the slot's user id changes
     pub incarnation: u32,
 }
 
@@ -68,21 +68,21 @@ pub enum EventSource {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub enum ActorResolution {
-    /// Resolved through this packet's entity array.
+    /// Resolved through this packet's entity array
     PacketEntity {
         packet_index: u16,
         entity: u16,
     },
-    /// Explicit `entindex` in the event arguments.
+    /// Explicit `entindex` in the event arguments
     Explicit {
         entity: i32,
     },
-    /// Packet index past the array that is not the documented fallback.
+    /// Packet index past the array that is not the documented fallback
     OutOfRange {
         packet_index: u16,
         entities: usize,
     },
-    /// Packet index given but no entity update in this packet.
+    /// Packet index given but no entity update in this packet
     NoPacketContext {
         packet_index: u16,
     },
@@ -96,12 +96,13 @@ pub struct DecodedEvent {
     pub message_ordinal: Option<u32>,
     pub index: u16,
     pub resource: Option<Vec<u8>>,
-    /// Decoded `event_args_t` for network events.
+    /// Decoded `event_args_t` for network events
     pub args: Option<StructState>,
-    /// Standalone demo event record.
+    /// Standalone demo event record
     pub demo: Option<EventRecord>,
     pub actor: ActorResolution,
-    /// Network: fire time or reliable delay, ×100. Demo: delay f32 bits.
+    /// For network events, the fire time or reliable delay, ×100. For demo
+    /// events, the delay f32 bits
     pub delay_raw: Option<u32>,
     pub server_time_bits: u32,
 }
@@ -148,22 +149,22 @@ pub struct DecodeStats {
     pub max_entities: usize,
     pub snapshots: u64,
     pub duplicate_sequences: u64,
-    /// Largest sequence distance between a packet and its delta base.
+    /// Largest sequence distance between a packet and its delta base
     pub max_delta_distance: u32,
-    /// Delta references whose ring slot was empty; decoded against an empty
-    /// base, as a client that had not received that frame would.
+    /// Delta references whose ring slot was empty. These are decoded against an
+    /// empty base, as a client that had not received that frame would
     pub empty_delta_bases: u64,
     /// Delta references whose low byte differs from the sequence found in
-    /// the ring slot (the engine uses the slot regardless).
+    /// the ring slot (the engine uses the slot regardless)
     pub delta_base_byte_mismatches: u64,
     /// Removals of entities absent from the delta base (ignored, as the
-    /// engine does).
+    /// engine does)
     pub removed_absent_entities: u64,
     /// Times the recorded-to-server sequence offset was (re)inferred. Some
     /// recordings store an `incoming_sequence` shifted from the numbering the
-    /// server uses in delta references.
+    /// server uses in delta references
     pub sequence_offset_changes: u64,
-    /// Last inferred offset (recorded minus server sequence, low byte).
+    /// Last inferred offset (recorded minus server sequence, low byte)
     pub sequence_offset: u8,
     pub entities_without_baseline: u64,
     pub events_by_resource: BTreeMap<String, u64>,
@@ -171,9 +172,9 @@ pub struct DecodeStats {
     pub max_payload: usize,
 }
 
-/// Frame ring sizes: the server deltas from `frames[delta & (backup - 1)]`
+/// Frame ring sizes. The server deltas from `frames[delta & (backup - 1)]`
 /// with 8 frames when `max_clients == 1`, otherwise 64 (ReHLDS
-/// `SV_UPDATE_BACKUP`). The decoder mirrors that ring.
+/// `SV_UPDATE_BACKUP`). The decoder mirrors that ring
 const SINGLEPLAYER_BACKUP: usize = 8;
 const MULTIPLAYER_BACKUP: usize = 64;
 
@@ -186,24 +187,24 @@ pub struct Decoder {
     pub hltv: bool,
     pub time_bits: u32,
     pub view_entity: Option<u16>,
-    /// Body of the last `svc_newmovevars`.
+    /// Body of the last `svc_newmovevars`
     pub movevars: Option<Vec<u8>>,
     baselines: HashMap<u16, Arc<EntityState>>,
     instanced: Vec<Arc<StructState>>,
     resources: Vec<Resource>,
     event_names: HashMap<u16, Vec<u8>>,
-    /// Frame ring size: 8 or 64.
+    /// Frame ring size, either 8 or 64
     backup: usize,
-    /// Recently stored snapshots, newest last.
+    /// Recently stored snapshots, newest last
     history: std::collections::VecDeque<Arc<Snapshot>>,
-    /// Recorded minus server sequence, modulo 256.
+    /// Recorded minus server sequence, modulo 256
     sequence_offset: u8,
 
     pub players: BTreeMap<u8, PlayerInfo>,
     pub segment: u32,
     pub stats: DecodeStats,
     pub events: Vec<DecodedEvent>,
-    /// Keep decoded events in `events`.
+    /// Keep decoded events in `events`
     pub collect_events: bool,
 }
 
@@ -213,11 +214,11 @@ impl Default for Decoder {
     }
 }
 
-/// Snapshot under construction for the packet being decoded.
+/// Snapshot under construction for the packet being decoded
 struct Building {
     sequence: u32,
     /// Delta clientdata waiting for the entity packet of the same frame to
-    /// select the delta base: (message, ordinal, payload offset).
+    /// select the delta base, stored as (message, ordinal, payload offset)
     pending_clientdata: Option<(ClientDataMessage, u32, u32)>,
     entities: Option<Arc<Vec<Arc<EntityState>>>>,
     clientdata: Option<Arc<StructState>>,
@@ -225,16 +226,18 @@ struct Building {
 }
 
 fn userinfo_value(info: &[u8], key: &[u8]) -> Option<Vec<u8>> {
-    // Infostrings are "\key\value\key\value".
+    // Infostrings are "\key\value\key\value"
     let mut parts = info.split(|&b| b == b'\\');
     if info.first() == Some(&b'\\') {
         parts.next();
     }
+
     while let (Some(k), Some(v)) = (parts.next(), parts.next()) {
         if k == key {
             return Some(v.to_vec());
         }
     }
+
     None
 }
 
@@ -282,7 +285,7 @@ impl Decoder {
         self.user_messages[usize::from(id)].as_ref()
     }
 
-    /// Frame ring size in use (8 or 64).
+    /// Frame ring size in use (8 or 64)
     pub fn backup(&self) -> usize {
         self.backup
     }
@@ -291,13 +294,13 @@ impl Decoder {
         recorded.wrapping_sub(self.sequence_offset.into())
     }
 
-    /// The most recently stored snapshot.
+    /// The most recently stored snapshot
     pub fn latest_snapshot(&self) -> Option<&Arc<Snapshot>> {
         self.history.back()
     }
 
-    /// The snapshot a delta reference byte resolves to: the most recent one
-    /// occupying its ring slot, as on the server (`frames[delta & mask]`).
+    /// The snapshot a delta reference byte resolves to, which is the most recent
+    /// one occupying its ring slot, as on the server (`frames[delta & mask]`)
     pub fn snapshot_for_byte(&self, byte: u8) -> Option<&Arc<Snapshot>> {
         let mask = self.backup - 1;
         self.history
@@ -308,7 +311,7 @@ impl Decoder {
     }
 
     /// Decode one network record. `on_message` sees each message after it
-    /// has been applied to the state.
+    /// has been applied to the state
     pub fn network_frame(
         &mut self,
         location: FrameLocation,
@@ -317,6 +320,7 @@ impl Decoder {
     ) -> Result<(), DecodeError> {
         self.stats.network_frames += 1;
         self.stats.max_payload = self.stats.max_payload.max(frame.message.len());
+
         let sequence = frame.sequence[0] as u32;
         let mut building = Building {
             sequence,
@@ -325,6 +329,7 @@ impl Decoder {
             clientdata: None,
             weapons: None,
         };
+
         let mut r = BitReader::new(&frame.message);
         let mut ordinal = 0u32;
         while !r.is_empty() {
@@ -337,6 +342,7 @@ impl Decoder {
                 payload_offset: at,
                 kind,
             };
+
             let parsed = {
                 let schemas = &self.schemas;
                 let lookup = |name: &'static str| schemas.get(name.as_bytes()).cloned();
@@ -353,6 +359,7 @@ impl Decoder {
             };
             self.apply(&parsed, &mut building, location, ordinal)
                 .map_err(fail)?;
+
             self.stats.messages += 1;
             *self
                 .stats
@@ -365,9 +372,11 @@ impl Decoder {
                     .map_or_else(|| format!("#{id}"), UserMessageDef::name_lossy);
                 *self.stats.user_messages.entry(name).or_default() += 1;
             }
+
             on_message(self, &parsed);
             ordinal += 1;
         }
+
         if let Some((cd, ordinal, at)) = building.pending_clientdata.take() {
             self.apply_clientdata(&cd, &mut building)
                 .map_err(|kind| DecodeError {
@@ -378,6 +387,7 @@ impl Decoder {
                     kind,
                 })?;
         }
+
         self.finish_packet(building);
         Ok(())
     }
@@ -386,6 +396,7 @@ impl Decoder {
         if b.entities.is_none() && b.clientdata.is_none() {
             return;
         }
+
         if self
             .history
             .back()
@@ -393,6 +404,7 @@ impl Decoder {
         {
             self.stats.duplicate_sequences += 1;
         }
+
         if self.history.len() == 256 {
             self.history.pop_front();
         }
@@ -407,13 +419,14 @@ impl Decoder {
     }
 
     /// The delta base for reference byte `from`, resolved like the engine
-    /// through the frame ring. An empty slot yields an empty base.
+    /// through the frame ring. An empty slot yields an empty base
     fn delta_base(&mut self, from: u8, sequence: u32) -> Arc<Snapshot> {
         match self.snapshot_for_byte(from).cloned() {
             Some(snap) => {
                 if self.server_sequence(snap.sequence) as u8 != from {
                     self.stats.delta_base_byte_mismatches += 1;
                 }
+
                 let distance = sequence.wrapping_sub(snap.sequence);
                 self.stats.max_delta_distance = self.stats.max_delta_distance.max(distance);
                 snap
@@ -455,6 +468,7 @@ impl Decoder {
             Message::Time(bits) => self.time_bits = *bits,
             Message::ServerInfo(info) => {
                 self.new_segment();
+
                 self.max_clients = info.max_clients;
                 let backup = if info.max_clients == 1 {
                     SINGLEPLAYER_BACKUP
@@ -500,6 +514,7 @@ impl Decoder {
                         }),
                     );
                 }
+
                 let schema = self.schemas.get(&b"entity_state_t"[..]).cloned();
                 self.instanced = match schema {
                     Some(s) => b
@@ -528,6 +543,7 @@ impl Decoder {
                 if let Some((cd, _, _)) = building.pending_clientdata.take() {
                     self.apply_clientdata(&cd, building)?;
                 }
+
                 self.stats.max_entities = self.stats.max_entities.max(ents.len());
                 building.entities = Some(Arc::new(ents));
             }
@@ -543,6 +559,7 @@ impl Decoder {
                         .and_then(|s| args.value(s, "entindex"))
                         .and_then(|v| v.as_i64())
                         .unwrap_or(0) as i32;
+
                     let actor = match (e.packet_index, &building.entities) {
                         (None, _) => ActorResolution::Unknown,
                         (Some(pi), None) => ActorResolution::NoPacketContext { packet_index: pi },
@@ -560,6 +577,7 @@ impl Decoder {
                             },
                         },
                     };
+
                     self.record_event(DecodedEvent {
                         location,
                         source: EventSource::Svc,
@@ -585,6 +603,7 @@ impl Decoder {
                     .and_then(|s| args.value(s, "entindex"))
                     .and_then(|v| v.as_i64())
                     .unwrap_or(0) as i32;
+
                 self.record_event(DecodedEvent {
                     location,
                     source: EventSource::SvcReliable,
@@ -604,6 +623,7 @@ impl Decoder {
             }
             _ => {}
         }
+
         Ok(())
     }
 
@@ -616,6 +636,7 @@ impl Decoder {
             Some(p) => p.incarnation + 1,
             None => 0,
         };
+
         self.players.insert(
             slot,
             PlayerInfo {
@@ -634,21 +655,24 @@ impl Decoder {
             |r| String::from_utf8_lossy(r).into_owned(),
         );
         *self.stats.events_by_resource.entry(key).or_default() += 1;
+
         if !matches!(
             ev.actor,
             ActorResolution::PacketEntity { .. } | ActorResolution::Explicit { .. }
         ) {
             self.stats.unresolved_event_actors += 1;
         }
+
         if self.collect_events {
             self.events.push(ev);
         }
     }
 
-    /// Standalone demo `Event` record (outer tag 6).
+    /// Standalone demo `Event` record (outer tag 6)
     pub fn demo_event(&mut self, location: FrameLocation, record: &EventRecord) {
         let entity = record.entity_index();
         let index = u16::try_from(record.index).unwrap_or(u16::MAX);
+
         self.record_event(DecodedEvent {
             location,
             source: EventSource::Demo,
@@ -675,6 +699,7 @@ impl Decoder {
         let Some(update) = &cd.client else {
             return Ok(());
         };
+
         let empty = || (Arc::new(StructState::default()), Arc::new(vec![None; 64]));
         let (base_client, base_weapons) = match cd.delta_from {
             Some(from) => {
@@ -686,10 +711,12 @@ impl Decoder {
             }
             None => empty(),
         };
+
         let cschema = self.schema("clientdata_t").ok_or(DecodeErrorKind::Message(
             MessageError::MissingSchema("clientdata_t"),
         ))?;
         let client = StructState::apply(&base_client, &cschema, update);
+
         let mut weapons = (*base_weapons).clone();
         if !cd.weapons.is_empty() {
             let wschema = self
@@ -697,6 +724,7 @@ impl Decoder {
                 .ok_or(DecodeErrorKind::Message(MessageError::MissingSchema(
                     "weapon_data_t",
                 )))?;
+
             let empty = StructState::default();
             for (slot, d) in &cd.weapons {
                 let slot = usize::from(*slot);
@@ -704,6 +732,7 @@ impl Decoder {
                 weapons[slot] = Some(Arc::new(StructState::apply(base, &wschema, d)));
             }
         }
+
         building.clientdata = Some(Arc::new(client));
         building.weapons = Some(Arc::new(weapons));
         Ok(())
@@ -748,6 +777,7 @@ impl Decoder {
             } else {
                 self.baseline_for(u.number)
             };
+
             push_ordered(&out, u.number)?;
             let (Some(schema), Some(delta)) = (&u.schema, &u.delta) else {
                 return Err(DecodeErrorKind::Other(
@@ -760,12 +790,14 @@ impl Decoder {
                 fields: StructState::apply(&base, schema, delta),
             }));
         }
+
         if usize::from(p.declared_count) != out.len() {
             return Err(DecodeErrorKind::CountMismatch {
                 declared: p.declared_count,
                 actual: out.len(),
             });
         }
+
         Ok(out)
     }
 
@@ -776,20 +808,23 @@ impl Decoder {
     ) -> Result<Vec<Arc<EntityState>>, DecodeErrorKind> {
         let from = p.delta_from.unwrap_or(0);
         let snap = self.delta_base(from, sequence);
+
         let first = self.rebuild(p, &snap.entities.clone().unwrap_or_default());
         if let Ok(r) = first {
             return Ok(self.accept(r));
         }
+
         // The base under the current sequence offset does not reproduce the
         // declared entity count. Some recordings store a sequence counter
-        // that drifts from the server's numbering; search recent frames,
-        // nearest first, for the base that does.
+        // that drifts from the server's numbering, so search recent frames,
+        // nearest first, for the base that does
         let tries = self.history.len().min(MULTIPLAYER_BACKUP);
         for back in 0..tries {
             let cand = self.history[self.history.len() - 1 - back].clone();
             if Arc::ptr_eq(&cand, &snap) {
                 continue;
             }
+
             if let Ok(r) = self.rebuild(p, &cand.entities.clone().unwrap_or_default()) {
                 self.sequence_offset = (cand.sequence as u8).wrapping_sub(from);
                 self.stats.sequence_offset = self.sequence_offset;
@@ -797,6 +832,7 @@ impl Decoder {
                 return Ok(self.accept(r));
             }
         }
+
         first.map(|r| self.accept(r))
     }
 
@@ -806,7 +842,7 @@ impl Decoder {
         r.entities
     }
 
-    /// Apply a delta entity packet to `old` without touching decoder state.
+    /// Apply a delta entity packet to `old` without touching decoder state
     fn rebuild(
         &self,
         p: &EntityPacket,
@@ -825,6 +861,7 @@ impl Decoder {
                 out.push(old[oi].clone());
                 oi += 1;
             }
+
             let same = oi < old.len() && old[oi].number == u.number;
             if u.remove {
                 if same {
@@ -834,11 +871,13 @@ impl Decoder {
                 }
                 continue;
             }
+
             let (Some(schema), Some(delta)) = (&u.schema, &u.delta) else {
                 return Err(DecodeErrorKind::Other(
                     "delta packet entity without delta".into(),
                 ));
             };
+
             let base = if same {
                 let b = old[oi].fields.clone();
                 oi += 1;
@@ -854,6 +893,7 @@ impl Decoder {
                     }
                 }
             };
+
             push_ordered(out, u.number)?;
             out.push(Arc::new(EntityState {
                 number: u.number,
@@ -862,17 +902,19 @@ impl Decoder {
             }));
         }
         out.extend(old[oi..].iter().cloned());
+
         if usize::from(p.declared_count) != out.len() {
             return Err(DecodeErrorKind::CountMismatch {
                 declared: p.declared_count,
                 actual: out.len(),
             });
         }
+
         Ok(r)
     }
 
     /// Converted value of a named entity field, using the schema that applies
-    /// to that entity.
+    /// to that entity
     pub fn entity_value(&self, e: &EntityState, field: &str) -> Option<Value> {
         let schema = if e.custom {
             self.schema("custom_entity_state_t")

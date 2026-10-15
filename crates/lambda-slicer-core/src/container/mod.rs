@@ -1,8 +1,8 @@
-//! GoldSrc demo container: header, directory, and outer frame records.
+//! GoldSrc demo container with the header, directory, and outer frame records
 //!
 //! Everything here is byte-exact. Raw string buffers and float bits are
 //! preserved so a frame can be written back unchanged. Network message
-//! payloads are opaque at this layer.
+//! payloads are opaque at this layer
 
 mod frame;
 mod index;
@@ -19,10 +19,10 @@ use std::fmt;
 pub const MAGIC: &[u8; 8] = b"HLDEMO\0\0";
 pub const HEADER_LEN: u64 = 544;
 pub const DIR_ENTRY_LEN: u64 = 92;
-/// Offset of the directory-offset field inside the header.
+/// Offset of the directory-offset field inside the header
 pub const HEADER_DIR_OFFSET_FIELD: usize = 540;
 
-/// Fixed 544-byte demo header. String fields are kept as raw buffers.
+/// Fixed 544-byte demo header. String fields are kept as raw buffers
 #[derive(Clone, PartialEq, Eq)]
 pub struct Header {
     pub demo_protocol: i32,
@@ -56,8 +56,8 @@ impl fmt::Debug for Header {
     }
 }
 
-/// One 92-byte directory record. Values are raw and may be invalid; use
-/// [`DirectoryEntry::region`] to obtain a checked byte range.
+/// One 92-byte directory record. Values are raw and may be invalid, so use
+/// [`DirectoryEntry::region`] to obtain a checked byte range
 #[derive(Clone, PartialEq, Eq)]
 pub struct DirectoryEntry {
     pub entry_type: i32,
@@ -80,7 +80,7 @@ impl DirectoryEntry {
     }
 
     /// Checked `[start, end)` byte range of this entry within a file of
-    /// `file_len` bytes.
+    /// `file_len` bytes
     pub fn region(&self, file_len: u64) -> Result<(u64, u64), ContainerError> {
         let start = u64::try_from(self.offset).map_err(|_| ContainerError::Range {
             what: "directory entry offset",
@@ -100,6 +100,7 @@ impl DirectoryEntry {
                 detail: format!("region {start}..{end} is outside {HEADER_LEN}..{file_len}"),
             });
         }
+
         Ok((start, end))
     }
 }
@@ -119,7 +120,7 @@ impl fmt::Debug for DirectoryEntry {
     }
 }
 
-/// Why a frame could not be read.
+/// Why a frame could not be read
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum FrameCause {
     #[error("truncated {field}: needs {needed} bytes, {available} remain in the entry")]
@@ -172,7 +173,7 @@ pub enum ContainerError {
     },
 }
 
-/// Bytes up to the first NUL, decoded lossily for display only.
+/// Bytes up to the first NUL, decoded lossily for display only
 pub fn c_string_lossy(raw: &[u8]) -> String {
     let end = raw.iter().position(|&b| b == 0).unwrap_or(raw.len());
     String::from_utf8_lossy(&raw[..end]).into_owned()

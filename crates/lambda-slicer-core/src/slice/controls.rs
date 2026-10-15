@@ -1,12 +1,13 @@
-//! S0 control exports (implementation plan §6.1):
+//! S0 control exports (implementation plan §6.1)
 //!
-//! - S0a: exact byte copy under another name.
-//! - S0b: container rebuilt from decoded frames, payloads and clocks unchanged.
-//! - S0c: end-only truncation `[0, end)` with a regenerated terminal record
-//!   and directory.
+//! - S0a, an exact byte copy under another name
+//! - S0b, a container rebuilt from decoded frames with payloads and clocks
+//!   unchanged
+//! - S0c, an end-only truncation `[0, end)` with a regenerated terminal record
+//!   and directory
 //!
 //! These qualify the container writer in the game before any arbitrary-start
-//! transformation is attempted.
+//! transformation is attempted
 
 use std::fs::File;
 use std::io::{self, BufReader, BufWriter, Seek, SeekFrom, Write};
@@ -29,7 +30,7 @@ pub enum Control {
     ExactCopy,
     /// S0b
     Roundtrip,
-    /// S0c: keep `[0, end)` of the playback entry.
+    /// S0c, which keeps `[0, end)` of the playback entry
     TruncateEnd(DemoTime),
 }
 
@@ -56,7 +57,7 @@ pub struct WrittenEntry {
 pub struct CutReport {
     pub requested_end: String,
     /// Time of the first excluded frame group, written as the terminal
-    /// record time; the retained interval is `[0, effective_end)`.
+    /// record time. The retained interval is `[0, effective_end)`
     pub effective_end: String,
     pub effective_end_us: i64,
     pub retained_records: u64,
@@ -69,7 +70,7 @@ pub struct ControlReport {
     pub control: &'static str,
     pub source: String,
     pub published: Published,
-    /// S0b: whether the rebuilt file equals the source byte for byte.
+    /// For S0b, whether the rebuilt file equals the source byte for byte
     pub byte_identical: Option<bool>,
     pub entries: Vec<WrittenEntry>,
     pub cut: Option<CutReport>,
@@ -113,9 +114,11 @@ pub fn run_control(
             Ok(())
         },
     )?;
+
     let byte_identical = matches!(control, Control::Roundtrip)
         .then(|| published.source.full_hash.as_deref() == Some(published.output_hash.as_str()));
     let (entries, cut) = rebuilt.unwrap_or_default();
+
     Ok(ControlReport {
         control: control.name(),
         source: source.display().to_string(),
@@ -126,7 +129,7 @@ pub fn run_control(
     })
 }
 
-/// Counts bytes written so entry offsets can be assigned while streaming.
+/// Counts bytes written so entry offsets can be assigned while streaming
 struct Counting<W> {
     inner: W,
     pos: u64,
@@ -145,7 +148,7 @@ fn to_i32(v: u64, what: &str) -> Result<i32, ExportError> {
 }
 
 /// Re-encode every entry frame by frame. With `cut`, the playback entry stops
-/// before the first frame group at or after `cut`.
+/// before the first frame group at or after `cut`
 fn rebuild(
     source: &Path,
     out: &mut File,
@@ -192,11 +195,13 @@ fn rebuild(
         for item in reader.frames(i)? {
             let lf = item?;
             let f = lf.frame;
+
             if let Some(end) = truncate_at {
                 if matches!(f.body, FrameBody::NextSection) {
                     let segment_end = DemoTime::from_f32(f.time()).unwrap_or(DemoTime::ZERO);
                     return Err(ExportError::RangeBeyondEnd { end, segment_end });
                 }
+
                 let t = DemoTime::from_f32(f.time()).unwrap_or(DemoTime::ZERO);
                 let new_group = prev_frame_number != Some(f.frame_number);
                 if new_group && t >= end {
@@ -208,12 +213,15 @@ fn rebuild(
                     });
                     break;
                 }
+
                 prev_frame_number = Some(f.frame_number);
             }
+
             if matches!(f.body, FrameBody::Network(_)) {
                 network += 1;
             }
             records += 1;
+
             buf.clear();
             encode_frame(&f, &mut buf);
             w.put(&buf).map_err(io_err(dest_path))?;
@@ -224,11 +232,14 @@ fn rebuild(
             if network == 0 {
                 return Err(ExportError::EmptyRange);
             }
+
             buf.clear();
             encode_frame(term, &mut buf);
             w.put(&buf).map_err(io_err(dest_path))?;
+
             d.frame_count = to_i32(network, "network record count")?;
             d.track_time_bits = term.time_bits;
+
             let effective = DemoTime::from_f32(term.time()).unwrap_or(DemoTime::ZERO);
             cut_report = Some(CutReport {
                 requested_end: end.to_string(),
@@ -239,8 +250,10 @@ fn rebuild(
                 terminal_frame_number: term.frame_number,
             });
         }
+
         d.offset = to_i32(start, "entry offset")?;
         d.length = to_i32(w.pos - start, "entry length")?;
+
         written.push(WrittenEntry {
             index: i,
             offset: d.offset,
@@ -255,10 +268,12 @@ fn rebuild(
         .map_err(io_err(dest_path))?;
     w.inner.flush().map_err(io_err(dest_path))?;
     drop(w);
+
     out.seek(SeekFrom::Start(HEADER_DIR_OFFSET_FIELD as u64))
         .map_err(io_err(dest_path))?;
     out.write_all(&dir_offset.to_le_bytes())
         .map_err(io_err(dest_path))?;
     out.flush().map_err(io_err(dest_path))?;
+
     Ok((written, cut_report))
 }

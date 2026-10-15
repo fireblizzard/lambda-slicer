@@ -1,4 +1,4 @@
-//! Byte-exact encoders for the container structures read by `reader`.
+//! Byte-exact encoders for the container structures read by `reader`
 
 use super::frame::{Frame, FrameBody};
 use super::{DIR_ENTRY_LEN, DirectoryEntry, HEADER_LEN, Header, MAGIC};
@@ -12,14 +12,16 @@ pub fn encode_header(h: &Header) -> [u8; HEADER_LEN as usize] {
     b[276..536].copy_from_slice(&h.game_dir_raw[..]);
     b[536..540].copy_from_slice(&h.map_checksum.to_le_bytes());
     b[540..544].copy_from_slice(&h.directory_offset.to_le_bytes());
+
     b
 }
 
-/// Entry count followed by 92-byte records.
+/// Entry count followed by 92-byte records
 pub fn encode_directory(entries: &[DirectoryEntry]) -> Vec<u8> {
     let mut out = Vec::with_capacity(4 + entries.len() * DIR_ENTRY_LEN as usize);
     let count = i32::try_from(entries.len()).expect("directory entry count fits in i32");
     out.extend_from_slice(&count.to_le_bytes());
+
     for e in entries {
         out.extend_from_slice(&e.entry_type.to_le_bytes());
         out.extend_from_slice(&e.description_raw);
@@ -30,6 +32,7 @@ pub fn encode_directory(entries: &[DirectoryEntry]) -> Vec<u8> {
         out.extend_from_slice(&e.offset.to_le_bytes());
         out.extend_from_slice(&e.length.to_le_bytes());
     }
+
     out
 }
 
@@ -39,11 +42,12 @@ fn sized(out: &mut Vec<u8>, bytes: &[u8]) {
     out.extend_from_slice(bytes);
 }
 
-/// Append the encoding of `f` to `out`.
+/// Append the encoding of `f` to `out`
 pub fn encode_frame(f: &Frame, out: &mut Vec<u8>) {
     out.push(f.tag);
     out.extend_from_slice(&f.time_bits.to_le_bytes());
     out.extend_from_slice(&f.frame_number.to_le_bytes());
+
     match &f.body {
         FrameBody::Network(n) => {
             out.extend_from_slice(&n.demo_info[..]);

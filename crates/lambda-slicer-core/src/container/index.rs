@@ -1,5 +1,5 @@
 //! Compact per-entry frame index. Holds locations and scheduling fields only,
-//! never payloads, so large recordings stay cheap to index.
+//! never payloads, so large recordings stay cheap to index
 
 use std::io::{Read, Seek};
 
@@ -17,7 +17,7 @@ pub struct FrameSpan {
     pub tag: u8,
     pub time_bits: u32,
     pub frame_number: i32,
-    /// Network records only: the seven recorded sequence integers.
+    /// The seven recorded sequence integers, for network records only
     pub sequence: Option<[i32; 7]>,
 }
 
@@ -80,7 +80,7 @@ impl TagCounts {
 #[derive(Debug)]
 pub struct EntryIndex {
     pub entry: u32,
-    /// Empty unless spans were requested.
+    /// Empty unless spans were requested
     pub spans: Vec<FrameSpan>,
     pub counts: TagCounts,
     pub first_time: Option<f32>,
@@ -89,16 +89,16 @@ pub struct EntryIndex {
     pub max_frame_number: Option<i32>,
     /// Non-terminal records whose time is lower than the preceding
     /// non-terminal record's. Repeated NextSection records carry unrelated
-    /// times and are excluded.
+    /// times and are excluded
     pub time_decreases: u64,
     pub max_network_message: u64,
-    /// Time of the first NextSection record.
+    /// Time of the first NextSection record
     pub first_terminal_time: Option<f32>,
-    /// NextSection records; real recordings may contain more than one.
+    /// NextSection records. Real recordings may contain more than one
     pub terminal_records: u64,
-    /// Non-terminal records after the first NextSection (structural warning).
+    /// Non-terminal records after the first NextSection (structural warning)
     pub records_after_terminal: u64,
-    /// First structural error; frames before it are indexed.
+    /// First structural error. Frames before it are indexed
     pub error: Option<ContainerError>,
 }
 
@@ -109,7 +109,7 @@ impl EntryIndex {
 }
 
 /// Index one directory entry. Errors in frame data are recorded in the
-/// result; only an unusable directory entry is returned as `Err`.
+/// result, and only an unusable directory entry is returned as `Err`
 pub fn index_entry<R: Read + Seek>(
     reader: &mut DemoReader<R>,
     entry: u32,
@@ -130,6 +130,7 @@ pub fn index_entry<R: Read + Seek>(
         records_after_terminal: 0,
         error: None,
     };
+
     let mut prev_record_time: Option<f32> = None;
     let mut iter = reader.frames(entry)?;
     for item in iter.by_ref() {
@@ -140,6 +141,7 @@ pub fn index_entry<R: Read + Seek>(
                 break;
             }
         };
+
         let f = &lf.frame;
         let t = f.time();
         idx.counts.add(f.tag);
@@ -149,6 +151,7 @@ pub fn index_entry<R: Read + Seek>(
             }
             prev_record_time = Some(t);
         }
+
         idx.first_time.get_or_insert(t);
         idx.last_time = Some(t);
         idx.min_frame_number = Some(
@@ -159,6 +162,7 @@ pub fn index_entry<R: Read + Seek>(
             idx.max_frame_number
                 .map_or(f.frame_number, |m| m.max(f.frame_number)),
         );
+
         let sequence = match &f.body {
             FrameBody::Network(n) => {
                 idx.max_network_message = idx.max_network_message.max(n.message.len() as u64);
@@ -174,7 +178,7 @@ pub fn index_entry<R: Read + Seek>(
             idx.spans.push(FrameSpan {
                 ordinal: lf.ordinal,
                 offset: lf.offset,
-                // A frame is bounded by its entry, whose length is an i32.
+                // A frame is bounded by its entry, whose length is an i32
                 len: u32::try_from(lf.len).unwrap_or(u32::MAX),
                 tag: f.tag,
                 time_bits: f.time_bits,
@@ -183,7 +187,9 @@ pub fn index_entry<R: Read + Seek>(
             });
         }
     }
+
     idx.terminal_records = iter.terminal_records();
     idx.records_after_terminal = iter.records_after_terminal();
+
     Ok(idx)
 }

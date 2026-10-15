@@ -1,4 +1,5 @@
-//! Source identity: metadata, a bounded quick hash, and a full BLAKE3 hash.
+//! Source identity, made of metadata, a bounded quick hash, and a full BLAKE3
+//! hash
 
 use std::fs::File;
 use std::io::{self, Read, Seek, SeekFrom};
@@ -7,21 +8,21 @@ use std::time::UNIX_EPOCH;
 
 use serde::Serialize;
 
-/// Bytes hashed from each of the start and end of a file for the quick hash.
+/// Bytes hashed from each of the start and end of a file for the quick hash
 const QUICK_REGION: u64 = 64 * 1024;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct SourceFingerprint {
     pub size: u64,
     pub modified_ns: Option<i128>,
-    /// BLAKE3 of size, first and last 64 KiB. A hint, not proof of identity.
+    /// BLAKE3 of size, first and last 64 KiB. A hint, not proof of identity
     pub quick_hash: String,
     pub full_hash: Option<String>,
 }
 
 impl SourceFingerprint {
     /// True when both fingerprints carry full hashes and they match, along
-    /// with size.
+    /// with size
     pub fn same_content(&self, other: &Self) -> bool {
         self.size == other.size && self.full_hash.is_some() && self.full_hash == other.full_hash
     }
@@ -29,6 +30,7 @@ impl SourceFingerprint {
 
 fn modified_ns(meta: &std::fs::Metadata) -> Option<i128> {
     let t = meta.modified().ok()?;
+
     Some(match t.duration_since(UNIX_EPOCH) {
         Ok(d) => d.as_nanos() as i128,
         Err(e) => -(e.duration().as_nanos() as i128),
@@ -39,11 +41,14 @@ pub fn quick_fingerprint(path: &Path) -> io::Result<SourceFingerprint> {
     let mut f = File::open(path)?;
     let meta = f.metadata()?;
     let size = meta.len();
+
     let mut h = blake3::Hasher::new();
     h.update(&size.to_le_bytes());
+
     let mut buf = vec![0u8; QUICK_REGION.min(size) as usize];
     f.read_exact(&mut buf)?;
     h.update(&buf);
+
     if size > QUICK_REGION {
         let tail_start = size.saturating_sub(QUICK_REGION).max(QUICK_REGION);
         f.seek(SeekFrom::Start(tail_start))?;
@@ -51,6 +56,7 @@ pub fn quick_fingerprint(path: &Path) -> io::Result<SourceFingerprint> {
         f.read_to_end(&mut tail)?;
         h.update(&tail);
     }
+
     Ok(SourceFingerprint {
         size,
         modified_ns: modified_ns(&meta),
@@ -59,7 +65,7 @@ pub fn quick_fingerprint(path: &Path) -> io::Result<SourceFingerprint> {
     })
 }
 
-/// Quick fingerprint plus a streamed full-content BLAKE3 hash.
+/// Quick fingerprint plus a streamed full-content BLAKE3 hash
 pub fn full_fingerprint(path: &Path) -> io::Result<SourceFingerprint> {
     let mut fp = quick_fingerprint(path)?;
     fp.full_hash = Some(hash_file(path)?);

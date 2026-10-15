@@ -1,5 +1,6 @@
-//! Development probe: run decode cross-checks over every `.dem` under the
-//! given roots or `--list FILE` (read-only) and aggregate the results.
+//! Development probe that runs decode cross-checks over every `.dem` under the
+//! given roots or `--list FILE` (read-only) and aggregates the results
+
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
@@ -10,11 +11,13 @@ fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
     let Ok(rd) = std::fs::read_dir(dir) else {
         return;
     };
+
     for e in rd.flatten() {
         let Ok(ft) = e.file_type() else { continue };
         if ft.is_symlink() {
             continue;
         }
+
         let p = e.path();
         if ft.is_dir() {
             walk(&p, out);
@@ -30,7 +33,7 @@ fn main() {
     if let [flag, list] = args.as_slice()
         && flag == "--list"
     {
-        // One path per line, e.g. the sample from `make_sample`.
+        // One path per line, e.g. the sample from `make_sample`
         let text = std::fs::read_to_string(list).expect("read list");
         files.extend(
             text.lines()
@@ -42,6 +45,7 @@ fn main() {
             walk(Path::new(root), &mut files);
         }
     }
+
     let start = std::time::Instant::now();
     let mut totals = BTreeMap::<String, (u64, u64)>::new();
     let mut outcomes = BTreeMap::<String, u64>::new();
@@ -50,18 +54,22 @@ fn main() {
         (0u64, Vec::new(), 0u64, 0u64);
     let mut imperfect: Vec<(f64, bool, u64, String)> = Vec::new();
     let (mut sc_ok, mut sc_n, mut perfect_files, mut files_with_copy) = (0u64, 0u64, 0u64, 0u64);
+
     for p in &files {
         let r = crosscheck_demo(p, Limits::default());
         if r.decode_error.is_some() {
             errors += 1;
             continue;
         }
+
         *outcomes.entry(format!("{:?}", r.outcome)).or_default() += 1;
         if r.outcome == Outcome::Failed && failed.len() < 60 {
             failed.push(format!("{}: {}", p.display(), r.reasons.join("; ")));
         }
+
         skipped_spec += r.skipped_spectator_frames;
         skipped_first += r.skipped_before_first_packet;
+
         for c in &r.exact {
             let t = totals
                 .entry(format!("{:?} {}", c.kind, c.name))
@@ -69,6 +77,7 @@ fn main() {
             t.0 += c.match_either;
             t.1 += c.compared;
         }
+
         for c in &r.distance {
             let t = totals
                 .entry(format!("{:?} {} (exact)", c.kind, c.name))
@@ -76,6 +85,7 @@ fn main() {
             t.0 += c.counts[0];
             t.1 += c.compared;
         }
+
         if !r.identity_failures().is_empty() && identity_fail.len() < 20 {
             identity_fail.push(format!(
                 "{}: {:?}",
@@ -86,6 +96,7 @@ fn main() {
                     .collect::<Vec<_>>()
             ));
         }
+
         let (ok, n) = r.server_copy_agreement();
         sc_ok += ok;
         sc_n += n;
@@ -103,29 +114,34 @@ fn main() {
             }
         }
     }
+
     println!(
         "{} files, {:.1}s, {errors} with decode errors",
         files.len(),
         start.elapsed().as_secs_f64()
     );
     println!("outcomes {outcomes:?}");
+
     println!("failed files (first 60):");
     for f in &failed {
         println!("  {f}");
     }
+
     println!(
         "skipped spectator/intermission frames {skipped_spec}, records before first playback packet {skipped_first}"
     );
+
     for (k, (ok, n)) in &totals {
         println!(
             "{ok:>12}/{n:<12} {:>9.5}%  {k}",
             if *n > 0 {
-                100.0 * *ok as f64 / *n as f64
+                100. * *ok as f64 / *n as f64
             } else {
-                100.0
+                100.
             }
         );
     }
+
     println!(
         "identity failures in {} files (first 20):",
         identity_fail.len()
@@ -133,9 +149,11 @@ fn main() {
     for f in &identity_fail {
         println!("  {f}");
     }
+
     println!(
         "server-copy agreement {sc_ok}/{sc_n}; {perfect_files}/{files_with_copy} files perfect"
     );
+
     imperfect.sort_by(|a, b| a.0.total_cmp(&b.0));
     let inferred = imperfect.iter().filter(|x| x.1).count();
     println!(
@@ -145,7 +163,7 @@ fn main() {
     for (rate, inf, miss, p) in imperfect.iter().take(30) {
         println!(
             "  {:>9.5}% misses {miss:>6} inferred {inf}  {p}",
-            rate * 100.0
+            rate * 100.
         );
     }
 }

@@ -1,6 +1,6 @@
 //! No-clobber publication of exported files. Output is written to an
 //! unpredictable temporary file beside the destination, synced, validated,
-//! and only then persisted under the final name without replacing anything.
+//! and only then persisted under the final name without replacing anything
 
 use std::fs::File;
 use std::io;
@@ -19,11 +19,11 @@ pub struct Published {
     pub source: SourceFingerprint,
 }
 
-/// Write a new file at `dest` derived from `source`.
+/// Write a new file at `dest` derived from `source`
 ///
-/// `write` fills the temporary file; `validate` re-reads it by path. The
-/// source's full hash is checked before and after; any change aborts.
-/// Nothing is left at `dest` on failure.
+/// `write` fills the temporary file, and `validate` re-reads it by path. The
+/// source's full hash is checked before and after, and any change aborts.
+/// Nothing is left at `dest` on failure
 pub fn publish_new(
     source: &Path,
     dest: &Path,
@@ -37,7 +37,8 @@ pub fn publish_new(
     if !parent.is_dir() {
         return Err(ExportError::MissingParent(parent.to_path_buf()));
     }
-    // Early, friendly rejection. The race-safe guarantee is persist_noclobber.
+
+    // Early, friendly rejection. The race-safe guarantee is persist_noclobber
     if dest.symlink_metadata().is_ok() {
         if same_file::is_same_file(source, dest).unwrap_or(false) {
             return Err(ExportError::SameAsSource(dest.to_path_buf()));
@@ -46,6 +47,7 @@ pub fn publish_new(
     }
 
     let before = full_fingerprint(source).map_err(io_err(source))?;
+
     let mut tmp =
         NamedTempFile::with_prefix_in(".lambda-slicer-", parent).map_err(io_err(parent))?;
     write(tmp.as_file_mut())?;
@@ -68,6 +70,7 @@ pub fn publish_new(
             }
         }
     })?;
+
     Ok(Published {
         path: dest.to_path_buf(),
         output_hash,

@@ -11,6 +11,7 @@ fuzz_target!(|data: &[u8]| {
         max_demo_buffer: 1 << 16,
         ..Limits::default()
     };
+
     if let Ok(mut r) = DemoReader::new(Cursor::new(data), limits) {
         for e in 0..r.directory.len() as u32 {
             let _ = index_entry(&mut r, e, true);

@@ -1,5 +1,6 @@
-//! Development probe: decode every `.dem` under the given roots or `--list FILE` (read-only)
-//! and summarize network decode status and failure causes.
+//! Development probe that decodes every `.dem` under the given roots or `--list FILE`
+//! (read-only) and summarizes network decode status and failure causes
+
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
@@ -9,11 +10,13 @@ fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
     let Ok(rd) = std::fs::read_dir(dir) else {
         return;
     };
+
     for e in rd.flatten() {
         let Ok(ft) = e.file_type() else { continue };
         if ft.is_symlink() {
             continue;
         }
+
         let p = e.path();
         if ft.is_dir() {
             walk(&p, out);
@@ -23,7 +26,7 @@ fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
-/// Error text with numbers removed, for grouping.
+/// Error text with numbers removed, for grouping
 fn category(e: &str) -> String {
     let tail = e.rsplit(": ").next().unwrap_or(e);
     let msg = e.split(" at payload byte ").next().unwrap_or("");
@@ -41,7 +44,7 @@ fn main() {
     if let [flag, list] = args.as_slice()
         && flag == "--list"
     {
-        // One path per line, e.g. the sample from `make_sample`.
+        // One path per line, e.g. the sample from `make_sample`
         let text = std::fs::read_to_string(list).expect("read list");
         files.extend(
             text.lines()
@@ -53,17 +56,20 @@ fn main() {
             walk(Path::new(root), &mut files);
         }
     }
+
     let start = std::time::Instant::now();
     let mut status = BTreeMap::<String, u64>::new();
     let mut cats = BTreeMap::<String, (u64, Vec<String>)>::new();
     let (mut msgs, mut frames, mut dist, mut inferred, mut dup) = (0u64, 0u64, 0u32, 0u64, 0u64);
     let mut opcodes = BTreeMap::<String, u64>::new();
+
     for p in &files {
         let opts = DecodeOptions {
             collect_events: false,
             ..Default::default()
         };
         let (r, _) = decode_demo(p, &opts, |_, _, _| {});
+
         *status.entry(format!("{:?}", r.status)).or_default() += 1;
         msgs += r.stats.messages;
         frames += r.stats.network_frames;
@@ -75,6 +81,7 @@ fn main() {
         for (k, v) in &r.stats.by_opcode {
             *opcodes.entry(k.clone()).or_default() += v;
         }
+
         if r.status != DecodeStatus::Complete {
             let e = r.error.unwrap_or_default();
             let c = cats.entry(category(&e)).or_default();
@@ -84,6 +91,7 @@ fn main() {
             }
         }
     }
+
     println!(
         "{} files, {:.1}s, {frames} network frames, {msgs} messages",
         files.len(),

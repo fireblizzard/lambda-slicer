@@ -1,4 +1,5 @@
-//! Development probe: run decode cross-checks and print the report.
+//! Development probe that runs decode cross-checks and prints the report
+
 use lambda_slicer_core::container::Limits;
 use lambda_slicer_core::validate::crosscheck::crosscheck_demo;
 
@@ -9,6 +10,7 @@ fn main() {
             "{} (error {:?}, inferred {}, spectator frames skipped {})",
             r.path, r.decode_error, r.inferred_delta_bases, r.skipped_spectator_frames
         );
+
         for c in &r.exact {
             println!(
                 "  {:>8}/{:<8} before {:>8} after {:>8}  {}",
@@ -21,6 +23,7 @@ fn main() {
                 );
             }
         }
+
         for c in &r.distance {
             println!(
                 "  {:>8} max {:<10.4} bins<= {:?}: {:?}  {}",

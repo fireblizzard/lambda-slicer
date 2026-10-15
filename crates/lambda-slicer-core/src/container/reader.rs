@@ -1,5 +1,5 @@
 //! Bounded, streaming container reader. Every length or offset derived from
-//! file contents is checked against the containing region before use.
+//! file contents is checked against the containing region before use
 
 use std::io::{self, Read, Seek, SeekFrom};
 
@@ -10,7 +10,7 @@ use super::frame::{
 use super::{ContainerError, DIR_ENTRY_LEN, DirectoryEntry, FrameCause, HEADER_LEN, Header, MAGIC};
 
 /// Resource limits for lengths read from the file. Defaults are generous
-/// parser caps, not the engine's encoded packet limits.
+/// parser caps, not the engine's encoded packet limits
 #[derive(Clone, Copy, Debug)]
 pub struct Limits {
     pub max_directory_entries: u32,
@@ -38,17 +38,20 @@ pub fn read_header<R: Read + Seek>(r: &mut R, file_len: u64) -> Result<Header, C
     if file_len < HEADER_LEN {
         return Err(ContainerError::TooShort { len: file_len });
     }
+
     let mut buf = [0u8; HEADER_LEN as usize];
     r.seek(SeekFrom::Start(0)).map_err(io_at(0))?;
     r.read_exact(&mut buf).map_err(io_at(0))?;
     if &buf[0..8] != MAGIC {
         return Err(ContainerError::BadMagic);
     }
+
     let i32_at = |at: usize| i32::from_le_bytes(buf[at..at + 4].try_into().unwrap());
     let mut map_name_raw = Box::new([0u8; 260]);
     map_name_raw.copy_from_slice(&buf[16..276]);
     let mut game_dir_raw = Box::new([0u8; 260]);
     game_dir_raw.copy_from_slice(&buf[276..536]);
+
     Ok(Header {
         demo_protocol: i32_at(8),
         network_protocol: i32_at(12),
@@ -68,6 +71,7 @@ pub fn read_directory<R: Read + Seek>(
     if header.directory_offset == 0 {
         return Err(ContainerError::NoDirectory);
     }
+
     let offset = u64::try_from(header.directory_offset).map_err(|_| ContainerError::Range {
         what: "directory offset",
         detail: format!("negative offset {}", header.directory_offset),
@@ -78,6 +82,7 @@ pub fn read_directory<R: Read + Seek>(
             detail: format!("{offset} is outside {HEADER_LEN}..{file_len}"),
         });
     }
+
     let mut count_buf = [0u8; 4];
     r.seek(SeekFrom::Start(offset)).map_err(io_at(offset))?;
     r.read_exact(&mut count_buf).map_err(io_at(offset))?;
@@ -89,6 +94,7 @@ pub fn read_directory<R: Read + Seek>(
             what: "directory entry count",
             detail: format!("{count} (limit {})", limits.max_directory_entries),
         })?;
+
     let table_end = offset + 4 + u64::from(count) * DIR_ENTRY_LEN;
     if table_end > file_len {
         return Err(ContainerError::Range {
@@ -96,11 +102,13 @@ pub fn read_directory<R: Read + Seek>(
             detail: format!("ends at {table_end}, file is {file_len} bytes"),
         });
     }
+
     let mut entries = Vec::with_capacity(count as usize);
     for i in 0..u64::from(count) {
         let at = offset + 4 + i * DIR_ENTRY_LEN;
         let mut b = [0u8; DIR_ENTRY_LEN as usize];
         r.read_exact(&mut b).map_err(io_at(at))?;
+
         let i32_at = |o: usize| i32::from_le_bytes(b[o..o + 4].try_into().unwrap());
         let mut description_raw = [0u8; 64];
         description_raw.copy_from_slice(&b[4..68]);
@@ -115,11 +123,12 @@ pub fn read_directory<R: Read + Seek>(
             length: i32_at(88),
         });
     }
+
     Ok(entries)
 }
 
-/// An open demo: header and directory are validated eagerly; frames are
-/// streamed per entry on demand.
+/// An open demo. Header and directory are validated eagerly, and frames are
+/// streamed per entry on demand
 pub struct DemoReader<R> {
     inner: R,
     pub file_len: u64,
@@ -133,6 +142,7 @@ impl<R: Read + Seek> DemoReader<R> {
         let file_len = inner.seek(SeekFrom::End(0)).map_err(io_at(0))?;
         let header = read_header(&mut inner, file_len)?;
         let directory = read_directory(&mut inner, &header, file_len, &limits)?;
+
         Ok(Self {
             inner,
             file_len,
@@ -143,7 +153,7 @@ impl<R: Read + Seek> DemoReader<R> {
     }
 
     /// Stream frames of directory entry `entry`. The iterator yields at most
-    /// one error, after which it ends.
+    /// one error, after which it ends
     pub fn frames(&mut self, entry: u32) -> Result<FrameIter<'_, R>, ContainerError> {
         let dir = self
             .directory
@@ -156,6 +166,7 @@ impl<R: Read + Seek> DemoReader<R> {
         self.inner
             .seek(SeekFrom::Start(start))
             .map_err(io_at(start))?;
+
         Ok(FrameIter {
             r: &mut self.inner,
             limits: self.limits,
@@ -170,7 +181,7 @@ impl<R: Read + Seek> DemoReader<R> {
     }
 }
 
-/// A frame plus its location in the source.
+/// A frame plus its location in the source
 #[derive(Clone, Debug)]
 pub struct LocatedFrame {
     pub ordinal: u64,
@@ -192,12 +203,12 @@ pub struct FrameIter<'a, R> {
 }
 
 impl<R> FrameIter<'_, R> {
-    /// NextSection records read so far.
+    /// NextSection records read so far
     pub fn terminal_records(&self) -> u64 {
         self.terminals
     }
 
-    /// Non-NextSection records read after the first NextSection.
+    /// Non-NextSection records read after the first NextSection
     pub fn records_after_terminal(&self) -> u64 {
         self.after_terminal
     }
@@ -242,6 +253,7 @@ impl<R: Read> FrameIter<'_, R> {
             }
             .into());
         }
+
         self.r.read_exact(buf).map_err(Fail::Io)?;
         self.pos += needed;
         Ok(())
@@ -261,7 +273,7 @@ impl<R: Read> FrameIter<'_, R> {
         Ok(u32::from_le_bytes(self.arr::<4>(field)?))
     }
 
-    /// Length-prefixed byte string with sign and limit checks.
+    /// Length-prefixed byte string with sign and limit checks
     fn sized(&mut self, field: &'static str, limit: u64) -> Result<Vec<u8>, Fail> {
         let len = self.i32(field)?;
         let len = u64::try_from(len).map_err(|_| FrameCause::NegativeLength {
@@ -271,6 +283,7 @@ impl<R: Read> FrameIter<'_, R> {
         if len > limit {
             return Err(FrameCause::OverLimit { field, len, limit }.into());
         }
+
         let available = self.end - self.pos;
         if len > available {
             return Err(FrameCause::Truncated {
@@ -280,6 +293,7 @@ impl<R: Read> FrameIter<'_, R> {
             }
             .into());
         }
+
         let mut v = vec![0u8; len as usize];
         self.bytes(field, &mut v)?;
         Ok(v)
@@ -292,6 +306,7 @@ impl<R: Read> FrameIter<'_, R> {
         if !f32::from_bits(time_bits).is_finite() {
             return Err(FrameCause::NonFiniteTime(time_bits).into());
         }
+
         let body = match t {
             tag::NETWORK_START | tag::NETWORK => {
                 let demo_info = Box::new(self.arr::<DEMO_INFO_LEN>("demo info")?);
@@ -300,6 +315,7 @@ impl<R: Read> FrameIter<'_, R> {
                     *s = self.i32("sequence info")?;
                 }
                 let message = self.sized("network message", self.limits.max_network_message)?;
+
                 FrameBody::Network(Box::new(NetworkFrame {
                     demo_info,
                     sequence,
@@ -335,6 +351,7 @@ impl<R: Read> FrameIter<'_, R> {
             }
             other => return Err(FrameCause::UnknownTag(other).into()),
         };
+
         Ok(Frame {
             tag: t,
             time_bits,
@@ -348,12 +365,13 @@ impl<R: Read> Iterator for FrameIter<'_, R> {
     type Item = Result<LocatedFrame, ContainerError>;
 
     /// Reads the whole entry region. Recordings can contain several
-    /// NextSection records in a row; all of them are yielded. An entry that
-    /// ends without any NextSection is an error.
+    /// NextSection records in a row, and all of them are yielded. An entry that
+    /// ends without any NextSection is an error
     fn next(&mut self) -> Option<Self::Item> {
         if self.done {
             return None;
         }
+
         let offset = self.pos;
         if offset == self.end {
             self.done = true;
@@ -362,6 +380,7 @@ impl<R: Read> Iterator for FrameIter<'_, R> {
             }
             return None;
         }
+
         match self.read_frame() {
             Ok(frame) => {
                 if matches!(frame.body, FrameBody::NextSection) {
@@ -369,6 +388,7 @@ impl<R: Read> Iterator for FrameIter<'_, R> {
                 } else if self.terminals > 0 {
                     self.after_terminal += 1;
                 }
+
                 let item = LocatedFrame {
                     ordinal: self.ordinal,
                     offset,

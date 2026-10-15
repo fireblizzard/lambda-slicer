@@ -1,10 +1,10 @@
-//! Server-to-client message grammar for network protocol 48.
+//! Server-to-client message grammar for network protocol 48
 //!
 //! Layouts follow the engine writers (ReHLDS `sv_main.cpp`, `pr_cmds.cpp`,
-//! `delta.cpp`) and the Half-Life SDK `const.h`; see
+//! `delta.cpp`) and the Half-Life SDK `const.h`. See
 //! `docs/protocol-profile-5-48.md` for sources and disagreements between
-//! references. An opcode without a known layout stops decoding: messages are
-//! not length-prefixed, so nothing after it can be located.
+//! references. An opcode without a known layout stops decoding. Messages are
+//! not length-prefixed, so nothing after it can be located
 
 use std::sync::Arc;
 
@@ -71,7 +71,7 @@ pub mod svc {
     pub const RESOURCELOCATION: u8 = 56;
     pub const SENDCVARVALUE: u8 = 57;
     pub const SENDCVARVALUE2: u8 = 58;
-    /// First registered user message id.
+    /// First registered user message id
     pub const FIRST_USER_MESSAGE: u8 = 64;
 
     const NAMES: [&str; 59] = [
@@ -150,7 +150,7 @@ pub mod svc {
 
 /// Byte length of each temp-entity body, `None` for unknown types and
 /// `Some(-1)` for the two variable-length types. Agrees with ReHLDS's HLTV
-/// table except TE_PLAYERSPRITES (121), which follows the SDK layout (5).
+/// table except TE_PLAYERSPRITES (121), which follows the SDK layout (5)
 const TE_LENGTH: [i8; 128] = {
     let mut t = [-2i8; 128];
     let known: [(usize, i8); 52] = [
@@ -207,11 +207,13 @@ const TE_LENGTH: [i8; 128] = {
         (119, 16),
         (120, 18),
     ];
+
     let mut i = 0;
     while i < known.len() {
         t[known[i].0] = known[i].1;
         i += 1;
     }
+
     t[121] = 5;
     t[122] = 10;
     t[123] = 13;
@@ -219,6 +221,7 @@ const TE_LENGTH: [i8; 128] = {
     t[125] = 1;
     t[126] = 18;
     t[127] = 15;
+
     t
 };
 
@@ -251,13 +254,13 @@ pub enum MessageError {
     BadTerminator(&'static str),
 }
 
-/// Engine limit on entities per packet.
+/// Engine limit on entities per packet
 pub const MAX_PACKET_ENTITIES: usize = 256;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct UserMessageDef {
     pub name: [u8; 16],
-    /// Fixed body size, or `None` for a byte-length-prefixed body.
+    /// Fixed body size, or `None` for a byte-length-prefixed body
     pub size: Option<u8>,
 }
 
@@ -267,7 +270,7 @@ impl UserMessageDef {
     }
 }
 
-/// The parts of decoder state that change how later bytes are parsed.
+/// The parts of decoder state that change how later bytes are parsed
 pub struct ParseContext<'a> {
     pub meta: &'a DeltaSchema,
     pub schema: &'a dyn Fn(&'static str) -> Option<Arc<DeltaSchema>>,
@@ -294,8 +297,8 @@ impl ParseContext<'_> {
     }
 }
 
-/// Bit-coordinate as sent (`MSG_ReadBitCoord`): optional 12-bit integer and
-/// 3-bit eighths parts with a sign.
+/// Bit-coordinate as sent (`MSG_ReadBitCoord`), made of optional 12-bit
+/// integer and 3-bit eighths parts with a sign
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct BitCoord {
     pub negative: bool,
@@ -305,7 +308,7 @@ pub struct BitCoord {
 
 impl BitCoord {
     pub fn value(self) -> f32 {
-        let v = f32::from(self.int.unwrap_or(0)) + f32::from(self.frac.unwrap_or(0)) / 8.0;
+        let v = f32::from(self.int.unwrap_or(0)) + f32::from(self.frac.unwrap_or(0)) / 8.;
         if self.negative { -v } else { v }
     }
 }
@@ -358,14 +361,14 @@ pub mod resource_type {
     pub const WORLD: u8 = 6;
 }
 
-/// One entry of `svc_event`.
+/// One entry of `svc_event`
 #[derive(Clone, Debug, PartialEq)]
 pub struct EventEntry {
     pub index: u16,
-    /// Position in this packet's entity array (not an entity number).
+    /// Position in this packet's entity array (not an entity number)
     pub packet_index: Option<u16>,
     pub args: Option<DeltaUpdate>,
-    /// `fire_time * 100`.
+    /// `fire_time * 100`
     pub fire_time: Option<u16>,
 }
 
@@ -373,7 +376,7 @@ pub struct EventEntry {
 pub struct ReliableEvent {
     pub index: u16,
     pub args: DeltaUpdate,
-    /// `delay * 100`.
+    /// `delay * 100`
     pub delay: Option<u16>,
 }
 
@@ -382,10 +385,10 @@ pub struct EntityUpdate {
     pub number: u16,
     pub remove: bool,
     pub custom: bool,
-    /// Instanced baseline index.
+    /// Instanced baseline index
     pub new_baseline: Option<u8>,
-    /// Full packets: delta from the entity `offset` positions earlier in
-    /// this packet.
+    /// In full packets, delta from the entity `offset` positions earlier in
+    /// this packet
     pub offset: u8,
     pub schema: Option<Arc<DeltaSchema>>,
     pub delta: Option<DeltaUpdate>,
@@ -394,7 +397,7 @@ pub struct EntityUpdate {
 #[derive(Clone, Debug, PartialEq)]
 pub struct EntityPacket {
     pub declared_count: u16,
-    /// Low byte of the source sequence this delta packet is based on.
+    /// Low byte of the source sequence this delta packet is based on
     pub delta_from: Option<u8>,
     pub updates: Vec<EntityUpdate>,
 }
@@ -416,7 +419,7 @@ pub struct SpawnBaseline {
 #[derive(Clone, Debug, PartialEq)]
 pub struct ClientDataMessage {
     pub delta_from: Option<u8>,
-    /// `None` for HLTV recordings, whose clientdata body is empty.
+    /// `None` for HLTV recordings, whose clientdata body is empty
     pub client: Option<DeltaUpdate>,
     pub weapons: Vec<(u8, DeltaUpdate)>,
 }
@@ -429,7 +432,7 @@ pub enum Message {
     Version(u32),
     SetView(u16),
     Sound(SoundMessage),
-    /// f32 bits.
+    /// f32 bits
     Time(u32),
     Print(Vec<u8>),
     StuffText(Vec<u8>),
@@ -448,7 +451,7 @@ pub enum Message {
     DeltaDescription(Arc<DeltaSchema>),
     ClientData(ClientDataMessage),
     StopSound(u16),
-    /// Raw 24-bit records: slot (5), ping (12), loss (7).
+    /// Raw 24-bit records holding slot (5), ping (12), loss (7)
     Pings(Vec<u32>),
     Particle(Vec<u8>),
     SpawnStatic(Vec<u8>),
@@ -491,7 +494,7 @@ pub enum Message {
     Choke,
     ResourceList {
         resources: Vec<Resource>,
-        /// Consistency list entries: (short form, value).
+        /// Consistency list entries as (short form, value)
         consistency: Option<Vec<(bool, u16)>>,
     },
     NewMoveVars(Vec<u8>),
@@ -514,7 +517,7 @@ pub enum Message {
         fallback_dir: Vec<u8>,
         can_cheat: u8,
     },
-    /// f32 bits.
+    /// f32 bits
     TimeScale(u32),
     ResourceLocation(Vec<u8>),
     SendCvarValue(Vec<u8>),
@@ -528,7 +531,7 @@ pub enum Message {
     },
 }
 
-/// A parsed message and its byte span within the network payload.
+/// A parsed message and its byte span within the network payload
 #[derive(Clone, Debug, PartialEq)]
 pub struct ParsedMessage {
     pub opcode: u8,
@@ -537,7 +540,7 @@ pub struct ParsedMessage {
     pub message: Message,
 }
 
-/// Parse the message starting at the reader's (byte-aligned) position.
+/// Parse the message starting at the reader's (byte-aligned) position
 pub fn parse_message(
     r: &mut BitReader<'_>,
     ctx: &ParseContext<'_>,
@@ -545,6 +548,7 @@ pub fn parse_message(
     let start = r.byte_pos();
     let opcode = r.u8()?;
     let message = parse_body(r, ctx, opcode)?;
+
     r.align();
     Ok(ParsedMessage {
         opcode,
@@ -567,6 +571,7 @@ fn bit_bytes<const N: usize>(r: &mut BitReader<'_>) -> Result<[u8; N], MessageEr
     for b in &mut out {
         *b = r.bits(8)? as u8;
     }
+
     Ok(out)
 }
 
@@ -580,6 +585,7 @@ fn bit_coord(r: &mut BitReader<'_>) -> Result<BitCoord, MessageError> {
             frac: None,
         });
     }
+
     let negative = r.bit()?;
     let int = if has_int {
         Some(r.bits(12)? as u16)
@@ -591,6 +597,7 @@ fn bit_coord(r: &mut BitReader<'_>) -> Result<BitCoord, MessageError> {
     } else {
         None
     };
+
     Ok(BitCoord {
         negative,
         int,
@@ -644,6 +651,7 @@ fn parse_body(
                     });
                 }
             }
+
             M::Pings(v)
         }
         svc::PARTICLE => M::Particle(fixed(r, 11)?),
@@ -679,6 +687,7 @@ fn parse_body(
         svc::CDTRACK => M::CdTrack(r.u8()?, r.u8()?),
         svc::RESTORE => {
             let save = r.string()?;
+
             let n = r.u8()?;
             let mut maps = Vec::with_capacity(n.into());
             for _ in 0..n {
@@ -739,6 +748,7 @@ fn parse_body(
                     "svc_hltv command {cmd} (only HLTV_ACTIVE is known)"
                 )));
             }
+
             M::Hltv(cmd)
         }
         svc::DIRECTOR => {
@@ -799,12 +809,14 @@ fn parse_serverinfo(r: &mut BitReader<'_>) -> Result<ServerInfo, MessageError> {
         map_name: r.string()?,
         map_cycle: r.string()?,
     };
+
     let vac2 = r.u8()?;
     if vac2 != 0 {
         return Err(MessageError::Unsupported(format!(
             "svc_serverinfo VAC2 byte {vac2} (only 0 is known)"
         )));
     }
+
     Ok(info)
 }
 
@@ -820,9 +832,11 @@ fn parse_sound(r: &mut BitReader<'_>) -> Result<SoundMessage, MessageError> {
     } else {
         None
     };
+
     let channel = r.bits(3)? as u8;
     let entity = r.bits(11)? as u16;
     let sound_index = r.bits(if flags & 4 != 0 { 16 } else { 8 })? as u16;
+
     let present = [r.bit()?, r.bit()?, r.bit()?];
     let mut origin = [None; 3];
     for (o, p) in origin.iter_mut().zip(present) {
@@ -830,11 +844,13 @@ fn parse_sound(r: &mut BitReader<'_>) -> Result<SoundMessage, MessageError> {
             *o = Some(bit_coord(r)?);
         }
     }
+
     let pitch = if flags & 8 != 0 {
         Some(r.bits(8)? as u8)
     } else {
         None
     };
+
     Ok(SoundMessage {
         flags,
         volume,
@@ -854,6 +870,7 @@ fn parse_events(
     let count = r.bits(5)?;
     let mut out = Vec::with_capacity(count as usize);
     let mut schema = None;
+
     for _ in 0..count {
         let index = r.bits(10)? as u16;
         let mut packet_index = None;
@@ -868,6 +885,7 @@ fn parse_events(
                 args = Some(parse_delta(r, s, ctx.time_bits)?);
             }
         }
+
         let fire_time = if r.bit()? {
             Some(r.bits(16)? as u16)
         } else {
@@ -880,6 +898,7 @@ fn parse_events(
             fire_time,
         });
     }
+
     Ok(out)
 }
 
@@ -894,13 +913,16 @@ fn parse_clientdata(
             weapons: Vec::new(),
         });
     }
+
     let delta_from = if r.bit()? {
         Some(r.bits(8)? as u8)
     } else {
         None
     };
+
     let schema = ctx.require("clientdata_t")?;
     let client = parse_delta(r, &schema, ctx.time_bits)?;
+
     let mut weapons = Vec::new();
     let mut weapon_schema = None;
     while r.bit()? {
@@ -909,6 +931,7 @@ fn parse_clientdata(
             Some(s) => s,
             None => weapon_schema.insert(ctx.require("weapon_data_t")?),
         };
+
         weapons.push((slot, parse_delta(r, s, ctx.time_bits)?));
         if weapons.len() > 64 {
             return Err(MessageError::TooMany {
@@ -918,6 +941,7 @@ fn parse_clientdata(
             });
         }
     }
+
     Ok(ClientDataMessage {
         delta_from,
         client: Some(client),
@@ -932,6 +956,7 @@ fn parse_entities(
 ) -> Result<EntityPacket, MessageError> {
     let declared_count = r.u16()?;
     let delta_from = if delta { Some(r.u8()?) } else { None };
+
     let full = !delta;
     let mut updates = Vec::new();
     let mut numbase: u32 = 0;
@@ -941,6 +966,7 @@ fn parse_entities(
         } else {
             (false, r.bit()?)
         };
+
         let number = if is_delta {
             numbase + 1
         } else if r.bit()? {
@@ -956,6 +982,7 @@ fn parse_entities(
                 limit: 2047,
             });
         }
+
         let number = number as u16;
         let mut update = EntityUpdate {
             number,
@@ -966,6 +993,7 @@ fn parse_entities(
             schema: None,
             delta: None,
         };
+
         if !remove {
             update.custom = r.bit()?;
             if ctx.instanced_baselines > 0 && r.bit()? {
@@ -974,10 +1002,12 @@ fn parse_entities(
             if full && update.new_baseline.is_none() && r.bit()? {
                 update.offset = r.bits(6)? as u8;
             }
+
             let schema = ctx.entity_schema(number, update.custom)?;
             update.delta = Some(parse_delta(r, &schema, ctx.time_bits)?);
             update.schema = Some(schema);
         }
+
         updates.push(update);
         if updates.len() > 2 * MAX_PACKET_ENTITIES {
             return Err(MessageError::TooMany {
@@ -987,6 +1017,7 @@ fn parse_entities(
             });
         }
     }
+
     r.bits(16)?;
     Ok(EntityPacket {
         declared_count,
@@ -1003,10 +1034,12 @@ fn parse_baseline(
     while r.peek_bits(16)? != 0xFFFF {
         let number = r.bits(11)? as u16;
         let entity_type = r.bits(2)? as u8;
-        // ENTITY_NORMAL = 1, ENTITY_BEAM = 2; custom when not normal.
+
+        // ENTITY_NORMAL = 1, ENTITY_BEAM = 2, and custom when not normal
         let custom = entity_type & 1 == 0;
         let schema = ctx.entity_schema(number, custom)?;
         let delta = parse_delta(r, &schema, ctx.time_bits)?;
+
         entities.push(BaselineEntry {
             number,
             entity_type,
@@ -1021,13 +1054,16 @@ fn parse_baseline(
             });
         }
     }
+
     r.bits(16)?;
+
     let n = r.bits(6)?;
     let schema = ctx.require("entity_state_t")?;
     let mut instanced = Vec::with_capacity(n as usize);
     for _ in 0..n {
         instanced.push(parse_delta(r, &schema, ctx.time_bits)?);
     }
+
     Ok(SpawnBaseline {
         entities,
         instanced,
@@ -1037,6 +1073,7 @@ fn parse_baseline(
 fn parse_temp_entity(r: &mut BitReader<'_>) -> Result<Message, MessageError> {
     let kind = r.u8()?;
     let start = r.byte_pos();
+
     match TE_LENGTH.get(usize::from(kind)).copied().unwrap_or(-2) {
         -2 => return Err(MessageError::UnknownTempEntity(kind)),
         -1 if kind == TE_BSPDECAL => {
@@ -1059,6 +1096,7 @@ fn parse_temp_entity(r: &mut BitReader<'_>) -> Result<Message, MessageError> {
             r.bytes(n as usize)?;
         }
     }
+
     Ok(Message::TempEntity {
         kind,
         body: r.slice(start, r.byte_pos()).to_vec(),
@@ -1074,6 +1112,7 @@ fn parse_resources(r: &mut BitReader<'_>) -> Result<Message, MessageError> {
         let index = r.bits(12)? as u16;
         let download_size = r.bits(24)?;
         let flags = r.bits(3)? as u8;
+
         let md5 = if flags & 4 != 0 {
             Some(bit_bytes::<16>(r)?)
         } else {
@@ -1084,6 +1123,7 @@ fn parse_resources(r: &mut BitReader<'_>) -> Result<Message, MessageError> {
         } else {
             None
         };
+
         resources.push(Resource {
             kind,
             name,
@@ -1094,6 +1134,7 @@ fn parse_resources(r: &mut BitReader<'_>) -> Result<Message, MessageError> {
             reserved,
         });
     }
+
     let consistency = if r.bit()? {
         let mut v = Vec::new();
         while r.bit()? {
@@ -1111,6 +1152,7 @@ fn parse_resources(r: &mut BitReader<'_>) -> Result<Message, MessageError> {
     } else {
         None
     };
+
     Ok(Message::ResourceList {
         resources,
         consistency,

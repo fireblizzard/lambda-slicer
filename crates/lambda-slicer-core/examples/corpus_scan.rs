@@ -1,5 +1,6 @@
-//! Development probe: inspect every `.dem` under the given roots or `--list FILE` (read-only)
-//! and summarize container status and findings.
+//! Development probe that inspects every `.dem` under the given roots or `--list FILE`
+//! (read-only) and summarizes container status and findings
+
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
@@ -10,11 +11,13 @@ fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
     let Ok(rd) = std::fs::read_dir(dir) else {
         return;
     };
+
     for e in rd.flatten() {
         let Ok(ft) = e.file_type() else { continue };
         if ft.is_symlink() {
             continue;
         }
+
         let p = e.path();
         if ft.is_dir() {
             walk(&p, out);
@@ -30,7 +33,7 @@ fn main() {
     if let [flag, list] = args.as_slice()
         && flag == "--list"
     {
-        // One path per line, e.g. the sample from `make_sample`.
+        // One path per line, e.g. the sample from `make_sample`
         let text = std::fs::read_to_string(list).expect("read list");
         files.extend(
             text.lines()
@@ -42,20 +45,24 @@ fn main() {
             walk(Path::new(root), &mut files);
         }
     }
+
     let start = std::time::Instant::now();
     let (mut bytes, mut status) = (0u64, BTreeMap::<String, u64>::new());
     let mut codes = BTreeMap::<(String, &'static str), u64>::new();
     let mut profiles = BTreeMap::<(i32, i32, String), u64>::new();
     let mut examples = BTreeMap::<&'static str, Vec<String>>::new();
+
     for p in &files {
         let r = inspect(p, Limits::default());
         bytes += r.size;
         *status.entry(format!("{:?}", r.status)).or_default() += 1;
+
         if let Some(h) = &r.header {
             *profiles
                 .entry((h.demo_protocol, h.network_protocol, h.game_dir.clone()))
                 .or_default() += 1;
         }
+
         for f in &r.findings {
             *codes
                 .entry((format!("{:?}", f.severity), f.code))
@@ -68,6 +75,7 @@ fn main() {
             }
         }
     }
+
     println!(
         "{} files, {} bytes, {:.1}s",
         files.len(),

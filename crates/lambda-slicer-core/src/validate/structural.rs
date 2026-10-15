@@ -1,7 +1,8 @@
-//! Container inspection and structural validation.
+//! Container inspection and structural validation
 //!
-//! This level checks the container only: header, directory, region layout,
-//! frame grammar, and terminal records. Network payloads are not decoded.
+//! This level checks the container only, meaning the header, directory,
+//! region layout, frame grammar, and terminal records. Network payloads are
+//! not decoded
 
 use std::fs::File;
 use std::io::BufReader;
@@ -71,11 +72,11 @@ pub struct EntryReport {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum InspectStatus {
-    /// Container fully read with no structural errors.
+    /// Container fully read with no structural errors
     Complete,
-    /// Some entries could not be fully read.
+    /// Some entries could not be fully read
     Partial,
-    /// Header or directory unusable.
+    /// Header or directory unusable
     Failed,
 }
 
@@ -96,7 +97,7 @@ impl InspectReport {
     }
 }
 
-/// Supported demo/network protocol profile for the initial implementation.
+/// Supported demo/network protocol profile for the initial implementation
 pub const SUPPORTED_PROFILE: (i32, i32) = (5, 48);
 
 pub fn inspect(path: &Path, limits: Limits) -> InspectReport {
@@ -110,6 +111,7 @@ pub fn inspect(path: &Path, limits: Limits) -> InspectReport {
         findings: Vec::new(),
     };
     let mut findings = Vec::new();
+
     let file = match File::open(path) {
         Ok(f) => f,
         Err(e) => {
@@ -118,6 +120,7 @@ pub fn inspect(path: &Path, limits: Limits) -> InspectReport {
             return report;
         }
     };
+
     let mut reader = match DemoReader::new(BufReader::new(file), limits) {
         Ok(r) => r,
         Err(e) => {
@@ -132,6 +135,7 @@ pub fn inspect(path: &Path, limits: Limits) -> InspectReport {
             return report;
         }
     };
+
     let h = &reader.header;
     report.size = reader.file_len;
     report.header = Some(HeaderReport {
@@ -142,6 +146,7 @@ pub fn inspect(path: &Path, limits: Limits) -> InspectReport {
         map_checksum: h.map_checksum,
         directory_offset: h.directory_offset,
     });
+
     if (h.demo_protocol, h.network_protocol) != SUPPORTED_PROFILE {
         add(
             &mut findings,
@@ -154,6 +159,7 @@ pub fn inspect(path: &Path, limits: Limits) -> InspectReport {
             ),
         );
     }
+
     let dir_offset = h.directory_offset as u64;
     let directory = reader.directory.clone();
     let mut regions = Vec::new();
@@ -173,6 +179,7 @@ pub fn inspect(path: &Path, limits: Limits) -> InspectReport {
                 continue;
             }
         }
+
         let idx = match index_entry(&mut reader, i, false) {
             Ok(idx) => idx,
             Err(e) => {
@@ -186,6 +193,7 @@ pub fn inspect(path: &Path, limits: Limits) -> InspectReport {
                 continue;
             }
         };
+
         if let Some(e) = &idx.error {
             add(
                 &mut findings,
@@ -195,6 +203,7 @@ pub fn inspect(path: &Path, limits: Limits) -> InspectReport {
                 e.to_string(),
             );
         }
+
         if idx.records_after_terminal > 0 {
             add(
                 &mut findings,
@@ -207,6 +216,7 @@ pub fn inspect(path: &Path, limits: Limits) -> InspectReport {
                 ),
             );
         }
+
         if idx.terminal_records > 1 {
             add(
                 &mut findings,
@@ -216,6 +226,7 @@ pub fn inspect(path: &Path, limits: Limits) -> InspectReport {
                 format!("{} NextSection records", idx.terminal_records),
             );
         }
+
         if idx.time_decreases > 0 {
             add(
                 &mut findings,
@@ -225,6 +236,7 @@ pub fn inspect(path: &Path, limits: Limits) -> InspectReport {
                 format!("record time decreases {} times", idx.time_decreases),
             );
         }
+
         let net = idx.counts.network_records();
         if idx.error.is_none() && i64::from(d.frame_count) != net as i64 && d.entry_type != 0 {
             add(
@@ -238,6 +250,7 @@ pub fn inspect(path: &Path, limits: Limits) -> InspectReport {
                 ),
             );
         }
+
         if d.entry_type != 0
             && idx.error.is_none()
             && idx.first_terminal_time.map(f32::to_bits) != Some(d.track_time_bits)
@@ -254,6 +267,7 @@ pub fn inspect(path: &Path, limits: Limits) -> InspectReport {
                 ),
             );
         }
+
         report.entries.push(EntryReport {
             index: i,
             entry_type: d.entry_type,
@@ -281,8 +295,8 @@ pub fn inspect(path: &Path, limits: Limits) -> InspectReport {
         });
     }
 
-    // Region layout: entries must not overlap each other or the directory;
-    // uncovered bytes are reported.
+    // Region layout. Entries must not overlap each other or the directory,
+    // and uncovered bytes are reported
     regions.sort();
     let mut cursor = HEADER_LEN;
     for ((start, end), i) in &regions {
@@ -305,6 +319,7 @@ pub fn inspect(path: &Path, limits: Limits) -> InspectReport {
         }
         cursor = cursor.max(*end);
     }
+
     if dir_offset < cursor {
         add(
             &mut findings,
@@ -325,6 +340,7 @@ pub fn inspect(path: &Path, limits: Limits) -> InspectReport {
             ),
         );
     }
+
     let dir_end = dir_offset + 4 + directory.len() as u64 * crate::container::DIR_ENTRY_LEN;
     if dir_end < reader.file_len {
         add(
@@ -335,6 +351,7 @@ pub fn inspect(path: &Path, limits: Limits) -> InspectReport {
             format!("{} bytes after the directory", reader.file_len - dir_end),
         );
     }
+
     if directory.is_empty() {
         add(
             &mut findings,
@@ -353,6 +370,7 @@ pub fn inspect(path: &Path, limits: Limits) -> InspectReport {
     } else {
         InspectStatus::Partial
     };
+
     report
 }
 

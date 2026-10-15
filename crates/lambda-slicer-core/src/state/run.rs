@@ -1,5 +1,5 @@
-//! Whole-file sequential decode: container frames in physical order through
-//! one [`Decoder`].
+//! Whole-file sequential decode, feeding container frames in physical order
+//! through one [`Decoder`]
 
 use std::fs::File;
 use std::io::BufReader;
@@ -16,11 +16,11 @@ pub const DECODE_REPORT_SCHEMA: u32 = 1;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum DecodeStatus {
-    /// Every network message in every entry decoded and applied.
+    /// Every network message in every entry decoded and applied
     Complete,
-    /// Decoding stopped at `error`; state before it is valid.
+    /// Decoding stopped at `error`, and state before it is valid
     Partial,
-    /// Header or directory unusable.
+    /// Header or directory unusable
     Failed,
 }
 
@@ -41,7 +41,7 @@ pub struct DecodeReport {
     pub hltv: bool,
     /// Some delta bases were not found under the recorded sequence numbers
     /// and were selected by reproducing the server's declared entity count.
-    /// The state is then inferred, not proven.
+    /// The state is then inferred, not proven
     pub inferred_delta_bases: bool,
     pub stats: DecodeStats,
     pub delta_schemas: Vec<SchemaSummary>,
@@ -63,7 +63,7 @@ impl Default for DecodeOptions {
 }
 
 /// Decode `path`, calling `on_message` for every applied network message.
-/// Returns the report and the final decoder (with collected events).
+/// Returns the report and the final decoder (with collected events)
 pub fn decode_demo(
     path: &Path,
     options: &DecodeOptions,
@@ -71,6 +71,7 @@ pub fn decode_demo(
 ) -> (DecodeReport, Decoder) {
     let mut decoder = Decoder::new();
     decoder.collect_events = options.collect_events;
+
     let mut report = DecodeReport {
         schema: DECODE_REPORT_SCHEMA,
         path: path.display().to_string(),
@@ -84,6 +85,7 @@ pub fn decode_demo(
         delta_schemas: Vec::new(),
         players: Vec::new(),
     };
+
     let reader = File::open(path).map_err(|e| e.to_string()).and_then(|f| {
         DemoReader::new(BufReader::new(f), options.limits).map_err(|e| e.to_string())
     });
@@ -94,6 +96,7 @@ pub fn decode_demo(
             return (report, decoder);
         }
     };
+
     report.status = DecodeStatus::Complete;
     'entries: for entry in 0..reader.directory.len() as u32 {
         let frames = match reader.frames(entry) {
@@ -104,6 +107,7 @@ pub fn decode_demo(
                 break;
             }
         };
+
         for item in frames {
             let lf = match item {
                 Ok(lf) => lf,
@@ -113,6 +117,7 @@ pub fn decode_demo(
                     break 'entries;
                 }
             };
+
             let location = FrameLocation {
                 entry,
                 ordinal: lf.ordinal,
@@ -135,12 +140,14 @@ pub fn decode_demo(
             }
         }
     }
+
     report.max_clients = decoder.max_clients;
     report.player_num = decoder.player_num;
     report.hltv = decoder.hltv;
     report.inferred_delta_bases =
         decoder.stats.sequence_offset_changes > 0 || decoder.stats.empty_delta_bases > 0;
     report.stats = decoder.stats.clone();
+
     let mut schemas: Vec<SchemaSummary> = [
         "entity_state_t",
         "entity_state_player_t",
@@ -161,5 +168,6 @@ pub fn decode_demo(
     schemas.sort_by(|a, b| a.name.cmp(&b.name));
     report.delta_schemas = schemas;
     report.players = decoder.players.values().cloned().collect();
+
     (report, decoder)
 }

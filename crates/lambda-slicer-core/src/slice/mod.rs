@@ -1,6 +1,6 @@
 //! Export. M1 provides only the S0 control exports used to qualify the
-//! container writer in the game; arbitrary-start slicing (S1) needs the
-//! audited state decoder and is not implemented yet.
+//! container writer in the game. Arbitrary-start slicing (S1) needs the
+//! audited state decoder and is not implemented yet
 
 pub mod controls;
 pub mod output;
