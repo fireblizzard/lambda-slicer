@@ -32,8 +32,28 @@ independent implementation from the documented format. Layout facts were cross-c
 Every layout claim was then verified by parsing real recordings to their terminal records and by
 byte-identical S0b roundtrips (see `engine-validation.md`).
 
+### Network layer (M2)
+
+The bit reader, delta decoder, message grammar, and state reconstruction in
+`lambda-slicer-core::protocol` and `::state` are also an independent implementation. They were
+written from the following references, which were **read for behavior only; no code was copied
+or translated line by line**:
+
+| Reference | Revision | License | Used for |
+|---|---|---|---|
+| ReHLDS engine `sv_main.cpp`, `delta.cpp`, `pr_cmds.cpp` | `550f2d62f13f4ebeb029c1d9d1c212133202611d` | GPL-2.0-or-later | Authoritative writer layouts: serverinfo, resources, clientdata/weapondata, delta header, packet entities, baselines, events, sound, user messages, static entities; delta field encoding and client-side time-window decode |
+| ReHLDS HLTV `Server.cpp`, `World.cpp`, `Delta.cpp`, `BitBuffer.cpp` | same | GPL-2.0-or-later | Reader-side cross-check, temp-entity length table, sign-magnitude reads |
+| hlviewer.js `src/Replay/*`, `src/BitReader.ts` | `7b002358b6863c2f7e94b531fa9b599a28cefeba` | MIT | Independent reader cross-check |
+| Valve Half-Life SDK `common/const.h` | master | Half-Life SDK license | Temp-entity body layouts |
+
+Where references disagreed, the engine writer (what actually produced the bytes) or the SDK
+layout was followed; the disagreements are listed in `protocol-profile-5-48.md`. All grammar was
+then checked by decoding the local corpus (see the scan there).
+
+The planning document called ReHLDS GPL-3.0; its file headers say GPL version 2 or later.
+
 ## Open license decision
 
-The workspace is marked `UNLICENSED` until a project license is chosen. If M2 adapts `dem`
-(LGPL-3.0) or ReHLDS (GPL-3.0) code rather than reimplementing from behavior, that choice
-constrains the project license and must be recorded here first.
+The workspace is marked `UNLICENSED` until a project license is chosen. No `dem` (LGPL-3.0) or
+ReHLDS (GPL-2.0-or-later) code has been adapted; adapting any would constrain the project license
+and must be recorded here first.

@@ -86,6 +86,91 @@ pub struct EventRecord {
     pub args: [u8; EVENT_ARGS_LEN],
 }
 
+fn f32_at(b: &[u8], at: usize) -> f32 {
+    f32::from_le_bytes(b[at..at + 4].try_into().unwrap())
+}
+
+fn i32_at(b: &[u8], at: usize) -> i32 {
+    i32::from_le_bytes(b[at..at + 4].try_into().unwrap())
+}
+
+fn vec3_at(b: &[u8], at: usize) -> [f32; 3] {
+    [f32_at(b, at), f32_at(b, at + 4), f32_at(b, at + 8)]
+}
+
+/// Offsets inside the 436-byte demo info: timestamp, `ref_params_t`
+/// (232 bytes from 4), `usercmd_t` (52 from 236), `movevars_t` (132 from 288),
+/// view (420), viewmodel (432).
+impl NetworkFrame {
+    pub fn info_timestamp(&self) -> f32 {
+        f32_at(&self.demo_info[..], 0)
+    }
+    pub fn info_vieworg(&self) -> [f32; 3] {
+        vec3_at(&self.demo_info[..], 4)
+    }
+    pub fn info_viewangles(&self) -> [f32; 3] {
+        vec3_at(&self.demo_info[..], 16)
+    }
+    pub fn info_intermission(&self) -> i32 {
+        i32_at(&self.demo_info[..], 72)
+    }
+    pub fn info_paused(&self) -> i32 {
+        i32_at(&self.demo_info[..], 76)
+    }
+    pub fn info_spectator(&self) -> i32 {
+        i32_at(&self.demo_info[..], 80)
+    }
+    pub fn info_onground(&self) -> i32 {
+        i32_at(&self.demo_info[..], 84)
+    }
+    pub fn info_waterlevel(&self) -> i32 {
+        i32_at(&self.demo_info[..], 88)
+    }
+    pub fn info_simvel(&self) -> [f32; 3] {
+        vec3_at(&self.demo_info[..], 92)
+    }
+    pub fn info_simorg(&self) -> [f32; 3] {
+        vec3_at(&self.demo_info[..], 104)
+    }
+    pub fn info_viewheight(&self) -> [f32; 3] {
+        vec3_at(&self.demo_info[..], 116)
+    }
+    pub fn info_health(&self) -> i32 {
+        i32_at(&self.demo_info[..], 144)
+    }
+    pub fn info_maxclients(&self) -> i32 {
+        i32_at(&self.demo_info[..], 176)
+    }
+    pub fn info_viewentity(&self) -> i32 {
+        i32_at(&self.demo_info[..], 180)
+    }
+    pub fn info_playernum(&self) -> i32 {
+        i32_at(&self.demo_info[..], 184)
+    }
+    /// Raw `movevars_t`.
+    pub fn info_movevars(&self) -> &[u8] {
+        &self.demo_info[288..420]
+    }
+}
+
+/// Fields of a standalone `ClientData` record body.
+pub struct ClientDataRecord<'a>(pub &'a [u8; CLIENT_DATA_LEN]);
+
+impl ClientDataRecord<'_> {
+    pub fn origin(&self) -> [f32; 3] {
+        vec3_at(self.0, 0)
+    }
+    pub fn viewangles(&self) -> [f32; 3] {
+        vec3_at(self.0, 12)
+    }
+    pub fn weapon_bits(&self) -> i32 {
+        i32_at(self.0, 24)
+    }
+    pub fn fov(&self) -> f32 {
+        f32_at(self.0, 28)
+    }
+}
+
 impl EventRecord {
     fn i32_at(&self, at: usize) -> i32 {
         i32::from_le_bytes(self.args[at..at + 4].try_into().unwrap())

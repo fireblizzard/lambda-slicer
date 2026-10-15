@@ -1,7 +1,8 @@
-# Protocol profile 5/48 — container layer
+# Protocol profile 5/48
 
-Status: **container layer implemented and checked against real recordings.** Network message
-payloads (svc_* grammar, delta schemas, entity state) are not decoded yet; that is milestone M2.
+Status: **container layer and network decoder (M2) implemented and checked against real
+recordings.** Sections: container (header, directory, outer records), then network messages and
+reconstructed state. Sources and licenses are in `dependency-audit.md`.
 
 All integers are little-endian. Floats are IEEE-754 binary32 and are preserved as raw bits.
 
@@ -100,3 +101,235 @@ No file had an unknown tag, a truncated record, a region gap or overlap, a direc
 mismatch, or a track-time mismatch. The Playback-entry frame-count and track-time rules above
 therefore hold for every readable file in this corpus. This is container-level evidence only; it
 does not show that network payloads decode or play correctly.
+
+# Network layer (M2)
+
+## Bit stream
+
+Network payloads mix byte-aligned fields and bit sections. Bits are read LSB first. A bit
+section starts at a byte boundary after the opcode and ends by rounding up to the next byte
+(`MSG_EndBitReading`). `ReadSBits(n)` is **sign-magnitude**: one sign bit, then `n − 1`
+magnitude bits; `−0` is representable and is preserved. Strings are NUL-terminated bytes.
+
+## Delta encoding
+
+A delta is a 3-bit mask byte count, that many mask bytes, then each field whose mask bit is set,
+in schema order. A field not sent copies the base value **at the same struct offset**; struct
+offsets outside the current schema become zero (the engine parses into a zeroed struct).
+
+| Type | Wire | Converted value |
+|---|---|---|
+| BYTE/SHORT/INTEGER | `bits` (unsigned) or `sbits` (signed) | `/ premultiply`, `× postmultiply` if ≠ 1, cast to the C type |
+| FLOAT | same | same, as f32 |
+| ANGLE | `bits` | `raw × 360 / 2^bits` |
+| TIMEWINDOW_8 | `sbits(8)` regardless of declared bits | `(svc_time × 100 − raw) / 100` |
+| TIMEWINDOW_BIG | `sbits(bits)` | `(svc_time × pre − raw) / pre`, or `svc_time − raw` if pre ≈ 1 |
+| STRING | bytes to NUL | bytes |
+
+Values are stored in wire form, with each time-window value carrying the f32 bits of the
+`svc_time` it was decoded against, so a writer can re-encode them exactly (plan §4.2).
+
+Schemas arrive in `svc_deltadescription`: name string, 16-bit field count, then each field as a
+delta of the fixed meta-schema `fieldType (32) | fieldName (string) | fieldOffset (16) |
+fieldSize (8) | significant_bits (8) | premultiply (32, ×4000) | postmultiply (32, ×4000)`.
+
+**Observed** in the AG recordings: `entity_state_t` 52 fields, `entity_state_player_t` 49,
+`custom_entity_state_t` 19, `clientdata_t` 50, `weapon_data_t` 20, `event_t` 14, `usercmd_t` 15.
+
+## Messages
+
+All opcodes 1–58 have a layout implemented. Opcode 0 (`svc_bad`), 19 (`svc_damage`, unused by
+the engine), 59–63, and unregistered user message ids stop decoding with an error naming the
+frame and payload byte; nothing is skipped by guessing. User messages are ids ≥ 64 registered by
+`svc_newusermsg` (size 255 means a byte length prefix).
+
+Layouts that differ between references, and the choice made:
+
+| Item | Choice | Disagreeing reference |
+|---|---|---|
+| `svc_event` args-delta bit | Present only when a packet index was sent (engine `SV_EmitEvents`) | ReHLDS HLTV reader reads it unconditionally |
+| TE_PLAYERSPRITES (121) | 5 bytes (SDK layout) | ReHLDS HLTV table: 6 |
+| TE_FIREFIELD (123) | 13 bytes (SDK layout, ReHLDS) | hlviewer.js: 9 |
+| TE_TEXTMESSAGE | `fxtime` only when effect = 2 (SDK, ReHLDS) | hlviewer.js: when effect ≠ 0 |
+| `svc_serverinfo` trailing byte | Must be 0; nonzero is reported as unsupported | ReHLDS HLTV reads an extra block when nonzero |
+| `svc_hltv` | Only command 0 (HLTV_ACTIVE) accepted | — |
+| Delta packet player range | `1 ≤ number ≤ max_clients` | hlviewer.js uses `< 32` |
+
+## Entity packets and snapshots
+
+Each network record with an entity or clientdata update stores a snapshot under its recorded
+`incoming_sequence`. The server writes deltas from `frames[delta_sequence & mask]` with a ring
+of **8 frames when `max_clients == 1`, else 64** (ReHLDS `SV_UPDATE_BACKUP`), so the delta
+byte names a ring slot, not an exact sequence. The decoder resolves it the same way: the most
+recent snapshot in that slot. An exact-low-byte lookup was tried first and produced wrong bases
+where references were more than 64 frames old (`bkz_goldbhop` failed under it, passes under the
+ring model).
+
+**Observed: recorded sequences can drift from the server's numbering.** In some recordings
+(44 files in the corpus, mostly 2023–2026 bhop/kz demos, plus a few 2019–2022 matches), the recorded
+`incoming_sequence` rises by exactly 1 per recorded packet while the server's numbering, visible
+through the delta bytes, sometimes rises by more. The offset starts at a small constant (2–5)
+and shifts later, consistent with lost packets. In those files the playback segment starts at a
+sequence unrelated to the loading segment (e.g. 134 → 59138), so the recorder evidently stores a
+counter rather than the live netchan sequence. Which client builds do this is not established.
+
+Base selection therefore is:
+
+1. Resolve the slot under the current offset (initially 0). Accept it if the rebuilt entity
+   count equals the server's declared count.
+2. Otherwise try the last 64 received snapshots, nearest first, and adopt the offset of the first
+   one whose rebuild reproduces the declared count.
+3. Otherwise report `CountMismatch`.
+
+Clientdata in the same packet carries the same delta byte, so it waits for the entity packet's
+choice. Reports flag `inferred_delta_bases` whenever step 2 was needed or a slot was empty: that
+state is **inferred, not proven**, and must not be trusted for export without further evidence.
+An empty slot (nothing received yet) gives an empty base, as for a fresh client. Removing an
+entity that is not in the base is ignored, as the engine does, and counted.
+
+- `svc_packetentities` (full): each entity is built from an instanced baseline, an earlier entity
+  in the same packet (`offset`), or the spawn baseline of its number.
+- `svc_deltapacketentities`: entities of the base not mentioned are carried over unchanged;
+  updates delta from the base entity; removals drop it; new entities start from an instanced or
+  spawn baseline. Entities without a spawn baseline start from zero (counted, not an error).
+- **Check:** the reconstructed entity count must equal the count the server declared in the
+  message. A mismatch is an error. This is the main independent evidence that reconstruction
+  matches the server.
+- `svc_clientdata`: clientdata deltas from the base snapshot's clientdata; weapon data copies the
+  base's 64 slots and applies per-slot deltas. HLTV recordings have an empty body.
+
+## Events and actors
+
+`svc_event` `packet_index` is resolved against the **current packet's reconstructed entity
+array**. An index equal to the array length is the server's fallback for an invoker that is not
+in the packet; the explicit `entindex` in the arguments is used then. Reliable events and
+standalone demo `Event` records use their explicit `entindex`. Anything else is reported as
+unresolved, never guessed.
+
+**Observed** in `naz_crossfire_pb_01.dem` (two players): the recorder's own weapon events appear
+as standalone demo events (entity 1), the opponent's as `svc_event` resolved through the packet
+array (entity 2), and OpenAG's delayed gauss stop as `svc_event_reliable` with `bparam2 = 1`.
+Every event in that file resolved to an actor.
+
+## Corpus decode (2026-10-14)
+
+`decode_scan` example, read-only, over both local roots: **55,052 files, 103,171,395 network
+frames, 404,821,263 messages, 1,170 s.**
+
+| Result | Files |
+|---|---:|
+| Network decode complete, every entity packet matches its declared count | 55,048 |
+| — of which no delta base had to be inferred | 55,004 |
+| — of which some delta bases were inferred (`inferred_delta_bases`) | 44 |
+| Directory offset zero (incomplete recording, recovery not implemented) | 4 |
+
+No opcode without a known layout, no unregistered user message, and no grammar error occurred.
+This shows the grammar and reconstruction agree with the server's own counts across the corpus;
+it does not prove every field value matches what the game client computed. That needs the
+engine trace comparison still open under M2. `max_delta_distance` is measured in recorded
+numbering and is meaningless for files with drifting sequences.
+
+# Validation against client-recorded values (M2)
+
+The recording client writes its own view of the game into every demo: the 436-byte demo info
+before each network record, and standalone `ClientData` records. These are produced by the game,
+not by our decoder, so they are an independent check of decoded state
+(`lambda-slicer crosscheck`, `validate::crosscheck`).
+
+## Demo info layout
+
+Offsets within the 436 bytes: timestamp 0; `ref_params_t` 4–235 (vieworg 4, viewangles 16,
+intermission 72, paused 76, spectator 80, onground 84, waterlevel 88, simvel 92, simorg 104,
+viewheight 116, health 144, maxclients 176, viewentity 180, playernum 184); `usercmd_t` 236–287;
+`movevars_t` 288–419 (16 floats, int footsteps, 32-byte sky name, 8 floats); view 420;
+viewmodel 432. `ClientData` record: origin 0, viewangles 12, weapon bits 24, fov 28.
+
+**Observed:** both record the client state from **before** the network packet of the same frame
+(every identity and server-copy check matches the "before" alignment).
+
+## Checks and what they prove
+
+| Kind | Check | Expectation |
+|---|---|---|
+| Identity | demo info max_clients, playernum vs `svc_serverinfo` | Exact in every frame |
+| Identity | demo info viewentity vs `svc_setview` (state before or after the packet) | Exact in every frame |
+| Identity | demo info `movevars_t` physics fields vs `svc_newmovevars` | Bit-exact in every frame |
+| Server copy | `ClientData` origin vs decoded clientdata origin, while viewing through the player | Bit-exact |
+| Server copy | `ClientData` weapon bits vs clientdata `weapons` | Exact |
+| Client view | demo info health, waterlevel, onground, view height, simorg, simvel | Informational: predicted or HUD values |
+| Client view | `ClientData` fov vs clientdata `fov` (0 = client default, up to two packets of lag) | Informational: client builds differ |
+| Client view | demo info sky name vs `svc_newmovevars` sky name | Informational: the client copy sometimes reads `desert` |
+
+Skipped and counted, never compared:
+
+- records before the first playback packet (only loading-segment state exists then);
+- frames where the client is spectating or in intermission;
+- **level changes inside a recording**: from a new `svc_serverinfo` to the new session's first
+  full entity update, plus packetless or empty-packet frames just before it. In singleplayer the
+  client resets its state before the new serverinfo packet arrives, and the new session's full
+  update can arrive in the same packet as its serverinfo;
+- `ClientData` origins while the view is set to another entity (a camera): the record then holds
+  that entity's position (seen in `funny_nj_tricky.dem` at a `svc_setview 174`).
+
+Findings that shaped the checks:
+
+- **fov is client behavior, not server copy.** In `naz_crossfire_pb_01.dem` every zoom shows the
+  client applying the server's fov one or two packets late (21 zoomed crossbow shots, 21
+  transitions). In other recordings (e.g. the 2023 `crossfire` matches and
+  `20260929_001857_bootbox_match_tournament.dem`) the client keeps its own fov (105 or 108) while
+  the server sends 20 or 105, in up to 97% of frames, while origin and weapon bits in the same
+  files agree 100%.
+- **The movevars sky name** in demo info reads the default `desert` in up to 46% of frames of
+  some older recordings while the server sent another sky. Every physics field is bit-identical
+  in those same frames.
+
+**Observed in `naz_crossfire_pb_01.dem`:** 300,176 of 300,176 server-copy samples agree, and
+identity checks are 100%. In that recording even the predicted `simorg`/`simvel` equal decoded
+clientdata bit for bit.
+
+**The local player's entity origin is never sent** to that player (Half-Life SDK
+`dlls/client.cpp` `Player_Encode`: "Never send origin to local player, it's sent with more
+resolution in clientdata_t structure"); it stays at its baseline. Remote players' event origins
+are zeroed by the server when the invoker is in the packet (`SV_EmitEvents`), so POV demos give no
+client-recorded counterpart for remote entity positions; remote entity state is checked only
+through the declared entity counts and event actor resolution.
+
+**Inferred delta bases are visibly imperfect.** In `20190630_232530_crossfire_[Ehll]_Indica.dem`,
+the only `ClientData` origin outliers (4 records, 3.6–5.2 units) sit exactly at t = 279.76, the
+point where a delta base had to be chosen by entity count. This is why `inferred_delta_bases`
+files must not be trusted for export without further evidence.
+
+## Corpus cross-check (2026-10-15)
+
+`crosscheck_scan` example, read-only, over both local roots: 55,052 files (4 without a directory),
+1,916 s.
+
+| Kind | Check | Agreement |
+|---|---|---|
+| Identity | max_clients | 97,986,796 / 97,986,797 |
+| Identity | playernum | 97,986,797 / 97,986,797 |
+| Identity | viewentity | 97,986,796 / 97,986,797 |
+| Identity | movevars physics | 97,928,799 / 97,986,797 (99.94%) |
+| Server copy | `ClientData` origin, bit-exact | 189,831,373 / 189,836,785 (99.997%) |
+| Server copy | `ClientData` weapon bits | 189,844,297 / 189,846,514 (99.999%) |
+| Client view | fov / health / waterlevel / onground / view height / sky name | 99.79% / 99.99% / 99.95% / 97.33% / 96.97% / 99.43% |
+| Client view | predicted simorg / simvel bit-exact | 35.9% / 36.7% (prediction) |
+
+**54,991 of 55,042 files have every server-copy sample in agreement.** Of the 51 that do not,
+18 have `inferred_delta_bases`; the rest have small counts of misses (typically 1–30 records),
+mostly in 2022–2023 bhop/kz recordings with the same recorder behavior as the drifting-sequence
+files.
+
+Movevars identity misses come from:
+
+- single frames right after a level change, where the client still holds the previous map's
+  movevars (e.g. `20221217_062714_kz_cg_venice.dem`, sky `green` vs `dusk`). The check now also
+  accepts the value from before the packet, a refinement made after this scan;
+- **genuine client-side differences:** in `20220102_191414_crossfire_match_tdm.dem` the recording
+  client used `stepsize` 224 for the whole demo while the server sent 18 and never resent
+  movevars. The identity check correctly flags this; it is not a decoding error.
+
+Conclusion for M2: decoded clientdata and weapon state equal what the recording client stored,
+bit for bit, in all but 0.002% of samples, and the remaining misses are explained by inferred
+delta bases, recording edges, or client-side behavior. Remote entities have no client-recorded
+counterpart in POV demos, so their state rests on the declared-count check and actor resolution.

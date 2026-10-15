@@ -11,8 +11,13 @@ use serde::Serialize;
 use lambda_slicer_core::container::Limits;
 use lambda_slicer_core::fixtures::{MANIFEST_ENV, check_fixture, load_manifest};
 use lambda_slicer_core::library::fingerprint::full_fingerprint;
+use lambda_slicer_core::protocol::messages::{Message, svc};
 use lambda_slicer_core::slice::controls::{Control, run_control};
+use lambda_slicer_core::state::{
+    ActorResolution, DecodeOptions, DecodeStatus, Decoder, decode_demo,
+};
 use lambda_slicer_core::timeline::time::DemoTime;
+use lambda_slicer_core::validate::crosscheck::{CrossCheckReport, crosscheck_demo};
 use lambda_slicer_core::validate::structural::{InspectReport, Severity, inspect};
 
 #[derive(Parser)]
@@ -50,6 +55,26 @@ enum Command {
         /// Exclusive end for `truncate-end`: seconds, M:SS, or HH:MM:SS.fff.
         #[arg(long)]
         end: Option<DemoTime>,
+        #[arg(long)]
+        json: Option<PathBuf>,
+    },
+    /// Decode network messages and reconstruct entity/client state.
+    Decode {
+        path: PathBuf,
+        /// Write the JSON report to a file, or `-` for stdout.
+        #[arg(long)]
+        json: Option<PathBuf>,
+        /// List every decoded event (network and standalone demo events).
+        #[arg(long)]
+        events: bool,
+        /// Print each message whose frame time is in [FROM, TO).
+        #[arg(long, num_args = 2, value_names = ["FROM", "TO"])]
+        trace: Option<Vec<DemoTime>>,
+    },
+    /// Cross-check decoded state against client-recorded values; exits
+    /// non-zero when an identity check fails.
+    Crosscheck {
+        path: PathBuf,
         #[arg(long)]
         json: Option<PathBuf>,
     },
@@ -188,6 +213,22 @@ fn run() -> Result<ExitCode> {
                 }
             }
         }
+        Command::Decode {
+            path,
+            json,
+            events,
+            trace,
+        } => return decode_cmd(&path, json.as_deref(), events, trace.as_deref()),
+        Command::Crosscheck { path, json } => {
+            let r = crosscheck_demo(&path, Limits::default());
+            match &json {
+                Some(target) => write_json(target, &r)?,
+                None => print_crosscheck(&r),
+            }
+            if r.decode_error.is_some() || !r.identity_failures().is_empty() {
+                return Ok(ExitCode::FAILURE);
+            }
+        }
         Command::Hash { paths } => {
             for p in paths {
                 let fp = full_fingerprint(&p).with_context(|| p.display().to_string())?;
@@ -258,6 +299,257 @@ fn inspect_cmd(path: &Path, json: Option<&Path>, strict: bool) -> Result<ExitCod
     } else {
         ExitCode::SUCCESS
     })
+}
+
+/// Printable, escaped, truncated text from recorded bytes. Recorded commands
+/// are displayed, never executed.
+fn text(bytes: &[u8]) -> String {
+    let s: String = String::from_utf8_lossy(bytes).escape_debug().collect();
+    if s.chars().count() > 80 {
+        format!("{}...", s.chars().take(80).collect::<String>())
+    } else {
+        s
+    }
+}
+
+fn describe(d: &Decoder, m: &Message) -> String {
+    match m {
+        Message::Time(bits) => format!("{}", f32::from_bits(*bits)),
+        Message::Print(t) | Message::StuffText(t) | Message::CenterPrint(t) => text(t),
+        Message::PacketEntities(p) => format!("{} entities", p.declared_count),
+        Message::DeltaPacketEntities(p) => format!(
+            "{} entities, {} updates, from {}",
+            p.declared_count,
+            p.updates.len(),
+            p.delta_from.unwrap_or(0)
+        ),
+        Message::ClientData(c) => format!(
+            "from {:?}, {} weapon updates",
+            c.delta_from,
+            c.weapons.len()
+        ),
+        Message::Event(e) => {
+            let names: Vec<String> = e
+                .iter()
+                .map(|e| {
+                    d.event_name(e.index)
+                        .map_or_else(|| format!("#{}", e.index), text)
+                })
+                .collect();
+            names.join(", ")
+        }
+        Message::EventReliable(e) => d
+            .event_name(e.index)
+            .map_or_else(|| format!("#{}", e.index), text),
+        Message::Sound(s) => format!(
+            "sound {} on entity {} channel {}",
+            s.sound_index, s.entity, s.channel
+        ),
+        Message::User { id, body } => format!(
+            "{} ({} bytes)",
+            d.user_message(*id)
+                .map_or_else(|| format!("#{id}"), |u| u.name_lossy()),
+            body.len()
+        ),
+        Message::UpdateUserInfo {
+            slot,
+            user_id,
+            info,
+            ..
+        } => format!("slot {slot} user {user_id} {}", text(info)),
+        Message::TempEntity { kind, .. } => format!("type {kind}"),
+        Message::DeltaDescription(s) => {
+            format!("{} ({} fields)", s.name_lossy(), s.fields.len())
+        }
+        Message::SetView(e) => format!("entity {e}"),
+        Message::ServerInfo(i) => format!(
+            "max clients {}, player {}, map {}",
+            i.max_clients,
+            i.player_num,
+            text(&i.map_name)
+        ),
+        _ => String::new(),
+    }
+}
+
+fn actor_text(d: &Decoder, a: &ActorResolution) -> String {
+    let player = |e: i64| {
+        u8::try_from(e - 1)
+            .ok()
+            .and_then(|slot| d.players.get(&slot))
+            .map(|p| format!(" ({})", p.name))
+            .unwrap_or_default()
+    };
+    match a {
+        ActorResolution::PacketEntity { entity, .. } => {
+            format!("entity {entity}{}", player((*entity).into()))
+        }
+        ActorResolution::Explicit { entity } => {
+            format!("entity {entity}{}", player((*entity).into()))
+        }
+        ActorResolution::OutOfRange {
+            packet_index,
+            entities,
+        } => format!("unresolved (packet index {packet_index} of {entities})"),
+        ActorResolution::NoPacketContext { packet_index } => {
+            format!("unresolved (packet index {packet_index}, no entity update)")
+        }
+        ActorResolution::Unknown => "unknown actor".into(),
+    }
+}
+
+fn decode_cmd(
+    path: &Path,
+    json: Option<&Path>,
+    events: bool,
+    trace: Option<&[DemoTime]>,
+) -> Result<ExitCode> {
+    let window = trace.map(|t| (t[0], t[1]));
+    let options = DecodeOptions {
+        collect_events: events,
+        ..Default::default()
+    };
+    let (report, decoder) = decode_demo(path, &options, |loc, d, m| {
+        let Some((from, to)) = window else { return };
+        let Some(t) = DemoTime::from_f32(loc.time()) else {
+            return;
+        };
+        if loc.entry == 0 || t < from || t >= to {
+            return;
+        }
+        println!(
+            "{t} frame {:>7} {:<24} {}",
+            loc.frame_number,
+            svc::name(m.opcode),
+            describe(d, &m.message)
+        );
+    });
+    if let Some(target) = json {
+        write_json(target, &report)?;
+    } else {
+        println!("{}", report.path);
+        println!("  decode {:?}", report.status);
+        if let Some(e) = &report.error {
+            println!("  error: {e}");
+        }
+        let s = &report.stats;
+        if report.inferred_delta_bases {
+            println!(
+                "  delta bases inferred: {} sequence offset changes, {} empty bases (state not proven)",
+                s.sequence_offset_changes, s.empty_delta_bases
+            );
+        }
+        println!(
+            "  {} network frames, {} messages, {} snapshots ({} full, {} delta entity packets), max {} entities",
+            s.network_frames,
+            s.messages,
+            s.snapshots,
+            s.full_packets,
+            s.delta_packets,
+            s.max_entities
+        );
+        println!(
+            "  max clients {}, recorder slot {}, hltv {}",
+            report.max_clients, report.player_num, report.hltv
+        );
+        for p in &report.players {
+            println!("  player slot {} user {} {:?}", p.slot, p.user_id, p.name);
+        }
+        let mut ev: Vec<_> = s.events_by_resource.iter().collect();
+        ev.sort_by(|a, b| b.1.cmp(a.1));
+        for (name, n) in ev {
+            println!("  {n:>8} {name}");
+        }
+        if s.unresolved_event_actors > 0 {
+            println!(
+                "  {} events without a resolved actor",
+                s.unresolved_event_actors
+            );
+        }
+    }
+    if events {
+        let event_t = decoder.schema("event_t");
+        for e in &decoder.events {
+            let t =
+                DemoTime::from_f32(e.location.time()).map_or_else(|| "?".into(), |t| t.to_string());
+            let name = e
+                .resource
+                .as_deref()
+                .map_or_else(|| format!("#{}", e.index), text);
+            let args = match (&e.args, &event_t, &e.demo) {
+                (Some(a), Some(s), _) => ["bparam1", "bparam2", "iparam1", "fparam1"]
+                    .iter()
+                    .filter_map(|f| a.value(s, f).map(|v| format!("{f}={v:?}")))
+                    .collect::<Vec<_>>()
+                    .join(" "),
+                (_, _, Some(r)) => format!(
+                    "bparam1={} bparam2={} iparam1={} fparam1={}",
+                    r.bparam1(),
+                    r.bparam2(),
+                    r.iparam1(),
+                    r.fparam1()
+                ),
+                _ => String::new(),
+            };
+            println!(
+                "{t} {:<12} {:<22} {:<32} {args}",
+                format!("{:?}", e.source),
+                name,
+                actor_text(&decoder, &e.actor)
+            );
+        }
+    }
+    Ok(if report.status == DecodeStatus::Complete {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    })
+}
+
+fn print_crosscheck(r: &CrossCheckReport) {
+    println!("{}", r.path);
+    if let Some(e) = &r.decode_error {
+        println!("  decode stopped: {e}");
+    }
+    if r.inferred_delta_bases {
+        println!("  delta bases inferred: state around those packets is not proven");
+    }
+    println!(
+        "  skipped: {} spectator/intermission frames, {} records before the first playback packet, {} level-change frames, {} camera-view origins",
+        r.skipped_spectator_frames,
+        r.skipped_before_first_packet,
+        r.skipped_transition_frames,
+        r.skipped_camera_view_records
+    );
+    for c in &r.exact {
+        println!(
+            "  {:<12} {:>9}/{:<9} (before {}, after {})  {}",
+            format!("{:?}", c.kind),
+            c.match_either,
+            c.compared,
+            c.match_before,
+            c.match_after,
+            c.name
+        );
+        for e in &c.examples {
+            println!(
+                "      t {} frame {}: recorded {} decoded before {} after {}",
+                e.time, e.frame_number, e.recorded, e.before, e.after
+            );
+        }
+    }
+    for c in &r.distance {
+        println!(
+            "  {:<12} {:>9}/{:<9} exact, max distance {:.4}  {}",
+            format!("{:?}", c.kind),
+            c.counts[0],
+            c.compared,
+            c.max,
+            c.name
+        );
+    }
+    let (ok, n) = r.server_copy_agreement();
+    println!("  server-copy agreement {ok}/{n}");
 }
 
 fn main() -> ExitCode {

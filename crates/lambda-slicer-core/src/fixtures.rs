@@ -1,12 +1,15 @@
 //! Optional local fixture manifest. Original demos stay outside Git; the
 //! manifest records their paths, hashes, and verified expectations.
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
 use crate::container::Limits;
 use crate::library::fingerprint::hash_file;
+use crate::state::{DecodeOptions, DecodeStatus, decode_demo};
+use crate::validate::crosscheck::crosscheck_demo;
 use crate::validate::structural::{InspectReport, InspectStatus, inspect};
 
 pub const MANIFEST_ENV: &str = "LAMBDA_SLICER_FIXTURE_MANIFEST";
@@ -39,6 +42,13 @@ pub struct Expectations {
     pub game_dir: Option<String>,
     pub map_name: Option<String>,
     pub entries: Option<Vec<EntryExpectation>>,
+    /// Network decode must complete (`true`) or stop (`false`).
+    pub decode_complete: Option<bool>,
+    /// Exact event counts by resource path, all sources combined.
+    pub events: Option<BTreeMap<String, u64>>,
+    /// Every identity cross-check passes and every server-copy sample
+    /// agrees exactly (see `validate::crosscheck`).
+    pub crosscheck_exact: Option<bool>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -150,6 +160,42 @@ pub fn check_fixture(f: &Fixture) -> FixtureResult {
                     a.network_records,
                 );
             }
+        }
+    }
+    if report.is_some() && (f.expect.decode_complete.is_some() || f.expect.events.is_some()) {
+        let options = DecodeOptions {
+            collect_events: false,
+            ..Default::default()
+        };
+        let (d, _) = decode_demo(&f.path, &options, |_, _, _| {});
+        let complete = d.status == DecodeStatus::Complete;
+        if f.expect
+            .decode_complete
+            .is_some_and(|want| want != complete)
+        {
+            m.push(format!("decode status {:?}: {:?}", d.status, d.error));
+        }
+        if let Some(want) = &f.expect.events {
+            for (name, n) in want {
+                let got = d.stats.events_by_resource.get(name).copied().unwrap_or(0);
+                if got != *n {
+                    m.push(format!("events {name}: expected {n}, found {got}"));
+                }
+            }
+        }
+    }
+    if report.is_some() && f.expect.crosscheck_exact.is_some() {
+        let r = crosscheck_demo(&f.path, Limits::default());
+        let (ok, n) = r.server_copy_agreement();
+        let exact = r.decode_error.is_none() && r.identity_failures().is_empty() && ok == n;
+        if f.expect.crosscheck_exact != Some(exact) {
+            m.push(format!(
+                "crosscheck: identity failures {:?}, server copy {ok}/{n}",
+                r.identity_failures()
+                    .iter()
+                    .map(|c| c.name)
+                    .collect::<Vec<_>>()
+            ));
         }
     }
     FixtureResult {

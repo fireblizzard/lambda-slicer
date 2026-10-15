@@ -12,25 +12,59 @@
         "game_dir": "ag",
         "map_name": "crossfire",
         "entries": [
-          { "entry_type": 0, "description": "LOADING", "offset": 544, "length": 28793 },
-          { "entry_type": 1, "description": "Playback", "offset": 29337, "length": 97604143, "frame_count": 151207, "network_records": 151207 }
-        ]
+          {
+            "entry_type": 0,
+            "description": "LOADING",
+            "offset": 544,
+            "length": 28793
+          },
+          {
+            "entry_type": 1,
+            "description": "Playback",
+            "offset": 29337,
+            "length": 97604143,
+            "frame_count": 151207,
+            "network_records": 151207
+          }
+        ],
+        "decode_complete": true,
+        "events": {
+          "events/gauss.sc": 1145,
+          "events/gaussspin.sc": 71675,
+          "events/glock1.sc": 87,
+          "events/egon_stop.sc": 27
+        },
+        "crosscheck_exact": true
       },
-      "notes": "Not a known-positive gauss fixture."
+      "notes": "Two-player crossfire match with recorder gauss use (1,100 local gauss.sc records) and opponent events via svc_event. Gauss counts are raw records, not validated shots."
     },
     {
       "role": "campaign-map candidate, mode unverified",
       "path": "F:/HLScreeniesDemos/01apr2020/run_108.dem",
       "bytes": 110210,
       "blake3": "1a1c6bb7cceb0b2568ca073446fcbe8e27f301569456c9ab9d6a23a8eec3e105",
-      "expect": { "demo_protocol": 5, "network_protocol": 48, "game_dir": "ag", "map_name": "c1a0e" }
+      "expect": {
+        "demo_protocol": 5,
+        "network_protocol": 48,
+        "game_dir": "ag",
+        "map_name": "c1a0e",
+        "decode_complete": true,
+        "crosscheck_exact": true
+      }
     },
     {
       "role": "minimal local recording",
       "path": "F:/HLScreeniesDemos/01apr2020/qe_9.dem",
       "bytes": 39812,
       "blake3": "cafad91264753121e936070b7e9b63a14572a74993e84a79fc01d92ff4796fa6",
-      "expect": { "demo_protocol": 5, "network_protocol": 48, "game_dir": "ag", "map_name": "c2a4f" }
+      "expect": {
+        "demo_protocol": 5,
+        "network_protocol": 48,
+        "game_dir": "ag",
+        "map_name": "c2a4f",
+        "decode_complete": true,
+        "crosscheck_exact": true
+      }
     },
     {
       "role": "streaming stress",
@@ -43,9 +77,17 @@
         "game_dir": "ag",
         "map_name": "fastrun",
         "entries": [
-          { "entry_type": 0 },
-          { "entry_type": 1, "frame_count": 578699, "network_records": 578699 }
-        ]
+          {
+            "entry_type": 0
+          },
+          {
+            "entry_type": 1,
+            "frame_count": 578699,
+            "network_records": 578699
+          }
+        ],
+        "decode_complete": true,
+        "crosscheck_exact": true
       }
     },
     {
@@ -53,7 +95,14 @@
       "path": "F:/SteamLibrary/steamapps/common/Half-Life/ag/20220413_171130_prochallenge_bhop_skip.dem",
       "bytes": 222147,
       "blake3": "a462e26f33ce5c65a675bebb996795260c57f78c510e8ec552dc814d8645a81a",
-      "expect": { "demo_protocol": 5, "network_protocol": 48, "game_dir": "ag", "map_name": "prochallenge_bhop" }
+      "expect": {
+        "demo_protocol": 5,
+        "network_protocol": 48,
+        "game_dir": "ag",
+        "map_name": "prochallenge_bhop",
+        "decode_complete": true,
+        "crosscheck_exact": true
+      }
     }
   ]
 }

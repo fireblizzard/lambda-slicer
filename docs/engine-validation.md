@@ -11,7 +11,7 @@ Plan §6.1 requires S0 controls to pass in the installed Windows game **before**
 | Mod | `ag` (liblist labels AG 6.7/openag.pro; server DLL is Metamod — customized install) |
 | Exact engine/client build | **not yet recorded** — fill in from the game console `version` output |
 
-## S0 controls — generated 2026-10-14, awaiting in-game test
+## S0 controls — generated and played 2026-10-14
 
 Source: `F:\HLScreeniesDemos\09aug2018\naz_crossfire_pb_01.dem`, 97,633,668 bytes,
 BLAKE3 `09c31cabbfab0fde200185461ab78a2558a1261304fb7e3243b687c65208740e`.
@@ -50,9 +50,15 @@ output whose bytes differ from any original and is the real gate.**
 
 | Control | Date | Result | Observations |
 |---|---|---|---|
-| S0a | | pending | |
-| S0b | | pending (byte-identical to source) | |
-| S0c | | pending | |
+| S0a | 2026-10-14 | pass | Played back to back with S0c in one session; plays like the original. |
+| S0b | — | pass by identity | Byte-identical to the source, so not played separately. |
+| S0c | 2026-10-14 | pass | Plays correctly and looks like the original. On first viewing, lighting looked different (some walls darker, others brighter). A/B in one session showed this affects **whichever demo is played first**, regardless of file. Not a slicer issue: the S0c output differs from the source in only 108 bytes (header directory offset and the regenerated terminal record + directory); everything played is byte-identical. |
+
+**Testing note:** in this install, the first `playdemo` of a game session renders lighting
+differently. For visual comparisons, play a throwaway demo first, or compare runs only after the
+first playback.
+
+Still to record: the console `version` output for the exact engine/client build.
 
 ## S1 (nonzero start)
 
