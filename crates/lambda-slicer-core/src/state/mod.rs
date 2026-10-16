@@ -5,7 +5,7 @@
 mod run;
 mod world;
 
-pub use run::{DecodeOptions, DecodeReport, DecodeStatus, decode_demo};
+pub use run::{DECODE_REPORT_SCHEMA, DecodeOptions, DecodeReport, DecodeStatus, decode_demo};
 
 pub use world::{
     ActorResolution, DecodeError, DecodeErrorKind, DecodeStats, DecodedEvent, Decoder, EntityState,

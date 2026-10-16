@@ -119,7 +119,8 @@ fn quadratic(ts: &[f32], ys: &[f32]) -> Option<(f32, f32, f32, f32)> {
         y2 += t * t * y;
     }
 
-    // Normal equations [s4 s3 s2; s3 s2 s1; s2 s1 n] [a b c] = [y2 y1 y0]
+    // Normal equations with rows (s4 s3 s2), (s3 s2 s1), (s2 s1 n) times
+    // (a b c) equal to (y2 y1 y0)
     let m = [[s4, s3, s2], [s3, s2, s1], [s2, s1, n]];
     let det = |m: [[f64; 3]; 3]| {
         m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1])

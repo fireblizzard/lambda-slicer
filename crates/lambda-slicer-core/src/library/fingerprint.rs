@@ -77,3 +77,38 @@ pub fn hash_file(path: &Path) -> io::Result<String> {
     h.update_reader(File::open(path)?)?;
     Ok(h.finalize().to_hex().to_string())
 }
+
+/// Size and modification time, from metadata alone without opening the file
+pub fn file_metadata(path: &Path) -> io::Result<(u64, Option<i128>)> {
+    let meta = std::fs::metadata(path)?;
+
+    Ok((meta.len(), modified_ns(&meta)))
+}
+
+/// Feeds a `Hash` implementation's bytes to BLAKE3, so the result does not
+/// depend on the standard library's hasher
+struct StableHasher(blake3::Hasher);
+
+impl std::hash::Hasher for StableHasher {
+    fn finish(&self) -> u64 {
+        let bytes = self.0.finalize();
+        u64::from_le_bytes(bytes.as_bytes()[..8].try_into().unwrap())
+    }
+
+    fn write(&mut self, bytes: &[u8]) {
+        self.0.update(bytes);
+    }
+}
+
+/// The file's identity on its volume (volume serial and file index on
+/// Windows, device and inode elsewhere), so hard links and different spellings
+/// of one path are recognised as the same file
+pub fn file_identity(path: &Path) -> io::Result<String> {
+    use std::hash::Hash;
+
+    let handle = same_file::Handle::from_path(path)?;
+    let mut h = StableHasher(blake3::Hasher::new());
+    handle.hash(&mut h);
+
+    Ok(h.0.finalize().to_hex()[..16].to_string())
+}

@@ -15,9 +15,11 @@ Toolchain: Rust **1.98.1** (`rust-toolchain.toml`), edition 2024. `Cargo.lock` i
 | clap | 4.6.7 | MIT OR Apache-2.0 | CLI |
 | anyhow | 1.0.104 | MIT OR Apache-2.0 | CLI errors |
 | proptest (dev) | 1.12.0 | MIT OR Apache-2.0 | malformed-input property tests |
+| rusqlite (`bundled`) | 0.40.2 | MIT, bundled SQLite public domain | library cache |
+| ctrlc | 3.5.2 | MIT OR Apache-2.0 | CLI scan cancellation |
 
-Not yet added (later milestones): `eframe`/`egui` and `rfd` (GUI, M6), `rusqlite` (cache, M5),
-`walkdir` (scan, M5), `tracing`.
+Not yet added (later milestones): `eframe`/`egui` and `rfd` (GUI, M6), `tracing`. Discovery uses
+`std::fs` instead of `walkdir`, to control which links are followed.
 
 ## Codec decision
 

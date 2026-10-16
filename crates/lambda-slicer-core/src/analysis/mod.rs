@@ -11,6 +11,8 @@ pub mod motion;
 pub mod weapons;
 
 use std::path::Path;
+use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 
 use serde::Serialize;
 
@@ -60,6 +62,8 @@ pub struct AnalysisReport {
     pub decode_error: Option<String>,
     /// The recording client's player, at the end of the recording
     pub recorder: Option<PlayerIdentity>,
+    /// Every player seen, once per name they used
+    pub players: Vec<PlayerIdentity>,
     pub max_clients: u8,
     /// Recorded events of any kind
     pub events: usize,
@@ -96,9 +100,20 @@ fn summary_of(weapons: &mut Vec<WeaponSummary>, weapon: Weapon) -> &mut WeaponSu
 }
 
 pub fn analyze_demo(path: &Path, limits: Limits) -> AnalysisReport {
+    analyze_demo_with(path, limits, None)
+}
+
+/// [`analyze_demo`] that stops when `cancel` is set, reporting
+/// [`DecodeStatus::Cancelled`]
+pub fn analyze_demo_with(
+    path: &Path,
+    limits: Limits,
+    cancel: Option<Arc<AtomicBool>>,
+) -> AnalysisReport {
     let options = DecodeOptions {
         limits,
         collect_events: true,
+        cancel,
     };
     let mut context = Context::default();
     let (report, d) = decode_demo(path, &options, |loc, d, m| context.observe(loc, d, m));
@@ -147,6 +162,12 @@ pub fn analyze_demo(path: &Path, limits: Limits) -> AnalysisReport {
     weapons.sort_by_key(|w| w.weapon);
 
     let recorder = d.player_for_entity(i64::from(report.player_num) + 1);
+    let mut players: Vec<PlayerIdentity> = Vec::new();
+    for change in &report.name_history {
+        if !players.contains(&change.player) {
+            players.push(change.player.clone());
+        }
+    }
     let local = events
         .iter()
         .filter(|e| e.source == crate::state::EventSource::Demo)
@@ -170,6 +191,7 @@ pub fn analyze_demo(path: &Path, limits: Limits) -> AnalysisReport {
         decode: report.status,
         decode_error: report.error,
         recorder,
+        players,
         max_clients: report.max_clients,
         events: events.len(),
         weapons,

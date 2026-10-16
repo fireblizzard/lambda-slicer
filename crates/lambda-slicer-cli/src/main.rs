@@ -14,7 +14,13 @@ use lambda_slicer_core::analysis::weapons::{Actor, IntervalEnd};
 use lambda_slicer_core::analysis::{AnalysisReport, analyze_demo};
 use lambda_slicer_core::container::Limits;
 use lambda_slicer_core::fixtures::{MANIFEST_ENV, check_fixture, load_manifest};
+use lambda_slicer_core::library::cache::{
+    Cache, FileQuery, FileRow, KillQuery, WindowRow, default_path as library_cache_path,
+};
 use lambda_slicer_core::library::fingerprint::full_fingerprint;
+use lambda_slicer_core::library::scan::{
+    Outcome as ScanOutcome, ScanControl, ScanEvent, ScanOptions, ScanProgress, scan,
+};
 use lambda_slicer_core::protocol::messages::{Message, svc};
 use lambda_slicer_core::slice::controls::{Control, run_control};
 use lambda_slicer_core::slice::restart::run_restart;
@@ -134,6 +140,75 @@ enum Command {
     Fixtures {
         #[arg(long)]
         manifest: Option<PathBuf>,
+        #[arg(long)]
+        json: Option<PathBuf>,
+    },
+    /// Find demos under folders and analyse those missing from the library
+    /// cache. Ctrl-C stops and keeps finished results
+    Scan {
+        #[arg(required = true)]
+        roots: Vec<PathBuf>,
+        /// Cache database, by default in the platform's cache directory
+        #[arg(long)]
+        cache: Option<PathBuf>,
+        /// Parallel analyses, 1 to 4
+        #[arg(long, default_value_t = 1, value_parser = clap::value_parser!(u8).range(1..=4))]
+        workers: u8,
+        /// Analyse files even when their cache entry is current
+        #[arg(long)]
+        force: bool,
+        /// Skip the full-content hash of analysed files
+        #[arg(long)]
+        no_full_hash: bool,
+        /// Print every file's outcome, not only failures
+        #[arg(long)]
+        verbose: bool,
+        /// Write the final counts as JSON to a file, or `-` for stdout
+        #[arg(long)]
+        json: Option<PathBuf>,
+    },
+    /// Search the library cache. With no conditions, lists files
+    Query {
+        #[arg(long)]
+        cache: Option<PathBuf>,
+        /// Map name containing this text
+        #[arg(long)]
+        map: Option<String>,
+        /// A player name containing this text
+        #[arg(long)]
+        player: Option<String>,
+        /// Spectating at least this fraction of playback, 0 to 1
+        #[arg(long)]
+        min_spectating: Option<f64>,
+        /// Spectating at most this fraction of playback, 0 to 1
+        #[arg(long)]
+        max_spectating: Option<f64>,
+        /// A weapon with at least one shot, by profile name such as `gauss`
+        #[arg(long)]
+        weapon_used: Option<String>,
+        /// Has a kill with this weapon (death notice string or profile name)
+        #[arg(long)]
+        kill_weapon: Option<String>,
+        /// Has a kill whose victim was airborne
+        #[arg(long)]
+        victim_airborne: bool,
+        /// Has a kill whose killer was airborne at the shot
+        #[arg(long)]
+        killer_airborne: bool,
+        /// Has a kill where the killer or the victim moved at least this
+        /// fast horizontally, in units per second
+        #[arg(long)]
+        min_speed: Option<f32>,
+        /// Best action window scoring at least this
+        #[arg(long)]
+        min_action: Option<f64>,
+        /// List the best action windows across the library instead of files
+        #[arg(long, conflicts_with_all = ["map", "player", "min_spectating", "max_spectating",
+            "weapon_used", "kill_weapon", "victim_airborne", "killer_airborne", "min_speed",
+            "min_action"])]
+        windows: bool,
+        #[arg(long, default_value_t = 50)]
+        limit: usize,
         #[arg(long)]
         json: Option<PathBuf>,
     },
@@ -447,6 +522,85 @@ fn run() -> Result<ExitCode> {
 
             if !all_passed {
                 return Ok(ExitCode::FAILURE);
+            }
+        }
+        Command::Scan {
+            roots,
+            cache,
+            workers,
+            force,
+            no_full_hash,
+            verbose,
+            json,
+        } => {
+            let options = ScanOptions {
+                roots,
+                cache: cache_path(cache)?,
+                workers: usize::from(workers),
+                force,
+                full_hash: !no_full_hash,
+                limits: Limits::default(),
+            };
+            return scan_cmd(&options, verbose, json.as_deref());
+        }
+        Command::Query {
+            cache,
+            map,
+            player,
+            min_spectating,
+            max_spectating,
+            weapon_used,
+            kill_weapon,
+            victim_airborne,
+            killer_airborne,
+            min_speed,
+            min_action,
+            windows,
+            limit,
+            json,
+        } => {
+            let path = cache_path(cache)?;
+            if !path.exists() {
+                bail!("no library cache at {}, run `scan` first", path.display());
+            }
+            let cache = Cache::open(&path)?;
+            if windows {
+                let rows = cache.top_windows(limit)?;
+                match &json {
+                    Some(target) => write_json(target, &rows)?,
+                    None => print_windows(&rows),
+                }
+                return Ok(ExitCode::SUCCESS);
+            }
+
+            let query = FileQuery {
+                map,
+                player,
+                min_spectating,
+                max_spectating,
+                weapon_used,
+                kills: KillQuery {
+                    weapon: kill_weapon,
+                    victim_airborne,
+                    killer_airborne,
+                    min_speed,
+                },
+                min_action,
+                limit,
+            };
+            let rows = cache.query(&query)?;
+            match &json {
+                Some(target) => write_json(target, &rows)?,
+                None => {
+                    print_files(&rows);
+                    let stats = cache.stats()?;
+                    println!(
+                        "{} shown of {} cached files ({} stale)",
+                        rows.len(),
+                        stats.files,
+                        stats.stale
+                    );
+                }
             }
         }
     }
@@ -987,6 +1141,183 @@ fn print_crosscheck(r: &CrossCheckReport) {
     println!("  outcome: {:?}", r.outcome);
     for reason in &r.reasons {
         println!("    {reason}");
+    }
+}
+
+fn cache_path(given: Option<PathBuf>) -> Result<PathBuf> {
+    match given.or_else(library_cache_path) {
+        Some(p) => Ok(p),
+        None => bail!("no platform cache directory, pass --cache"),
+    }
+}
+
+fn megabytes(bytes: u64) -> f64 {
+    bytes as f64 / 1e6
+}
+
+fn progress_line(p: &ScanProgress) -> String {
+    let rate = megabytes(p.bytes_read) / p.elapsed_seconds.max(0.001);
+    let current = p
+        .current
+        .first()
+        .and_then(|c| Path::new(c).file_name())
+        .map(|n| format!(", now {}", n.to_string_lossy()))
+        .unwrap_or_default();
+    format!(
+        "{} found{}, {} done ({} cached, {} analysed), {:.0} MB read at {rate:.1} MB/s{current}",
+        p.discovered,
+        if p.discovery_done { "" } else { " so far" },
+        p.completed,
+        p.cache_hits,
+        p.analyzed,
+        megabytes(p.bytes_read)
+    )
+}
+
+fn scan_cmd(options: &ScanOptions, verbose: bool, json: Option<&Path>) -> Result<ExitCode> {
+    let control = ScanControl::new();
+    let handler = control.clone();
+    ctrlc::set_handler(move || {
+        if handler.is_cancelled() {
+            std::process::exit(130);
+        }
+        eprintln!("\nstopping, Ctrl-C again to quit at once");
+        handler.cancel();
+    })?;
+
+    eprintln!("cache {}", options.cache.display());
+    let mut width = 0;
+    let clear = |width: &mut usize| {
+        if *width > 0 {
+            eprint!("\r{:width$}\r", "", width = *width);
+            *width = 0;
+        }
+    };
+    let progress = scan(options, &control, |event| match event {
+        ScanEvent::Progress(p) => {
+            let line = progress_line(p);
+            clear(&mut width);
+            eprint!("{line}");
+            width = line.chars().count();
+        }
+        ScanEvent::DiscoveryError { path, error } => {
+            clear(&mut width);
+            eprintln!("cannot read {}: {error}", path.display());
+        }
+        ScanEvent::File { path, outcome } => {
+            let line = match outcome {
+                ScanOutcome::CacheHit if verbose => format!("cached     {}", path.display()),
+                ScanOutcome::Analyzed { status } if verbose || status != "complete" => {
+                    format!("{status:<10} {}", path.display())
+                }
+                ScanOutcome::Duplicate { of } if verbose => {
+                    format!("duplicate  {} (same file as {of})", path.display())
+                }
+                ScanOutcome::Unreadable { error } => {
+                    format!("unreadable {}: {error}", path.display())
+                }
+                ScanOutcome::SourceChanged => {
+                    format!("changed    {} while it was analysed", path.display())
+                }
+                ScanOutcome::CacheFailed { error } => {
+                    format!("not stored {}: {error}", path.display())
+                }
+                _ => return,
+            };
+            clear(&mut width);
+            eprintln!("{line}");
+        }
+    })?;
+    clear(&mut width);
+
+    match json {
+        Some(target) => write_json(target, &progress)?,
+        None => {
+            eprintln!("{}", progress_line(&progress));
+            eprintln!(
+                "{} incomplete decodes, {} duplicates, {} unreadable, {} changed during analysis, \
+                 {} not stored, {} unreadable directories, {} links not followed, {:.1} s",
+                progress.incomplete,
+                progress.duplicates,
+                progress.unreadable,
+                progress.changed,
+                progress.cache_failures,
+                progress.directory_errors,
+                progress.skipped_links,
+                progress.elapsed_seconds
+            );
+        }
+    }
+    if progress.cancelled {
+        eprintln!("cancelled with {} files left", progress.pending());
+        return Ok(ExitCode::from(130));
+    }
+
+    Ok(ExitCode::SUCCESS)
+}
+
+fn print_files(rows: &[FileRow]) {
+    for f in rows {
+        let spectating = f
+            .spectator_fraction
+            .filter(|s| *s > 0.)
+            .map(|s| format!("  spectating {:.0}%", s * 100.))
+            .unwrap_or_default();
+        let action = f
+            .best_window
+            .map(|s| format!("  action {s:.2}"))
+            .unwrap_or_default();
+        println!(
+            "{}  [{}{}{}]  {} kills{spectating}{action}",
+            f.path,
+            f.map.as_deref().unwrap_or("?"),
+            f.duration
+                .map(|d| format!(", {}", clock(d)))
+                .unwrap_or_default(),
+            if f.status == "complete" {
+                String::new()
+            } else {
+                format!(", {}", f.status)
+            },
+            f.kills.unwrap_or(0),
+        );
+        for k in &f.matching_kills {
+            let motion = |air: Option<bool>, speed: Option<f32>| {
+                let state = match air {
+                    Some(true) => "air",
+                    Some(false) => "ground",
+                    None => "unclear",
+                };
+                speed.map_or_else(|| state.to_string(), |s| format!("{state} {s:.0}u/s"))
+            };
+            println!(
+                "    {} {} killed {} with {}, killer {}, victim {}{}",
+                clock(k.time),
+                k.killer.as_deref().unwrap_or("?"),
+                k.victim.as_deref().unwrap_or("?"),
+                k.weapon,
+                motion(k.killer_airborne, k.killer_speed),
+                motion(k.victim_airborne, k.victim_speed),
+                k.distance
+                    .map(|d| format!(" at {d:.0}u"))
+                    .unwrap_or_default()
+            );
+        }
+    }
+}
+
+fn print_windows(rows: &[WindowRow]) {
+    for w in rows {
+        let sides: Vec<String> = w.sides.iter().map(|(n, k)| format!("{n} {k}")).collect();
+        println!(
+            "{:6.2}  {}-{}  {}  [{}]  {}",
+            w.score,
+            clock(w.start),
+            clock(w.end),
+            sides.join(" vs "),
+            w.weapons.join(", "),
+            w.path
+        );
     }
 }
 

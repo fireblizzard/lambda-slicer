@@ -10,10 +10,12 @@ them. The full design is in [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md).
 | M0 scaffold | done: workspace, CLI, fixture manifest, docs, CI |
 | M1 container + S0 controls | done; S0 passed in game ([engine-validation](docs/engine-validation.md)) |
 | M2 network state decoder | decodes the whole corpus; delta bases are proven or flagged as inferred ([protocol profile](docs/protocol-profile-5-48.md)) |
-| M3 arbitrary-start slicing | not started |
-| M4–M7 analysis, library, GUI, release | not started |
+| M3 arbitrary-start slicing | done; S1 restarts passed in game ([engine-validation](docs/engine-validation.md)) |
+| M4 weapon analysis | done: actions, actors, kills, highlights ([analysis profile](docs/analysis-profile.md)) |
+| M5 library and cache | scan and query over a SQLite cache ([library](docs/library.md)) |
+| M6–M7 GUI, release | not started |
 
-No GUI yet: the plan requires proving playable nonzero-start slices (M3) before GUI work.
+No GUI yet.
 
 ## CLI
 
@@ -28,6 +30,11 @@ cargo build --release
 .\target\release\lambda-slicer.exe decode   'path\to\demo.dem'            # --events, --trace FROM TO, --json -
 .\target\release\lambda-slicer.exe analyze  'path\to\demo.dem'            # weapon actions and actors, --occurrences, --json -
 .\target\release\lambda-slicer.exe crosscheck 'path\to\demo.dem'          # exit 0 verified, 1 failed, 2 inconclusive
+.\target\release\lambda-slicer.exe analyze  'path\to\demo.dem' --kills --weapon crossbow --victim-airborne
+.\target\release\lambda-slicer.exe scan 'path\to\demos' --workers 4   # fill the library cache, Ctrl-C keeps finished files
+.\target\release\lambda-slicer.exe query --kill-weapon crossbow --victim-airborne
+.\target\release\lambda-slicer.exe query --min-spectating 0.5          # demos recorded mostly as a spectator
+.\target\release\lambda-slicer.exe query --windows --limit 20           # best action windows in the library
 .\target\release\lambda-slicer.exe hash FILES...
 .\target\release\lambda-slicer.exe fixtures --manifest local-fixtures.json
 ```

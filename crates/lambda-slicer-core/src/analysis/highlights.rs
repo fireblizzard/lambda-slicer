@@ -140,7 +140,7 @@ pub struct ActionWindow {
     pub weapons: Vec<String>,
 }
 
-/// Kills that count as frags: by another player, not a suicide or a
+/// Kills that count as frags, by another player and not a suicide or a
 /// teammate
 fn is_frag(k: &Kill) -> bool {
     matches!(

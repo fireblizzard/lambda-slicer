@@ -4,6 +4,8 @@
 use std::fs::File;
 use std::io::BufReader;
 use std::path::Path;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use serde::Serialize;
 
@@ -26,6 +28,9 @@ pub enum DecodeStatus {
     /// The recording uses a protocol this decoder does not support, so it
     /// was not decoded. Inspection still reads its metadata
     Unsupported,
+    /// Stopped on request. State before the stop is valid but the result
+    /// is incomplete and must not stand in for a full decode
+    Cancelled,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -80,6 +85,9 @@ fn observing(d: &Decoder) -> bool {
 pub struct DecodeOptions {
     pub limits: Limits,
     pub collect_events: bool,
+    /// Checked before every frame. Setting it stops decoding with
+    /// [`DecodeStatus::Cancelled`]
+    pub cancel: Option<Arc<AtomicBool>>,
 }
 
 impl Default for DecodeOptions {
@@ -87,6 +95,7 @@ impl Default for DecodeOptions {
         Self {
             limits: Limits::default(),
             collect_events: true,
+            cancel: None,
         }
     }
 }
@@ -148,6 +157,14 @@ pub fn decode_demo(
         };
 
         for item in frames {
+            if options
+                .cancel
+                .as_ref()
+                .is_some_and(|c| c.load(Ordering::Relaxed))
+            {
+                report.status = DecodeStatus::Cancelled;
+                break 'entries;
+            }
             let lf = match item {
                 Ok(lf) => lf,
                 Err(e) => {
