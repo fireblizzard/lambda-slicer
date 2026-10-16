@@ -379,9 +379,8 @@ starts with `svc_time`, full clientdata and a full `svc_packetentities`.
   from the HUD clock (`gHUD.m_flTime`), which only moves when a frame is drawn. OpenAG's Timer
   and Vote set `draw_until = gHUD.m_flTime + 5` (4 for Vote). Read in the bootstrap group, they
   were timed from the clock before the restart and expired at once. **Observed** in the game:
-  the vote and timer appeared only with the next real message, about 1 and 0.5 s in. A replayed
-  Timer or Vote now shows for its full window from the start, until the next real message
-  replaces it.
+  the vote and timer appeared only with the next real message, about 1 and 0.5 s in. Only
+  notices still showing at the start are replayed (see below).
 - **Kept groups:** their bytes unchanged, outer times rebased so the first keeps its original
   spacing after the bootstrap group, frame numbers from 1 (from 2 after a HUD group). `svc_time` and every other server
   clock stay in the source's coordinates.
@@ -397,10 +396,23 @@ settings. Lifecycle messages (`ResetHUD`, `InitHUD`) are kept the same way, so w
 cleared in the source is cleared again. Static entities and ambient sounds spawned during play
 are replayed once each. Sounds, effects, chat, pickups, menus and death notices are not
 replayed. Any other message blocks the export with `UnknownPersistentMessage`. Every user
-message name in the 2,000-demo sample is classified. The AG-specific ones (`Countdown`, `Vote`,
-`Location`, `CTF`, `CTFFlag`, `TeamScore`, `Timeout` kept; `CheatCheck`, `MapList`, `MOTD`,
-`Splash`, `ShowMenu`, `CTFSound`, `VGUIMenu` dropped) are classified from their names and
-observed use, not from the AG client source, so the game test is their check.
+message name in the 2,000-demo sample is classified. The AG ones follow the OpenAG client
+(`cl_dll`, commit 83e8d91):
+
+| Kind | Messages | Replayed |
+|---|---|---|
+| Values until changed | `SuddenDeath`, `Timeout`, `CTF`, `CTFFlag`, `Location`, `InitLoc`, `TeamScore`, `Gametype`, `GameMode`, `AllowSpec`, `WhString` | the latest per key |
+| Timed notices | `Timer` (5 s), `Vote` (4 s), `Settings` (10 s), `Nextmap` (10 s), `Countdown` (5 s) | only when still showing at the start |
+| Hiding values | `Vote` with status 0, `Countdown` below 0 | never, they show nothing |
+| Not lasting | `CheatCheck`, `MapList`, `MOTD`, `Splash` (no OpenAG handler), `ShowMenu`, `CTFSound`, `VGUIMenu` | no |
+
+A timed notice is showing when less than its window has passed since it arrived. `Countdown` at
+50 (the waiting text) stays until changed. The client starts the window when it receives the
+message, so a replayed notice shows for its full window from the start, longer than it had left,
+until the next one replaces it. `Timer` and `Vote` are resent every 1 to 2 s while active, so
+that lasts at most that long. In the vengeance match, the 20:05 slice no longer shows the vote
+of 13:22 (four expired notices left out, only the timer replayed). All AG elements are hidden
+during intermission, which is why the end-of-match slice shows none of them in the game.
 
 **Effects under way at the start** (`slice::ongoing`). Events, sounds and temp entities before the
 start already happened and are not replayed, but some started something that lasts past the

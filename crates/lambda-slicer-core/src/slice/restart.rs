@@ -78,6 +78,9 @@ pub struct RestartReport {
     /// Persistent messages replayed before them (user info, light styles,
     /// HUD state), and their size
     pub persistent_messages: usize,
+    /// Timed HUD notices before the start that were no longer showing and
+    /// so were not replayed
+    pub expired_notices: usize,
     /// Effects under way at the start that were carried over it
     pub carried: Vec<String>,
     pub persistent_bytes: usize,
@@ -122,6 +125,8 @@ struct Plan {
     /// after the bootstrap group
     hud: Vec<u8>,
     hud_count: usize,
+    /// Timed HUD notices no longer showing at the start
+    expired_notices: usize,
     /// The record whose sequence fields the persistent messages travel with
     persistent_record: Option<NetworkFrame>,
     kept_records: u64,
@@ -253,7 +258,7 @@ fn plan(
             if let Some(b) = persistent.blocker.take() {
                 return Err(ExportError::UnknownPersistentMessage(b));
             }
-            let (engine, engine_count, hud, hud_count) = persistent.split();
+            let persistent_kept = persistent.split(f.time());
             let Some((_, previous_time)) = previous else {
                 return Err(ExportError::Unsupported(
                     "the start is at the first frame group, which an exact copy covers".into(),
@@ -295,10 +300,11 @@ fn plan(
                 late: carried.messages,
                 notes: carried.notes,
                 bootstrap: Vec::new(),
-                persistent: engine,
-                persistent_count: engine_count,
-                hud,
-                hud_count,
+                persistent: persistent_kept.engine,
+                persistent_count: persistent_kept.engine_count,
+                hud: persistent_kept.hud,
+                hud_count: persistent_kept.hud_count,
+                expired_notices: persistent_kept.expired,
                 persistent_record: recent.back().cloned(),
                 kept_records: 0,
                 kept_network_records: 0,
@@ -344,7 +350,7 @@ fn plan(
         let time = f.time();
         d.network_frame(loc, n, |dec, m| {
             if before {
-                persistent.observe(dec, m, &n.message);
+                persistent.observe(dec, m, &n.message, time);
                 ongoing.observe_message(dec, m, &n.message, time);
             } else if let Some(s) = pending.as_mut() {
                 s.observe(m);
@@ -889,6 +895,7 @@ pub fn run_restart(
         start_sequence: p.start_sequence,
         bootstrap_sequences: p.bootstrap.iter().map(|(s, _)| s.sequence).collect(),
         persistent_messages: p.persistent_count + p.hud_count,
+        expired_notices: p.expired_notices,
         carried: p.notes.clone(),
         persistent_bytes: p.persistent.len() + p.hud.len(),
         bootstrap_bytes: written.bootstrap_bytes,

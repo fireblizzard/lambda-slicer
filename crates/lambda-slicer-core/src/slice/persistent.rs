@@ -7,16 +7,25 @@
 //! state they cleared in the source is cleared again in the slice.
 //! Transient messages (sounds, effects, chat, pickups, death notices) are
 //! not replayed. A message whose effect is not classified blocks the
-//! export instead of being guessed. The AG messages are classified from
-//! their names and observed use, not from the AG client source
+//! export instead of being guessed.
+//!
+//! Some HUD messages are timed notices rather than values. The client shows
+//! them for a set time after each one arrives and then hides them, so they
+//! are replayed only while that time has not run out at the start. Windows
+//! and hiding values come from the OpenAG client (`cl_dll/hud_timer.cpp`,
+//! `hud_vote.cpp`, `hud_settings.cpp`, `hud_nextmap.cpp`,
+//! `hud_countdown.cpp`). The client starts the window when it receives the
+//! message, so a replayed notice can show for longer than its remaining
+//! time, until the next one replaces it
 
 use crate::protocol::messages::{Message, ParsedMessage, svc};
 use crate::state::Decoder;
 
 /// How a message before the start is carried into the slice
 enum Treatment {
-    /// Replay the last one per key
-    Keep(Vec<u8>),
+    /// Replay the last one per key. With a window, the client shows it for
+    /// that many seconds after it arrives, and a window of zero hides it
+    Keep(Vec<u8>, Option<f32>),
     /// Not lasting state
     Drop,
     /// Lasting state with no tested restart handling
@@ -41,7 +50,6 @@ const SINGLE: &[&str] = &[
     "AllowSpec",
     "Battery",
     "CTF",
-    "Countdown",
     "FlashBat",
     "Flashlight",
     "GameMode",
@@ -51,21 +59,38 @@ const SINGLE: &[&str] = &[
     "Health",
     "InitHUD",
     "InitLoc",
-    "Nextmap",
     "ReqState",
     "ResetHUD",
     "ServerName",
     "SetFOV",
-    "Settings",
     "SuddenDeath",
     "TeamNames",
     "Timeout",
-    "Timer",
     "Train",
     "VoiceMask",
-    "Vote",
     "WhString",
 ];
+
+/// Display windows of timed notices, in seconds
+const TIMED: &[(&str, f32)] = &[("Nextmap", 10.), ("Settings", 10.), ("Timer", 5.)];
+
+/// `Countdown` shows the waiting text at 50 until changed, hides at a
+/// negative count, and shows other counts for 5 s
+fn countdown_window(body: &[u8]) -> Option<f32> {
+    match body.first().map(|&b| b as i8) {
+        Some(50) => None,
+        Some(s) if s < 0 => Some(0.),
+        _ => Some(5.),
+    }
+}
+
+/// `Vote` hides at status 0 and shows other states for 4 s
+fn vote_window(body: &[u8]) -> Option<f32> {
+    match body.first() {
+        Some(0) => Some(0.),
+        _ => Some(4.),
+    }
+}
 
 /// Notifications and effects with no lasting state
 const TRANSIENT: &[&str] = &[
@@ -95,16 +120,22 @@ fn user_treatment(name: &str, body: &[u8]) -> Treatment {
     let first = || body.first().map_or_else(Vec::new, |b| vec![*b]);
 
     if SINGLE.contains(&name) {
-        Treatment::Keep(Vec::new())
+        Treatment::Keep(Vec::new(), None)
+    } else if let Some(&(_, window)) = TIMED.iter().find(|(n, _)| *n == name) {
+        Treatment::Keep(Vec::new(), Some(window))
+    } else if name == "Countdown" {
+        Treatment::Keep(Vec::new(), countdown_window(body))
+    } else if name == "Vote" {
+        Treatment::Keep(Vec::new(), vote_window(body))
     } else if BY_FIRST_BYTE.contains(&name) {
-        Treatment::Keep(first())
+        Treatment::Keep(first(), None)
     } else if name == "CurWeapon" {
         // State, weapon id, clip. The HUD keeps a clip per weapon, and the
         // last message with state 1 selects the current weapon
-        Treatment::Keep(body.get(1).map_or_else(Vec::new, |b| vec![*b]))
+        Treatment::Keep(body.get(1).map_or_else(Vec::new, |b| vec![*b]), None)
     } else if name == "WeaponList" || name == "TeamScore" {
         let end = body.iter().position(|&b| b == 0).unwrap_or(body.len());
-        Treatment::Keep(body[..end].to_vec())
+        Treatment::Keep(body[..end].to_vec(), None)
     } else if TRANSIENT.contains(&name) {
         Treatment::Drop
     } else {
@@ -115,15 +146,16 @@ fn user_treatment(name: &str, body: &[u8]) -> Treatment {
 fn engine_treatment(m: &Message) -> Treatment {
     use Message as M;
 
-    let single = || Treatment::Keep(Vec::new());
+    let single = || Treatment::Keep(Vec::new(), None);
+    let keyed = |key: Vec<u8>| Treatment::Keep(key, None);
     match m {
-        M::LightStyle { index, .. } => Treatment::Keep(vec![*index]),
-        M::UpdateUserInfo { slot, .. } => Treatment::Keep(vec![*slot]),
-        M::Customization(body) => Treatment::Keep(body.first().map_or_else(Vec::new, |b| vec![*b])),
-        M::NewUserMessage { id, .. } => Treatment::Keep(vec![*id]),
-        M::DecalName { index, .. } => Treatment::Keep(vec![*index]),
+        M::LightStyle { index, .. } => keyed(vec![*index]),
+        M::UpdateUserInfo { slot, .. } => keyed(vec![*slot]),
+        M::Customization(body) => keyed(body.first().map_or_else(Vec::new, |b| vec![*b])),
+        M::NewUserMessage { id, .. } => keyed(vec![*id]),
+        M::DecalName { index, .. } => keyed(vec![*index]),
         // Each one adds a lasting static entity or ambient sound
-        M::SpawnStatic(body) | M::SpawnStaticSound(body) => Treatment::Keep(body.clone()),
+        M::SpawnStatic(body) | M::SpawnStaticSound(body) => keyed(body.clone()),
         M::SetView(_)
         | M::NewMoveVars(_)
         | M::CdTrack(..)
@@ -186,7 +218,22 @@ struct Entry {
     key: Vec<u8>,
     /// Arrival order of the latest message for this key
     order: u64,
+    /// Its outer time and display window
+    time: f32,
+    window: Option<f32>,
     bytes: Vec<u8>,
+}
+
+/// The kept messages, split by kind
+pub struct Kept {
+    /// Engine messages, for the bootstrap group
+    pub engine: Vec<u8>,
+    pub engine_count: usize,
+    /// User messages (HUD state), for the record after it
+    pub hud: Vec<u8>,
+    pub hud_count: usize,
+    /// Timed notices left out because they were no longer showing
+    pub expired: usize,
 }
 
 #[derive(Default)]
@@ -199,8 +246,8 @@ pub struct Persistent {
 
 impl Persistent {
     /// Record a message of the playback entry before the start. `payload`
-    /// is the network record's message bytes
-    pub fn observe(&mut self, d: &Decoder, parsed: &ParsedMessage, payload: &[u8]) {
+    /// is the network record's message bytes and `time` its outer time
+    pub fn observe(&mut self, d: &Decoder, parsed: &ParsedMessage, payload: &[u8], time: f32) {
         let treatment = match &parsed.message {
             Message::User { id, body } => {
                 let name = d.user_message(*id).map(|u| u.name_lossy());
@@ -218,8 +265,8 @@ impl Persistent {
             m => engine_treatment(m),
         };
 
-        let key = match treatment {
-            Treatment::Keep(key) => key,
+        let (key, window) = match treatment {
+            Treatment::Keep(key, window) => (key, window),
             Treatment::Drop => return,
             Treatment::Block => {
                 self.blocker
@@ -244,21 +291,28 @@ impl Persistent {
         {
             Some(e) => {
                 e.order = order;
+                e.time = time;
+                e.window = window;
                 e.bytes = bytes.to_vec();
             }
             None => self.entries.push(Entry {
                 opcode: parsed.opcode,
                 key,
                 order,
+                time,
+                window,
                 bytes: bytes.to_vec(),
             }),
         }
     }
 
-    /// The kept engine messages, then the kept user messages, each in the
-    /// order their latest versions arrived, with how many of each
-    pub fn split(&self) -> (Vec<u8>, usize, Vec<u8>, usize) {
-        let mut entries: Vec<&Entry> = self.entries.iter().collect();
+    /// The messages to replay at `start` (outer time), engine and user
+    /// messages apart, each in the order their latest versions arrived.
+    /// Timed notices whose window has run out are left out
+    pub fn split(&self, start: f32) -> Kept {
+        let showing = |e: &&Entry| e.window.is_none_or(|w| start - e.time < w);
+        let mut entries: Vec<&Entry> = self.entries.iter().filter(showing).collect();
+        let expired = self.entries.len() - entries.len();
         entries.sort_by_key(|e| e.order);
 
         let (user, engine): (Vec<&Entry>, Vec<&Entry>) = entries
@@ -268,7 +322,13 @@ impl Persistent {
             list.iter().flat_map(|e| e.bytes.iter().copied()).collect()
         };
 
-        (bytes(&engine), engine.len(), bytes(&user), user.len())
+        Kept {
+            engine: bytes(&engine),
+            engine_count: engine.len(),
+            hud: bytes(&user),
+            hud_count: user.len(),
+            expired,
+        }
     }
 
     pub fn len(&self) -> usize {

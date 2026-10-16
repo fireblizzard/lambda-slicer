@@ -564,3 +564,47 @@ fn an_unknown_event_script_before_the_start_is_refused() {
         "{err}"
     );
 }
+
+/// Registers `Vote` as user message 70 with a 4-byte body, then sends one
+/// with this status
+fn vote(status: u8) -> Vec<u8> {
+    let mut w = BitWriter::new();
+    w.u8(svc::NEWUSERMSG);
+    w.u8(70);
+    w.u8(4);
+    let mut name = [0u8; 16];
+    name[..4].copy_from_slice(b"Vote");
+    w.bytes(&name);
+    w.u8(70);
+    w.bytes(&[status, 1, 0, 3]);
+    w.finish()
+}
+
+#[test]
+fn a_vote_still_showing_at_the_start_is_replayed() {
+    // OpenAG shows a vote for 4 s after each message. At group 10 it has
+    // 2 s left at the start in group 30
+    let mut rec = Recording::steady(60, 1);
+    rec.groups[9].1 = vote(1);
+
+    let (_out, _dir, r) = slice(&rec, 30, None).unwrap();
+    assert_eq!(r.expired_notices, 0);
+    // The registration and the vote
+    assert_eq!(r.persistent_messages, 2);
+}
+
+#[test]
+fn an_expired_or_hidden_vote_is_not_replayed() {
+    // 4.5 s before the start, the vote has gone
+    let mut rec = Recording::steady(60, 1);
+    rec.groups[4].1 = vote(1);
+    let (_out, _dir, r) = slice(&rec, 50, None).unwrap();
+    assert_eq!(r.expired_notices, 1);
+    assert_eq!(r.persistent_messages, 1);
+
+    // Status 0 hides it, so nothing shows however recent
+    rec.groups[4].1 = Vec::new();
+    rec.groups[28].1 = vote(0);
+    let (_out, _dir, r) = slice(&rec, 30, None).unwrap();
+    assert_eq!(r.expired_notices, 1);
+}

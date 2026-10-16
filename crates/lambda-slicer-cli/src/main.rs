@@ -274,8 +274,8 @@ fn run() -> Result<ExitCode> {
                         r.start_sequence
                     );
                     println!(
-                        "  persistent state: {} messages ({} bytes) replayed",
-                        r.persistent_messages, r.persistent_bytes
+                        "  persistent state: {} messages ({} bytes) replayed, {} expired HUD notices left out",
+                        r.persistent_messages, r.persistent_bytes, r.expired_notices
                     );
                     for c in &r.carried {
                         println!("  carried over the start: {c}");
