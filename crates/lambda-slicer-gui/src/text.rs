@@ -20,6 +20,15 @@ pub fn has_rtl(text: &str) -> bool {
         .any(|c| matches!(bidi_class(c), BidiClass::R | BidiClass::AL))
 }
 
+/// Whether `text` reads right to left by its first letter with a direction,
+/// for names and paths that keep their own direction in any interface
+pub fn starts_rtl(text: &str) -> bool {
+    text.chars()
+        .map(bidi_class)
+        .find(|c| matches!(c, BidiClass::L | BidiClass::R | BidiClass::AL))
+        .is_some_and(|c| c != BidiClass::L)
+}
+
 /// Isolates and marks, which only steer ordering
 fn is_control(c: char) -> bool {
     matches!(c, '\u{2066}'..='\u{2069}' | '\u{200E}' | '\u{200F}')

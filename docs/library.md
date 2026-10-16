@@ -67,6 +67,17 @@ and check them against the source, independently of the cache.
 
 `query --windows` lists the best action windows across the library instead.
 
+## In the app
+
+The library list reads the same cache a page of 100 rows at a time as rows scroll into view, so
+opening a large library does not load every row. Filters for path text, map, player, weapon used,
+shortest length and spectating count the matches again, and while a scan stores files the list
+refreshes at most once a second. Text filters ignore case by Unicode lowercase, with the Turkish
+`I`, `ı`, `İ` and `i` matching each other. Scans run on their own thread and the window applies at
+most 500 of their events a frame. Closing the window cancels a scan and waits for it.
+
+Connections opening a new cache at the same moment build its tables once, under a write lock.
+
 ## Measured (2026-10-16)
 
 On the development machine over `F:\SteamLibrary\steamapps\common\Half-Life\ag` and

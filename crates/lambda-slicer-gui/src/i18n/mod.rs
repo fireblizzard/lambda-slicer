@@ -7,6 +7,7 @@
 
 use fluent_bundle::types::FluentNumber;
 use fluent_bundle::{FluentArgs, FluentBundle, FluentResource, FluentValue};
+use lambda_slicer_core::library::cache::StoredMessage;
 use lambda_slicer_core::message::{Arg, Message};
 use unic_langid::LanguageIdentifier;
 
@@ -332,7 +333,6 @@ impl Catalog {
 
     /// A core message in this locale, or its own English text when no
     /// catalog has its code
-    #[allow(dead_code, reason = "the library view uses it next")]
     pub fn message(&self, m: &Message) -> String {
         let mut args = FluentArgs::new();
         for (name, value) in &m.args {
@@ -348,8 +348,29 @@ impl Catalog {
             .unwrap_or_else(|| m.text.clone())
     }
 
+    /// A message read back from the library cache, as [`Self::message`]
+    pub fn stored(&self, m: &StoredMessage) -> String {
+        let mut args = FluentArgs::new();
+        if let serde_json::Value::Object(map) = &m.args {
+            for (name, value) in map {
+                let value = match value {
+                    serde_json::Value::Number(n) => n
+                        .as_i64()
+                        .map(FluentValue::from)
+                        .or_else(|| n.as_f64().map(FluentValue::from))
+                        .unwrap_or(FluentValue::None),
+                    serde_json::Value::String(t) => FluentValue::from(t.clone()),
+                    other => FluentValue::from(other.to_string()),
+                };
+                args.set(name.clone(), value);
+            }
+        }
+        Self::format(&self.bundle, &m.code, Some(&args))
+            .or_else(|| Self::format(&self.english, &m.code, Some(&args)))
+            .unwrap_or_else(|| m.text.clone())
+    }
+
     /// A number in this locale's style
-    #[allow(dead_code, reason = "the library view uses it next")]
     pub fn number(&self, value: f64, fraction: usize) -> String {
         format_number(self.locale.number_style(), value, fraction)
     }

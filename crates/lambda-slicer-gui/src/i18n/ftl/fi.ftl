@@ -2,11 +2,16 @@
 
 app-title = Lambda Slicer
 
+## Työkalurivi
+
 toolbar-open = Avaa demo…
 toolbar-add-folder = Lisää kansio…
 toolbar-rescan = Skannaa uudelleen
 toolbar-cancel = Peruuta
 toolbar-settings = Asetukset
+dialog-demos = Half-Life-demot
+
+## Asetukset
 
 settings-title = Asetukset
 settings-language = Kieli
@@ -17,16 +22,119 @@ settings-cache = Kirjaston välimuisti
 settings-folders = Kirjaston kansiot
 settings-folders-empty = Kansioita ei ole vielä lisätty.
 settings-remove = Poista
-settings-close = Sulje
+
+## Kirjasto
 
 library-empty = Aloita lisäämällä kansio tai avaamalla demo.
+library-no-matches = Mikään demo ei vastaa näitä suodattimia.
+library-no-cache = Tässä järjestelmässä ei ole paikkaa kirjaston välimuistille.
 library-demos = { $count ->
     [one] { $count } demo
    *[other] { $count } demoa
 }
-library-kills = { $count ->
+library-percent = { $percent } %
+
+filter-search = Hae poluista
+filter-map = Kartta
+filter-player = Pelaaja
+filter-weapon-any = Mikä tahansa ase
+filter-min-minutes = Vähintään (minuuttia)
+filter-spectating-any = Pelaten tai katsojana
+filter-spectating-mostly = Enimmäkseen katsojana
+filter-spectating-playing = Enimmäkseen pelaten
+filter-clear = Tyhjennä suodattimet
+
+column-status = Tila
+column-name = Demo
+column-map = Kartta
+column-duration = Pituus
+column-gauss = Gauss
+column-kills = Tapot
+column-action = Toiminta
+column-spectating = Katsojana
+
+status-complete = Analysoitu
+status-partial = Osittainen
+status-failed = Epäonnistui
+status-unsupported = Ei tuettu
+status-no-use = Ei aseiden käyttöä
+
+kind-multiplayer-view = Pelaajan näkymä
+kind-singleplayer = Yksinpeli
+kind-hltv = Katsojaproxy
+kind-unknown = Tuntematon laji
+
+details-recorder = Tallentaja { $name }
+details-shots = { $count ->
+    [one] { $count } laukaus
+   *[other] { $count } laukausta
+}
+details-kills = { $count ->
     [one] { $count } tappo
    *[other] { $count } tappoa
 }
-library-action = Toimintapisteet { NUMBER($score, minimumFractionDigits: 2) }
-library-spectating = Katsojana { $percent } %
+details-action = Paras toimintapistemäärä { NUMBER($score, minimumFractionDigits: 2) }
+
+## Skannaus
+
+scan-progress = Löydetty { $found }, valmiina { $done } (välimuistista { $cached }, analysoitu { $analysed }), luettu { $megabytes } Mt
+scan-cancelling = Pysäytetään…
+scan-cancelled = Pysäytetty, skannaamatta { $left }.
+scan-finished = Valmis: { $done } demoa, analysoitu { $analysed }, aikaa { $seconds } s.
+scan-problems = { $count ->
+    [one] { $count } ongelma
+   *[other] { $count } ongelmaa
+}
+problems-title = Skannauksen ongelmat
+problem-changed = Tiedosto muuttui analyysin aikana, joten mitään ei tallennettu.
+drop-hint = Pudota demoja tai kansioita lisätäksesi ne
+drop-not-demo = Ei demo: { $names }
+
+## Analyysiytimen viestit koodeittain
+
+analysis-panicked = Analyysi pysähtyi sisäiseen virheeseen: { $detail }
+cache-cancelled = Analyysi peruttiin, joten mitään ei tallennettu.
+cache-database = Kirjaston välimuistia ei voi käyttää: { $detail }
+cache-directory = Välimuistikansiota ei voi luoda: { $detail }
+container-bad-magic = Tämä ei ole Half-Life-demo.
+container-frame-bad-time = Tallenne on vioittunut osan { $entry } ruudussa { $frame }, jonka aika on virheellinen.
+container-frame-missing-terminal = Tallenteen osa { $entry } päättyy ilman lopetustietuetta.
+container-frame-negative-length = Tallenne on vioittunut osan { $entry } ruudussa { $frame }.
+container-frame-over-limit = Osan { $entry } ruutu { $frame } on sallittua suurempi.
+container-frame-truncated = Tallenne katkeaa osan { $entry } ruutuun { $frame }.
+container-frame-unknown-tag = Tallenne on vioittunut osan { $entry } ruudussa { $frame }, jonka tyyppi on tuntematon.
+container-io = Tiedostoa ei voi lukea: { $detail }
+container-no-directory = Tallennetta ei koskaan viety loppuun, joten siinä ei ole sisällysluetteloa.
+container-range = Tallenteen sisällysluettelo osoittaa tiedoston ulkopuolelle.
+container-too-short = Tiedosto on liian lyhyt ollakseen demo.
+coverage-hltv = Katsojaproxyn tallenne. Tallentavaa pelaajaa ei ole, ja tapahtumat seuraavat proxyn näkymää.
+coverage-mostly-spectating = Tallentaja oli katsojana { $percent } % toistosta, joten useimmat tapahtumat ovat muiden pelaajien, sellaisina kuin seurattu näkymä ne näytti.
+coverage-no-local-events = Ei paikallisia tapahtumia. Tallentajan omat toiminnot puuttuvat, paitsi palvelimen lähettämät.
+coverage-singleplayer = Yksinpeli. Muut toimijat ovat hirviöitä tai kartan osia, eikä tappolistaa ole.
+coverage-unknown = Tallennetta ei saatu purettua niin pitkälle, että sen laji selviäisi.
+coverage-visible-only = Muiden pelaajien tapahtumat tulevat tälle asiakkaalle vain, kun palvelin pitää heitä näkyvinä, joten niiden määrät ovat alarajoja.
+decode-failed = Purku pysähtyi kohdassa { $time } (ruutu { $frame }): { $detail }
+export-active-effect = { $effect } on käynnissä alussa, eikä sitä voi vielä siirtää.
+export-client-dropped-packets = Peli hylkäsi myöhästyneitä paketteja kohdassa { $time }, mitä leikkaus ei vielä osaa toistaa.
+export-cross-segment = Uusi istunto alkaa kohdassa { $time }, valitun välin sisällä.
+export-destination-exists = { $path } on jo olemassa. Valitse toinen nimi.
+export-empty-range = Valitulla välillä ei ole mitään vietävää.
+export-io = Kohdetta { $path } ei voi kirjoittaa: { $detail }
+export-missing-delta-base = Tallenteesta puuttuu ennen alkua tarvittava tila (järjestys { $sequence }).
+export-missing-parent = Kohteen { $path } kansiota ei ole.
+export-range-beyond-end = Loppu { $end } on tallenteen lopun ({ $segment_end }) jälkeen.
+export-same-as-source = Kohde on itse lähdedemo.
+export-source-changed = { $path } muuttui viennin aikana.
+export-source-decode-failed = Lähdedemoa ei voi purkaa: { $detail }
+export-source-failed-crosscheck = Lähdedemo ei läpäissyt ristiintarkistusta, joten sen koottuun tilaan ei voi luottaa.
+export-unknown-persistent-message = Ennen alkua oleva { $name } asettaa tilan, jota leikkaus ei vielä osaa siirtää.
+export-unproven-state = Tila kohdassa { $time } perustuu pääteltyyn pohjaan eikä ole todistettu.
+export-unrepresentable-time-field = Alun aikaa ei voi kirjoittaa tarkasti: { $detail }
+export-unsupported = Ei tuettu: { $detail }
+export-validation-failed = Viety tiedosto ei läpäissyt tarkistusta: { $detail }
+io-not-found = Tiedostoa tai kansiota ei löytynyt.
+io-other = { $detail }
+io-permission-denied = Pääsy estetty.
+io-unexpected-end = Tiedosto päättyi odottamatta.
+protocol-unsupported = Demoprotokollaa { $demo }/{ $network } ei tueta, vain 5/48.
+protocol-unsupported-network = Palvelin vaihtoi verkkoprotokollaan { $network }, jota ei tueta.

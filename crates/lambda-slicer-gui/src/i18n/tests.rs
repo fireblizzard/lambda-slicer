@@ -174,7 +174,7 @@ fn plural_selects_cover_every_category_whole_numbers_reach() {
 #[test]
 fn plural_forms_follow_each_language() {
     let say = |l: Locale, n: i64| {
-        plain(Catalog::new(l).text_with("library-kills", &[("count", n.into())]))
+        plain(Catalog::new(l).text_with("details-kills", &[("count", n.into())]))
     };
     assert_eq!(say(Locale::En, 1), "1 kill");
     assert_eq!(say(Locale::En, 2), "2 kills");
@@ -214,9 +214,9 @@ fn numbers_use_each_locale_separators() {
     assert_eq!(Catalog::new(Locale::Pl).number(1234., 0), "1234");
     assert_eq!(Catalog::new(Locale::Pl).number(12345., 0), "12\u{a0}345");
     assert_eq!(Catalog::new(Locale::En).number(-0.001, 1), "0.0");
-    let score = |l| plain(Catalog::new(l).text_with("library-action", &[("score", 8.0603.into())]));
-    assert_eq!(score(Locale::En), "Action score 8.06");
-    assert_eq!(score(Locale::De), "Action-Wert 8,06");
+    let score = |l| plain(Catalog::new(l).text_with("details-action", &[("score", 8.0603.into())]));
+    assert_eq!(score(Locale::En), "Best action score 8.06");
+    assert_eq!(score(Locale::De), "Bester Action-Wert 8,06");
 }
 
 #[test]
@@ -233,4 +233,49 @@ fn system_languages_map_to_shipped_locales() {
 fn core_messages_fall_back_to_their_own_text() {
     let m = Message::new("test-unknown", "English text");
     assert_eq!(Catalog::new(Locale::De).message(&m), "English text");
+}
+
+#[test]
+fn english_has_every_core_message_code() {
+    let english = messages(Locale::En);
+    for code in lambda_slicer_core::message::CODES {
+        assert!(english.contains_key(*code), "en.ftl lacks {code}");
+    }
+}
+
+#[test]
+fn english_has_every_message_the_gui_names() {
+    let english = messages(Locale::En);
+    // Ids the code builds at run time, such as status-partial, are listed
+    // here, the rest are found as literals in the source
+    let built = [
+        "status-complete",
+        "status-partial",
+        "status-failed",
+        "status-unsupported",
+        "kind-multiplayer-view",
+        "kind-singleplayer",
+        "kind-hltv",
+        "kind-unknown",
+    ];
+    let sources = [
+        include_str!("../app.rs"),
+        include_str!("../library.rs"),
+        include_str!("../jobs.rs"),
+    ];
+    let mut named: Vec<String> = built.iter().map(|s| s.to_string()).collect();
+    for source in sources {
+        for literal in source.split('"').skip(1).step_by(2) {
+            let is_id = literal.contains('-')
+                && literal.chars().all(|c| c.is_ascii_lowercase() || c == '-')
+                && !literal.starts_with('-')
+                && !literal.ends_with('-');
+            if is_id {
+                named.push(literal.to_string());
+            }
+        }
+    }
+    for id in named {
+        assert!(english.contains_key(&id), "en.ftl lacks {id}");
+    }
 }

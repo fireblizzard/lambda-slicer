@@ -24,9 +24,11 @@ Toolchain: Rust **1.98.1** (`rust-toolchain.toml`), edition 2024. `Cargo.lock` i
 | intl-memoizer | 0.5.3 | Apache-2.0 OR MIT | Fluent number formatter signature |
 | unic-langid | 0.9.6 | MIT OR Apache-2.0 | language tags |
 | sys-locale | 0.3.2 | MIT OR Apache-2.0 | system language on first run |
+| egui_extras | 0.37.0 | MIT OR Apache-2.0 | virtualized library table |
+| rfd | 0.17.2 | MIT | native file and folder dialogs |
 | fluent-syntax, intl_pluralrules, fluent-langneg, tempfile (dev) | 0.12.0, 7.0.2, 0.13.1, 3.27.0 | Apache-2.0 OR MIT | catalog and settings tests |
 
-Not yet added (later milestones): `rfd` (file dialogs, M6), `tracing`. Discovery uses
+Not yet added (later milestones): `tracing`. Discovery uses
 `std::fs` instead of `walkdir`, to control which links are followed.
 
 ## Codec decision

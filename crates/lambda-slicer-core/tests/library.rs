@@ -180,3 +180,102 @@ fn cache_entries_round_trip() {
     );
     assert_eq!(c.stats().unwrap().files, 1);
 }
+
+fn header(map: &str, duration: f32) -> lambda_slicer_core::library::cache::HeaderInfo {
+    lambda_slicer_core::library::cache::HeaderInfo {
+        map: map.into(),
+        game_dir: "ag".into(),
+        demo_protocol: 5,
+        network_protocol: 48,
+        duration,
+    }
+}
+
+#[test]
+fn queries_fold_case_page_count_and_sort() {
+    use lambda_slicer_core::library::cache::{Sort, fold};
+
+    let mut c = Cache::in_memory().unwrap();
+    for (name, map, duration) in [
+        ("b/Iğdır_final.dem", "crossfire", 300.),
+        ("a/stalk.dem", "stalkyard", 60.),
+        ("c/ISTANBUL.dem", "İzmir", 120.),
+    ] {
+        c.store(&Entry {
+            path: Path::new(name),
+            size: 1,
+            mtime_ns: None,
+            file_identity: None,
+            quick_hash: None,
+            full_hash: None,
+            header: Some(header(map, duration)),
+            report: None,
+            error: None,
+        })
+        .unwrap();
+    }
+
+    assert_eq!(fold("İSTANBUL Iğdır"), "istanbul iğdir");
+    let q = |f: FileQuery| -> Vec<String> {
+        c.query(&FileQuery { limit: 10, ..f })
+            .unwrap()
+            .into_iter()
+            .map(|r| r.path)
+            .collect()
+    };
+    let all = FileQuery::default();
+    assert_eq!(c.count(&all).unwrap(), 3);
+    assert_eq!(
+        q(all.clone()),
+        ["a/stalk.dem", "b/Iğdır_final.dem", "c/ISTANBUL.dem"]
+    );
+
+    // Turkish i forms match each other, other letters ignore case
+    let text = |t: &str| FileQuery {
+        text: Some(t.into()),
+        ..Default::default()
+    };
+    assert_eq!(q(text("istanbul")), ["c/ISTANBUL.dem"]);
+    assert_eq!(q(text("IĞDIR")), ["b/Iğdır_final.dem"]);
+    let map = FileQuery {
+        map: Some("izmir".into()),
+        ..Default::default()
+    };
+    assert_eq!(q(map), ["c/ISTANBUL.dem"]);
+
+    let longest = FileQuery {
+        sort: Sort::Duration,
+        descending: true,
+        ..Default::default()
+    };
+    assert_eq!(q(longest.clone())[0], "b/Iğdır_final.dem");
+    let page = c
+        .query(&FileQuery {
+            offset: 1,
+            limit: 1,
+            ..longest
+        })
+        .unwrap();
+    assert_eq!(page[0].path, "c/ISTANBUL.dem");
+
+    let long = FileQuery {
+        min_duration: Some(100.),
+        ..Default::default()
+    };
+    assert_eq!(c.count(&long).unwrap(), 2);
+}
+
+#[test]
+fn a_new_cache_opened_at_once_is_built_once() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("cache.sqlite");
+    std::thread::scope(|s| {
+        let handles: Vec<_> = (0..8)
+            .map(|_| s.spawn(|| Cache::open(&path).map(|_| ())))
+            .collect();
+        for h in handles {
+            h.join().unwrap().unwrap();
+        }
+    });
+    assert_eq!(Cache::open(&path).unwrap().stats().unwrap().files, 0);
+}

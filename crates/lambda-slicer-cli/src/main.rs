@@ -171,6 +171,12 @@ enum Command {
     Query {
         #[arg(long)]
         cache: Option<PathBuf>,
+        /// Path containing this text, ignoring case
+        #[arg(long)]
+        text: Option<String>,
+        /// At least this many seconds long
+        #[arg(long)]
+        min_duration: Option<f32>,
         /// Map name containing this text
         #[arg(long)]
         map: Option<String>,
@@ -203,7 +209,7 @@ enum Command {
         #[arg(long)]
         min_action: Option<f64>,
         /// List the best action windows across the library instead of files
-        #[arg(long, conflicts_with_all = ["map", "player", "min_spectating", "max_spectating",
+        #[arg(long, conflicts_with_all = ["text", "min_duration", "map", "player", "min_spectating", "max_spectating",
             "weapon_used", "kill_weapon", "victim_airborne", "killer_airborne", "min_speed",
             "min_action"])]
         windows: bool,
@@ -545,6 +551,8 @@ fn run() -> Result<ExitCode> {
         }
         Command::Query {
             cache,
+            text,
+            min_duration,
             map,
             player,
             min_spectating,
@@ -586,7 +594,10 @@ fn run() -> Result<ExitCode> {
                     min_speed,
                 },
                 min_action,
+                text,
+                min_duration,
                 limit,
+                ..Default::default()
             };
             let rows = cache.query(&query)?;
             match &json {

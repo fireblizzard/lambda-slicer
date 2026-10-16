@@ -2,11 +2,16 @@
 
 app-title = Lambda Slicer
 
+## Barre d’outils
+
 toolbar-open = Ouvrir une démo…
 toolbar-add-folder = Ajouter un dossier…
 toolbar-rescan = Analyser à nouveau
 toolbar-cancel = Annuler
 toolbar-settings = Paramètres
+dialog-demos = Démos Half-Life
+
+## Paramètres
 
 settings-title = Paramètres
 settings-language = Langue
@@ -17,18 +22,123 @@ settings-cache = Cache de la bibliothèque
 settings-folders = Dossiers de la bibliothèque
 settings-folders-empty = Aucun dossier ajouté pour l’instant.
 settings-remove = Retirer
-settings-close = Fermer
+
+## Bibliothèque
 
 library-empty = Ajoutez un dossier ou ouvrez une démo pour commencer.
+library-no-matches = Aucune démo ne correspond à ces filtres.
+library-no-cache = Ce système n’offre aucun emplacement pour le cache de la bibliothèque.
 library-demos = { $count ->
     [one] { $count } démo
     [many] { $count } de démos
    *[other] { $count } démos
 }
-library-kills = { $count ->
+library-percent = { $percent } %
+
+filter-search = Rechercher dans les chemins
+filter-map = Carte
+filter-player = Joueur
+filter-weapon-any = N’importe quelle arme
+filter-min-minutes = Au moins (minutes)
+filter-spectating-any = En jeu ou en spectateur
+filter-spectating-mostly = Surtout en spectateur
+filter-spectating-playing = Surtout en jeu
+filter-clear = Effacer les filtres
+
+column-status = État
+column-name = Démo
+column-map = Carte
+column-duration = Durée
+column-gauss = Gauss
+column-kills = Éliminations
+column-action = Action
+column-spectating = Spectateur
+
+status-complete = Analysée
+status-partial = Partielle
+status-failed = Échec
+status-unsupported = Non prise en charge
+status-no-use = Aucun usage d’arme
+
+kind-multiplayer-view = Vue du joueur
+kind-singleplayer = Solo
+kind-hltv = Proxy spectateur
+kind-unknown = Type inconnu
+
+details-recorder = Enregistrée par { $name }
+details-shots = { $count ->
+    [one] { $count } tir
+    [many] { $count } de tirs
+   *[other] { $count } tirs
+}
+details-kills = { $count ->
     [one] { $count } élimination
     [many] { $count } d’éliminations
    *[other] { $count } éliminations
 }
-library-action = Score d’action { NUMBER($score, minimumFractionDigits: 2) }
-library-spectating = Spectateur { $percent } %
+details-action = Meilleur score d’action { NUMBER($score, minimumFractionDigits: 2) }
+
+## Analyse des dossiers
+
+scan-progress = { $found } trouvées, { $done } traitées ({ $cached } en cache, { $analysed } analysées), { $megabytes } Mo lus
+scan-cancelling = Arrêt…
+scan-cancelled = Arrêté, { $left } restant à analyser.
+scan-finished = Terminé : { $done } démos, { $analysed } analysées, en { $seconds } s.
+scan-problems = { $count ->
+    [one] { $count } problème
+    [many] { $count } de problèmes
+   *[other] { $count } problèmes
+}
+problems-title = Problèmes rencontrés
+problem-changed = Le fichier a changé pendant l’analyse, donc rien n’a été enregistré.
+drop-hint = Déposez des démos ou des dossiers pour les ajouter
+drop-not-demo = Pas une démo : { $names }
+
+## Messages du moteur d’analyse, par code
+
+analysis-panicked = L’analyse s’est arrêtée sur une erreur interne : { $detail }
+cache-cancelled = L’analyse a été annulée, donc rien n’a été enregistré.
+cache-database = Impossible d’utiliser le cache de la bibliothèque : { $detail }
+cache-directory = Impossible de créer le dossier du cache : { $detail }
+container-bad-magic = Ce n’est pas une démo Half-Life.
+container-frame-bad-time = L’enregistrement est endommagé à l’image { $frame } de la partie { $entry }, dont le temps n’est pas valide.
+container-frame-missing-terminal = La partie { $entry } de l’enregistrement se termine sans son enregistrement de clôture.
+container-frame-negative-length = L’enregistrement est endommagé à l’image { $frame } de la partie { $entry }.
+container-frame-over-limit = L’image { $frame } de la partie { $entry } dépasse la taille autorisée.
+container-frame-truncated = L’enregistrement s’interrompt à l’image { $frame } de la partie { $entry }.
+container-frame-unknown-tag = L’enregistrement est endommagé à l’image { $frame } de la partie { $entry }, d’un type inconnu.
+container-io = Impossible de lire le fichier : { $detail }
+container-no-directory = L’enregistrement n’a jamais été terminé, il n’a donc pas de sommaire.
+container-range = Le sommaire de l’enregistrement pointe en dehors du fichier.
+container-too-short = Le fichier est trop court pour être une démo.
+coverage-hltv = Enregistrement d’un proxy spectateur. Il n’y a pas de joueur qui enregistre, et les événements suivent la vue du proxy.
+coverage-mostly-spectating = La personne qui enregistrait a été spectatrice pendant { $percent } % de la lecture, donc la plupart des événements sont ceux d’autres joueurs, tels que la vue observée les montrait.
+coverage-no-local-events = Aucun événement local. Les actions de la personne qui enregistrait manquent, sauf celles que le serveur a envoyées.
+coverage-singleplayer = Solo. Les autres acteurs sont des monstres ou des éléments de la carte, et il n’y a pas de fil des éliminations.
+coverage-unknown = L’enregistrement n’a pas été décodé assez loin pour en connaître le type.
+coverage-visible-only = Les événements des autres joueurs n’arrivent à ce client que tant que le serveur les juge visibles, leurs nombres sont donc des minimums.
+decode-failed = Le décodage s’est arrêté à { $time } (image { $frame }) : { $detail }
+export-active-effect = { $effect } est en cours au début et ne peut pas encore être repris.
+export-client-dropped-packets = Le jeu a écarté des paquets en retard à { $time }, ce qu’une découpe ne sait pas encore reproduire.
+export-cross-segment = Une nouvelle session commence à { $time }, dans la plage.
+export-destination-exists = { $path } existe déjà. Choisissez un autre nom.
+export-empty-range = La plage choisie ne contient rien à exporter.
+export-io = Impossible d’écrire { $path } : { $detail }
+export-missing-delta-base = Il manque à l’enregistrement un état nécessaire avant le début (séquence { $sequence }).
+export-missing-parent = Le dossier de { $path } n’existe pas.
+export-range-beyond-end = La fin { $end } dépasse la fin de l’enregistrement, { $segment_end }.
+export-same-as-source = La destination est la démo source elle-même.
+export-source-changed = { $path } a changé pendant l’export.
+export-source-decode-failed = La démo source ne se décode pas : { $detail }
+export-source-failed-crosscheck = La démo source a échoué à sa vérification croisée, son état reconstruit n’est donc pas fiable.
+export-unknown-persistent-message = { $name } avant le début fixe un état qu’une découpe ne sait pas encore reprendre.
+export-unproven-state = L’état à { $time } repose sur une base déduite et n’est pas prouvé.
+export-unrepresentable-time-field = Un temps au début ne peut pas être écrit fidèlement : { $detail }
+export-unsupported = Non pris en charge : { $detail }
+export-validation-failed = Le fichier exporté a échoué à la validation : { $detail }
+io-not-found = Le fichier ou le dossier est introuvable.
+io-other = { $detail }
+io-permission-denied = Accès refusé.
+io-unexpected-end = Le fichier s’est terminé de façon inattendue.
+protocol-unsupported = Le protocole de démo { $demo }/{ $network } n’est pas pris en charge, seulement 5/48.
+protocol-unsupported-network = Le serveur est passé au protocole réseau { $network }, qui n’est pas pris en charge.

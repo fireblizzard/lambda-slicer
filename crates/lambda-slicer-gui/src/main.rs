@@ -1,12 +1,17 @@
 //! Lambda Slicer desktop app
 //!
-//! `lambda-slicer-gui [--locale TAG] [--settings] [--screenshot OUT.png]`.
-//! `--locale` overrides the saved language for this run, `--settings` opens
-//! the settings window, and `--screenshot` saves the window to a PNG and
-//! exits, for checking how a language renders
+//! `lambda-slicer-gui [PATH...] [--locale TAG] [--settings] [--cache FILE]
+//! [--screenshot OUT.png [--frames N]]`. Demos and folders given as `PATH`
+//! are opened for this session. `--locale` overrides the saved
+//! language and `--cache` the library cache for this run, `--settings` opens
+//! the settings window, and `--screenshot` saves the window to a PNG after
+//! `N` frames and exits, for checking how a language renders
 
 mod app;
 mod i18n;
+mod jobs;
+mod layout;
+mod library;
 mod settings;
 mod text;
 
@@ -14,7 +19,7 @@ use std::path::PathBuf;
 
 use eframe::egui;
 
-use app::{App, Screenshot};
+use app::{App, Launch, Screenshot};
 use i18n::Locale;
 use settings::Settings;
 
@@ -23,17 +28,18 @@ fn main() -> eframe::Result {
     let mut locale = None;
     let mut show_settings = false;
     let mut screenshot = None;
+    let mut frames = 5;
+    let mut cache = None;
+    let mut open = Vec::new();
     while let Some(a) = args.next() {
         match a.as_str() {
             "--locale" => locale = args.next().as_deref().and_then(Locale::from_tag),
             "--settings" => show_settings = true,
-            "--screenshot" => {
-                screenshot = args.next().map(|p| Screenshot {
-                    path: PathBuf::from(p),
-                    frames: 5,
-                })
-            }
-            other => eprintln!("ignoring argument {other}"),
+            "--screenshot" => screenshot = args.next().map(PathBuf::from),
+            "--frames" => frames = args.next().and_then(|n| n.parse().ok()).unwrap_or(frames),
+            "--cache" => cache = args.next().map(PathBuf::from),
+            flag if flag.starts_with("--") => eprintln!("ignoring argument {flag}"),
+            path => open.push(PathBuf::from(path)),
         }
     }
 
@@ -42,6 +48,7 @@ fn main() -> eframe::Result {
         .as_deref()
         .map(Settings::load_from)
         .unwrap_or_default();
+    let screenshot = screenshot.map(|path| Screenshot { path, frames });
     // A screenshot run must not change the saved settings
     let save_to = if screenshot.is_some() {
         None
@@ -59,13 +66,19 @@ fn main() -> eframe::Result {
     eframe::run_native(
         "Lambda Slicer",
         options,
-        Box::new(move |_cc| {
-            Ok(Box::new(App::new(
+        Box::new(move |cc| {
+            let mut app = App::new(
                 settings,
                 save_to,
-                show_settings,
-                screenshot,
-            )))
+                Launch {
+                    show_settings,
+                    screenshot,
+                    cache,
+                    open,
+                },
+            );
+            app.start_scan(&cc.egui_ctx);
+            Ok(Box::new(app))
         }),
     )
 }

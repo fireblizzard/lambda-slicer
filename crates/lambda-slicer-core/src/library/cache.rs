@@ -9,8 +9,9 @@
 
 use std::path::{Path, PathBuf};
 
+use rusqlite::functions::FunctionFlags;
 use rusqlite::types::ToSql;
-use rusqlite::{Connection, OptionalExtension, params};
+use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};
 use serde::Serialize;
 
 use crate::analysis::weapons::{Actor, PROFILE};
@@ -271,12 +272,56 @@ impl KillQuery {
     }
 }
 
+/// Case-insensitive form for searching. Unicode lowercase, with the Turkish
+/// dotless and dotted i folded to plain `i` in every language, so `I`, `ı`,
+/// `İ` and `i` all match each other
+pub fn fold(text: &str) -> String {
+    text.chars()
+        .flat_map(char::to_lowercase)
+        .filter(|c| *c != '\u{307}')
+        .map(|c| if c == 'ı' { 'i' } else { c })
+        .collect()
+}
+
+/// Library list order
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Sort {
+    #[default]
+    Path,
+    Map,
+    Duration,
+    Kills,
+    Action,
+    Spectating,
+    Scanned,
+    Gauss,
+}
+
+impl Sort {
+    fn column(self) -> &'static str {
+        match self {
+            Sort::Path => "f.path",
+            Sort::Map => "f.map",
+            Sort::Duration => "f.duration",
+            Sort::Kills => "f.kills",
+            Sort::Action => "f.best_window",
+            Sort::Spectating => "f.spectator_fraction",
+            Sort::Scanned => "f.scanned_at",
+            Sort::Gauss => "gauss",
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct FileQuery {
-    /// Substring of the map name
+    /// Text anywhere in the path, ignoring case as [`fold`] does
+    pub text: Option<String>,
+    /// Text in the map name, ignoring case
     pub map: Option<String>,
-    /// Substring of any player's name
+    /// Text in any player's name, ignoring case
     pub player: Option<String>,
+    /// Shortest duration in seconds
+    pub min_duration: Option<f32>,
     /// Spectating fraction bounds, inclusive
     pub min_spectating: Option<f64>,
     pub max_spectating: Option<f64>,
@@ -285,6 +330,10 @@ pub struct FileQuery {
     pub kills: KillQuery,
     /// Lowest best action window score
     pub min_action: Option<f64>,
+    pub sort: Sort,
+    pub descending: bool,
+    /// Rows to skip and rows to return, for paging
+    pub offset: usize,
     pub limit: usize,
 }
 
@@ -312,6 +361,7 @@ pub struct StoredMessage {
 
 #[derive(Clone, Debug, Serialize)]
 pub struct FileRow {
+    pub id: i64,
     pub path: String,
     pub status: String,
     /// Why the file is not complete, if it is not
@@ -319,7 +369,11 @@ pub struct FileRow {
     pub map: Option<String>,
     pub duration: Option<f32>,
     pub recording_kind: Option<String>,
+    pub recorder: Option<String>,
     pub spectator_fraction: Option<f64>,
+    pub shots: Option<i64>,
+    /// Gauss shots, the weapon the library highlights
+    pub gauss: Option<i64>,
     pub kills: Option<i64>,
     pub best_window: Option<f64>,
     /// The kills that matched the kill conditions, when there were any
@@ -357,24 +411,47 @@ impl Cache {
         Self::setup(Connection::open_in_memory()?)
     }
 
-    fn setup(conn: Connection) -> Result<Self, CacheError> {
+    fn setup(mut conn: Connection) -> Result<Self, CacheError> {
         conn.busy_timeout(std::time::Duration::from_secs(30))?;
-        conn.pragma_update(None, "journal_mode", "WAL")?;
+        // Switching the journal mode does not wait for other connections,
+        // so retry while another one opening the same cache holds it
+        let started = std::time::Instant::now();
+        loop {
+            match conn.pragma_update(None, "journal_mode", "WAL") {
+                Err(rusqlite::Error::SqliteFailure(e, _))
+                    if e.code == rusqlite::ErrorCode::DatabaseBusy
+                        && started.elapsed() < std::time::Duration::from_secs(30) =>
+                {
+                    std::thread::sleep(std::time::Duration::from_millis(10));
+                }
+                result => break result?,
+            }
+        }
         conn.pragma_update(None, "synchronous", "NORMAL")?;
         conn.pragma_update(None, "foreign_keys", true)?;
+        conn.create_scalar_function(
+            "fold",
+            1,
+            FunctionFlags::SQLITE_UTF8 | FunctionFlags::SQLITE_DETERMINISTIC,
+            |ctx| Ok(ctx.get::<Option<String>>(0)?.map(|t| fold(&t))),
+        )?;
 
-        let schema: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0))?;
+        // Under a write lock, so connections opening a new cache at once
+        // build it once
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let schema: i64 = tx.pragma_query_value(None, "user_version", |r| r.get(0))?;
         if schema != CACHE_SCHEMA {
-            conn.execute_batch(
+            tx.execute_batch(
                 "DROP TABLE IF EXISTS windows;
                  DROP TABLE IF EXISTS kills;
                  DROP TABLE IF EXISTS weapons;
                  DROP TABLE IF EXISTS players;
                  DROP TABLE IF EXISTS files;",
             )?;
-            conn.execute_batch(TABLES)?;
-            conn.pragma_update(None, "user_version", CACHE_SCHEMA)?;
+            tx.execute_batch(TABLES)?;
+            tx.pragma_update(None, "user_version", CACHE_SCHEMA)?;
         }
+        tx.commit()?;
 
         Ok(Self { conn })
     }
@@ -606,20 +683,29 @@ impl Cache {
         c.join(" AND ")
     }
 
-    /// Current files matching every condition, by path
-    pub fn query(&self, q: &FileQuery) -> Result<Vec<FileRow>, CacheError> {
+    /// The WHERE clause for `q` over `files` aliased `f`, with its arguments
+    fn conditions(q: &FileQuery) -> (String, Vec<Box<dyn ToSql>>) {
         let mut args: Vec<Box<dyn ToSql>> = vec![Box::new(analysis_version())];
         let mut c = vec!["f.version = ?1".to_string()];
-        if let Some(m) = &q.map {
-            args.push(Box::new(format!("%{m}%")));
-            c.push(format!("f.map LIKE ?{}", args.len()));
+        if let Some(t) = q.text.as_deref().filter(|t| !t.is_empty()) {
+            args.push(Box::new(fold(t)));
+            c.push(format!("instr(fold(f.path), ?{}) > 0", args.len()));
         }
-        if let Some(p) = &q.player {
-            args.push(Box::new(format!("%{p}%")));
+        if let Some(m) = q.map.as_deref().filter(|m| !m.is_empty()) {
+            args.push(Box::new(fold(m)));
+            c.push(format!("instr(fold(f.map), ?{}) > 0", args.len()));
+        }
+        if let Some(p) = q.player.as_deref().filter(|p| !p.is_empty()) {
+            args.push(Box::new(fold(p)));
             c.push(format!(
-                "EXISTS (SELECT 1 FROM players p WHERE p.file_id = f.id AND p.name LIKE ?{})",
+                "EXISTS (SELECT 1 FROM players p WHERE p.file_id = f.id
+                  AND instr(fold(p.name), ?{}) > 0)",
                 args.len()
             ));
+        }
+        if let Some(d) = q.min_duration {
+            args.push(Box::new(d));
+            c.push(format!("f.duration >= ?{}", args.len()));
         }
         if let Some(s) = q.min_spectating {
             args.push(Box::new(s));
@@ -641,60 +727,85 @@ impl Cache {
             args.push(Box::new(s));
             c.push(format!("f.best_window >= ?{}", args.len()));
         }
-        let filter_kills = !q.kills.is_empty();
-        let kill_sql = Self::kill_conditions(&q.kills, &mut args);
-        if filter_kills {
+        if !q.kills.is_empty() {
+            let kill_sql = Self::kill_conditions(&q.kills, &mut args);
             c.push(format!(
                 "EXISTS (SELECT 1 FROM kills k WHERE k.file_id = f.id AND {kill_sql})"
             ));
         }
+        (c.join(" AND "), args)
+    }
+
+    /// How many current files match `q`, ignoring its paging
+    pub fn count(&self, q: &FileQuery) -> Result<u64, CacheError> {
+        let (conditions, args) = Self::conditions(q);
+        let sql = format!("SELECT COUNT(*) FROM files f WHERE {conditions}");
+        let refs: Vec<&dyn ToSql> = args.iter().map(|a| a.as_ref()).collect();
+        Ok(self
+            .conn
+            .query_row(&sql, refs.as_slice(), |r| r.get::<_, i64>(0))? as u64)
+    }
+
+    /// One page of current files matching every condition, in `q`'s order
+    /// with the path breaking ties
+    pub fn query(&self, q: &FileQuery) -> Result<Vec<FileRow>, CacheError> {
+        let (conditions, mut args) = Self::conditions(q);
         args.push(Box::new(q.limit.max(1) as i64));
+        let limit = args.len();
+        args.push(Box::new(q.offset as i64));
+        let offset = args.len();
+        let direction = if q.descending { "DESC" } else { "ASC" };
 
         let sql = format!(
             "SELECT f.id, f.path, f.status, f.map, f.duration, f.recording_kind,
-                f.spectator_fraction, f.kills, f.best_window, f.error_code, f.error_args, f.error
-             FROM files f WHERE {} ORDER BY f.path LIMIT ?{}",
-            c.join(" AND "),
-            args.len()
+                f.spectator_fraction, f.kills, f.best_window, f.error_code, f.error_args, f.error,
+                f.recorder, f.shots,
+                (SELECT w.shots FROM weapons w WHERE w.file_id = f.id AND w.weapon = 'gauss')
+                    AS gauss
+             FROM files f WHERE {conditions}
+             ORDER BY {} {direction} NULLS LAST, f.path
+             LIMIT ?{limit} OFFSET ?{offset}",
+            q.sort.column()
         );
         let mut stmt = self.conn.prepare(&sql)?;
         let refs: Vec<&dyn ToSql> = args.iter().map(|a| a.as_ref()).collect();
         let rows = stmt.query_map(refs.as_slice(), |r| {
-            Ok((
-                r.get::<_, i64>(0)?,
-                FileRow {
-                    path: r.get(1)?,
-                    status: r.get(2)?,
-                    map: r.get(3)?,
-                    duration: r.get(4)?,
-                    recording_kind: r.get(5)?,
-                    spectator_fraction: r.get(6)?,
-                    kills: r.get(7)?,
-                    best_window: r.get(8)?,
-                    error: match (
-                        r.get::<_, Option<String>>(9)?,
-                        r.get::<_, Option<String>>(11)?,
-                    ) {
-                        (Some(code), Some(text)) => Some(StoredMessage {
-                            code,
-                            args: r
-                                .get::<_, Option<String>>(10)?
-                                .and_then(|a| serde_json::from_str(&a).ok())
-                                .unwrap_or_default(),
-                            text,
-                        }),
-                        _ => None,
-                    },
-                    matching_kills: Vec::new(),
+            Ok(FileRow {
+                id: r.get(0)?,
+                path: r.get(1)?,
+                status: r.get(2)?,
+                map: r.get(3)?,
+                duration: r.get(4)?,
+                recording_kind: r.get(5)?,
+                recorder: r.get(12)?,
+                spectator_fraction: r.get(6)?,
+                shots: r.get(13)?,
+                gauss: r.get(14)?,
+                kills: r.get(7)?,
+                best_window: r.get(8)?,
+                error: match (
+                    r.get::<_, Option<String>>(9)?,
+                    r.get::<_, Option<String>>(11)?,
+                ) {
+                    (Some(code), Some(text)) => Some(StoredMessage {
+                        code,
+                        args: r
+                            .get::<_, Option<String>>(10)?
+                            .and_then(|a| serde_json::from_str(&a).ok())
+                            .unwrap_or_default(),
+                        text,
+                    }),
+                    _ => None,
                 },
-            ))
+                matching_kills: Vec::new(),
+            })
         })?;
 
         let mut out = Vec::new();
         for row in rows {
-            let (id, mut file) = row?;
-            if filter_kills {
-                file.matching_kills = self.kills_of(id, &q.kills)?;
+            let mut file = row?;
+            if !q.kills.is_empty() {
+                file.matching_kills = self.kills_of(file.id, &q.kills)?;
             }
             out.push(file);
         }

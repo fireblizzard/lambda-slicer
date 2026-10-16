@@ -13,10 +13,10 @@ them. The full design is in [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md).
 | M3 arbitrary-start slicing | done; S1 restarts passed in game ([engine-validation](docs/engine-validation.md)) |
 | M4 weapon analysis | done: actions, actors, kills, highlights ([analysis profile](docs/analysis-profile.md)) |
 | M5 library and cache | scan and query over a SQLite cache ([library](docs/library.md)) |
-| M6 desktop app | in progress: shell, settings and fourteen languages ([languages](docs/i18n.md), [right-to-left text](docs/gui-text.md)) |
+| M6 desktop app | in progress: library with background scanning, filters and fourteen languages ([languages](docs/i18n.md), [right-to-left text](docs/gui-text.md)) |
 | M7 release | not started |
 
-The GUI so far is a shell: `cargo run -p lambda-slicer-gui`, or `-- --locale ar --settings` to try a language.
+The GUI so far is the library: `cargo run --release -p lambda-slicer-gui`, or add `-- --locale ar` to try a language and demos or folders to open them for one session.
 
 ## CLI
 
