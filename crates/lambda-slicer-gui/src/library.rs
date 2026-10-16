@@ -21,8 +21,19 @@ use crate::i18n::{Catalog, DateOrder, Ymd};
 use crate::layout;
 use crate::text::{self, Look};
 
-/// A date bound with a checkbox to use it, its fields in the locale's order
+/// A date bound with a checkbox to use it, its fields in the locale's order.
+/// The checkbox and the fields wrap together as one group
 fn date_filter(
+    ui: &mut Ui,
+    catalog: &Catalog,
+    label: &WidgetText,
+    value: &mut Option<Ymd>,
+    salt: &str,
+) {
+    layout::unbroken(ui, salt, |ui| date_fields(ui, catalog, label, value, salt));
+}
+
+fn date_fields(
     ui: &mut Ui,
     catalog: &Catalog,
     label: &WidgetText,
@@ -62,27 +73,31 @@ fn date_filter(
         let sep = |ui: &mut Ui, s: char| {
             ui.label(s.to_string());
         };
-        match catalog.locale.date_order() {
-            DateOrder::DayMonthYear(s) => {
-                day(ui, d);
-                sep(ui, s);
-                month(ui, d);
-                sep(ui, s);
-                year(ui, d);
+        #[derive(Clone, Copy)]
+        enum Part {
+            Day,
+            Month,
+            Year,
+        }
+        let (parts, mark) = match catalog.locale.date_order() {
+            DateOrder::DayMonthYear(s) => ([Part::Day, Part::Month, Part::Year], s),
+            DateOrder::MonthDayYear(s) => ([Part::Month, Part::Day, Part::Year], s),
+            DateOrder::YearMonthDay(s) => ([Part::Year, Part::Month, Part::Day], s),
+        };
+        // A numeric date reads left to right even in a right-to-left row,
+        // whose widgets are placed from the right, so it is added backwards
+        let mut parts = parts.to_vec();
+        if catalog.locale.rtl() {
+            parts.reverse();
+        }
+        for (i, part) in parts.into_iter().enumerate() {
+            if i > 0 {
+                sep(ui, mark);
             }
-            DateOrder::MonthDayYear(s) => {
-                month(ui, d);
-                sep(ui, s);
-                day(ui, d);
-                sep(ui, s);
-                year(ui, d);
-            }
-            DateOrder::YearMonthDay(s) => {
-                year(ui, d);
-                sep(ui, s);
-                month(ui, d);
-                sep(ui, s);
-                day(ui, d);
+            match part {
+                Part::Day => day(ui, d),
+                Part::Month => month(ui, d),
+                Part::Year => year(ui, d),
             }
         }
         d.day = d.day.min(d.month_days());
@@ -402,14 +417,18 @@ impl LibraryView {
                     }
                 });
 
-            ui.label(t("filter-min-minutes"));
-            ui.add(
-                egui::DragValue::new(&mut self.filters.min_minutes)
-                    .range(0.0..=120.0)
-                    .speed(0.5)
-                    .custom_formatter(|v, _| catalog.number(v, 1))
-                    .custom_parser(parse_number),
-            );
+            // The label and its field wrap together
+            let minutes = &mut self.filters.min_minutes;
+            layout::unbroken(ui, "minutes", |ui| {
+                ui.label(t("filter-min-minutes"));
+                ui.add(
+                    egui::DragValue::new(minutes)
+                        .range(0.0..=120.0)
+                        .speed(0.5)
+                        .custom_formatter(|v, _| catalog.number(v, 1))
+                        .custom_parser(parse_number),
+                );
+            });
 
             let spectating = |s: Spectating| match s {
                 Spectating::Any => "filter-spectating-any",

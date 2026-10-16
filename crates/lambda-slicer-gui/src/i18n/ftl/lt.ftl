@@ -205,3 +205,11 @@ scores-at = Rezultatai ties { $time }
 scores-show-final = Rodyti galutinius rezultatus
 scores-frags = Fragai
 scores-deaths = Mirtys
+
+show-timeline = Rodyti laiko juostą
+legend-shot = Šūvis
+legend-charge = Krovimas
+legend-kill = Nužudymas
+legend-death = Mirtis
+legend-switch = Ginklo keitimas
+timeline-help = Kiekviena eilutė yra žaidėjas. Slinkite, kad priartintumėte, tempkite, kad pastumtumėte, dukart spustelėkite, kad matytumėte viską, spustelėkite žymę, kad ją pasirinktumėte.

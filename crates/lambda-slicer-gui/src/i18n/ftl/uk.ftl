@@ -205,3 +205,11 @@ scores-at = Рахунок на { $time }
 scores-show-final = Показати підсумковий рахунок
 scores-frags = Фраги
 scores-deaths = Смерті
+
+show-timeline = Показати шкалу часу
+legend-shot = Постріл
+legend-charge = Заряджання
+legend-kill = Вбивство
+legend-death = Смерть
+legend-switch = Зміна зброї
+timeline-help = Кожен рядок — гравець. Коліщатко масштабує, перетягування зсуває, подвійне клацання показує все, клацання по мітці вибирає її.

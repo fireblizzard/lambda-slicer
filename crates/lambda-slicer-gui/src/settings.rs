@@ -20,6 +20,8 @@ pub struct Settings {
     pub cache: Option<PathBuf>,
     /// Library columns left out, gauss shots by default
     pub hidden_columns: Vec<String>,
+    /// Whether a demo shows its timeline, hidden until asked for
+    pub show_timeline: bool,
 }
 
 impl Default for Settings {
@@ -30,6 +32,7 @@ impl Default for Settings {
             folders: Vec::new(),
             cache: None,
             hidden_columns: vec!["gauss".into()],
+            show_timeline: false,
         }
     }
 }
@@ -92,6 +95,7 @@ mod tests {
             folders: vec![PathBuf::from("F:/demos")],
             cache: None,
             hidden_columns: Vec::new(),
+            show_timeline: true,
         };
         s.save_to(&path).unwrap();
         assert_eq!(Settings::load_from(&path), s);

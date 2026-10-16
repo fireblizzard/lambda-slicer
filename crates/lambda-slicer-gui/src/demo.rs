@@ -166,6 +166,8 @@ pub struct DemoView {
     /// the analysis is in
     window: Option<usize>,
     pub open_window: Option<usize>,
+    /// The timeline is hidden until asked for, as it takes some reading
+    pub show_timeline: bool,
 }
 
 impl DemoView {
@@ -184,6 +186,7 @@ impl DemoView {
             scroll_to_window: 0,
             window: None,
             open_window: None,
+            show_timeline: false,
         }
     }
 
@@ -794,6 +797,74 @@ impl DemoView {
         }
     }
 
+    /// What the marks mean and how to move around, above the lanes
+    fn legend(&self, ui: &mut Ui, catalog: &Catalog, rtl: bool) {
+        let ctx = ui.ctx().clone();
+        let gauss = weapon_color(Some(Weapon::Gauss));
+        let swatch = |ui: &mut Ui, kind: usize| {
+            let (rect, _) = ui.allocate_exact_size(Vec2::new(16., 14.), Sense::hover());
+            let c = rect.center();
+            let p = ui.painter();
+            match kind {
+                0 => {
+                    p.line_segment(
+                        [c + Vec2::new(0., -6.), c + Vec2::new(0., 6.)],
+                        Stroke::new(2., gauss),
+                    );
+                }
+                1 => {
+                    p.rect_filled(
+                        Rect::from_center_size(c, Vec2::new(14., 8.)),
+                        2.,
+                        gauss.gamma_multiply(0.35),
+                    );
+                }
+                2 => {
+                    p.add(egui::Shape::convex_polygon(
+                        vec![
+                            c + Vec2::new(0., -6.),
+                            c + Vec2::new(5., 5.),
+                            c + Vec2::new(-5., 5.),
+                        ],
+                        KILL_COLOR,
+                        Stroke::NONE,
+                    ));
+                }
+                3 => {
+                    p.circle_stroke(c, 5., Stroke::new(1.5, KILL_COLOR));
+                }
+                _ => {
+                    p.rect_filled(Rect::from_center_size(c, Vec2::splat(5.)), 0., gauss);
+                }
+            }
+        };
+        let items = [
+            "legend-shot",
+            "legend-charge",
+            "legend-kill",
+            "legend-death",
+            "legend-switch",
+        ];
+        layout::wrapping_row(ui, rtl, |ui| {
+            for (kind, id) in items.iter().enumerate() {
+                // A swatch reads before its label in either direction
+                swatch(ui, kind);
+                ui.label(text::widget_text(
+                    &ctx,
+                    &catalog.text(id),
+                    rtl,
+                    None,
+                    Look::Plain,
+                ));
+                ui.add_space(8.);
+            }
+        });
+        layout::column(ui, rtl, |ui| {
+            let help = catalog.text("timeline-help");
+            ui.label(text::widget_text(&ctx, &help, rtl, None, Look::Plain).weak());
+        });
+    }
+
     /// The scores at the selected event, or the final scores. Teams and the
     /// two players of a duel get a column each, and other players share one
     /// ranked list
@@ -1043,12 +1114,21 @@ impl DemoView {
         ui.add_space(4.);
         self.scores(ui, catalog, rtl);
         ui.separator();
-        let timeline_height = (AXIS_HEIGHT + LANE_HEIGHT * model.lanes.len() as f32)
-            .min(ui.available_height() * 0.55);
-        egui::ScrollArea::vertical()
-            .id_salt("lanes")
-            .max_height(timeline_height)
-            .show(ui, |ui| self.timeline(ui, catalog, rtl));
+        let ctx = ui.ctx().clone();
+        layout::row(ui, rtl, |ui| {
+            let label =
+                text::widget_text(&ctx, &catalog.text("show-timeline"), rtl, None, Look::Plain);
+            ui.checkbox(&mut self.show_timeline, label);
+        });
+        if self.show_timeline {
+            self.legend(ui, catalog, rtl);
+            let timeline_height = (AXIS_HEIGHT + LANE_HEIGHT * model.lanes.len() as f32)
+                .min(ui.available_height() * 0.55);
+            egui::ScrollArea::vertical()
+                .id_salt("lanes")
+                .max_height(timeline_height)
+                .show(ui, |ui| self.timeline(ui, catalog, rtl));
+        }
         ui.separator();
         self.table(ui, catalog, rtl);
         close

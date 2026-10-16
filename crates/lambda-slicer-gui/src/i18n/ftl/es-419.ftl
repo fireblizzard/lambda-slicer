@@ -200,3 +200,11 @@ scores-at = Puntajes a las { $time }
 scores-show-final = Ver puntajes finales
 scores-frags = Bajas
 scores-deaths = Muertes
+
+show-timeline = Mostrar línea de tiempo
+legend-shot = Disparo
+legend-charge = Cargando
+legend-kill = Baja
+legend-death = Muerte
+legend-switch = Cambio de arma
+timeline-help = Cada fila es un jugador. Usa la rueda para acercar, arrastra para moverte, haz doble clic para ver todo y clic en una marca para seleccionarla.

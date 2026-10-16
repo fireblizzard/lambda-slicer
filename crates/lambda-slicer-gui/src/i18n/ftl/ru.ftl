@@ -205,3 +205,11 @@ scores-at = Счёт на { $time }
 scores-show-final = Показать итоговый счёт
 scores-frags = Фраги
 scores-deaths = Смерти
+
+show-timeline = Показать шкалу времени
+legend-shot = Выстрел
+legend-charge = Зарядка
+legend-kill = Убийство
+legend-death = Смерть
+legend-switch = Смена оружия
+timeline-help = Каждая строка — игрок. Колесо мыши масштабирует, перетаскивание сдвигает, двойной щелчок показывает всё, щелчок по метке выбирает её.

@@ -215,3 +215,11 @@ scores-at = النتائج عند { $time }
 scores-show-final = عرض النتائج النهائية
 scores-frags = القتلات
 scores-deaths = الوفيات
+
+show-timeline = إظهار الخط الزمني
+legend-shot = طلقة
+legend-charge = شحن
+legend-kill = قتل
+legend-death = موت
+legend-switch = تبديل السلاح
+timeline-help = كل صف لاعب. مرّر العجلة للتكبير، واسحب للتحريك، وانقر مرتين لرؤية الكل، وانقر على علامة لتحديدها.

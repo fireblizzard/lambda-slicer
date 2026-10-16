@@ -1,12 +1,17 @@
 //! Lambda Slicer desktop app
 //!
-//! `lambda-slicer-gui [PATH...] [--locale TAG] [--settings] [--cache FILE]
-//! [--demo FILE [--window N]] [--screenshot OUT.png [--frames N]]`. Demos and folders
-//! given as `PATH` are opened for this session, and `--demo` shows a cached
-//! demo at start, on its `N`th best action window with `--window`. `--locale` overrides the saved
-//! language and `--cache` the library cache for this run, `--settings` opens
-//! the settings window, and `--screenshot` saves the window to a PNG after
-//! `N` frames and exits, for checking how a language renders
+//! `lambda-slicer-gui [PATH...] [--locale TAG] [--settings] [--timeline]
+//! [--dates] [--size WxH] [--cache FILE] [--demo FILE [--window N]]
+//! [--screenshot OUT.png [--frames N]]`
+//!
+//! Demos and folders given as `PATH` are opened for this session. `--locale`
+//! overrides the saved language and `--cache` the library cache for this
+//! run. `--demo` shows a cached demo at start, on its `N`th golden minute
+//! candidate with `--window`. `--settings` opens the settings window,
+//! `--timeline` shows demo timelines, `--dates` turns on both date filters
+//! and `--size` sets the window size. `--screenshot` saves the window to a
+//! PNG `N` frames after any demo has loaded and exits, for checking how a
+//! language renders
 
 mod app;
 mod demo;
@@ -30,16 +35,20 @@ fn main() -> eframe::Result {
     let mut args = std::env::args().skip(1);
     let mut locale = None;
     let mut show_settings = false;
+    let mut show_timeline = false;
     let mut screenshot = None;
     let mut frames = 5;
     let mut cache = None;
     let mut open = Vec::new();
     let mut demo = None;
     let mut window = None;
+    let mut size = [1280., 800.];
+    let mut dates = false;
     while let Some(a) = args.next() {
         match a.as_str() {
             "--locale" => locale = args.next().as_deref().and_then(Locale::from_tag),
             "--settings" => show_settings = true,
+            "--timeline" => show_timeline = true,
             "--screenshot" => screenshot = args.next().map(PathBuf::from),
             "--frames" => frames = args.next().and_then(|n| n.parse().ok()).unwrap_or(frames),
             "--cache" => cache = args.next().map(PathBuf::from),
@@ -50,6 +59,14 @@ fn main() -> eframe::Result {
                     .and_then(|n| n.parse::<usize>().ok())
                     .map(|n| n.saturating_sub(1))
             }
+            "--size" => {
+                if let Some((w, h)) = args.next().as_deref().and_then(|s| s.split_once('x'))
+                    && let (Ok(w), Ok(h)) = (w.parse(), h.parse())
+                {
+                    size = [w, h];
+                }
+            }
+            "--dates" => dates = true,
             flag if flag.starts_with("--") => eprintln!("ignoring argument {flag}"),
             path => open.push(PathBuf::from(path)),
         }
@@ -70,9 +87,12 @@ fn main() -> eframe::Result {
     if locale.is_some() {
         settings.locale = locale;
     }
+    if show_timeline {
+        settings.show_timeline = true;
+    }
 
     let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default().with_inner_size([1280., 800.]),
+        viewport: egui::ViewportBuilder::default().with_inner_size(size),
         ..Default::default()
     };
     eframe::run_native(
@@ -89,6 +109,7 @@ fn main() -> eframe::Result {
                     open,
                     demo,
                     window,
+                    dates,
                 },
             );
             app.start_scan(&cc.egui_ctx);

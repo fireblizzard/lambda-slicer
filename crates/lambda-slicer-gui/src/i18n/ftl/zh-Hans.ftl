@@ -190,3 +190,11 @@ scores-at = { $time } 时的比分
 scores-show-final = 显示最终比分
 scores-frags = 击杀
 scores-deaths = 死亡
+
+show-timeline = 显示时间线
+legend-shot = 射击
+legend-charge = 蓄力
+legend-kill = 击杀
+legend-death = 死亡
+legend-switch = 切换武器
+timeline-help = 每一行是一名玩家。滚动以缩放，拖动以移动，双击查看全部，点击标记以选中。

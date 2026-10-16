@@ -205,3 +205,11 @@ scores-at = Wyniki o { $time }
 scores-show-final = Pokaż wyniki końcowe
 scores-frags = Fragi
 scores-deaths = Zgony
+
+show-timeline = Pokaż oś czasu
+legend-shot = Strzał
+legend-charge = Ładowanie
+legend-kill = Zabójstwo
+legend-death = Zgon
+legend-switch = Zmiana broni
+timeline-help = Każdy wiersz to gracz. Przewiń, by przybliżyć, przeciągnij, by przesunąć, kliknij dwukrotnie, by zobaczyć całość, kliknij znacznik, by go wybrać.

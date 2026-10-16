@@ -33,3 +33,21 @@ pub fn column<R>(ui: &mut Ui, rtl: bool, add: impl FnOnce(&mut Ui) -> R) -> R {
     let size = egui::vec2(ui.available_width(), 0.);
     ui.allocate_ui_with_layout(size, layout, add).inner
 }
+
+/// A group kept on one line inside a wrapping row, such as a checkbox with
+/// its fields. The group moves to the next line whole when it does not fit
+/// what is left of this one. Its width is only known once laid out, so the
+/// last frame's width is remembered
+pub fn unbroken<R>(ui: &mut Ui, id_salt: &str, add: impl FnOnce(&mut Ui) -> R) -> R {
+    let id = ui.make_persistent_id(id_salt);
+    let width: f32 = ui.ctx().data(|d| d.get_temp(id)).unwrap_or(0.);
+    let left = ui.available_size_before_wrap().x;
+    let at_line_start = left >= ui.max_rect().width() - 1.;
+    if width > left && !at_line_start {
+        ui.end_row();
+    }
+    let r = ui.horizontal(add);
+    ui.ctx()
+        .data_mut(|d| d.insert_temp(id, r.response.rect.width()));
+    r.inner
+}

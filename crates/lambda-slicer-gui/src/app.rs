@@ -36,6 +36,8 @@ pub struct Launch {
     /// A cached demo to show at start, and an action window to open it on
     pub demo: Option<PathBuf>,
     pub window: Option<usize>,
+    /// Turn on both date filters, for checking how they wrap
+    pub dates: bool,
 }
 
 pub struct App {
@@ -78,6 +80,17 @@ impl App {
             .map(|p| LibraryView::new(p, settings.hidden_columns.clone()));
         if let (Some(l), Some(d)) = (&mut library, &launch.demo) {
             l.select_path(d);
+        }
+        if let Some(l) = &mut library
+            && launch.dates
+        {
+            let day = crate::i18n::Ymd {
+                year: 2019,
+                month: 8,
+                day: 15,
+            };
+            l.filters.from = Some(day);
+            l.filters.to = Some(day);
         }
         Self {
             settings,
@@ -574,6 +587,7 @@ impl eframe::App for App {
             (Some((path, duration)), _) => {
                 let mut d = DemoView::open(path.clone(), *duration, &ctx);
                 d.open_window = self.open_window.take();
+                d.show_timeline = self.settings.show_timeline;
                 self.demo = Some(d);
             }
             (None, _) => self.demo = None,
@@ -610,6 +624,13 @@ impl eframe::App for App {
                     close = d.ui(ui, &self.catalog, rtl);
                 }
             });
+            // The timeline choice carries over to the next demo and the next run
+            if let Some(d) = &self.demo
+                && d.show_timeline != self.settings.show_timeline
+            {
+                self.settings.show_timeline = d.show_timeline;
+                self.save_settings();
+            }
             if close {
                 self.demo = None;
                 if let Some(l) = &mut self.library {

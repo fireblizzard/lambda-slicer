@@ -195,3 +195,11 @@ scores-at = Stand bei { $time }
 scores-show-final = Endstand zeigen
 scores-frags = Frags
 scores-deaths = Tode
+
+show-timeline = Zeitleiste zeigen
+legend-shot = Schuss
+legend-charge = Aufladen
+legend-kill = Abschuss
+legend-death = Tod
+legend-switch = Waffenwechsel
+timeline-help = Jede Zeile ist ein Spieler. Scrollen zoomt, Ziehen verschiebt, Doppelklick zeigt alles, ein Klick auf eine Markierung wählt sie aus.

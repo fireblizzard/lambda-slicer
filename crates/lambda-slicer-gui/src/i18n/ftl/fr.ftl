@@ -200,3 +200,11 @@ scores-at = Scores à { $time }
 scores-show-final = Voir les scores finaux
 scores-frags = Frags
 scores-deaths = Morts
+
+show-timeline = Afficher la frise
+legend-shot = Tir
+legend-charge = Charge
+legend-kill = Élimination
+legend-death = Mort
+legend-switch = Changement d’arme
+timeline-help = Chaque ligne est un joueur. La molette zoome, glisser déplace, un double-clic montre tout, un clic sur une marque la sélectionne.

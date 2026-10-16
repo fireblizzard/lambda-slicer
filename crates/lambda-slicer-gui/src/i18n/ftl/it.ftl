@@ -200,3 +200,11 @@ scores-at = Punteggi a { $time }
 scores-show-final = Mostra i punteggi finali
 scores-frags = Frag
 scores-deaths = Morti
+
+show-timeline = Mostra la timeline
+legend-shot = Colpo
+legend-charge = Carica
+legend-kill = Uccisione
+legend-death = Morte
+legend-switch = Cambio d’arma
+timeline-help = Ogni riga è un giocatore. Scorri per lo zoom, trascina per spostarti, doppio clic per vedere tutto, clic su un segno per selezionarlo.

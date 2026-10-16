@@ -195,3 +195,11 @@ scores-at = Tilanne kohdassa { $time }
 scores-show-final = Näytä lopputulokset
 scores-frags = Fragit
 scores-deaths = Kuolemat
+
+show-timeline = Näytä aikajana
+legend-shot = Laukaus
+legend-charge = Lataus
+legend-kill = Tappo
+legend-death = Kuolema
+legend-switch = Aseen vaihto
+timeline-help = Jokainen rivi on pelaaja. Vieritä zoomataksesi, vedä siirtääksesi, kaksoisnapsauta nähdäksesi kaiken ja napsauta merkkiä valitaksesi sen.

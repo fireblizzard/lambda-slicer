@@ -196,3 +196,11 @@ scores-at = Scores at { $time }
 scores-show-final = Show final scores
 scores-frags = Frags
 scores-deaths = Deaths
+
+show-timeline = Show timeline
+legend-shot = Shot
+legend-charge = Charging
+legend-kill = Kill
+legend-death = Death
+legend-switch = Weapon switch
+timeline-help = Each row is a player. Scroll to zoom, drag to move, double-click to see everything, click a mark to select it.

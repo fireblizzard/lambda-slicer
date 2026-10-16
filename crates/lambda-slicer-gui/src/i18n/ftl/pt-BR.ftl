@@ -200,3 +200,11 @@ scores-at = Placar em { $time }
 scores-show-final = Ver placar final
 scores-frags = Abates
 scores-deaths = Mortes
+
+show-timeline = Mostrar linha do tempo
+legend-shot = Disparo
+legend-charge = Carregando
+legend-kill = Abate
+legend-death = Morte
+legend-switch = Troca de arma
+timeline-help = Cada linha é um jogador. Role para aproximar, arraste para mover, clique duas vezes para ver tudo e clique numa marca para selecioná-la.

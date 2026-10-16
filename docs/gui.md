@@ -24,6 +24,9 @@ file failed.
 Selecting a demo analyses it again on its own thread, since shots are not kept in the cache, and
 opens it beside a narrower library. Choosing another demo cancels that analysis.
 
+- **Timeline.** Hidden at first, as it takes some reading. Show timeline opens it with a legend of
+  the marks and a line on how to move around, and the choice is kept for later demos and runs. The
+  scores, filters, golden minute and event table work with it hidden.
 - **Lanes.** One per player connection, a reused slot being a new lane, with every name the player
   used and AG colour codes left out. The recorder's lane is marked. Actors that could not be
   resolved share one lane, last.

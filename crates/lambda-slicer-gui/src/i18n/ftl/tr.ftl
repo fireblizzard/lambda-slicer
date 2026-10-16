@@ -195,3 +195,11 @@ scores-at = { $time } anındaki skorlar
 scores-show-final = Son skorları göster
 scores-frags = Fraglar
 scores-deaths = Ölümler
+
+show-timeline = Zaman çizelgesini göster
+legend-shot = Atış
+legend-charge = Şarj
+legend-kill = Öldürme
+legend-death = Ölüm
+legend-switch = Silah değişimi
+timeline-help = Her satır bir oyuncudur. Yakınlaştırmak için kaydırın, taşımak için sürükleyin, hepsini görmek için çift tıklayın, seçmek için bir işarete tıklayın.
