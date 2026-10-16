@@ -120,6 +120,85 @@ the last one. State 0 updates another weapon's clip and does not select it.
 
 The report also counts local and network events.
 
+The recorder spectates while its client data `iuser1` holds an observer mode (`OBS_*` in
+`common/const.h`, with `iuser2` naming the watched player), or while the demo info spectator flag
+of a spectator client is set. The report sums playback time while spectating, each network record
+weighted by the time until the next one, and gives the fraction of playback spent spectating.
+Above one half the coverage notes that the recorder mostly spectated.
+
+**Measured (2026-10-16):** the demo info flag alone was never set in the first 356 demos of the
+sample, while observer mode covers the AG `spectate` command. `kuvick_vs_fedor_stalky.dem` is
+observed in first person (mode 4) throughout, and recorded bhop runs of other players read 83% to
+99% spectating. Across the 2,000-demo sample, 93 demos spend some time spectating and 62 spend
+more than half.
+
+## Highlights
+
+Highlights are filters for finding moments worth a closer look, such as midair or fast kills and
+stretches packed with kills on both sides. They are approximate and meant for searching, not as
+evidence.
+
+### Motion
+
+The recorder's motion is exact, from client data (`flags & FL_ONGROUND`, `velocity`). Other
+players are inferred from their entity origins, timed by the server clock with repeated snapshots
+dropped.
+
+- **Airborne** when a quadratic fit of height over the last 0.2 s (at least 4 samples spanning
+  0.1 s, no gap above 0.1 s) has an acceleration within 25% of minus the server gravity and a
+  residual of at most 0.5 units. **On ground** when the acceleration is within 0.2 g of zero.
+  Otherwise unclear.
+- **Horizontal speed** from the displacement over the last 0.1 s.
+- A player outside the recorder's view is not visible.
+
+**Measured (2026-10-16)** by inferring the recorder's own motion from its client data origins and
+comparing it with the exact values over `20230909_224143_stalkyard.dem`,
+`naz_crossfire_pb_01.dem` and `20180208_000722_crossfire.dem`: of 62,428 snapshots inferred
+airborne, 97.0% were airborne. 52.8% of airborne snapshots were found airborne and 1.6% on
+ground, the rest unclear. 1.1% of on-ground snapshots were found airborne. The horizontal speed
+error is 13.2 u/s at the median, 96.9 at the 90th percentile and 472.4 at the 99th, where
+speed changes sharply.
+
+### Kill context
+
+Each player kill is linked to the killer's latest shot that may cause it, at most the weapon's
+flight time before the kill by server time.
+
+| Shot | Flight limit |
+|---|---|
+| crossbow unzoomed | 3 s |
+| rpg | 6 s |
+| mp5 grenade launch | 4 s |
+| hivehand | 3 s |
+| anything else | 0.3 s |
+
+A `grenade` kill links to an mp5 grenade launch, since hand grenades leave no event. An `9mmAR`
+kill links only to mp5 fire. The killer's motion is taken at the linked shot, or at the kill
+without one, the victim's at the kill, and the distance between the two.
+
+### Action windows
+
+Every 60 s window starting at a frag is scored over the frags of its two busiest sides. Sides are
+teams when both players have different teams, otherwise killers. Frags are kills by another
+player, excluding suicides and teammates. With `a` and `b` frags the score is
+
+```
+a^(3/4) + b^(3/4) - max(|a - b|^(2/5), 1)
+```
+
+times 1 + 0.1 per weapon beyond the first. Even exchanges outscore one-sided runs: 8-7 scores
+8.06, 5-5 scores 5.69 and 15-0 scores 4.67. The best five windows that do not overlap are
+reported.
+
+### Filters
+
+`analyze --kills` lists kills with their context. `--weapon NAME` keeps one weapon string,
+`--victim-airborne` and `--killer-airborne` keep kills where that player was inferred airborne,
+and `--min-speed U` keeps kills where either player moved horizontally at least `U` units per second.
+For example `--weapon crossbow --victim-airborne` finds midair crossbow kills, and
+`--weapon grenade --victim-airborne --killer-airborne` finds midair grenade kills by midair
+players.
+
 ## Actors
 
 | Label | Meaning |

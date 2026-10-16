@@ -8,7 +8,8 @@ use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand, ValueEnum};
 use serde::Serialize;
 
-use lambda_slicer_core::analysis::context::KillCause;
+use lambda_slicer_core::analysis::context::{Kill, KillCause};
+use lambda_slicer_core::analysis::motion::{MotionEvidence, MotionState};
 use lambda_slicer_core::analysis::weapons::{Actor, IntervalEnd};
 use lambda_slicer_core::analysis::{AnalysisReport, analyze_demo};
 use lambda_slicer_core::container::Limits;
@@ -101,6 +102,24 @@ enum Command {
         /// List every weapon action with its actor
         #[arg(long)]
         occurrences: bool,
+        /// List kills with the killer's and victim's movement, filtered by
+        /// the options below
+        #[arg(long)]
+        kills: bool,
+        /// Only kills with this weapon, as the death feed names it (`bolt`,
+        /// `grenade`) or as a weapon (`crossbow`, `mp5`)
+        #[arg(long, requires = "kills")]
+        weapon: Option<String>,
+        /// Only kills whose victim was airborne
+        #[arg(long, requires = "kills")]
+        victim_airborne: bool,
+        /// Only kills whose killer was airborne at the shot
+        #[arg(long, requires = "kills")]
+        killer_airborne: bool,
+        /// Only kills where the killer or the victim moved at least this fast,
+        /// in units per second
+        #[arg(long, requires = "kills")]
+        min_speed: Option<f32>,
     },
     /// Cross-check decoded state against client-recorded values. Exit codes are
     /// 0 verified, 1 failed, 2 inconclusive
@@ -330,10 +349,15 @@ fn run() -> Result<ExitCode> {
             path,
             json,
             occurrences,
+            kills,
+            weapon,
+            victim_airborne,
+            killer_airborne,
+            min_speed,
         } => {
-            if json.as_deref().is_some_and(is_stdout) && occurrences {
+            if json.as_deref().is_some_and(is_stdout) && (occurrences || kills) {
                 bail!(
-                    "--occurrences prints text to stdout, so use it with --json FILE, not --json -"
+                    "--occurrences and --kills print text to stdout, so use them with --json FILE, not --json -"
                 );
             }
 
@@ -344,6 +368,15 @@ fn run() -> Result<ExitCode> {
             }
             if occurrences {
                 print_occurrences(&r);
+            }
+            if kills {
+                let filter = KillFilter {
+                    weapon,
+                    victim_airborne,
+                    killer_airborne,
+                    min_speed,
+                };
+                print_kills(&r, &filter);
             }
 
             return Ok(if r.decode == DecodeStatus::Complete {
@@ -712,8 +745,13 @@ fn print_analysis(r: &AnalysisReport) {
     println!("  {} recorded events", r.events);
 
     println!(
-        "  {:?}: {} local and {} network events, {} kills",
-        r.coverage.kind, r.coverage.local_events, r.coverage.network_events, r.coverage.kills
+        "  {:?}: {} local and {} network events, {} kills, spectating {:.0}% of {:.0} s",
+        r.coverage.kind,
+        r.coverage.local_events,
+        r.coverage.network_events,
+        r.coverage.kills,
+        r.coverage.spectator_fraction * 100.,
+        r.coverage.playback_seconds
     );
     for n in &r.coverage.notes {
         println!("    {n}");
@@ -753,6 +791,20 @@ fn print_analysis(r: &AnalysisReport) {
         "  {} weapon switches by the recorder",
         r.weapon_switches.len()
     );
+    if !r.action_windows.is_empty() {
+        println!("  action windows (score, frags per side, weapons)");
+    }
+    for w in &r.action_windows {
+        let sides: Vec<String> = w.sides.iter().map(|(n, f)| format!("{n} {f}")).collect();
+        println!(
+            "    {} to {}  {:.2}  {}  [{}]",
+            clock(w.start),
+            clock(w.end),
+            w.score,
+            sides.join(", "),
+            w.weapons.join(", ")
+        );
+    }
 
     println!("  actions (count, with a known player)");
     for a in &r.actions {
@@ -776,6 +828,94 @@ fn print_analysis(r: &AnalysisReport) {
     for (name, n) in &r.unclassified {
         println!("  not in the profile: {name} ({n} records)");
     }
+}
+
+fn clock(t: f32) -> String {
+    DemoTime::from_f32(t).map_or_else(|| t.to_string(), |t| t.to_string())
+}
+
+struct KillFilter {
+    weapon: Option<String>,
+    victim_airborne: bool,
+    killer_airborne: bool,
+    min_speed: Option<f32>,
+}
+
+impl KillFilter {
+    fn keeps(&self, k: &Kill) -> bool {
+        let Some(c) = &k.context else {
+            return false;
+        };
+        if let Some(w) = &self.weapon {
+            let named = k.weapon_name.eq_ignore_ascii_case(w);
+            let mapped = k.weapon.is_some_and(|x| x.name().eq_ignore_ascii_case(w));
+            let shot = c
+                .shot
+                .as_ref()
+                .is_some_and(|s| s.weapon.name().eq_ignore_ascii_case(w));
+            if !(named || mapped || shot) {
+                return false;
+            }
+        }
+        if self.victim_airborne && c.victim.airborne != Some(true) {
+            return false;
+        }
+        if self.killer_airborne && c.killer.airborne != Some(true) {
+            return false;
+        }
+        if let Some(min) = self.min_speed {
+            let fast = |m: &MotionState| m.horizontal_speed.is_some_and(|s| s >= min);
+            if !(fast(&c.killer) || fast(&c.victim)) {
+                return false;
+            }
+        }
+
+        true
+    }
+}
+
+fn motion_text(m: &MotionState) -> String {
+    let state = match (m.evidence, m.airborne) {
+        (MotionEvidence::NotVisible, _) => return "not visible".into(),
+        (_, Some(true)) => "air",
+        (_, Some(false)) => "ground",
+        (_, None) => "unclear",
+    };
+    match m.horizontal_speed {
+        Some(s) => format!("{state} {s:.0}u/s"),
+        None => state.into(),
+    }
+}
+
+fn print_kills(r: &AnalysisReport, filter: &KillFilter) {
+    let name = |p: &Option<lambda_slicer_core::state::PlayerIdentity>, entity: u8| {
+        p.as_ref()
+            .map_or_else(|| format!("entity {entity}"), |p| p.name.clone())
+    };
+    let mut shown = 0;
+    for k in r.kills.iter().filter(|k| filter.keeps(k)) {
+        let Some(c) = &k.context else { continue };
+        let flight = c
+            .shot
+            .as_ref()
+            .map(|s| format!(" after {:.2}s", s.flight))
+            .unwrap_or_default();
+        let distance = c
+            .distance
+            .map(|d| format!(" at {d:.0}u"))
+            .unwrap_or_default();
+        println!(
+            "{} {:<20} killed {:<20} with {:<12} killer {:<18} victim {:<18}{distance}{flight}",
+            clock(k.time),
+            name(&k.killer, k.killer_entity),
+            name(&k.victim, k.victim_entity),
+            k.weapon_name,
+            motion_text(&c.killer),
+            motion_text(&c.victim)
+        );
+        shown += 1;
+    }
+    println!("{shown} of {} kills", r.kills.len());
 }
 
 fn print_occurrences(r: &AnalysisReport) {

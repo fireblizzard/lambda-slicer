@@ -27,7 +27,7 @@ fn main() {
     let mut paired = 0;
 
     println!(
-        "path\tkind\tdecode\tshots\tunknown actors\trecorder local\trecorder network\tpaired\tkills\tweapons"
+        "path\tkind\tdecode\tshots\tunknown actors\trecorder local\trecorder network\tpaired\tkills\tspectating\tweapons"
     );
     for path in std::fs::read_to_string(list)
         .unwrap()
@@ -95,13 +95,14 @@ fn main() {
             .map(|w| format!("{}:{}", w.weapon.name(), w.shots))
             .collect();
         println!(
-            "{path}\t{:?}\t{:?}\t{}\t{unknown}\t{}\t{}\t{pairs}\t{}\t{}",
+            "{path}\t{:?}\t{:?}\t{}\t{unknown}\t{}\t{}\t{pairs}\t{}\t{:.2}\t{}",
             r.coverage.kind,
             r.decode,
             shots.len(),
             local.len(),
             network.len(),
             r.kills.len(),
+            r.coverage.spectator_fraction,
             weapons.join(",")
         );
     }

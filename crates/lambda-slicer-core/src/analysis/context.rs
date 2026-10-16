@@ -16,6 +16,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use super::highlights::KillContext;
+use super::motion::{Motion, MotionState, Sample, gravity, state_at};
 use super::weapons::Weapon;
 use crate::protocol::messages::{Message, ParsedMessage};
 use crate::state::{Decoder, FrameLocation, PlayerIdentity};
@@ -48,17 +50,30 @@ pub enum KillCause {
 #[derive(Clone, Debug, Serialize)]
 pub struct Kill {
     pub segment: u32,
+    /// Playback time, and the server time of the packet that carried it
     pub time: f32,
+    pub server_time: f32,
     pub killer_entity: u8,
     pub victim_entity: u8,
     /// Occupants when the message arrived. A killer entity of 0 is the world
     pub killer: Option<PlayerIdentity>,
     pub victim: Option<PlayerIdentity>,
+    /// Teams from `TeamInfo` when the message arrived
+    pub killer_team: Option<String>,
+    pub victim_team: Option<String>,
     /// The weapon string as sent
     pub weapon_name: String,
     pub cause: KillCause,
     /// The player weapon used, only when a player killed with one
     pub weapon: Option<Weapon>,
+    /// The victim's movement when the message arrived
+    #[serde(skip)]
+    pub victim_state: MotionState,
+    /// The killer's recent samples, to judge its movement at the shot
+    #[serde(skip)]
+    pub killer_samples: Vec<Sample>,
+    /// Movement, linked shot and distance, filled after the decode
+    pub context: Option<KillContext>,
 }
 
 /// The recorder's active weapon from this time on
@@ -91,6 +106,11 @@ pub struct Coverage {
     /// Events the server sent this client
     pub network_events: usize,
     pub kills: usize,
+    /// Playback time, and the part the recording client spent spectating
+    pub playback_seconds: f64,
+    pub spectator_seconds: f64,
+    /// `spectator_seconds` over `playback_seconds`
+    pub spectator_fraction: f64,
     /// What the counts can and cannot show
     pub notes: Vec<String>,
 }
@@ -237,10 +257,18 @@ fn kill_weapon(name: &str) -> Option<Weapon> {
 pub struct Context {
     pub kills: Vec<Kill>,
     pub switches: Vec<WeaponSwitch>,
+    pub motion: Motion,
+    /// Team names by player entity, from `TeamInfo`
+    teams: std::collections::BTreeMap<u8, String>,
 }
 
 impl Context {
     pub fn observe(&mut self, loc: &FrameLocation, d: &Decoder, m: &ParsedMessage) {
+        self.motion.observe(d);
+        if let Message::ServerInfo(_) = &m.message {
+            self.teams.clear();
+        }
+
         let Message::User { id, body } = &m.message else {
             return;
         };
@@ -258,17 +286,35 @@ impl Context {
                 let weapon_name = String::from_utf8_lossy(&rest[..end]).into_owned();
 
                 let (cause, weapon) = kill_cause(killer, victim, &weapon_name, d.max_clients);
+                let server_time = f32::from_bits(d.time_bits);
+                let victim_state =
+                    state_at(&self.motion.samples(victim.into()), server_time, gravity(d));
                 self.kills.push(Kill {
                     segment: d.segment,
                     time: loc.time(),
+                    server_time,
                     killer_entity: killer,
                     victim_entity: victim,
                     killer: d.player_for_entity(i64::from(killer)),
                     victim: d.player_for_entity(i64::from(victim)),
+                    killer_team: self.teams.get(&killer).cloned(),
+                    victim_team: self.teams.get(&victim).cloned(),
                     weapon_name,
                     cause,
                     weapon,
+                    victim_state,
+                    killer_samples: self.motion.samples(killer.into()),
+                    context: None,
                 });
+            }
+            "TeamInfo" => {
+                let Some(&player) = body.first() else {
+                    return;
+                };
+                let rest = body.get(1..).unwrap_or_default();
+                let end = rest.iter().position(|&b| b == 0).unwrap_or(rest.len());
+                self.teams
+                    .insert(player, String::from_utf8_lossy(&rest[..end]).into_owned());
             }
             "CurWeapon" => {
                 let (Some(&state), Some(&id), Some(&clip)) =
@@ -302,7 +348,14 @@ impl Context {
         }
     }
 
-    pub fn coverage(&self, d: &Decoder, local_events: usize, network_events: usize) -> Coverage {
+    pub fn coverage(
+        &self,
+        d: &Decoder,
+        local_events: usize,
+        network_events: usize,
+        playback_seconds: f64,
+        spectator_seconds: f64,
+    ) -> Coverage {
         let kind = if d.hltv {
             RecordingKind::Hltv
         } else if d.max_clients <= 1 {
@@ -339,11 +392,27 @@ impl Context {
             ),
         }
 
+        let spectator_fraction = if playback_seconds > 0. {
+            spectator_seconds / playback_seconds
+        } else {
+            0.
+        };
+        if kind == RecordingKind::MultiplayerView && spectator_fraction > 0.5 {
+            notes.push(format!(
+                "The recorder spectated for {:.0}% of the playback, so most events are other \
+                 players' as the spectated view showed them",
+                spectator_fraction * 100.
+            ));
+        }
+
         Coverage {
             kind,
             local_events,
             network_events,
             kills: self.kills.len(),
+            playback_seconds,
+            spectator_seconds,
+            spectator_fraction,
             notes,
         }
     }
@@ -359,15 +428,22 @@ mod tests {
         let context = Context::default();
 
         d.max_clients = 1;
-        assert_eq!(context.coverage(&d, 5, 0).kind, RecordingKind::Singleplayer);
+        let c = context.coverage(&d, 5, 0, 10., 0.);
+        assert_eq!(c.kind, RecordingKind::Singleplayer);
 
         d.max_clients = 32;
-        let c = context.coverage(&d, 0, 10);
+        let c = context.coverage(&d, 0, 10, 10., 0.);
         assert_eq!(c.kind, RecordingKind::MultiplayerView);
         assert_eq!(c.notes.len(), 2, "{:?}", c.notes);
 
+        // Mostly spectating adds a note
+        let c = context.coverage(&d, 0, 10, 10., 6.);
+        assert_eq!(c.spectator_fraction, 0.6);
+        assert_eq!(c.notes.len(), 3, "{:?}", c.notes);
+
         d.hltv = true;
-        assert_eq!(context.coverage(&d, 0, 10).kind, RecordingKind::Hltv);
+        let c = context.coverage(&d, 0, 10, 10., 0.);
+        assert_eq!(c.kind, RecordingKind::Hltv);
     }
 
     #[test]

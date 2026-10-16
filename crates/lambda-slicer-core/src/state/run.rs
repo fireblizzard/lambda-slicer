@@ -53,6 +53,28 @@ pub struct DecodeReport {
     pub players: Vec<PlayerInfo>,
     /// Joins, renames and departures, so earlier events keep their names
     pub name_history: Vec<NameChange>,
+    /// Playback time covered by network records, and the part of it the
+    /// recording client spent as a spectator, either a spectator client
+    /// (demo info `spectator`) or a player in observer mode (client data
+    /// `iuser1`). Each record's state lasts until the next record
+    pub playback_seconds: f64,
+    pub spectator_seconds: f64,
+}
+
+/// Whether the recording player is in observer mode, which the game marks
+/// with a non-zero `iuser1` (`OBS_*` in `common/const.h`)
+fn observing(d: &Decoder) -> bool {
+    let (Some(snap), Some(schema)) = (d.latest_snapshot(), d.schema("clientdata_t")) else {
+        return false;
+    };
+    let Some(client) = &snap.clientdata else {
+        return false;
+    };
+
+    client
+        .value(&schema, "iuser1")
+        .and_then(|v| v.as_i64())
+        .is_some_and(|m| m != 0)
 }
 
 pub struct DecodeOptions {
@@ -92,7 +114,10 @@ pub fn decode_demo(
         delta_schemas: Vec::new(),
         players: Vec::new(),
         name_history: Vec::new(),
+        playback_seconds: 0.,
+        spectator_seconds: 0.,
     };
+    let mut previous: Option<(f64, bool)> = None;
 
     let reader = File::open(path).map_err(|e| e.to_string()).and_then(|f| {
         DemoReader::new(BufReader::new(f), options.limits).map_err(|e| e.to_string())
@@ -147,6 +172,19 @@ pub fn decode_demo(
                         report.error = Some(e.to_string());
                         report.status = DecodeStatus::Partial;
                         break 'entries;
+                    }
+
+                    if entry > 0 {
+                        let now = f64::from(lf.frame.time());
+                        if let Some((then, spectating)) = previous {
+                            let span = (now - then).max(0.);
+                            report.playback_seconds += span;
+                            if spectating {
+                                report.spectator_seconds += span;
+                            }
+                        }
+                        let spectating = n.info_spectator() != 0 || observing(&decoder);
+                        previous = Some((now, spectating));
                     }
                 }
                 FrameBody::Event(ev) => decoder.demo_event(location, ev),

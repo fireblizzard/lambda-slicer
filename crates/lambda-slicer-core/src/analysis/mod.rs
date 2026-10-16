@@ -6,6 +6,8 @@
 
 pub mod context;
 pub mod events;
+pub mod highlights;
+pub mod motion;
 pub mod weapons;
 
 use std::path::Path;
@@ -16,9 +18,14 @@ use crate::container::Limits;
 use crate::state::{DecodeOptions, DecodeStatus, PlayerIdentity, decode_demo};
 use context::{Context, Coverage, Kill, WeaponSwitch};
 use events::recorded_events;
+use highlights::{ActionWindow, action_windows, link_kills};
 use weapons::{Action, ActivityInterval, PROFILE, Weapon, WeaponOccurrence, derive};
 
 pub const ANALYSIS_SCHEMA: u32 = 1;
+
+/// Length of an action window in seconds, and how many are reported
+pub const ACTION_WINDOW: f32 = 60.;
+pub const ACTION_WINDOWS: usize = 5;
 
 /// Actions of one weapon, action and mode
 #[derive(Clone, Debug, Serialize)]
@@ -63,6 +70,8 @@ pub struct AnalysisReport {
     /// Event scripts the profile does not know, with their record counts
     pub unclassified: Vec<(String, usize)>,
     pub kills: Vec<Kill>,
+    /// The best stretches of play by action score
+    pub action_windows: Vec<ActionWindow>,
     /// The recorder's active weapon over time
     pub weapon_switches: Vec<WeaponSwitch>,
     pub coverage: Coverage,
@@ -142,7 +151,17 @@ pub fn analyze_demo(path: &Path, limits: Limits) -> AnalysisReport {
         .iter()
         .filter(|e| e.source == crate::state::EventSource::Demo)
         .count();
-    let coverage = context.coverage(&d, local, events.len() - local);
+    let coverage = context.coverage(
+        &d,
+        local,
+        events.len() - local,
+        report.playback_seconds,
+        report.spectator_seconds,
+    );
+
+    let mut kills = std::mem::take(&mut context.kills);
+    link_kills(&mut kills, &derived.occurrences, motion::gravity(&d));
+    let action_windows = action_windows(&kills, ACTION_WINDOW, ACTION_WINDOWS);
 
     AnalysisReport {
         schema: ANALYSIS_SCHEMA,
@@ -158,7 +177,8 @@ pub fn analyze_demo(path: &Path, limits: Limits) -> AnalysisReport {
         occurrences: derived.occurrences,
         intervals: derived.intervals,
         unclassified: derived.unclassified,
-        kills: context.kills,
+        kills,
+        action_windows,
         weapon_switches: context.switches,
         coverage,
     }
