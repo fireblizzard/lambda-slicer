@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/lambda-slicer-core", "crates/lambda-slicer-cli"]
+members = ["crates/lambda-slicer-core", "crates/lambda-slicer-cli", "crates/lambda-slicer-gui"]
 
 [workspace.package]
 version = "0.1.0"

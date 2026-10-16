@@ -1,0 +1,18 @@
+[package]
+name = "lambda-slicer-gui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "lambda-slicer-gui"
+path = "src/main.rs"
+
+[dependencies]
+eframe = "0.37.0"
+lambda-slicer-core.workspace = true
+unicode-bidi = "0.3.18"
+
+[dev-dependencies]
+image = { version = "0.25.10", default-features = false, features = ["png"] }

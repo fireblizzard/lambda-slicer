@@ -17,8 +17,11 @@ Toolchain: Rust **1.98.1** (`rust-toolchain.toml`), edition 2024. `Cargo.lock` i
 | proptest (dev) | 1.12.0 | MIT OR Apache-2.0 | malformed-input property tests |
 | rusqlite (`bundled`) | 0.40.2 | MIT, bundled SQLite public domain | library cache |
 | ctrlc | 3.5.2 | MIT OR Apache-2.0 | CLI scan cancellation |
+| eframe | 0.37.0 | MIT OR Apache-2.0 | GUI (egui, harfrust shaping, system font discovery) |
+| unicode-bidi | 0.3.18 | MIT OR Apache-2.0 | right-to-left text order in the GUI |
+| image (dev, `png`) | 0.25.10 | MIT OR Apache-2.0 | spike screenshots |
 
-Not yet added (later milestones): `eframe`/`egui` and `rfd` (GUI, M6), `tracing`. Discovery uses
+Not yet added (later milestones): `rfd` (file dialogs, M6), `fluent-bundle` (catalogs, M6), `tracing`. Discovery uses
 `std::fs` instead of `walkdir`, to control which links are followed.
 
 ## Codec decision
