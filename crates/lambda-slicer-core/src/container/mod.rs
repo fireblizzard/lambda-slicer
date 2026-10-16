@@ -178,3 +178,83 @@ pub fn c_string_lossy(raw: &[u8]) -> String {
     let end = raw.iter().position(|&b| b == 0).unwrap_or(raw.len());
     String::from_utf8_lossy(&raw[..end]).into_owned()
 }
+
+use crate::message::{Arg, Coded};
+
+impl Coded for FrameCause {
+    fn code(&self) -> &'static str {
+        match self {
+            FrameCause::Truncated { .. } => "container-frame-truncated",
+            FrameCause::UnknownTag(_) => "container-frame-unknown-tag",
+            FrameCause::NonFiniteTime(_) => "container-frame-bad-time",
+            FrameCause::NegativeLength { .. } => "container-frame-negative-length",
+            FrameCause::OverLimit { .. } => "container-frame-over-limit",
+            FrameCause::MissingTerminal => "container-frame-missing-terminal",
+        }
+    }
+
+    fn args(&self) -> Vec<(&'static str, Arg)> {
+        match self {
+            FrameCause::Truncated {
+                field,
+                needed,
+                available,
+            } => vec![
+                ("field", (*field).into()),
+                ("needed", (*needed).into()),
+                ("available", (*available).into()),
+            ],
+            FrameCause::UnknownTag(tag) => vec![("tag", (*tag).into())],
+            FrameCause::NonFiniteTime(_) | FrameCause::MissingTerminal => Vec::new(),
+            FrameCause::NegativeLength { field, len } => {
+                vec![("field", (*field).into()), ("len", (*len).into())]
+            }
+            FrameCause::OverLimit { field, len, limit } => vec![
+                ("field", (*field).into()),
+                ("len", (*len).into()),
+                ("limit", (*limit).into()),
+            ],
+        }
+    }
+}
+
+impl Coded for ContainerError {
+    fn code(&self) -> &'static str {
+        match self {
+            ContainerError::Io { .. } => "container-io",
+            ContainerError::TooShort { .. } => "container-too-short",
+            ContainerError::BadMagic => "container-bad-magic",
+            ContainerError::NoDirectory => "container-no-directory",
+            ContainerError::Range { .. } => "container-range",
+            ContainerError::Frame { cause, .. } => cause.code(),
+        }
+    }
+
+    fn args(&self) -> Vec<(&'static str, Arg)> {
+        match self {
+            ContainerError::Io { offset, source } => vec![
+                ("offset", (*offset).into()),
+                ("detail", source.to_string().into()),
+            ],
+            ContainerError::TooShort { len } => vec![("len", (*len).into())],
+            ContainerError::BadMagic | ContainerError::NoDirectory => Vec::new(),
+            ContainerError::Range { what, detail } => {
+                vec![("what", (*what).into()), ("detail", detail.clone().into())]
+            }
+            ContainerError::Frame {
+                entry,
+                ordinal,
+                offset,
+                cause,
+            } => {
+                let mut args = vec![
+                    ("entry", (*entry).into()),
+                    ("frame", (*ordinal).into()),
+                    ("offset", (*offset).into()),
+                ];
+                args.extend(cause.args());
+                args
+            }
+        }
+    }
+}

@@ -91,7 +91,7 @@ fn main() {
         }
 
         if r.status != DecodeStatus::Complete {
-            let e = r.error.unwrap_or_default();
+            let e = r.error.map(|m| m.text).unwrap_or_default();
             let c = cats.entry(category(&e)).or_default();
             c.0 += 1;
             if c.1.len() < 4 {

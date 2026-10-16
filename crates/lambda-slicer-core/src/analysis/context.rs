@@ -14,6 +14,7 @@
 //! gun is the killer, with the gun's name. Singleplayer sends no death
 //! messages at all
 
+use crate::message::Message as Note;
 use serde::{Deserialize, Serialize};
 
 use super::highlights::KillContext;
@@ -112,7 +113,7 @@ pub struct Coverage {
     /// `spectator_seconds` over `playback_seconds`
     pub spectator_fraction: f64,
     /// What the counts can and cannot show
-    pub notes: Vec<String>,
+    pub notes: Vec<Note>,
 }
 
 /// `func_` classes without their prefix, from OpenAG `dlls`
@@ -367,29 +368,29 @@ impl Context {
         let mut notes = Vec::new();
         match kind {
             RecordingKind::MultiplayerView => {
-                notes.push(
+                notes.push(Note::new(
+                    "coverage-visible-only",
                     "Other players' events reach this client only while the server counts them \
-                     as visible, so their action counts are lower bounds"
-                        .into(),
-                );
+                     as visible, so their action counts are lower bounds",
+                ));
                 if local_events == 0 {
-                    notes.push(
+                    notes.push(Note::new(
+                        "coverage-no-local-events",
                         "No local events: the recorder's own actions are missing unless the \
-                         server sent them (client weapon prediction may have been off)"
-                            .into(),
-                    );
+                         server sent them (client weapon prediction may have been off)",
+                    ));
                 }
             }
-            RecordingKind::Singleplayer => notes.push(
+            RecordingKind::Singleplayer => notes.push(Note::new(
+                "coverage-singleplayer",
                 "Singleplayer: actors other than the player are monsters or world entities, and \
-                 there is no death feed"
-                    .into(),
-            ),
-            RecordingKind::Hltv => notes.push(
+                 there is no death feed",
+            )),
+            RecordingKind::Hltv => notes.push(Note::new(
+                "coverage-hltv",
                 "Spectator recording: there is no recording player, and events follow the \
-                 proxy's view"
-                    .into(),
-            ),
+                 proxy's view",
+            )),
         }
 
         let spectator_fraction = if playback_seconds > 0. {
@@ -398,11 +399,17 @@ impl Context {
             0.
         };
         if kind == RecordingKind::MultiplayerView && spectator_fraction > 0.5 {
-            notes.push(format!(
-                "The recorder spectated for {:.0}% of the playback, so most events are other \
-                 players' as the spectated view showed them",
-                spectator_fraction * 100.
-            ));
+            let percent = (spectator_fraction * 100.).round();
+            notes.push(
+                Note::new(
+                    "coverage-mostly-spectating",
+                    format!(
+                        "The recorder spectated for {percent:.0}% of the playback, so most events \
+                         are other players' as the spectated view showed them"
+                    ),
+                )
+                .arg("percent", percent),
+            );
         }
 
         Coverage {
@@ -434,12 +441,17 @@ mod tests {
         d.max_clients = 32;
         let c = context.coverage(&d, 0, 10, 10., 0.);
         assert_eq!(c.kind, RecordingKind::MultiplayerView);
-        assert_eq!(c.notes.len(), 2, "{:?}", c.notes);
+        let codes: Vec<&str> = c.notes.iter().map(|n| n.code).collect();
+        assert_eq!(codes, ["coverage-visible-only", "coverage-no-local-events"]);
 
         // Mostly spectating adds a note
         let c = context.coverage(&d, 0, 10, 10., 6.);
         assert_eq!(c.spectator_fraction, 0.6);
-        assert_eq!(c.notes.len(), 3, "{:?}", c.notes);
+        assert_eq!(c.notes[2].code, "coverage-mostly-spectating");
+        assert_eq!(
+            c.notes[2].args.get("percent"),
+            Some(&crate::message::Arg::Number(60.))
+        );
 
         d.hltv = true;
         let c = context.coverage(&d, 0, 10, 10., 0.);

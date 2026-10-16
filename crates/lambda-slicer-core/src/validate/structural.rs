@@ -4,6 +4,7 @@
 //! region layout, frame grammar, and terminal records. Network payloads are
 //! not decoded
 
+use crate::message::{Coded, Message};
 use std::fs::File;
 use std::io::BufReader;
 use std::path::Path;
@@ -67,7 +68,7 @@ pub struct EntryReport {
     pub terminal_records: u64,
     pub records_after_terminal: u64,
     pub complete: bool,
-    pub error: Option<String>,
+    pub error: Option<Message>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
@@ -291,7 +292,7 @@ pub fn inspect(path: &Path, limits: Limits) -> InspectReport {
             terminal_records: idx.terminal_records,
             records_after_terminal: idx.records_after_terminal,
             complete: idx.is_complete(),
-            error: idx.error.as_ref().map(ToString::to_string),
+            error: idx.error.as_ref().map(Coded::message),
             counts: idx.counts,
         });
     }

@@ -500,7 +500,13 @@ fn other_protocols_are_inspected_but_not_decoded_or_transformed() {
     let options = DecodeOptions::default();
     let (report, decoder) = decode_demo(&src, &options, |_, _, _| {});
     assert_eq!(report.status, DecodeStatus::Unsupported);
-    assert!(report.error.unwrap().contains("5/47"));
+    let e = report.error.unwrap();
+    assert_eq!(e.code, "protocol-unsupported");
+    assert_eq!(
+        e.args.get("network"),
+        Some(&lambda_slicer_core::message::Arg::Integer(47))
+    );
+    assert!(e.text.contains("5/47"));
     assert_eq!(decoder.stats.network_frames, 0);
 
     let check = crosscheck_demo(&src, Limits::default());

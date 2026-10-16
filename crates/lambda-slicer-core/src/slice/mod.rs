@@ -11,6 +11,7 @@ pub mod restart;
 use std::path::PathBuf;
 
 use crate::container::ContainerError;
+use crate::message::{Arg, Coded};
 use crate::protocol::profile::UnsupportedProfile;
 use crate::timeline::time::DemoTime;
 
@@ -63,4 +64,61 @@ pub enum ExportError {
     ActiveEffect(String),
     #[error("a bootstrap time field cannot be sent faithfully: {0}")]
     UnrepresentableTimeField(String),
+}
+
+impl Coded for ExportError {
+    fn code(&self) -> &'static str {
+        match self {
+            ExportError::Io { .. } => "export-io",
+            ExportError::Container(e) => e.code(),
+            ExportError::DestinationExists(_) => "export-destination-exists",
+            ExportError::SameAsSource(_) => "export-same-as-source",
+            ExportError::MissingParent(_) => "export-missing-parent",
+            ExportError::SourceChanged(_) => "export-source-changed",
+            ExportError::Unsupported(_) => "export-unsupported",
+            ExportError::UnsupportedProtocol(e) => e.code(),
+            ExportError::EmptyRange => "export-empty-range",
+            ExportError::RangeBeyondEnd { .. } => "export-range-beyond-end",
+            ExportError::Validation(_) => "export-validation-failed",
+            ExportError::Decode(_) => "export-source-decode-failed",
+            ExportError::SourceFailedCrossCheck => "export-source-failed-crosscheck",
+            ExportError::UnprovenState(_) => "export-unproven-state",
+            ExportError::ClientDroppedPackets(_) => "export-client-dropped-packets",
+            ExportError::CrossSegmentRange(_) => "export-cross-segment",
+            ExportError::MissingDeltaBase(_) => "export-missing-delta-base",
+            ExportError::UnknownPersistentMessage(_) => "export-unknown-persistent-message",
+            ExportError::ActiveEffect(_) => "export-active-effect",
+            ExportError::UnrepresentableTimeField(_) => "export-unrepresentable-time-field",
+        }
+    }
+
+    fn args(&self) -> Vec<(&'static str, Arg)> {
+        match self {
+            ExportError::Io { path, source } => vec![
+                ("path", path.as_path().into()),
+                ("detail", source.to_string().into()),
+            ],
+            ExportError::Container(e) => e.args(),
+            ExportError::UnsupportedProtocol(e) => e.args(),
+            ExportError::DestinationExists(p)
+            | ExportError::SameAsSource(p)
+            | ExportError::MissingParent(p)
+            | ExportError::SourceChanged(p) => vec![("path", p.as_path().into())],
+            ExportError::Unsupported(d)
+            | ExportError::Validation(d)
+            | ExportError::Decode(d)
+            | ExportError::UnrepresentableTimeField(d) => vec![("detail", d.clone().into())],
+            ExportError::RangeBeyondEnd { end, segment_end } => vec![
+                ("end", end.to_string().into()),
+                ("segment_end", segment_end.to_string().into()),
+            ],
+            ExportError::UnprovenState(t)
+            | ExportError::ClientDroppedPackets(t)
+            | ExportError::CrossSegmentRange(t) => vec![("time", t.clone().into())],
+            ExportError::MissingDeltaBase(sequence) => vec![("sequence", (*sequence).into())],
+            ExportError::UnknownPersistentMessage(name) => vec![("name", name.clone().into())],
+            ExportError::ActiveEffect(effect) => vec![("effect", effect.clone().into())],
+            ExportError::EmptyRange | ExportError::SourceFailedCrossCheck => Vec::new(),
+        }
+    }
 }

@@ -165,7 +165,10 @@ fn cache_entries_round_trip() {
         full_hash: None,
         header: None,
         report: None,
-        error: Some("broken".into()),
+        error: Some(lambda_slicer_core::message::Message::new(
+            "test-broken",
+            "broken",
+        )),
     };
     c.store(&entry).unwrap();
     c.store(&entry).unwrap();

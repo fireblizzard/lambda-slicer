@@ -34,7 +34,7 @@ file. It uses WAL so workers read while the writer stores.
 
 | Table | Holds |
 |---|---|
-| `files` | path as text and in its native bytes, size, modification time, identity, quick and full hashes, analysis version, status, error, header facts, recording kind, recorder, playback and spectating fraction, shot, unknown-shot and kill counts, best action score, coverage JSON |
+| `files` | path as text and in its native bytes, size, modification time, identity, quick and full hashes, analysis version, status, error text with its code and arguments ([messages](messages.md)), header facts, recording kind, recorder, playback and spectating fraction, shot, unknown-shot and kill counts, best action score, coverage JSON |
 | `players` | every player identity seen, once per name |
 | `weapons` | shots, kills, records and intervals per weapon |
 | `kills` | each kill with its weapon string, profile weapon, linked shot weapon, cause, names, airborne flags, horizontal speeds, distance and flight time |

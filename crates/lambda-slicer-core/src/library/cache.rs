@@ -15,10 +15,11 @@ use serde::Serialize;
 
 use crate::analysis::weapons::{Actor, PROFILE};
 use crate::analysis::{ANALYSIS_SCHEMA, AnalysisReport};
+use crate::message::Message;
 use crate::state::{DECODE_REPORT_SCHEMA, DecodeStatus};
 
 /// Layout of the tables below. A different value rebuilds the cache
-pub const CACHE_SCHEMA: i64 = 1;
+pub const CACHE_SCHEMA: i64 = 2;
 
 #[derive(Debug, thiserror::Error)]
 pub enum CacheError {
@@ -28,6 +29,24 @@ pub enum CacheError {
     Io(#[from] std::io::Error),
     #[error("a cancelled analysis is not stored")]
     Cancelled,
+}
+
+impl crate::message::Coded for CacheError {
+    fn code(&self) -> &'static str {
+        match self {
+            CacheError::Sql(_) => "cache-database",
+            CacheError::Io(_) => "cache-directory",
+            CacheError::Cancelled => "cache-cancelled",
+        }
+    }
+
+    fn args(&self) -> Vec<(&'static str, crate::message::Arg)> {
+        match self {
+            CacheError::Sql(e) => vec![("detail", e.to_string().into())],
+            CacheError::Io(e) => vec![("detail", e.to_string().into())],
+            CacheError::Cancelled => Vec::new(),
+        }
+    }
 }
 
 /// Everything an entry was produced with. Entries with another version are
@@ -83,6 +102,8 @@ CREATE TABLE files(
     version TEXT NOT NULL,
     status TEXT NOT NULL,
     error TEXT,
+    error_code TEXT,
+    error_args TEXT,
     map TEXT,
     game_dir TEXT,
     demo_protocol INTEGER,
@@ -190,7 +211,7 @@ pub struct Entry<'a> {
     /// Absent when the file could not be read or analysis failed outright
     pub report: Option<&'a AnalysisReport>,
     /// Why there is no report, or why it is incomplete
-    pub error: Option<String>,
+    pub error: Option<Message>,
 }
 
 impl Entry<'_> {
@@ -281,10 +302,20 @@ pub struct KillRow {
     pub distance: Option<f32>,
 }
 
+/// A message read back from the cache, with its code and arguments
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct StoredMessage {
+    pub code: String,
+    pub args: serde_json::Value,
+    pub text: String,
+}
+
 #[derive(Clone, Debug, Serialize)]
 pub struct FileRow {
     pub path: String,
     pub status: String,
+    /// Why the file is not complete, if it is not
+    pub error: Option<StoredMessage>,
     pub map: Option<String>,
     pub duration: Option<f32>,
     pub recording_kind: Option<String>,
@@ -384,6 +415,9 @@ impl Cache {
             .error
             .clone()
             .or_else(|| r.and_then(|r| r.decode_error.clone()));
+        let error_args = error
+            .as_ref()
+            .map(|m| serde_json::to_string(&m.args).unwrap_or_default());
         let shots = r.map(|r| r.weapons.iter().map(|w| w.shots).sum::<usize>() as i64);
         let unknown_shots = r.map(|r| {
             r.occurrences
@@ -399,12 +433,12 @@ impl Cache {
         tx.execute("DELETE FROM files WHERE path = ?1", [&display])?;
         tx.execute(
             "INSERT INTO files(path, path_blob, size, mtime_ns, file_identity, quick_hash,
-                full_hash, version, status, error, map, game_dir, demo_protocol,
-                network_protocol, duration, recording_kind, max_clients, recorder, playback,
-                spectator_fraction, shots, unknown_shots, kills, best_window, coverage_json,
-                scanned_at)
+                full_hash, version, status, error, error_code, error_args, map, game_dir,
+                demo_protocol, network_protocol, duration, recording_kind, max_clients, recorder,
+                playback, spectator_fraction, shots, unknown_shots, kills, best_window,
+                coverage_json, scanned_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16,
-                ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26)",
+                ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28)",
             params![
                 display,
                 native_bytes(e.path),
@@ -415,7 +449,9 @@ impl Cache {
                 e.full_hash,
                 analysis_version(),
                 e.status(),
-                error,
+                error.as_ref().map(|m| m.text.clone()),
+                error.as_ref().map(|m| m.code),
+                error_args,
                 h.map(|h| h.map.clone()),
                 h.map(|h| h.game_dir.clone()),
                 h.map(|h| h.demo_protocol),
@@ -616,7 +652,7 @@ impl Cache {
 
         let sql = format!(
             "SELECT f.id, f.path, f.status, f.map, f.duration, f.recording_kind,
-                f.spectator_fraction, f.kills, f.best_window
+                f.spectator_fraction, f.kills, f.best_window, f.error_code, f.error_args, f.error
              FROM files f WHERE {} ORDER BY f.path LIMIT ?{}",
             c.join(" AND "),
             args.len()
@@ -635,6 +671,20 @@ impl Cache {
                     spectator_fraction: r.get(6)?,
                     kills: r.get(7)?,
                     best_window: r.get(8)?,
+                    error: match (
+                        r.get::<_, Option<String>>(9)?,
+                        r.get::<_, Option<String>>(11)?,
+                    ) {
+                        (Some(code), Some(text)) => Some(StoredMessage {
+                            code,
+                            args: r
+                                .get::<_, Option<String>>(10)?
+                                .and_then(|a| serde_json::from_str(&a).ok())
+                                .unwrap_or_default(),
+                            text,
+                        }),
+                        _ => None,
+                    },
                     matching_kills: Vec::new(),
                 },
             ))

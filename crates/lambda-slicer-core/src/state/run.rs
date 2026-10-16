@@ -11,6 +11,7 @@ use serde::Serialize;
 
 use super::world::{DecodeStats, Decoder, FrameLocation, NameChange, PlayerInfo};
 use crate::container::{DemoReader, FrameBody, Limits};
+use crate::message::{Coded, Message, io_message};
 use crate::protocol::messages::ParsedMessage;
 use crate::protocol::profile;
 
@@ -44,7 +45,7 @@ pub struct DecodeReport {
     pub schema: u32,
     pub path: String,
     pub status: DecodeStatus,
-    pub error: Option<String>,
+    pub error: Option<Message>,
     pub max_clients: u8,
     pub player_num: u8,
     pub hltv: bool,
@@ -128,9 +129,9 @@ pub fn decode_demo(
     };
     let mut previous: Option<(f64, bool)> = None;
 
-    let reader = File::open(path).map_err(|e| e.to_string()).and_then(|f| {
-        DemoReader::new(BufReader::new(f), options.limits).map_err(|e| e.to_string())
-    });
+    let reader = File::open(path)
+        .map_err(|e| io_message(&e))
+        .and_then(|f| DemoReader::new(BufReader::new(f), options.limits).map_err(|e| e.message()));
     let mut reader = match reader {
         Ok(r) => r,
         Err(e) => {
@@ -141,7 +142,7 @@ pub fn decode_demo(
 
     if let Err(e) = profile::check(&reader.header) {
         report.status = DecodeStatus::Unsupported;
-        report.error = Some(e.to_string());
+        report.error = Some(e.message());
         return (report, decoder);
     }
 
@@ -150,7 +151,7 @@ pub fn decode_demo(
         let frames = match reader.frames(entry) {
             Ok(f) => f,
             Err(e) => {
-                report.error = Some(e.to_string());
+                report.error = Some(e.message());
                 report.status = DecodeStatus::Partial;
                 break;
             }
@@ -168,7 +169,7 @@ pub fn decode_demo(
             let lf = match item {
                 Ok(lf) => lf,
                 Err(e) => {
-                    report.error = Some(e.to_string());
+                    report.error = Some(e.message());
                     report.status = DecodeStatus::Partial;
                     break 'entries;
                 }
@@ -186,7 +187,7 @@ pub fn decode_demo(
                     if let Err(e) =
                         decoder.network_frame(location, n, |d, m| on_message(&location, d, m))
                     {
-                        report.error = Some(e.to_string());
+                        report.error = Some(e.message());
                         report.status = DecodeStatus::Partial;
                         break 'entries;
                     }

@@ -16,6 +16,16 @@ pub struct UnsupportedProfile {
     pub network: i32,
 }
 
+impl crate::message::Coded for UnsupportedProfile {
+    fn code(&self) -> &'static str {
+        "protocol-unsupported"
+    }
+
+    fn args(&self) -> Vec<(&'static str, crate::message::Arg)> {
+        vec![("demo", self.demo.into()), ("network", self.network.into())]
+    }
+}
+
 /// Accept only demo protocol 5 with network protocol 48
 pub fn check(header: &Header) -> Result<(), UnsupportedProfile> {
     let profile = (header.demo_protocol, header.network_protocol);

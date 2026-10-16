@@ -204,6 +204,31 @@ pub struct DecodeError {
     pub kind: DecodeErrorKind,
 }
 
+impl crate::message::Coded for DecodeError {
+    /// One code for every network decoding failure, which only a developer
+    /// can act on, except an unsupported protocol announced mid-file
+    fn code(&self) -> &'static str {
+        match self.kind {
+            DecodeErrorKind::UnsupportedProtocol(_) => "protocol-unsupported-network",
+            _ => "decode-failed",
+        }
+    }
+
+    fn args(&self) -> Vec<(&'static str, crate::message::Arg)> {
+        let mut args = vec![
+            ("entry", self.location.entry.into()),
+            ("frame", self.location.ordinal.into()),
+            ("offset", self.location.offset.into()),
+            ("time", self.location.time().to_string().into()),
+            ("detail", self.kind.to_string().into()),
+        ];
+        if let DecodeErrorKind::UnsupportedProtocol(n) = self.kind {
+            args.push(("network", n.into()));
+        }
+        args
+    }
+}
+
 #[derive(Clone, Debug, Default, Serialize)]
 pub struct DecodeStats {
     pub network_frames: u64,

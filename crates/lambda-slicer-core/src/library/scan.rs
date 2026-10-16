@@ -25,6 +25,7 @@ use super::discover::{self, Found};
 use super::fingerprint::{file_identity, file_metadata, hash_file, quick_fingerprint};
 use crate::analysis::{AnalysisReport, analyze_demo_with};
 use crate::container::{DemoReader, Limits};
+use crate::message::{Coded, Message, io_message};
 use crate::state::DecodeStatus;
 
 /// Discovered paths waiting for a worker, beyond which discovery waits
@@ -122,7 +123,7 @@ impl ScanControl {
 }
 
 /// What happened to one file
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case", tag = "outcome")]
 pub enum Outcome {
     /// The cache entry is current
@@ -132,13 +133,13 @@ pub enum Outcome {
     /// The same file as an earlier path, by volume identity
     Duplicate { of: String },
     /// The file could not be read, nothing stored
-    Unreadable { error: String },
+    Unreadable { error: Message },
     /// The file changed while it was analysed, nothing stored
     SourceChanged,
     /// Stopped by cancellation, nothing stored
     Cancelled,
     /// Analysed, but the result could not be stored
-    CacheFailed { error: String },
+    CacheFailed { error: Message },
 }
 
 #[derive(Clone, Debug, Default, Serialize)]
@@ -194,10 +195,10 @@ struct Analysed {
     full_hash: Option<String>,
     header: Option<HeaderInfo>,
     report: Option<AnalysisReport>,
-    error: Option<String>,
+    error: Option<Message>,
 }
 
-enum Message {
+enum Update {
     Discovered,
     Found(Found),
     Started(usize, PathBuf),
@@ -241,15 +242,15 @@ struct Worker<'a> {
     version: String,
     /// File identity to the first path seen with it
     seen: &'a Mutex<HashMap<String, PathBuf>>,
-    tx: Sender<Message>,
+    tx: Sender<Update>,
 }
 
 impl Worker<'_> {
     fn run(self) {
         while let Some(path) = self.control.pop() {
-            let _ = self.tx.send(Message::Started(self.id, path.clone()));
+            let _ = self.tx.send(Update::Started(self.id, path.clone()));
             let (outcome, analysed, bytes) = self.one(&path);
-            let _ = self.tx.send(Message::Done {
+            let _ = self.tx.send(Update::Done {
                 worker: self.id,
                 path,
                 outcome,
@@ -277,7 +278,7 @@ impl Worker<'_> {
         let unreadable = |e: std::io::Error| {
             (
                 Outcome::Unreadable {
-                    error: e.to_string(),
+                    error: io_message(&e),
                 },
                 None,
                 0,
@@ -348,10 +349,12 @@ impl Worker<'_> {
                 return (Outcome::Cancelled, None, bytes);
             }
             Ok(r) => (Some(r), None),
-            Err(p) => (
-                None,
-                Some(format!("analysis panicked: {}", panic_text(p.as_ref()))),
-            ),
+            Err(p) => {
+                let detail = panic_text(p.as_ref());
+                let m = Message::new("analysis-panicked", format!("analysis panicked: {detail}"))
+                    .arg("detail", detail);
+                (None, Some(m))
+            }
         };
 
         match file_metadata(path) {
@@ -403,21 +406,21 @@ pub fn scan(
     let mut last_progress = Instant::now() - PROGRESS_INTERVAL;
 
     std::thread::scope(|s| {
-        let (tx, rx) = mpsc::channel::<Message>();
+        let (tx, rx) = mpsc::channel::<Update>();
 
         let discovery_tx = tx.clone();
         s.spawn(move || {
             let (roots, errors) = discover::roots(&options.roots);
             for e in errors {
-                let _ = discovery_tx.send(Message::Found(e));
+                let _ = discovery_tx.send(Update::Found(e));
             }
             discover::walk(&roots, |f| match f {
                 Found::Demo(p) => {
-                    let _ = discovery_tx.send(Message::Discovered);
+                    let _ = discovery_tx.send(Update::Discovered);
                     control.push(p)
                 }
                 other => {
-                    let _ = discovery_tx.send(Message::Found(other));
+                    let _ = discovery_tx.send(Update::Found(other));
                     !control.is_cancelled()
                 }
             });
@@ -441,18 +444,18 @@ pub fn scan(
         loop {
             let message = rx.recv_timeout(PROGRESS_INTERVAL);
             match message {
-                Ok(Message::Discovered) => progress.discovered += 1,
-                Ok(Message::Found(Found::Error { path, error })) => {
+                Ok(Update::Discovered) => progress.discovered += 1,
+                Ok(Update::Found(Found::Error { path, error })) => {
                     progress.directory_errors += 1;
                     on_event(ScanEvent::DiscoveryError {
                         path: &path,
                         error: &error,
                     });
                 }
-                Ok(Message::Found(Found::Skipped(_))) => progress.skipped_links += 1,
-                Ok(Message::Found(Found::Demo(_))) => {}
-                Ok(Message::Started(worker, path)) => current[worker] = Some(path),
-                Ok(Message::Done {
+                Ok(Update::Found(Found::Skipped(_))) => progress.skipped_links += 1,
+                Ok(Update::Found(Found::Demo(_))) => {}
+                Ok(Update::Started(worker, path)) => current[worker] = Some(path),
+                Ok(Update::Done {
                     worker,
                     path,
                     mut outcome,
@@ -477,9 +480,7 @@ pub fn scan(
                             Ok(_) => Outcome::Analyzed {
                                 status: entry.status().to_string(),
                             },
-                            Err(e) => Outcome::CacheFailed {
-                                error: e.to_string(),
-                            },
+                            Err(e) => Outcome::CacheFailed { error: e.message() },
                         };
                     }
                     match &outcome {

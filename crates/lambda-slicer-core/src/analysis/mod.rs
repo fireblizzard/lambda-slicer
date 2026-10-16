@@ -17,13 +17,14 @@ use std::sync::atomic::AtomicBool;
 use serde::Serialize;
 
 use crate::container::Limits;
+use crate::message::Message;
 use crate::state::{DecodeOptions, DecodeStatus, PlayerIdentity, decode_demo};
 use context::{Context, Coverage, Kill, WeaponSwitch};
 use events::recorded_events;
 use highlights::{ActionWindow, action_windows, link_kills};
 use weapons::{Action, ActivityInterval, PROFILE, Weapon, WeaponOccurrence, derive};
 
-pub const ANALYSIS_SCHEMA: u32 = 1;
+pub const ANALYSIS_SCHEMA: u32 = 2;
 
 /// Length of an action window in seconds, and how many are reported
 pub const ACTION_WINDOW: f32 = 60.;
@@ -59,7 +60,7 @@ pub struct AnalysisReport {
     pub profile: &'static str,
     pub path: String,
     pub decode: DecodeStatus,
-    pub decode_error: Option<String>,
+    pub decode_error: Option<Message>,
     /// The recording client's player, at the end of the recording
     pub recorder: Option<PlayerIdentity>,
     /// Every player seen, once per name they used

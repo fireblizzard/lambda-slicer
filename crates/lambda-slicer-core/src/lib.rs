@@ -5,6 +5,7 @@ pub mod analysis;
 pub mod container;
 pub mod fixtures;
 pub mod library;
+pub mod message;
 pub mod protocol;
 pub mod slice;
 pub mod state;
