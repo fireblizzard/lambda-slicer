@@ -10,6 +10,7 @@ use lambda_slicer_core::container::Limits;
 use lambda_slicer_core::library::cache::default_path;
 use lambda_slicer_core::library::scan::ScanOptions;
 
+use crate::demo::DemoView;
 use crate::i18n::{Catalog, Locale};
 use crate::jobs::{Problem, ScanJob};
 use crate::layout;
@@ -32,6 +33,9 @@ pub struct Launch {
     pub cache: Option<PathBuf>,
     /// Demos and folders opened for this session
     pub open: Vec<PathBuf>,
+    /// A cached demo to show at start, and an action window to open it on
+    pub demo: Option<PathBuf>,
+    pub window: Option<usize>,
 }
 
 pub struct App {
@@ -45,6 +49,8 @@ pub struct App {
     cache_path: Option<PathBuf>,
     library: Option<LibraryView>,
     scan: Option<ScanJob>,
+    demo: Option<DemoView>,
+    open_window: Option<usize>,
     /// Files opened or dropped this session, scanned along with the folders
     opened: Vec<PathBuf>,
     /// Dropped items that were not demos or folders
@@ -67,7 +73,12 @@ impl App {
             .clone()
             .or_else(|| settings.cache.clone())
             .or_else(default_path);
-        let library = cache_path.clone().map(LibraryView::new);
+        let mut library = cache_path
+            .clone()
+            .map(|p| LibraryView::new(p, settings.hidden_columns.clone()));
+        if let (Some(l), Some(d)) = (&mut library, &launch.demo) {
+            l.select_path(d);
+        }
         Self {
             settings,
             settings_path,
@@ -79,6 +90,8 @@ impl App {
             cache_path,
             library,
             scan: None,
+            demo: None,
+            open_window: launch.window,
             opened: launch.open,
             rejected: Vec::new(),
         }
@@ -98,7 +111,7 @@ impl App {
         text::widget_text(ctx, &self.catalog.text(id), self.rtl(), None, Look::Strong)
     }
 
-    fn save(&self) {
+    fn save_settings(&self) {
         if let Some(p) = &self.settings_path
             && let Err(e) = self.settings.save_to(p)
         {
@@ -109,7 +122,7 @@ impl App {
     fn set_locale(&mut self, locale: Option<Locale>) {
         self.settings.locale = locale;
         self.catalog = Catalog::new(self.settings.locale());
-        self.save();
+        self.save_settings();
     }
 
     fn scanning(&self) -> bool {
@@ -148,7 +161,7 @@ impl App {
             }
         }
         if added {
-            self.save();
+            self.save_settings();
             self.start_scan(ctx);
         }
     }
@@ -349,7 +362,7 @@ impl App {
             if let Some(r) = &f.recorder {
                 facts.push(self.catalog.text_with(
                     "details-recorder",
-                    &[("name", FluentValue::from(r.clone()))],
+                    &[("name", FluentValue::from(text::player_name(r)))],
                 ));
             }
             if let Some(k) = &f.recording_kind {
@@ -439,7 +452,7 @@ impl App {
                     let mut workers = self.settings.workers;
                     if ui.add(egui::Slider::new(&mut workers, 1..=4)).changed() {
                         self.settings.workers = workers;
-                        self.save();
+                        self.save_settings();
                     }
                     text::label(ui, &self.catalog.text("settings-workers-hint"), rtl);
 
@@ -462,7 +475,7 @@ impl App {
                     }
                     if let Some(i) = remove {
                         self.settings.folders.remove(i);
-                        self.save();
+                        self.save_settings();
                     }
 
                     ui.add_space(8.);
@@ -478,8 +491,10 @@ impl App {
         let Some(shot) = &mut self.screenshot else {
             return;
         };
-        if shot.frames > 0 {
-            shot.frames -= 1;
+        // A demo still being analysed is waited for
+        let loading = self.demo.as_ref().is_some_and(DemoView::loading);
+        if shot.frames > 0 || loading {
+            shot.frames = shot.frames.saturating_sub(1);
             ctx.request_repaint();
             return;
         }
@@ -545,12 +560,63 @@ impl eframe::App for App {
             });
         }
         let rtl = self.rtl();
-        egui::CentralPanel::default().show(ui, |ui| match &mut self.library {
-            Some(l) => l.ui(ui, &self.catalog, rtl),
-            None => {
-                text::label(ui, &self.catalog.text("library-no-cache"), rtl);
+
+        // A selected demo opens beside the library, replacing an earlier one
+        let selected = self
+            .library
+            .as_ref()
+            .and_then(|l| l.selected.as_ref())
+            .map(|f| (PathBuf::from(&f.path), f.duration.unwrap_or(0.)));
+        match (&selected, &self.demo) {
+            (Some((path, _)), Some(d)) if *path == d.path => {}
+            (Some((path, duration)), _) => {
+                let mut d = DemoView::open(path.clone(), *duration, &ctx);
+                d.open_window = self.open_window.take();
+                self.demo = Some(d);
             }
-        });
+            (None, _) => self.demo = None,
+        }
+
+        let compact = self.demo.is_some();
+        let library = |app: &mut Self, ui: &mut egui::Ui| match &mut app.library {
+            Some(l) => l.ui(ui, &app.catalog, rtl, compact),
+            None => {
+                text::label(ui, &app.catalog.text("library-no-cache"), rtl);
+            }
+        };
+        if let Some(l) = &mut self.library
+            && l.columns_changed
+        {
+            l.columns_changed = false;
+            self.settings.hidden_columns = l.hidden.clone();
+            self.save_settings();
+        }
+        if self.demo.is_some() {
+            let side = if rtl {
+                egui::Panel::right("library")
+            } else {
+                egui::Panel::left("library")
+            };
+            let width = ctx.content_rect().width();
+            side.resizable(true)
+                .default_size(width * 0.42)
+                .size_range(320.0..=width * 0.8)
+                .show(ui, |ui| library(self, ui));
+            let mut close = false;
+            egui::CentralPanel::default().show(ui, |ui| {
+                if let Some(d) = &mut self.demo {
+                    close = d.ui(ui, &self.catalog, rtl);
+                }
+            });
+            if close {
+                self.demo = None;
+                if let Some(l) = &mut self.library {
+                    l.selected = None;
+                }
+            }
+        } else {
+            egui::CentralPanel::default().show(ui, |ui| library(self, ui));
+        }
 
         if ctx.input(|i| !i.raw.hovered_files.is_empty()) {
             let painter = ctx.layer_painter(egui::LayerId::new(

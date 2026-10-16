@@ -10,6 +10,7 @@ name = "lambda-slicer-gui"
 path = "src/main.rs"
 
 [dependencies]
+chrono = { version = "0.4.45", default-features = false, features = ["clock", "std"] }
 eframe = "0.37.0"
 egui_extras = "0.37.0"
 fluent-bundle = "0.16.0"

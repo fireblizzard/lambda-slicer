@@ -20,6 +20,25 @@ pub fn has_rtl(text: &str) -> bool {
         .any(|c| matches!(bidi_class(c), BidiClass::R | BidiClass::AL))
 }
 
+/// A player name without the `^0` to `^9` colour codes Adrenaline Gamer
+/// draws in colour, for display. The raw name stays in tooltips and data
+pub fn player_name(name: &str) -> String {
+    let mut out = String::with_capacity(name.len());
+    let mut chars = name.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '^' && chars.peek().is_some_and(char::is_ascii_digit) {
+            chars.next();
+            continue;
+        }
+        out.push(c);
+    }
+    if out.trim().is_empty() {
+        name.to_string()
+    } else {
+        out
+    }
+}
+
 /// Whether `text` reads right to left by its first letter with a direction,
 /// for names and paths that keep their own direction in any interface
 pub fn starts_rtl(text: &str) -> bool {
@@ -375,5 +394,18 @@ mod tests {
         assert_eq!(lines, [vec!["واحد"], vec!["اثنان"], vec!["ثلاثة"]]);
         let lines = wrapped_lines("one two three", false, 8., measure);
         assert_eq!(lines, [vec!["one two"], vec!["three"]]);
+    }
+}
+
+#[cfg(test)]
+mod name_tests {
+    use super::player_name;
+
+    #[test]
+    fn colour_codes_leave_names() {
+        assert_eq!(player_name("^8*^4Fe^8D^1oR^8*"), "*FeDoR*");
+        assert_eq!(player_name("-<[ATK]>-naz"), "-<[ATK]>-naz");
+        assert_eq!(player_name("a^b^"), "a^b^");
+        assert_eq!(player_name("^1^2"), "^1^2");
     }
 }

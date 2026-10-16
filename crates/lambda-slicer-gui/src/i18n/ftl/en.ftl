@@ -139,3 +139,55 @@ io-permission-denied = Access was denied.
 io-unexpected-end = The file ended unexpectedly.
 protocol-unsupported = Demo protocol { $demo }/{ $network } is not supported, only 5/48.
 protocol-unsupported-network = The server switched to network protocol { $network }, which is not supported.
+
+## Demo view
+
+demo-close = Close
+demo-loading = Analysing { $name }…
+timeline-fit = Fit
+show-shots = Shots
+show-actions = Other actions
+show-kills = Kills
+show-switches = Weapon switches
+lane-unknown = Unknown player
+lane-recorder = { $name } (recorder)
+column-time = Time
+column-player = Player
+column-weapon = Weapon
+column-event = Event
+event-kill = Killed { $victim }
+event-switch = Weapon switch
+action-swing = Swing
+action-fire = Fire
+action-launch = Launch
+action-charge-activity = Charging
+action-charge-stop = Charge stop
+action-beam-start = Beam start
+action-beam-sustain = Beam
+action-beam-stop = Beam stop
+action-placement-attempt = Placement attempt
+action-release-attempt = Release attempt
+mode-primary = primary
+mode-charged = charged
+mode-zoomed = zoomed
+mode-unzoomed = unzoomed
+mode-grenade = grenade
+mode-bullets = bullets
+mode-single = single
+mode-double = double
+mode-rapid = rapid
+demo-events = { $count ->
+    [one] { $count } event
+   *[other] { $count } events
+}
+
+column-date = Date
+column-score = Score
+filter-from = From
+filter-to = To
+date-from-name = Date from the file name
+date-from-modified = Date from when the file was last modified, which copying or downloading can change
+timeline-best-action = Best action
+timeline-windows = Action windows
+timeline-window = #{ $rank } { NUMBER($score, minimumFractionDigits: 2) } · { $start }–{ $end } · { $sides }
+demo-final-score = Final score: { $score }

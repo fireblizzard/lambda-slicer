@@ -138,3 +138,55 @@ io-permission-denied = Zugriff verweigert.
 io-unexpected-end = Die Datei endete unerwartet.
 protocol-unsupported = Das Demo-Protokoll { $demo }/{ $network } wird nicht unterstützt, nur 5/48.
 protocol-unsupported-network = Der Server hat auf das nicht unterstützte Netzwerkprotokoll { $network } gewechselt.
+
+## Demoansicht
+
+demo-close = Schließen
+demo-loading = { $name } wird analysiert…
+timeline-fit = Einpassen
+show-shots = Schüsse
+show-actions = Andere Aktionen
+show-kills = Abschüsse
+show-switches = Waffenwechsel
+lane-unknown = Unbekannter Spieler
+lane-recorder = { $name } (Aufnahme)
+column-time = Zeit
+column-player = Spieler
+column-weapon = Waffe
+column-event = Ereignis
+event-kill = Hat { $victim } abgeschossen
+event-switch = Waffenwechsel
+action-swing = Schlag
+action-fire = Schuss
+action-launch = Abschuss
+action-charge-activity = Aufladen
+action-charge-stop = Ladeende
+action-beam-start = Strahlbeginn
+action-beam-sustain = Strahl
+action-beam-stop = Strahlende
+action-placement-attempt = Platzierungsversuch
+action-release-attempt = Auslöseversuch
+mode-primary = primär
+mode-charged = aufgeladen
+mode-zoomed = mit Zoom
+mode-unzoomed = ohne Zoom
+mode-grenade = Granate
+mode-bullets = Kugeln
+mode-single = einzeln
+mode-double = doppelt
+mode-rapid = schnell
+demo-events = { $count ->
+    [one] { $count } Ereignis
+   *[other] { $count } Ereignisse
+}
+
+column-date = Datum
+column-score = Ergebnis
+filter-from = Von
+filter-to = Bis
+date-from-name = Datum aus dem Dateinamen
+date-from-modified = Datum der letzten Änderung der Datei, das sich beim Kopieren oder Herunterladen ändern kann
+timeline-best-action = Beste Action
+timeline-windows = Action-Phasen
+timeline-window = Nr. { $rank } { NUMBER($score, minimumFractionDigits: 2) } · { $start }–{ $end } · { $sides }
+demo-final-score = Endstand: { $score }

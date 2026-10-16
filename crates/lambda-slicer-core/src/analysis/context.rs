@@ -255,6 +255,42 @@ fn kill_weapon(name: &str) -> Option<Weapon> {
     })
 }
 
+/// One side of the final score, a team or a player
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct ScoreSide {
+    pub name: String,
+    pub frags: i32,
+    pub deaths: i32,
+}
+
+/// The scoreboard at the end of the recording's last session, from the
+/// server's `ScoreInfo` and `TeamScore` messages
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
+pub struct Scoreboard {
+    /// Whether sides are teams rather than players
+    pub teams: bool,
+    /// Highest frags first. Players who left, and players with neither a
+    /// frag nor a death such as spectators, are left out
+    pub sides: Vec<ScoreSide>,
+}
+
+impl Scoreboard {
+    /// Frags of the best sides, such as `88 – 74` or `50 – 44 – 38 – …`. The
+    /// en dash keeps a negative score readable, as in `150 – -1`
+    pub fn summary(&self, shown: usize) -> String {
+        let mut parts: Vec<String> = self
+            .sides
+            .iter()
+            .take(shown)
+            .map(|s| s.frags.to_string())
+            .collect();
+        if self.sides.len() > shown {
+            parts.push("…".into());
+        }
+        parts.join(" – ")
+    }
+}
+
 /// Follows kills and the recorder's weapon through the decode
 #[derive(Default)]
 pub struct Context {
@@ -263,13 +299,73 @@ pub struct Context {
     pub motion: Motion,
     /// Team names by player entity, from `TeamInfo`
     teams: std::collections::BTreeMap<u8, String>,
+    /// Frags and deaths by player entity, from `ScoreInfo`
+    scores: std::collections::BTreeMap<u8, (i32, i32)>,
+    /// Team frags from `TeamScore`, which override the players' sum
+    team_scores: std::collections::BTreeMap<String, i32>,
 }
 
 impl Context {
+    /// The scoreboard as the recording ends, counting players still present
+    pub fn scoreboard(&self, d: &Decoder) -> Scoreboard {
+        let mut players = Vec::new();
+        for (&entity, &(frags, deaths)) in &self.scores {
+            let Some(p) = d.player_for_entity(i64::from(entity)) else {
+                continue;
+            };
+            if frags == 0 && deaths == 0 {
+                continue;
+            }
+            let team = self.teams.get(&entity).cloned().unwrap_or_default();
+            players.push((p.name, team, frags, deaths));
+        }
+
+        let team_names: std::collections::BTreeSet<&str> = players
+            .iter()
+            .map(|p| p.1.as_str())
+            .filter(|t| !t.is_empty())
+            .collect();
+        let mut sides: Vec<ScoreSide> = if team_names.len() >= 2 {
+            team_names
+                .iter()
+                .map(|team| {
+                    let members = players.iter().filter(|p| p.1 == *team);
+                    let summed: i32 = members.clone().map(|p| p.2).sum();
+                    ScoreSide {
+                        name: (*team).to_string(),
+                        frags: self
+                            .team_scores
+                            .get(&team.to_lowercase())
+                            .copied()
+                            .unwrap_or(summed),
+                        deaths: members.map(|p| p.3).sum(),
+                    }
+                })
+                .collect()
+        } else {
+            players
+                .iter()
+                .map(|p| ScoreSide {
+                    name: p.0.clone(),
+                    frags: p.2,
+                    deaths: p.3,
+                })
+                .collect()
+        };
+        sides.sort_by(|a, b| b.frags.cmp(&a.frags).then(a.deaths.cmp(&b.deaths)));
+
+        Scoreboard {
+            teams: team_names.len() >= 2,
+            sides,
+        }
+    }
+
     pub fn observe(&mut self, loc: &FrameLocation, d: &Decoder, m: &ParsedMessage) {
         self.motion.observe(d);
         if let Message::ServerInfo(_) = &m.message {
             self.teams.clear();
+            self.scores.clear();
+            self.team_scores.clear();
         }
 
         let Message::User { id, body } = &m.message else {
@@ -309,6 +405,25 @@ impl Context {
                     killer_samples: self.motion.samples(killer.into()),
                     context: None,
                 });
+            }
+            "ScoreInfo" => {
+                let short = |at: usize| {
+                    body.get(at..at + 2)
+                        .map(|b| i32::from(i16::from_le_bytes([b[0], b[1]])))
+                };
+                if let (Some(&player), Some(frags), Some(deaths)) =
+                    (body.first(), short(1), short(3))
+                {
+                    self.scores.insert(player, (frags, deaths));
+                }
+            }
+            "TeamScore" => {
+                let end = body.iter().position(|&b| b == 0).unwrap_or(body.len());
+                let name = String::from_utf8_lossy(&body[..end]).into_owned();
+                if let Some(b) = body.get(end + 1..end + 3) {
+                    let frags = i32::from(i16::from_le_bytes([b[0], b[1]]));
+                    self.team_scores.insert(name.to_lowercase(), frags);
+                }
             }
             "TeamInfo" => {
                 let Some(&player) = body.first() else {
@@ -469,6 +584,24 @@ mod tests {
         d.hltv = true;
         let c = context.coverage(&d, 0, 10, 10., 0.);
         assert_eq!(c.kind, RecordingKind::Hltv);
+    }
+
+    #[test]
+    fn score_summaries_show_the_best_sides() {
+        let side = |frags| ScoreSide {
+            name: String::new(),
+            frags,
+            deaths: 0,
+        };
+        let board = |frags: &[i32]| Scoreboard {
+            teams: false,
+            sides: frags.iter().map(|f| side(*f)).collect(),
+        };
+        assert_eq!(board(&[88, 74]).summary(3), "88 – 74");
+        assert_eq!(board(&[50, 44, 38]).summary(3), "50 – 44 – 38");
+        assert_eq!(board(&[50, 44, 38, 2]).summary(3), "50 – 44 – 38 – …");
+        assert_eq!(board(&[150, -1]).summary(3), "150 – -1");
+        assert_eq!(board(&[]).summary(3), "");
     }
 
     #[test]

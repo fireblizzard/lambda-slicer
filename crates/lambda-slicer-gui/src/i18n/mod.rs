@@ -146,6 +146,21 @@ impl Locale {
         self == Locale::En
     }
 
+    /// How the locale writes a numeric date, with the digits 0 to 9
+    pub fn date_order(self) -> DateOrder {
+        match self {
+            Locale::En => DateOrder::MonthDayYear('/'),
+            Locale::Es419 | Locale::PtBr | Locale::Fr | Locale::It | Locale::Ar => {
+                DateOrder::DayMonthYear('/')
+            }
+            Locale::Ru | Locale::Uk | Locale::Tr | Locale::Pl | Locale::De | Locale::Fi => {
+                DateOrder::DayMonthYear('.')
+            }
+            Locale::Lt => DateOrder::YearMonthDay('-'),
+            Locale::ZhHans => DateOrder::YearMonthDay('/'),
+        }
+    }
+
     pub fn number_style(self) -> NumberStyle {
         match self {
             Locale::En | Locale::Es419 | Locale::Ar | Locale::ZhHans => POINT_COMMA,
@@ -206,6 +221,47 @@ impl Locale {
         sys_locale::get_locales()
             .find_map(|t| Locale::from_tag(&t))
             .unwrap_or(Locale::En)
+    }
+}
+
+/// The order of a numeric date's parts and the mark between them
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DateOrder {
+    DayMonthYear(char),
+    MonthDayYear(char),
+    YearMonthDay(char),
+}
+
+/// A calendar date
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Ymd {
+    pub year: i32,
+    pub month: u32,
+    pub day: u32,
+}
+
+impl Ymd {
+    /// The date of a `YYYY-MM-DD` prefix
+    pub fn parse(text: &str) -> Option<Ymd> {
+        let mut parts = text.get(..10)?.split('-');
+        let year = parts.next()?.parse().ok()?;
+        let month = parts.next()?.parse().ok()?;
+        let day = parts.next()?.parse().ok()?;
+        Some(Ymd { year, month, day })
+    }
+
+    pub fn iso(self) -> String {
+        format!("{:04}-{:02}-{:02}", self.year, self.month, self.day)
+    }
+
+    /// Days in this date's month
+    pub fn month_days(self) -> u32 {
+        match self.month {
+            2 if self.year % 4 == 0 && (self.year % 100 != 0 || self.year % 400 == 0) => 29,
+            2 => 28,
+            4 | 6 | 9 | 11 => 30,
+            _ => 31,
+        }
     }
 }
 
@@ -331,6 +387,14 @@ impl Catalog {
         self.text_with(id, &[])
     }
 
+    /// The message `id`, or `fallback` when no catalog has it, for ids built
+    /// from data such as a weapon mode
+    pub fn text_or(&self, id: &str, fallback: &str) -> String {
+        Self::format(&self.bundle, id, None)
+            .or_else(|| Self::format(&self.english, id, None))
+            .unwrap_or_else(|| fallback.to_string())
+    }
+
     /// A core message in this locale, or its own English text when no
     /// catalog has its code
     pub fn message(&self, m: &Message) -> String {
@@ -368,6 +432,17 @@ impl Catalog {
         Self::format(&self.bundle, &m.code, Some(&args))
             .or_else(|| Self::format(&self.english, &m.code, Some(&args)))
             .unwrap_or_else(|| m.text.clone())
+    }
+
+    /// A date in this locale's numeric style
+    pub fn date(&self, d: Ymd) -> String {
+        let (y, m, dd) = (d.year, d.month, d.day);
+        match self.locale.date_order() {
+            DateOrder::MonthDayYear(s) => format!("{m}{s}{dd}{s}{y}"),
+            DateOrder::DayMonthYear('.') => format!("{dd:02}.{m:02}.{y}"),
+            DateOrder::DayMonthYear(s) => format!("{dd:02}{s}{m:02}{s}{y}"),
+            DateOrder::YearMonthDay(s) => format!("{y}{s}{m:02}{s}{dd:02}"),
+        }
     }
 
     /// A number in this locale's style

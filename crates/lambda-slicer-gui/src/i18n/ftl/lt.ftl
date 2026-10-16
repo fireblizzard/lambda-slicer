@@ -146,3 +146,57 @@ io-permission-denied = Prieiga uždrausta.
 io-unexpected-end = Failas netikėtai baigėsi.
 protocol-unsupported = Įrašo protokolas { $demo }/{ $network } nepalaikomas, tik 5/48.
 protocol-unsupported-network = Serveris perėjo prie nepalaikomo tinklo protokolo { $network }.
+
+## Įrašo peržiūra
+
+demo-close = Uždaryti
+demo-loading = Analizuojamas { $name }…
+timeline-fit = Talpinti
+show-shots = Šūviai
+show-actions = Kiti veiksmai
+show-kills = Nužudymai
+show-switches = Ginklų keitimai
+lane-unknown = Nežinomas žaidėjas
+lane-recorder = { $name } (įrašė)
+column-time = Laikas
+column-player = Žaidėjas
+column-weapon = Ginklas
+column-event = Įvykis
+event-kill = Nužudė { $victim }
+event-switch = Ginklo keitimas
+action-swing = Smūgis
+action-fire = Šūvis
+action-launch = Paleidimas
+action-charge-activity = Krovimas
+action-charge-stop = Krovimo pabaiga
+action-beam-start = Spindulio pradžia
+action-beam-sustain = Spindulys
+action-beam-stop = Spindulio pabaiga
+action-placement-attempt = Padėjimo bandymas
+action-release-attempt = Paleidimo bandymas
+mode-primary = pagrindinis
+mode-charged = įkrautas
+mode-zoomed = su taikikliu
+mode-unzoomed = be taikiklio
+mode-grenade = granata
+mode-bullets = kulkos
+mode-single = pavienis
+mode-double = dvigubas
+mode-rapid = greitas
+demo-events = { $count ->
+    [one] { $count } įvykis
+    [few] { $count } įvykiai
+    [many] { $count } įvykio
+   *[other] { $count } įvykių
+}
+
+column-date = Data
+column-score = Rezultatas
+filter-from = Nuo
+filter-to = Iki
+date-from-name = Data iš failo pavadinimo
+date-from-modified = Paskutinio failo pakeitimo data, kurią kopijavimas ar atsisiuntimas gali pakeisti
+timeline-best-action = Geriausias veiksmas
+timeline-windows = Veiksmo momentai
+timeline-window = Nr. { $rank } { NUMBER($score, minimumFractionDigits: 2) } · { $start }–{ $end } · { $sides }
+demo-final-score = Galutinis rezultatas: { $score }

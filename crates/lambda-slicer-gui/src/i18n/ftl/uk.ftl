@@ -146,3 +146,57 @@ io-permission-denied = Доступ заборонено.
 io-unexpected-end = Файл несподівано закінчився.
 protocol-unsupported = Протокол демо { $demo }/{ $network } не підтримується, лише 5/48.
 protocol-unsupported-network = Сервер перейшов на мережевий протокол { $network }, який не підтримується.
+
+## Перегляд демо
+
+demo-close = Закрити
+demo-loading = Розбір { $name }…
+timeline-fit = Умістити
+show-shots = Постріли
+show-actions = Інші дії
+show-kills = Вбивства
+show-switches = Зміна зброї
+lane-unknown = Невідомий гравець
+lane-recorder = { $name } (записував)
+column-time = Час
+column-player = Гравець
+column-weapon = Зброя
+column-event = Подія
+event-kill = Убив { $victim }
+event-switch = Зміна зброї
+action-swing = Удар
+action-fire = Постріл
+action-launch = Запуск
+action-charge-activity = Заряджання
+action-charge-stop = Кінець заряду
+action-beam-start = Початок променя
+action-beam-sustain = Промінь
+action-beam-stop = Кінець променя
+action-placement-attempt = Спроба встановлення
+action-release-attempt = Спроба випуску
+mode-primary = основний
+mode-charged = заряджений
+mode-zoomed = з прицілом
+mode-unzoomed = без прицілу
+mode-grenade = граната
+mode-bullets = кулі
+mode-single = одиночний
+mode-double = подвійний
+mode-rapid = швидкий
+demo-events = { $count ->
+    [one] { $count } подія
+    [few] { $count } події
+    [many] { $count } подій
+   *[other] { $count } події
+}
+
+column-date = Дата
+column-score = Рахунок
+filter-from = З
+filter-to = По
+date-from-name = Дата з назви файлу
+date-from-modified = Дата останньої зміни файлу, вона може змінитися під час копіювання чи завантаження
+timeline-best-action = Найкращий екшен
+timeline-windows = Моменти екшену
+timeline-window = №{ $rank } { NUMBER($score, minimumFractionDigits: 2) } · { $start }–{ $end } · { $sides }
+demo-final-score = Підсумковий рахунок: { $score }

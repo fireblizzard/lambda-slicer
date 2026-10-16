@@ -142,3 +142,56 @@ io-permission-denied = Acceso denegado.
 io-unexpected-end = El archivo terminó de forma inesperada.
 protocol-unsupported = El protocolo de demo { $demo }/{ $network } no es compatible, solo 5/48.
 protocol-unsupported-network = El servidor cambió al protocolo de red { $network }, que no es compatible.
+
+## Vista de la demo
+
+demo-close = Cerrar
+demo-loading = Analizando { $name }…
+timeline-fit = Ajustar
+show-shots = Disparos
+show-actions = Otras acciones
+show-kills = Bajas
+show-switches = Cambios de arma
+lane-unknown = Jugador desconocido
+lane-recorder = { $name } (grabó)
+column-time = Tiempo
+column-player = Jugador
+column-weapon = Arma
+column-event = Evento
+event-kill = Mató a { $victim }
+event-switch = Cambio de arma
+action-swing = Golpe
+action-fire = Disparo
+action-launch = Lanzamiento
+action-charge-activity = Cargando
+action-charge-stop = Fin de carga
+action-beam-start = Inicio del rayo
+action-beam-sustain = Rayo
+action-beam-stop = Fin del rayo
+action-placement-attempt = Intento de colocación
+action-release-attempt = Intento de liberación
+mode-primary = primario
+mode-charged = cargado
+mode-zoomed = con zoom
+mode-unzoomed = sin zoom
+mode-grenade = granada
+mode-bullets = balas
+mode-single = simple
+mode-double = doble
+mode-rapid = rápido
+demo-events = { $count ->
+    [one] { $count } evento
+    [many] { $count } de eventos
+   *[other] { $count } eventos
+}
+
+column-date = Fecha
+column-score = Marcador
+filter-from = Desde
+filter-to = Hasta
+date-from-name = Fecha tomada del nombre del archivo
+date-from-modified = Fecha de la última modificación del archivo, que puede cambiar al copiarlo o descargarlo
+timeline-best-action = Mejor acción
+timeline-windows = Momentos de acción
+timeline-window = N.º { $rank } { NUMBER($score, minimumFractionDigits: 2) } · { $start }–{ $end } · { $sides }
+demo-final-score = Marcador final: { $score }

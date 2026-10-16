@@ -138,3 +138,55 @@ io-permission-denied = Pääsy estetty.
 io-unexpected-end = Tiedosto päättyi odottamatta.
 protocol-unsupported = Demoprotokollaa { $demo }/{ $network } ei tueta, vain 5/48.
 protocol-unsupported-network = Palvelin vaihtoi verkkoprotokollaan { $network }, jota ei tueta.
+
+## Demonäkymä
+
+demo-close = Sulje
+demo-loading = Analysoidaan { $name }…
+timeline-fit = Sovita
+show-shots = Laukaukset
+show-actions = Muut toiminnot
+show-kills = Tapot
+show-switches = Aseen vaihdot
+lane-unknown = Tuntematon pelaaja
+lane-recorder = { $name } (tallentaja)
+column-time = Aika
+column-player = Pelaaja
+column-weapon = Ase
+column-event = Tapahtuma
+event-kill = Tappoi pelaajan { $victim }
+event-switch = Aseen vaihto
+action-swing = Lyönti
+action-fire = Laukaus
+action-launch = Laukaisu
+action-charge-activity = Lataus
+action-charge-stop = Latauksen loppu
+action-beam-start = Säteen alku
+action-beam-sustain = Säde
+action-beam-stop = Säteen loppu
+action-placement-attempt = Asetusyritys
+action-release-attempt = Vapautusyritys
+mode-primary = ensisijainen
+mode-charged = ladattu
+mode-zoomed = tähtäimellä
+mode-unzoomed = ilman tähtäintä
+mode-grenade = kranaatti
+mode-bullets = luodit
+mode-single = yksittäinen
+mode-double = kaksois
+mode-rapid = nopea
+demo-events = { $count ->
+    [one] { $count } tapahtuma
+   *[other] { $count } tapahtumaa
+}
+
+column-date = Päiväys
+column-score = Tulos
+filter-from = Alkaen
+filter-to = Asti
+date-from-name = Päiväys tiedoston nimestä
+date-from-modified = Tiedoston viimeisin muokkausaika, jonka kopiointi tai lataus voi muuttaa
+timeline-best-action = Paras toiminta
+timeline-windows = Toimintahetket
+timeline-window = { $rank }. { NUMBER($score, minimumFractionDigits: 2) } · { $start }–{ $end } · { $sides }
+demo-final-score = Lopputulos: { $score }

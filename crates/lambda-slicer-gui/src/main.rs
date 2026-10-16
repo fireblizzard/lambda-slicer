@@ -1,19 +1,22 @@
 //! Lambda Slicer desktop app
 //!
 //! `lambda-slicer-gui [PATH...] [--locale TAG] [--settings] [--cache FILE]
-//! [--screenshot OUT.png [--frames N]]`. Demos and folders given as `PATH`
-//! are opened for this session. `--locale` overrides the saved
+//! [--demo FILE [--window N]] [--screenshot OUT.png [--frames N]]`. Demos and folders
+//! given as `PATH` are opened for this session, and `--demo` shows a cached
+//! demo at start, on its `N`th best action window with `--window`. `--locale` overrides the saved
 //! language and `--cache` the library cache for this run, `--settings` opens
 //! the settings window, and `--screenshot` saves the window to a PNG after
 //! `N` frames and exits, for checking how a language renders
 
 mod app;
+mod demo;
 mod i18n;
 mod jobs;
 mod layout;
 mod library;
 mod settings;
 mod text;
+mod timeline;
 
 use std::path::PathBuf;
 
@@ -31,6 +34,8 @@ fn main() -> eframe::Result {
     let mut frames = 5;
     let mut cache = None;
     let mut open = Vec::new();
+    let mut demo = None;
+    let mut window = None;
     while let Some(a) = args.next() {
         match a.as_str() {
             "--locale" => locale = args.next().as_deref().and_then(Locale::from_tag),
@@ -38,6 +43,13 @@ fn main() -> eframe::Result {
             "--screenshot" => screenshot = args.next().map(PathBuf::from),
             "--frames" => frames = args.next().and_then(|n| n.parse().ok()).unwrap_or(frames),
             "--cache" => cache = args.next().map(PathBuf::from),
+            "--demo" => demo = args.next().map(PathBuf::from),
+            "--window" => {
+                window = args
+                    .next()
+                    .and_then(|n| n.parse::<usize>().ok())
+                    .map(|n| n.saturating_sub(1))
+            }
             flag if flag.starts_with("--") => eprintln!("ignoring argument {flag}"),
             path => open.push(PathBuf::from(path)),
         }
@@ -60,7 +72,7 @@ fn main() -> eframe::Result {
     }
 
     let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default().with_inner_size([1000., 640.]),
+        viewport: egui::ViewportBuilder::default().with_inner_size([1280., 800.]),
         ..Default::default()
     };
     eframe::run_native(
@@ -75,6 +87,8 @@ fn main() -> eframe::Result {
                     screenshot,
                     cache,
                     open,
+                    demo,
+                    window,
                 },
             );
             app.start_scan(&cc.egui_ctx);

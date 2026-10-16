@@ -134,3 +134,54 @@ io-permission-denied = 访问被拒绝。
 io-unexpected-end = 文件意外结束。
 protocol-unsupported = 不支持录像协议 { $demo }/{ $network }，仅支持 5/48。
 protocol-unsupported-network = 服务器切换到了不受支持的网络协议 { $network }。
+
+## 录像视图
+
+demo-close = 关闭
+demo-loading = 正在分析 { $name }…
+timeline-fit = 适应
+show-shots = 射击
+show-actions = 其他动作
+show-kills = 击杀
+show-switches = 切换武器
+lane-unknown = 未知玩家
+lane-recorder = { $name }（录制者）
+column-time = 时间
+column-player = 玩家
+column-weapon = 武器
+column-event = 事件
+event-kill = 击杀了 { $victim }
+event-switch = 切换武器
+action-swing = 挥击
+action-fire = 开火
+action-launch = 发射
+action-charge-activity = 蓄力
+action-charge-stop = 蓄力结束
+action-beam-start = 光束开始
+action-beam-sustain = 光束
+action-beam-stop = 光束结束
+action-placement-attempt = 放置尝试
+action-release-attempt = 释放尝试
+mode-primary = 主要
+mode-charged = 蓄力
+mode-zoomed = 开镜
+mode-unzoomed = 不开镜
+mode-grenade = 榴弹
+mode-bullets = 子弹
+mode-single = 单发
+mode-double = 双发
+mode-rapid = 速射
+demo-events = { $count ->
+   *[other] { $count } 个事件
+}
+
+column-date = 日期
+column-score = 比分
+filter-from = 从
+filter-to = 到
+date-from-name = 日期取自文件名
+date-from-modified = 日期为文件最后修改时间，复制或下载可能会改变它
+timeline-best-action = 最精彩时段
+timeline-windows = 精彩时段
+timeline-window = 第 { $rank } 名 { NUMBER($score, minimumFractionDigits: 2) } · { $start }–{ $end } · { $sides }
+demo-final-score = 最终比分：{ $score }

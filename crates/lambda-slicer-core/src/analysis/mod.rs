@@ -19,12 +19,12 @@ use serde::Serialize;
 use crate::container::Limits;
 use crate::message::Message;
 use crate::state::{DecodeOptions, DecodeStatus, PlayerIdentity, decode_demo};
-use context::{Context, Coverage, Kill, WeaponSwitch};
+use context::{Context, Coverage, Kill, Scoreboard, WeaponSwitch};
 use events::recorded_events;
 use highlights::{ActionWindow, action_windows, link_kills};
 use weapons::{Action, ActivityInterval, PROFILE, Weapon, WeaponOccurrence, derive};
 
-pub const ANALYSIS_SCHEMA: u32 = 3;
+pub const ANALYSIS_SCHEMA: u32 = 4;
 
 /// Length of an action window in seconds, and how many are reported
 pub const ACTION_WINDOW: f32 = 60.;
@@ -80,6 +80,8 @@ pub struct AnalysisReport {
     /// The recorder's active weapon over time
     pub weapon_switches: Vec<WeaponSwitch>,
     pub coverage: Coverage,
+    /// The final score of the last session
+    pub scoreboard: Scoreboard,
 }
 
 fn summary_of(weapons: &mut Vec<WeaponSummary>, weapon: Weapon) -> &mut WeaponSummary {
@@ -181,6 +183,7 @@ pub fn analyze_demo_with(
         report.spectator_seconds,
     );
 
+    let scoreboard = context.scoreboard(&d);
     let mut kills = std::mem::take(&mut context.kills);
     link_kills(&mut kills, &derived.occurrences, motion::gravity(&d));
     let action_windows = action_windows(&kills, ACTION_WINDOW, ACTION_WINDOWS);
@@ -204,5 +207,6 @@ pub fn analyze_demo_with(
         action_windows,
         weapon_switches: context.switches,
         coverage,
+        scoreboard,
     }
 }

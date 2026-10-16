@@ -34,7 +34,7 @@ file. It uses WAL so workers read while the writer stores.
 
 | Table | Holds |
 |---|---|
-| `files` | path as text and in its native bytes, size, modification time, identity, quick and full hashes, analysis version, status, error text with its code and arguments ([messages](messages.md)), header facts, recording kind, recorder, playback and spectating fraction, shot, unknown-shot and kill counts, best action score, coverage JSON |
+| `files` | path as text and in its native bytes, size, modification time, identity, quick and full hashes, analysis version, status, error text with its code and arguments ([messages](messages.md)), recording date and its source, final score, header facts, recording kind, recorder, playback and spectating fraction, shot, unknown-shot and kill counts, best action score, coverage JSON |
 | `players` | every player identity seen, once per name |
 | `weapons` | shots, kills, records and intervals per weapon |
 | `kills` | each kill with its weapon string, profile weapon, linked shot weapon, cause, names, airborne flags, horizontal speeds, distance and flight time |
@@ -64,6 +64,20 @@ and check them against the source, independently of the cache.
   weapon matches the death notice string, the profile weapon or the linked shot's weapon,
   ignoring case
 - `--min-action SCORE` (best action window)
+- `--text TEXT` (path), `--min-duration SECONDS`, `--from YYYY-MM-DD`, `--to YYYY-MM-DD`
+  (recording date)
+
+**Recording date.** The header has no date. AG and OpenAG name automatic recordings
+`YYYYMMDD_HHMMSS_map.dem` in the recording machine's local time, which is used when present.
+Otherwise the file's modification time in this machine's local time is used, usually when the
+recording ended. Copying usually keeps it, but downloads and archive tools often reset it, so the
+cache keeps the source with the date and the app says which one a date came from.
+
+**Final score.** The scoreboard as the recording ends, from the last `ScoreInfo` of each player
+still present and from `TeamScore`, which overrides a team's sum of player frags. Players with
+neither a frag nor a death, such as spectators, are left out. With two or more teams the sides
+are teams, otherwise players. The library shows the best three, as `88 – 74` or `50 – 44 – 38 – …`,
+with an en dash so a negative score stays readable.
 
 `query --windows` lists the best action windows across the library instead.
 

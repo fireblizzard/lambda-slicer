@@ -154,3 +154,59 @@ io-permission-denied = تم رفض الوصول.
 io-unexpected-end = انتهى الملف على نحو غير متوقع.
 protocol-unsupported = بروتوكول التسجيل { $demo }/{ $network } غير مدعوم، المدعوم 5/48 فقط.
 protocol-unsupported-network = انتقل الخادم إلى بروتوكول الشبكة { $network } غير المدعوم.
+
+## عرض التسجيل
+
+demo-close = إغلاق
+demo-loading = جارٍ تحليل { $name }…
+timeline-fit = ملاءمة
+show-shots = الطلقات
+show-actions = أفعال أخرى
+show-kills = القتلات
+show-switches = تبديل الأسلحة
+lane-unknown = لاعب غير معروف
+lane-recorder = { $name } (المسجِّل)
+column-time = الوقت
+column-player = اللاعب
+column-weapon = السلاح
+column-event = الحدث
+event-kill = قتل { $victim }
+event-switch = تبديل السلاح
+action-swing = ضربة
+action-fire = إطلاق
+action-launch = قذف
+action-charge-activity = شحن
+action-charge-stop = نهاية الشحن
+action-beam-start = بداية الشعاع
+action-beam-sustain = شعاع
+action-beam-stop = نهاية الشعاع
+action-placement-attempt = محاولة وضع
+action-release-attempt = محاولة إطلاق
+mode-primary = أساسي
+mode-charged = مشحون
+mode-zoomed = مع التكبير
+mode-unzoomed = دون تكبير
+mode-grenade = قنبلة
+mode-bullets = رصاص
+mode-single = مفرد
+mode-double = مزدوج
+mode-rapid = سريع
+demo-events = { $count ->
+    [zero] لا أحداث
+    [one] حدث واحد
+    [two] حدثان
+    [few] { $count } أحداث
+    [many] { $count } حدثًا
+   *[other] { $count } حدث
+}
+
+column-date = التاريخ
+column-score = النتيجة
+filter-from = من
+filter-to = إلى
+date-from-name = التاريخ مأخوذ من اسم الملف
+date-from-modified = تاريخ آخر تعديل للملف، وقد يتغير عند النسخ أو التنزيل
+timeline-best-action = أفضل إثارة
+timeline-windows = لحظات الإثارة
+timeline-window = رقم { $rank } { NUMBER($score, minimumFractionDigits: 2) } · { $start }–{ $end } · { $sides }
+demo-final-score = النتيجة النهائية: { $score }

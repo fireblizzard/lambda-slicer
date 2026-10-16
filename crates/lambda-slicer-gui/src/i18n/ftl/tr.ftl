@@ -138,3 +138,55 @@ io-permission-denied = Erişim reddedildi.
 io-unexpected-end = Dosya beklenmedik şekilde bitti.
 protocol-unsupported = { $demo }/{ $network } demo protokolü desteklenmiyor, yalnızca 5/48.
 protocol-unsupported-network = Sunucu desteklenmeyen { $network } ağ protokolüne geçti.
+
+## Demo görünümü
+
+demo-close = Kapat
+demo-loading = { $name } analiz ediliyor…
+timeline-fit = Sığdır
+show-shots = Atışlar
+show-actions = Diğer eylemler
+show-kills = Öldürmeler
+show-switches = Silah değişimleri
+lane-unknown = Bilinmeyen oyuncu
+lane-recorder = { $name } (kaydeden)
+column-time = Zaman
+column-player = Oyuncu
+column-weapon = Silah
+column-event = Olay
+event-kill = { $victim } öldürüldü
+event-switch = Silah değişimi
+action-swing = Vuruş
+action-fire = Atış
+action-launch = Fırlatma
+action-charge-activity = Şarj
+action-charge-stop = Şarj sonu
+action-beam-start = Işın başlangıcı
+action-beam-sustain = Işın
+action-beam-stop = Işın sonu
+action-placement-attempt = Yerleştirme denemesi
+action-release-attempt = Bırakma denemesi
+mode-primary = birincil
+mode-charged = şarjlı
+mode-zoomed = dürbünlü
+mode-unzoomed = dürbünsüz
+mode-grenade = el bombası
+mode-bullets = mermi
+mode-single = tekli
+mode-double = çift
+mode-rapid = seri
+demo-events = { $count ->
+    [one] { $count } olay
+   *[other] { $count } olay
+}
+
+column-date = Tarih
+column-score = Skor
+filter-from = Başlangıç
+filter-to = Bitiş
+date-from-name = Dosya adından alınan tarih
+date-from-modified = Dosyanın son değiştirilme tarihi; kopyalama ya da indirme bunu değiştirebilir
+timeline-best-action = En iyi aksiyon
+timeline-windows = Aksiyon anları
+timeline-window = { $rank }. { NUMBER($score, minimumFractionDigits: 2) } · { $start }–{ $end } · { $sides }
+demo-final-score = Son skor: { $score }

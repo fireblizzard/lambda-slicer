@@ -279,3 +279,64 @@ fn a_new_cache_opened_at_once_is_built_once() {
     });
     assert_eq!(Cache::open(&path).unwrap().stats().unwrap().files, 0);
 }
+
+#[test]
+fn dates_come_from_names_and_filter_by_range() {
+    use lambda_slicer_core::library::cache::Sort;
+
+    let mut c = Cache::in_memory().unwrap();
+    for name in [
+        "20190815_210848_scary.dem",
+        "20230909_224143_stalkyard.dem",
+        "plain.dem",
+    ] {
+        c.store(&Entry {
+            path: Path::new(name),
+            size: 1,
+            mtime_ns: Some(1_600_000_000_000_000_000),
+            file_identity: None,
+            quick_hash: None,
+            full_hash: None,
+            header: None,
+            report: None,
+            error: None,
+        })
+        .unwrap();
+    }
+    let rows = c
+        .query(&FileQuery {
+            sort: Sort::Date,
+            limit: 10,
+            ..Default::default()
+        })
+        .unwrap();
+    let dated: Vec<(&str, Option<&str>, Option<&str>)> = rows
+        .iter()
+        .map(|r| {
+            (
+                r.path.as_str(),
+                r.recorded_at.as_deref(),
+                r.date_source.as_deref(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        dated[0],
+        (
+            "20190815_210848_scary.dem",
+            Some("2019-08-15 21:08:48"),
+            Some("file_name")
+        )
+    );
+    assert_eq!(dated[1].2, Some("modified"));
+
+    let range = FileQuery {
+        from_date: Some("2019-01-01".into()),
+        to_date: Some("2019-12-31".into()),
+        limit: 10,
+        ..Default::default()
+    };
+    let rows = c.query(&range).unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].path, "20190815_210848_scary.dem");
+}

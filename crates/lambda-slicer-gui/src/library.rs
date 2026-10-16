@@ -17,9 +17,77 @@ use lambda_slicer_core::library::cache::{Cache, FileQuery, FileRow, Sort};
 use lambda_slicer_core::message::{Coded, Message};
 use lambda_slicer_core::timeline::time::DemoTime;
 
-use crate::i18n::Catalog;
+use crate::i18n::{Catalog, DateOrder, Ymd};
 use crate::layout;
 use crate::text::{self, Look};
+
+/// A date bound with a checkbox to use it, its fields in the locale's order
+fn date_filter(
+    ui: &mut Ui,
+    catalog: &Catalog,
+    label: &WidgetText,
+    value: &mut Option<Ymd>,
+    salt: &str,
+) {
+    let mut on = value.is_some();
+    if ui.checkbox(&mut on, label.clone()).changed() {
+        *value = on.then(|| {
+            let today = chrono::Local::now().date_naive();
+            use chrono::Datelike;
+            Ymd {
+                year: today.year(),
+                month: today.month(),
+                day: today.day(),
+            }
+        });
+    }
+    let Some(d) = value else {
+        return;
+    };
+    ui.push_id(salt, |ui| {
+        let year = |ui: &mut Ui, d: &mut Ymd| {
+            ui.add(
+                egui::DragValue::new(&mut d.year)
+                    .range(1998..=2100)
+                    .speed(0.1),
+            );
+        };
+        let month = |ui: &mut Ui, d: &mut Ymd| {
+            ui.add(egui::DragValue::new(&mut d.month).range(1..=12).speed(0.1));
+        };
+        let day = |ui: &mut Ui, d: &mut Ymd| {
+            let last = d.month_days();
+            ui.add(egui::DragValue::new(&mut d.day).range(1..=last).speed(0.1));
+        };
+        let sep = |ui: &mut Ui, s: char| {
+            ui.label(s.to_string());
+        };
+        match catalog.locale.date_order() {
+            DateOrder::DayMonthYear(s) => {
+                day(ui, d);
+                sep(ui, s);
+                month(ui, d);
+                sep(ui, s);
+                year(ui, d);
+            }
+            DateOrder::MonthDayYear(s) => {
+                month(ui, d);
+                sep(ui, s);
+                day(ui, d);
+                sep(ui, s);
+                year(ui, d);
+            }
+            DateOrder::YearMonthDay(s) => {
+                year(ui, d);
+                sep(ui, s);
+                month(ui, d);
+                sep(ui, s);
+                day(ui, d);
+            }
+        }
+        d.day = d.day.min(d.month_days());
+    });
+}
 
 /// A number typed with either a point or a comma before the decimals
 fn parse_number(text: &str) -> Option<f64> {
@@ -72,14 +140,19 @@ pub struct Filters {
     pub weapon: Option<Weapon>,
     pub min_minutes: f32,
     pub spectating: Spectating,
+    /// Recording date bounds, inclusive
+    pub from: Option<Ymd>,
+    pub to: Option<Ymd>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Col {
     Status,
     Name,
+    Date,
     Map,
     Duration,
+    Score,
     Gauss,
     Kills,
     Action,
@@ -87,23 +160,43 @@ enum Col {
 }
 
 impl Col {
-    const ALL: [Col; 8] = [
+    const ALL: [Col; 10] = [
         Col::Status,
         Col::Name,
+        Col::Date,
         Col::Map,
         Col::Duration,
+        Col::Score,
         Col::Gauss,
         Col::Kills,
         Col::Action,
         Col::Spectating,
     ];
 
+    /// The name kept in settings
+    fn key(self) -> &'static str {
+        match self {
+            Col::Status => "status",
+            Col::Name => "name",
+            Col::Date => "date",
+            Col::Map => "map",
+            Col::Duration => "duration",
+            Col::Score => "score",
+            Col::Gauss => "gauss",
+            Col::Kills => "kills",
+            Col::Action => "action",
+            Col::Spectating => "spectating",
+        }
+    }
+
     fn title(self) -> &'static str {
         match self {
             Col::Status => "column-status",
             Col::Name => "column-name",
+            Col::Date => "column-date",
             Col::Map => "column-map",
             Col::Duration => "column-duration",
+            Col::Score => "column-score",
             Col::Gauss => "column-gauss",
             Col::Kills => "column-kills",
             Col::Action => "column-action",
@@ -113,8 +206,9 @@ impl Col {
 
     fn sort(self) -> Option<Sort> {
         match self {
-            Col::Status => None,
+            Col::Status | Col::Score => None,
             Col::Name => Some(Sort::Path),
+            Col::Date => Some(Sort::Date),
             Col::Map => Some(Sort::Map),
             Col::Duration => Some(Sort::Duration),
             Col::Gauss => Some(Sort::Gauss),
@@ -128,10 +222,20 @@ impl Col {
         match self {
             Col::Status => Column::initial(150.).at_least(60.),
             Col::Name => Column::remainder().at_least(160.),
+            Col::Date => Column::initial(95.).at_least(70.),
             Col::Map => Column::initial(120.).at_least(60.),
             Col::Duration => Column::initial(90.).at_least(70.),
+            Col::Score => Column::initial(110.).at_least(60.),
             _ => Column::initial(80.).at_least(50.),
         }
+    }
+
+    /// Columns kept beside an open demo
+    fn compact(self) -> bool {
+        matches!(
+            self,
+            Col::Name | Col::Date | Col::Map | Col::Duration | Col::Score | Col::Gauss
+        )
     }
 }
 
@@ -148,11 +252,16 @@ pub struct LibraryView {
     last_refresh: Instant,
     pub selected: Option<FileRow>,
     error: Option<Message>,
+    /// Column keys left out, and whether that changed this frame
+    pub hidden: Vec<String>,
+    pub columns_changed: bool,
 }
 
 impl LibraryView {
-    pub fn new(cache_path: PathBuf) -> Self {
+    pub fn new(cache_path: PathBuf, hidden: Vec<String>) -> Self {
         Self {
+            hidden,
+            columns_changed: false,
             cache_path,
             cache: None,
             filters: Filters::default(),
@@ -165,6 +274,19 @@ impl LibraryView {
             last_refresh: Instant::now() - REFRESH,
             selected: None,
             error: None,
+        }
+    }
+
+    /// Select the cached file at `path`, as if its row were clicked
+    pub fn select_path(&mut self, path: &Path) {
+        let wanted = path.display().to_string();
+        let query = FileQuery {
+            text: Some(wanted.clone()),
+            limit: 50,
+            ..Default::default()
+        };
+        if let Some(Ok(rows)) = self.cache().map(|c| c.query(&query)) {
+            self.selected = rows.into_iter().find(|r| r.path == wanted);
         }
     }
 
@@ -184,6 +306,8 @@ impl LibraryView {
             min_duration: (f.min_minutes > 0.).then_some(f.min_minutes * 60.),
             min_spectating: (f.spectating == Spectating::Mostly).then_some(0.5000001),
             max_spectating: (f.spectating == Spectating::Playing).then_some(0.5),
+            from_date: f.from.map(Ymd::iso),
+            to_date: f.to.map(Ymd::iso),
             sort: self.sort,
             descending: self.descending,
             limit: PAGE,
@@ -300,6 +424,15 @@ impl LibraryView {
                     }
                 });
 
+            date_filter(
+                ui,
+                catalog,
+                &t("filter-from"),
+                &mut self.filters.from,
+                "from",
+            );
+            date_filter(ui, catalog, &t("filter-to"), &mut self.filters.to, "to");
+
             if self.filters != Filters::default() && ui.button(t("filter-clear")).clicked() {
                 self.filters = Filters::default();
             }
@@ -335,7 +468,9 @@ impl LibraryView {
         ui.add(egui::Label::new(w).selectable(false).truncate())
     }
 
-    pub fn ui(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool) {
+    /// The list with its filters. `compact` keeps the columns that fit
+    /// beside an open demo
+    pub fn ui(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool, compact: bool) {
         self.filters_ui(ui, catalog, rtl);
         self.refresh();
         ui.add_space(4.);
@@ -362,7 +497,11 @@ impl LibraryView {
         }
 
         // Columns run right to left in a right-to-left interface
-        let mut cols = Col::ALL.to_vec();
+        let mut cols: Vec<Col> = Col::ALL
+            .into_iter()
+            .filter(|c| *c == Col::Name || !self.hidden.iter().any(|h| h == c.key()))
+            .filter(|c| !compact || c.compact())
+            .collect();
         if rtl {
             cols.reverse();
         }
@@ -396,6 +535,26 @@ impl LibraryView {
                         if r.clicked() {
                             sort_by = c.sort();
                         }
+                        // Right-click any heading to choose the columns
+                        r.context_menu(|ui| {
+                            for col in Col::ALL.into_iter().filter(|c| *c != Col::Name) {
+                                let mut shown = !self.hidden.iter().any(|h| h == col.key());
+                                let label = text::widget_text(
+                                    &ctx,
+                                    &catalog.text(col.title()),
+                                    rtl,
+                                    None,
+                                    Look::Plain,
+                                );
+                                if ui.checkbox(&mut shown, label).changed() {
+                                    self.hidden.retain(|h| h != col.key());
+                                    if !shown {
+                                        self.hidden.push(col.key().to_string());
+                                    }
+                                    self.columns_changed = true;
+                                }
+                            }
+                        });
                     });
                 }
             })
@@ -430,6 +589,37 @@ impl LibraryView {
                             Col::Map => {
                                 let map = file.map.as_deref().unwrap_or("");
                                 Self::cell(ui, &ctx, map, text::starts_rtl(map), None);
+                            }
+                            Col::Date => {
+                                if let Some(d) = file.recorded_at.as_deref().and_then(Ymd::parse) {
+                                    let tip = match file.date_source.as_deref() {
+                                        Some("file_name") => catalog.text("date-from-name"),
+                                        _ => catalog.text("date-from-modified"),
+                                    };
+                                    let time = file
+                                        .recorded_at
+                                        .as_deref()
+                                        .and_then(|t| t.get(11..))
+                                        .unwrap_or("");
+                                    let tip = format!("{} {time}\n{tip}", catalog.date(d));
+                                    Self::cell(ui, &ctx, &catalog.date(d), false, None)
+                                        .on_hover_text(text::widget_text(
+                                            &ctx,
+                                            &tip,
+                                            rtl,
+                                            None,
+                                            Look::Plain,
+                                        ));
+                                }
+                            }
+                            Col::Score => {
+                                Self::cell(
+                                    ui,
+                                    &ctx,
+                                    file.score.as_deref().unwrap_or(""),
+                                    false,
+                                    None,
+                                );
                             }
                             Col::Duration => {
                                 let d = file

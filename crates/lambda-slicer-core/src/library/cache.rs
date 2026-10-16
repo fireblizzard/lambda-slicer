@@ -14,13 +14,14 @@ use rusqlite::types::ToSql;
 use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};
 use serde::Serialize;
 
+use super::date::recorded;
 use crate::analysis::weapons::{Actor, PROFILE};
 use crate::analysis::{ANALYSIS_SCHEMA, AnalysisReport};
 use crate::message::Message;
 use crate::state::{DECODE_REPORT_SCHEMA, DecodeStatus};
 
 /// Layout of the tables below. A different value rebuilds the cache
-pub const CACHE_SCHEMA: i64 = 2;
+pub const CACHE_SCHEMA: i64 = 3;
 
 #[derive(Debug, thiserror::Error)]
 pub enum CacheError {
@@ -120,9 +121,14 @@ CREATE TABLE files(
     kills INTEGER,
     best_window REAL,
     coverage_json TEXT,
+    recorded_at TEXT,
+    date_source TEXT,
+    score TEXT,
+    score_json TEXT,
     scanned_at INTEGER NOT NULL
 );
 CREATE INDEX files_identity ON files(file_identity);
+CREATE INDEX files_recorded ON files(recorded_at);
 CREATE TABLE players(
     file_id INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
     segment INTEGER NOT NULL,
@@ -295,6 +301,7 @@ pub enum Sort {
     Spectating,
     Scanned,
     Gauss,
+    Date,
 }
 
 impl Sort {
@@ -308,6 +315,7 @@ impl Sort {
             Sort::Spectating => "f.spectator_fraction",
             Sort::Scanned => "f.scanned_at",
             Sort::Gauss => "gauss",
+            Sort::Date => "f.recorded_at",
         }
     }
 }
@@ -322,6 +330,9 @@ pub struct FileQuery {
     pub player: Option<String>,
     /// Shortest duration in seconds
     pub min_duration: Option<f32>,
+    /// Recording dates as `YYYY-MM-DD`, inclusive
+    pub from_date: Option<String>,
+    pub to_date: Option<String>,
     /// Spectating fraction bounds, inclusive
     pub min_spectating: Option<f64>,
     pub max_spectating: Option<f64>,
@@ -370,6 +381,12 @@ pub struct FileRow {
     pub duration: Option<f32>,
     pub recording_kind: Option<String>,
     pub recorder: Option<String>,
+    /// `YYYY-MM-DD HH:MM:SS` local time, and `file_name` or `modified` as
+    /// its source
+    pub recorded_at: Option<String>,
+    pub date_source: Option<String>,
+    /// The final score, such as `88 – 74`
+    pub score: Option<String>,
     pub spectator_fraction: Option<f64>,
     pub shots: Option<i64>,
     /// Gauss shots, the weapon the library highlights
@@ -502,6 +519,7 @@ impl Cache {
                 .filter(|o| o.shot && !matches!(o.actor, Actor::Player { .. }))
                 .count() as i64
         });
+        let recorded = recorded(e.path, e.mtime_ns);
         let scanned_at = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |d| d.as_secs() as i64);
@@ -513,9 +531,10 @@ impl Cache {
                 full_hash, version, status, error, error_code, error_args, map, game_dir,
                 demo_protocol, network_protocol, duration, recording_kind, max_clients, recorder,
                 playback, spectator_fraction, shots, unknown_shots, kills, best_window,
-                coverage_json, scanned_at)
+                coverage_json, recorded_at, date_source, score, score_json, scanned_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16,
-                ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28)",
+                ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30, ?31,
+                ?32)",
             params![
                 display,
                 native_bytes(e.path),
@@ -544,6 +563,10 @@ impl Cache {
                 r.map(|r| r.kills.len() as i64),
                 r.and_then(|r| r.action_windows.first().map(|w| w.score)),
                 r.map(|r| serde_json::to_string(&r.coverage).unwrap_or_default()),
+                recorded.as_ref().map(|r| r.0.clone()),
+                recorded.as_ref().map(|r| r.1.name()),
+                r.map(|r| r.scoreboard.summary(3)).filter(|s| !s.is_empty()),
+                r.map(|r| serde_json::to_string(&r.scoreboard).unwrap_or_default()),
                 scanned_at,
             ],
         )?;
@@ -707,6 +730,14 @@ impl Cache {
             args.push(Box::new(d));
             c.push(format!("f.duration >= ?{}", args.len()));
         }
+        if let Some(d) = &q.from_date {
+            args.push(Box::new(d.clone()));
+            c.push(format!("substr(f.recorded_at, 1, 10) >= ?{}", args.len()));
+        }
+        if let Some(d) = &q.to_date {
+            args.push(Box::new(d.clone()));
+            c.push(format!("substr(f.recorded_at, 1, 10) <= ?{}", args.len()));
+        }
         if let Some(s) = q.min_spectating {
             args.push(Box::new(s));
             c.push(format!("f.spectator_fraction >= ?{}", args.len()));
@@ -761,7 +792,8 @@ impl Cache {
                 f.spectator_fraction, f.kills, f.best_window, f.error_code, f.error_args, f.error,
                 f.recorder, f.shots,
                 (SELECT w.shots FROM weapons w WHERE w.file_id = f.id AND w.weapon = 'gauss')
-                    AS gauss
+                    AS gauss,
+                f.recorded_at, f.date_source, f.score
              FROM files f WHERE {conditions}
              ORDER BY {} {direction} NULLS LAST, f.path
              LIMIT ?{limit} OFFSET ?{offset}",
@@ -778,6 +810,9 @@ impl Cache {
                 duration: r.get(4)?,
                 recording_kind: r.get(5)?,
                 recorder: r.get(12)?,
+                recorded_at: r.get(15)?,
+                date_source: r.get(16)?,
+                score: r.get(17)?,
                 spectator_fraction: r.get(6)?,
                 shots: r.get(13)?,
                 gauss: r.get(14)?,

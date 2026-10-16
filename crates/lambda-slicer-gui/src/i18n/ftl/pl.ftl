@@ -146,3 +146,57 @@ io-permission-denied = Odmowa dostępu.
 io-unexpected-end = Plik nieoczekiwanie się skończył.
 protocol-unsupported = Protokół dema { $demo }/{ $network } nie jest obsługiwany, tylko 5/48.
 protocol-unsupported-network = Serwer przełączył się na nieobsługiwany protokół sieciowy { $network }.
+
+## Widok dema
+
+demo-close = Zamknij
+demo-loading = Analiza { $name }…
+timeline-fit = Dopasuj
+show-shots = Strzały
+show-actions = Inne działania
+show-kills = Zabójstwa
+show-switches = Zmiany broni
+lane-unknown = Nieznany gracz
+lane-recorder = { $name } (nagrywający)
+column-time = Czas
+column-player = Gracz
+column-weapon = Broń
+column-event = Zdarzenie
+event-kill = Zabił { $victim }
+event-switch = Zmiana broni
+action-swing = Uderzenie
+action-fire = Strzał
+action-launch = Wystrzelenie
+action-charge-activity = Ładowanie
+action-charge-stop = Koniec ładowania
+action-beam-start = Początek wiązki
+action-beam-sustain = Wiązka
+action-beam-stop = Koniec wiązki
+action-placement-attempt = Próba umieszczenia
+action-release-attempt = Próba wypuszczenia
+mode-primary = podstawowy
+mode-charged = naładowany
+mode-zoomed = z lunetą
+mode-unzoomed = bez lunety
+mode-grenade = granat
+mode-bullets = pociski
+mode-single = pojedynczy
+mode-double = podwójny
+mode-rapid = szybki
+demo-events = { $count ->
+    [one] { $count } zdarzenie
+    [few] { $count } zdarzenia
+    [many] { $count } zdarzeń
+   *[other] { $count } zdarzenia
+}
+
+column-date = Data
+column-score = Wynik
+filter-from = Od
+filter-to = Do
+date-from-name = Data z nazwy pliku
+date-from-modified = Data ostatniej modyfikacji pliku, którą kopiowanie lub pobieranie może zmienić
+timeline-best-action = Najlepsza akcja
+timeline-windows = Momenty akcji
+timeline-window = Nr { $rank } { NUMBER($score, minimumFractionDigits: 2) } · { $start }–{ $end } · { $sides }
+demo-final-score = Wynik końcowy: { $score }

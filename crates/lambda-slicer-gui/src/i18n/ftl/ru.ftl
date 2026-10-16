@@ -146,3 +146,57 @@ io-permission-denied = Доступ запрещён.
 io-unexpected-end = Файл неожиданно закончился.
 protocol-unsupported = Протокол демо { $demo }/{ $network } не поддерживается, только 5/48.
 protocol-unsupported-network = Сервер перешёл на сетевой протокол { $network }, который не поддерживается.
+
+## Просмотр демо
+
+demo-close = Закрыть
+demo-loading = Разбор { $name }…
+timeline-fit = Вместить
+show-shots = Выстрелы
+show-actions = Другие действия
+show-kills = Убийства
+show-switches = Смена оружия
+lane-unknown = Неизвестный игрок
+lane-recorder = { $name } (записывал)
+column-time = Время
+column-player = Игрок
+column-weapon = Оружие
+column-event = Событие
+event-kill = Убил { $victim }
+event-switch = Смена оружия
+action-swing = Удар
+action-fire = Выстрел
+action-launch = Запуск
+action-charge-activity = Зарядка
+action-charge-stop = Конец зарядки
+action-beam-start = Начало луча
+action-beam-sustain = Луч
+action-beam-stop = Конец луча
+action-placement-attempt = Попытка установки
+action-release-attempt = Попытка выпуска
+mode-primary = основной
+mode-charged = заряженный
+mode-zoomed = с прицелом
+mode-unzoomed = без прицела
+mode-grenade = граната
+mode-bullets = пули
+mode-single = одиночный
+mode-double = двойной
+mode-rapid = быстрый
+demo-events = { $count ->
+    [one] { $count } событие
+    [few] { $count } события
+    [many] { $count } событий
+   *[other] { $count } события
+}
+
+column-date = Дата
+column-score = Счёт
+filter-from = С
+filter-to = По
+date-from-name = Дата из имени файла
+date-from-modified = Дата последнего изменения файла, она может измениться при копировании или скачивании
+timeline-best-action = Лучший экшен
+timeline-windows = Моменты экшена
+timeline-window = №{ $rank } { NUMBER($score, minimumFractionDigits: 2) } · { $start }–{ $end } · { $sides }
+demo-final-score = Итоговый счёт: { $score }

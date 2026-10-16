@@ -18,6 +18,8 @@ pub struct Settings {
     pub folders: Vec<PathBuf>,
     /// None uses the platform's cache directory
     pub cache: Option<PathBuf>,
+    /// Library columns left out, gauss shots by default
+    pub hidden_columns: Vec<String>,
 }
 
 impl Default for Settings {
@@ -27,6 +29,7 @@ impl Default for Settings {
             workers: 1,
             folders: Vec::new(),
             cache: None,
+            hidden_columns: vec!["gauss".into()],
         }
     }
 }
@@ -88,6 +91,7 @@ mod tests {
             workers: 3,
             folders: vec![PathBuf::from("F:/demos")],
             cache: None,
+            hidden_columns: Vec::new(),
         };
         s.save_to(&path).unwrap();
         assert_eq!(Settings::load_from(&path), s);

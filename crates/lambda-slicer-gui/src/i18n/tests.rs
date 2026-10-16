@@ -257,11 +257,21 @@ fn english_has_every_message_the_gui_names() {
         "kind-singleplayer",
         "kind-hltv",
         "kind-unknown",
+        "mode-primary",
+        "mode-charged",
+        "mode-zoomed",
+        "mode-unzoomed",
+        "mode-grenade",
+        "mode-bullets",
+        "mode-single",
+        "mode-double",
+        "mode-rapid",
     ];
     let sources = [
         include_str!("../app.rs"),
         include_str!("../library.rs"),
         include_str!("../jobs.rs"),
+        include_str!("../demo.rs"),
     ];
     let mut named: Vec<String> = built.iter().map(|s| s.to_string()).collect();
     for source in sources {

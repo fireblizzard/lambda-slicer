@@ -177,6 +177,12 @@ enum Command {
         /// At least this many seconds long
         #[arg(long)]
         min_duration: Option<f32>,
+        /// Recorded on or after this date, YYYY-MM-DD
+        #[arg(long)]
+        from: Option<String>,
+        /// Recorded on or before this date, YYYY-MM-DD
+        #[arg(long)]
+        to: Option<String>,
         /// Map name containing this text
         #[arg(long)]
         map: Option<String>,
@@ -209,7 +215,7 @@ enum Command {
         #[arg(long)]
         min_action: Option<f64>,
         /// List the best action windows across the library instead of files
-        #[arg(long, conflicts_with_all = ["text", "min_duration", "map", "player", "min_spectating", "max_spectating",
+        #[arg(long, conflicts_with_all = ["text", "min_duration", "from", "to", "map", "player", "min_spectating", "max_spectating",
             "weapon_used", "kill_weapon", "victim_airborne", "killer_airborne", "min_speed",
             "min_action"])]
         windows: bool,
@@ -553,6 +559,8 @@ fn run() -> Result<ExitCode> {
             cache,
             text,
             min_duration,
+            from,
+            to,
             map,
             player,
             min_spectating,
@@ -596,6 +604,8 @@ fn run() -> Result<ExitCode> {
                 min_action,
                 text,
                 min_duration,
+                from_date: from,
+                to_date: to,
                 limit,
                 ..Default::default()
             };
