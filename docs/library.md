@@ -73,9 +73,11 @@ Otherwise the file's modification time in this machine's local time is used, usu
 recording ended. Copying usually keeps it, but downloads and archive tools often reset it, so the
 cache keeps the source with the date and the app says which one a date came from.
 
-**Final score.** The scoreboard as the recording ends, from the last `ScoreInfo` of each player
-still present and from `TeamScore`, which overrides a team's sum of player frags. Players with
-neither a frag nor a death, such as spectators, are left out. With two or more teams the sides
+**Final score.** The scoreboard at the last session's last kill, from the `ScoreInfo` and
+`TeamInfo` changes up to then and from `TeamScore`, which overrides a team's sum of player frags.
+The last kill decides it because players often leave between the end of a game and the end of
+the recording. Players who left before it, and players with neither a frag nor a death such as
+spectators, are left out. With two or more teams the sides
 are teams, otherwise players. The library shows the best three, as `88 – 74` or `50 – 44 – 38 – …`,
 with an en dash so a negative score stays readable.
 

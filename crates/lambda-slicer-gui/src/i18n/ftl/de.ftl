@@ -50,7 +50,7 @@ column-map = Map
 column-duration = Länge
 column-gauss = Gauss
 column-kills = Abschüsse
-column-action = Action
+column-action = Intensität
 column-spectating = Zuschauer
 
 status-complete = Analysiert
@@ -73,7 +73,7 @@ details-kills = { $count ->
     [one] { $count } Abschuss
    *[other] { $count } Abschüsse
 }
-details-action = Bester Action-Wert { NUMBER($score, minimumFractionDigits: 2) }
+details-action = Höchste Intensität { NUMBER($score, minimumFractionDigits: 2) }
 
 ## Scannen
 
@@ -186,7 +186,12 @@ filter-from = Von
 filter-to = Bis
 date-from-name = Datum aus dem Dateinamen
 date-from-modified = Datum der letzten Änderung der Datei, das sich beim Kopieren oder Herunterladen ändern kann
-timeline-best-action = Beste Action
-timeline-windows = Action-Phasen
+timeline-best-action = Goldene Minute
+timeline-windows = Intensivste Momente
 timeline-window = Nr. { $rank } { NUMBER($score, minimumFractionDigits: 2) } · { $start }–{ $end } · { $sides }
-demo-final-score = Endstand: { $score }
+
+scores-final = Endstand beim letzten Abschuss { $time }
+scores-at = Stand bei { $time }
+scores-show-final = Endstand zeigen
+scores-frags = Frags
+scores-deaths = Tode

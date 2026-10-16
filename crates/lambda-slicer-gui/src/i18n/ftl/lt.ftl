@@ -52,7 +52,7 @@ column-map = Žemėlapis
 column-duration = Trukmė
 column-gauss = Gausas
 column-kills = Nužudymai
-column-action = Veiksmas
+column-action = Intensyvumas
 column-spectating = Stebėjimas
 
 status-complete = Išanalizuotas
@@ -79,7 +79,7 @@ details-kills = { $count ->
     [many] { $count } nužudymo
    *[other] { $count } nužudymų
 }
-details-action = Geriausias veiksmo balas { NUMBER($score, minimumFractionDigits: 2) }
+details-action = Didžiausias intensyvumas { NUMBER($score, minimumFractionDigits: 2) }
 
 ## Nuskaitymas
 
@@ -196,7 +196,12 @@ filter-from = Nuo
 filter-to = Iki
 date-from-name = Data iš failo pavadinimo
 date-from-modified = Paskutinio failo pakeitimo data, kurią kopijavimas ar atsisiuntimas gali pakeisti
-timeline-best-action = Geriausias veiksmas
-timeline-windows = Veiksmo momentai
+timeline-best-action = Auksinė minutė
+timeline-windows = Intensyviausios akimirkos
 timeline-window = Nr. { $rank } { NUMBER($score, minimumFractionDigits: 2) } · { $start }–{ $end } · { $sides }
-demo-final-score = Galutinis rezultatas: { $score }
+
+scores-final = Galutiniai rezultatai, ties paskutiniu nužudymu { $time }
+scores-at = Rezultatai ties { $time }
+scores-show-final = Rodyti galutinius rezultatus
+scores-frags = Fragai
+scores-deaths = Mirtys

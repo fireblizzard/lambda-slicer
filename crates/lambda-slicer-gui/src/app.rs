@@ -494,7 +494,9 @@ impl App {
         // A demo still being analysed is waited for
         let loading = self.demo.as_ref().is_some_and(DemoView::loading);
         if shot.frames > 0 || loading {
-            shot.frames = shot.frames.saturating_sub(1);
+            if !loading {
+                shot.frames -= 1;
+            }
             ctx.request_repaint();
             return;
         }

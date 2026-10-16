@@ -8,7 +8,7 @@
 //! bins at wide zoom. The full report is dropped once this is built
 
 use lambda_slicer_core::analysis::AnalysisReport;
-use lambda_slicer_core::analysis::context::{Coverage, KillCause, Scoreboard};
+use lambda_slicer_core::analysis::context::{Coverage, KillCause, ScoreUpdate, TeamScoreUpdate};
 use lambda_slicer_core::analysis::weapons::{Action, Actor, IntervalEnd, Weapon};
 use lambda_slicer_core::message::Message;
 use lambda_slicer_core::state::PlayerIdentity;
@@ -99,6 +99,8 @@ pub enum EventKind {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Event {
+    /// The session, since times restart with each one
+    pub segment: u32,
     pub time: f32,
     pub lane: usize,
     /// The actor's name at the time
@@ -128,7 +130,9 @@ pub struct Model {
     pub decode_error: Option<Message>,
     /// The best action windows, highest score first
     pub windows: Vec<Window>,
-    pub scoreboard: Scoreboard,
+    /// Score and team changes, for the scores at any moment
+    pub score_updates: Vec<ScoreUpdate>,
+    pub team_score_updates: Vec<TeamScoreUpdate>,
 }
 
 fn key_of(p: &PlayerIdentity) -> LaneKey {
@@ -220,6 +224,7 @@ impl Model {
                 kind,
                 Some(o.weapon),
                 Event {
+                    segment: o.segment,
                     time: o.time,
                     lane,
                     actor,
@@ -257,6 +262,7 @@ impl Model {
             };
             let victim = k.victim.as_ref().map(|p| p.name.clone());
             let event = Event {
+                segment: k.segment,
                 time: k.time,
                 lane,
                 actor: killer.map(|p| p.name.clone()),
@@ -291,6 +297,7 @@ impl Model {
                     MarkKind::Switch,
                     s.weapon,
                     Event {
+                        segment: s.segment,
                         time: s.time,
                         lane,
                         actor: Some(rec.name.clone()),
@@ -358,7 +365,8 @@ impl Model {
                     sides: w.sides.clone(),
                 })
                 .collect(),
-            scoreboard: r.scoreboard.clone(),
+            score_updates: r.score_updates.clone(),
+            team_score_updates: r.team_score_updates.clone(),
         }
     }
 }

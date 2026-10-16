@@ -215,8 +215,8 @@ fn numbers_use_each_locale_separators() {
     assert_eq!(Catalog::new(Locale::Pl).number(12345., 0), "12\u{a0}345");
     assert_eq!(Catalog::new(Locale::En).number(-0.001, 1), "0.0");
     let score = |l| plain(Catalog::new(l).text_with("details-action", &[("score", 8.0603.into())]));
-    assert_eq!(score(Locale::En), "Best action score 8.06");
-    assert_eq!(score(Locale::De), "Bester Action-Wert 8,06");
+    assert_eq!(score(Locale::En), "Highest intensity 8.06");
+    assert_eq!(score(Locale::De), "Höchste Intensität 8,06");
 }
 
 #[test]

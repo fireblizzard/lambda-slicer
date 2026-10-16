@@ -52,7 +52,7 @@ column-map = Карта
 column-duration = Длина
 column-gauss = Гаусс
 column-kills = Убийства
-column-action = Экшен
+column-action = Накал
 column-spectating = Наблюдение
 
 status-complete = Разобрана
@@ -79,7 +79,7 @@ details-kills = { $count ->
     [many] { $count } убийств
    *[other] { $count } убийства
 }
-details-action = Лучшая оценка экшена { NUMBER($score, minimumFractionDigits: 2) }
+details-action = Наивысший накал { NUMBER($score, minimumFractionDigits: 2) }
 
 ## Сканирование
 
@@ -196,7 +196,12 @@ filter-from = С
 filter-to = По
 date-from-name = Дата из имени файла
 date-from-modified = Дата последнего изменения файла, она может измениться при копировании или скачивании
-timeline-best-action = Лучший экшен
-timeline-windows = Моменты экшена
+timeline-best-action = Золотая минута
+timeline-windows = Самые жаркие моменты
 timeline-window = №{ $rank } { NUMBER($score, minimumFractionDigits: 2) } · { $start }–{ $end } · { $sides }
-demo-final-score = Итоговый счёт: { $score }
+
+scores-final = Итоговый счёт на последнем убийстве { $time }
+scores-at = Счёт на { $time }
+scores-show-final = Показать итоговый счёт
+scores-frags = Фраги
+scores-deaths = Смерти

@@ -263,15 +263,43 @@ pub struct ScoreSide {
     pub deaths: i32,
 }
 
-/// The scoreboard at the end of the recording's last session, from the
-/// server's `ScoreInfo` and `TeamScore` messages
+/// The final score of the recording's last session, as the scores stood at
+/// its last kill. Players often leave between the end of a game and the end
+/// of the recording, and their frags still belong to the result
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
 pub struct Scoreboard {
     /// Whether sides are teams rather than players
     pub teams: bool,
-    /// Highest frags first. Players who left, and players with neither a
-    /// frag nor a death such as spectators, are left out
+    /// Highest frags first. Players who left before the last kill, and
+    /// players with neither a frag nor a death such as spectators, are left
+    /// out
     pub sides: Vec<ScoreSide>,
+}
+
+impl From<&Standing> for Scoreboard {
+    fn from(s: &Standing) -> Self {
+        Scoreboard {
+            teams: s.teams,
+            sides: s
+                .sides
+                .iter()
+                .map(|side| ScoreSide {
+                    name: side.name.clone(),
+                    frags: side.frags,
+                    deaths: side.deaths,
+                })
+                .collect(),
+        }
+    }
+}
+
+/// When the result was decided, the session and time of the last kill, or
+/// the end of the last session with scores when nobody was killed
+pub fn final_moment(kills: &[Kill], updates: &[ScoreUpdate]) -> (u32, f32) {
+    match kills.last() {
+        Some(k) => (k.segment, k.time),
+        None => (updates.last().map_or(0, |u| u.segment), f32::INFINITY),
+    }
 }
 
 impl Scoreboard {
@@ -291,6 +319,149 @@ impl Scoreboard {
     }
 }
 
+/// A player's frags, deaths or team as the server changed them
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct ScoreUpdate {
+    pub segment: u32,
+    pub time: f32,
+    pub player: PlayerIdentity,
+    /// Empty outside team play
+    pub team: String,
+    pub frags: i32,
+    pub deaths: i32,
+    /// The player left the server here, and no longer counts
+    pub left: bool,
+}
+
+/// A team's frags as `TeamScore` set them, overriding its players' sum
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct TeamScoreUpdate {
+    pub segment: u32,
+    pub time: f32,
+    /// Lowercase, as teams are matched without case
+    pub team: String,
+    pub frags: i32,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct PlayerScore {
+    pub name: String,
+    pub frags: i32,
+    pub deaths: i32,
+}
+
+/// A team, or a player outside team play, with its players
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct StandingSide {
+    pub name: String,
+    pub frags: i32,
+    pub deaths: i32,
+    /// Highest frags first
+    pub players: Vec<PlayerScore>,
+}
+
+/// The scores at one moment
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
+pub struct Standing {
+    pub teams: bool,
+    /// Highest frags first
+    pub sides: Vec<StandingSide>,
+}
+
+/// The scores as they stood at `time` in `segment`. Times restart with each
+/// session, and a recording's loading part has times of its own, so the
+/// session is given rather than guessed from the time. Players count once
+/// they score or die at any point of that session, so a player still on
+/// nothing early on is shown with zeros, and spectators who never score are
+/// left out. A player who left no longer counts, as on the game's own
+/// scoreboard
+pub fn standing_at(
+    updates: &[ScoreUpdate],
+    team_updates: &[TeamScoreUpdate],
+    segment: u32,
+    time: f32,
+) -> Standing {
+    let in_segment = || updates.iter().filter(|u| u.segment == segment);
+    let key = |u: &ScoreUpdate| (u.player.slot, u.player.incarnation);
+
+    let mut keys: Vec<(u8, u32)> = Vec::new();
+    for u in in_segment().filter(|u| u.frags != 0 || u.deaths != 0) {
+        if !keys.contains(&key(u)) {
+            keys.push(key(u));
+        }
+    }
+
+    // Each counted player as of `time`, or as first seen when not yet
+    let mut players: Vec<(String, String, i32, i32)> = keys
+        .iter()
+        .filter_map(|k| {
+            let mut mine = in_segment().filter(|u| key(u) == *k);
+            let first = mine.clone().next()?;
+            match mine.rfind(|u| u.time <= time) {
+                Some(u) if u.left => None,
+                Some(u) => Some((u.player.name.clone(), u.team.clone(), u.frags, u.deaths)),
+                None => Some((first.player.name.clone(), first.team.clone(), 0, 0)),
+            }
+        })
+        .collect();
+    players.sort_by(|a, b| b.2.cmp(&a.2).then(a.3.cmp(&b.3)));
+
+    let teams: Vec<String> = {
+        let mut t: Vec<String> = Vec::new();
+        for p in &players {
+            if !p.1.is_empty() && !t.iter().any(|x| x.eq_ignore_ascii_case(&p.1)) {
+                t.push(p.1.clone());
+            }
+        }
+        t
+    };
+    let score = |p: &(String, String, i32, i32)| PlayerScore {
+        name: p.0.clone(),
+        frags: p.2,
+        deaths: p.3,
+    };
+
+    let mut sides: Vec<StandingSide> = if teams.len() >= 2 {
+        teams
+            .iter()
+            .map(|team| {
+                let members: Vec<PlayerScore> = players
+                    .iter()
+                    .filter(|p| p.1.eq_ignore_ascii_case(team))
+                    .map(score)
+                    .collect();
+                let set = team_updates
+                    .iter()
+                    .filter(|u| u.segment == segment && u.time <= time)
+                    .rfind(|u| u.team == team.to_lowercase())
+                    .map(|u| u.frags);
+                StandingSide {
+                    name: team.clone(),
+                    frags: set.unwrap_or_else(|| members.iter().map(|m| m.frags).sum()),
+                    deaths: members.iter().map(|m| m.deaths).sum(),
+                    players: members,
+                }
+            })
+            .collect()
+    } else {
+        players
+            .iter()
+            .map(|p| StandingSide {
+                name: p.0.clone(),
+                frags: p.2,
+                deaths: p.3,
+                players: vec![score(p)],
+            })
+            .collect()
+    };
+    sides.sort_by(|a, b| b.frags.cmp(&a.frags).then(a.deaths.cmp(&b.deaths)));
+
+    Standing {
+        teams: teams.len() >= 2,
+        sides,
+    }
+}
+
 /// Follows kills and the recorder's weapon through the decode
 #[derive(Default)]
 pub struct Context {
@@ -301,63 +472,27 @@ pub struct Context {
     teams: std::collections::BTreeMap<u8, String>,
     /// Frags and deaths by player entity, from `ScoreInfo`
     scores: std::collections::BTreeMap<u8, (i32, i32)>,
-    /// Team frags from `TeamScore`, which override the players' sum
-    team_scores: std::collections::BTreeMap<String, i32>,
+    /// Every score and team change in order, for the scores at any moment
+    pub score_updates: Vec<ScoreUpdate>,
+    pub team_score_updates: Vec<TeamScoreUpdate>,
 }
 
 impl Context {
-    /// The scoreboard as the recording ends, counting players still present
-    pub fn scoreboard(&self, d: &Decoder) -> Scoreboard {
-        let mut players = Vec::new();
-        for (&entity, &(frags, deaths)) in &self.scores {
-            let Some(p) = d.player_for_entity(i64::from(entity)) else {
-                continue;
-            };
-            if frags == 0 && deaths == 0 {
-                continue;
-            }
-            let team = self.teams.get(&entity).cloned().unwrap_or_default();
-            players.push((p.name, team, frags, deaths));
-        }
-
-        let team_names: std::collections::BTreeSet<&str> = players
-            .iter()
-            .map(|p| p.1.as_str())
-            .filter(|t| !t.is_empty())
-            .collect();
-        let mut sides: Vec<ScoreSide> = if team_names.len() >= 2 {
-            team_names
-                .iter()
-                .map(|team| {
-                    let members = players.iter().filter(|p| p.1 == *team);
-                    let summed: i32 = members.clone().map(|p| p.2).sum();
-                    ScoreSide {
-                        name: (*team).to_string(),
-                        frags: self
-                            .team_scores
-                            .get(&team.to_lowercase())
-                            .copied()
-                            .unwrap_or(summed),
-                        deaths: members.map(|p| p.3).sum(),
-                    }
-                })
-                .collect()
-        } else {
-            players
-                .iter()
-                .map(|p| ScoreSide {
-                    name: p.0.clone(),
-                    frags: p.2,
-                    deaths: p.3,
-                })
-                .collect()
+    /// Log a player's current frags, deaths and team
+    fn log_score(&mut self, loc: &FrameLocation, d: &Decoder, entity: u8) {
+        let Some(player) = d.player_for_entity(i64::from(entity)) else {
+            return;
         };
-        sides.sort_by(|a, b| b.frags.cmp(&a.frags).then(a.deaths.cmp(&b.deaths)));
-
-        Scoreboard {
-            teams: team_names.len() >= 2,
-            sides,
-        }
+        let (frags, deaths) = self.scores.get(&entity).copied().unwrap_or_default();
+        self.score_updates.push(ScoreUpdate {
+            segment: d.segment,
+            time: loc.time(),
+            player,
+            team: self.teams.get(&entity).cloned().unwrap_or_default(),
+            frags,
+            deaths,
+            left: false,
+        });
     }
 
     pub fn observe(&mut self, loc: &FrameLocation, d: &Decoder, m: &ParsedMessage) {
@@ -365,7 +500,6 @@ impl Context {
         if let Message::ServerInfo(_) = &m.message {
             self.teams.clear();
             self.scores.clear();
-            self.team_scores.clear();
         }
 
         let Message::User { id, body } = &m.message else {
@@ -415,6 +549,7 @@ impl Context {
                     (body.first(), short(1), short(3))
                 {
                     self.scores.insert(player, (frags, deaths));
+                    self.log_score(loc, d, player);
                 }
             }
             "TeamScore" => {
@@ -422,7 +557,12 @@ impl Context {
                 let name = String::from_utf8_lossy(&body[..end]).into_owned();
                 if let Some(b) = body.get(end + 1..end + 3) {
                     let frags = i32::from(i16::from_le_bytes([b[0], b[1]]));
-                    self.team_scores.insert(name.to_lowercase(), frags);
+                    self.team_score_updates.push(TeamScoreUpdate {
+                        segment: d.segment,
+                        time: loc.time(),
+                        team: name.to_lowercase(),
+                        frags,
+                    });
                 }
             }
             "TeamInfo" => {
@@ -433,6 +573,9 @@ impl Context {
                 let end = rest.iter().position(|&b| b == 0).unwrap_or(rest.len());
                 self.teams
                     .insert(player, String::from_utf8_lossy(&rest[..end]).into_owned());
+                if self.scores.contains_key(&player) {
+                    self.log_score(loc, d, player);
+                }
             }
             "CurWeapon" => {
                 let (Some(&state), Some(&id), Some(&clip)) =
@@ -584,6 +727,84 @@ mod tests {
         d.hltv = true;
         let c = context.coverage(&d, 0, 10, 10., 0.);
         assert_eq!(c.kind, RecordingKind::Hltv);
+    }
+
+    fn update(time: f32, slot: u8, team: &str, frags: i32, deaths: i32) -> ScoreUpdate {
+        ScoreUpdate {
+            segment: 0,
+            time,
+            player: PlayerIdentity {
+                segment: 0,
+                slot,
+                user_id: u32::from(slot),
+                incarnation: 0,
+                name: format!("p{slot}"),
+            },
+            team: team.into(),
+            frags,
+            deaths,
+            left: false,
+        }
+    }
+
+    #[test]
+    fn standings_follow_the_moment() {
+        let updates = [
+            update(1., 0, "red", 0, 0),
+            update(1., 1, "blue", 0, 0),
+            update(1., 2, "", 0, 0),
+            update(5., 0, "red", 1, 0),
+            update(5., 1, "blue", 0, 1),
+            update(9., 1, "blue", 1, 1),
+            update(9., 0, "red", 1, 1),
+        ];
+        let at = |t| standing_at(&updates, &[], 0, t);
+        // Before anything, both players show with zeros and the spectator
+        // who never scores is left out
+        let start = at(2.);
+        assert!(start.teams);
+        assert_eq!(start.sides.len(), 2);
+        assert!(start.sides.iter().all(|s| s.frags == 0));
+        let mid = at(6.);
+        assert_eq!((mid.sides[0].name.as_str(), mid.sides[0].frags), ("red", 1));
+        assert_eq!(mid.sides[1].players[0].deaths, 1);
+        let end = at(100.);
+        assert_eq!(
+            end.sides.iter().map(|s| s.frags).collect::<Vec<_>>(),
+            [1, 1]
+        );
+
+        // A player who left drops out from then on
+        let mut gone = updates.to_vec();
+        gone.push(ScoreUpdate {
+            left: true,
+            ..update(20., 1, "blue", 1, 1)
+        });
+        assert_eq!(standing_at(&gone, &[], 0, 10.).sides.len(), 2);
+        let after = standing_at(&gone, &[], 0, 30.);
+        assert_eq!(after.sides.len(), 1);
+        assert!(!after.teams);
+
+        // TeamScore overrides the players' sum from its moment on
+        let set = [TeamScoreUpdate {
+            segment: 0,
+            time: 7.,
+            team: "blue".into(),
+            frags: 5,
+        }];
+        assert_eq!(standing_at(&updates, &set, 0, 6.).sides[0].name, "red");
+        assert_eq!(standing_at(&updates, &set, 0, 8.).sides[0].frags, 5);
+        // Another session has nothing to show
+        assert!(standing_at(&updates, &set, 3, 8.).sides.is_empty());
+    }
+
+    #[test]
+    fn players_are_the_sides_outside_team_play() {
+        let updates = [update(1., 0, "", 3, 1), update(1., 1, "", 5, 2)];
+        let s = standing_at(&updates, &[], 0, 2.);
+        assert!(!s.teams);
+        assert_eq!(s.sides[0].name, "p1");
+        assert_eq!(s.sides[0].players.len(), 1);
     }
 
     #[test]

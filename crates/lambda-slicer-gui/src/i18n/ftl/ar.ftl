@@ -54,7 +54,7 @@ column-map = الخريطة
 column-duration = المدة
 column-gauss = غاوس
 column-kills = القتلات
-column-action = الإثارة
+column-action = الحماس
 column-spectating = المشاهدة
 
 status-complete = مُحلَّل
@@ -85,7 +85,7 @@ details-kills = { $count ->
     [many] { $count } عملية قتل
    *[other] { $count } عملية قتل
 }
-details-action = أفضل نقاط إثارة { NUMBER($score, minimumFractionDigits: 2) }
+details-action = أعلى حماس { NUMBER($score, minimumFractionDigits: 2) }
 
 ## الفحص
 
@@ -206,7 +206,12 @@ filter-from = من
 filter-to = إلى
 date-from-name = التاريخ مأخوذ من اسم الملف
 date-from-modified = تاريخ آخر تعديل للملف، وقد يتغير عند النسخ أو التنزيل
-timeline-best-action = أفضل إثارة
-timeline-windows = لحظات الإثارة
+timeline-best-action = الدقيقة الذهبية
+timeline-windows = أكثر اللحظات حماسًا
 timeline-window = رقم { $rank } { NUMBER($score, minimumFractionDigits: 2) } · { $start }–{ $end } · { $sides }
-demo-final-score = النتيجة النهائية: { $score }
+
+scores-final = النتائج النهائية عند آخر قتل { $time }
+scores-at = النتائج عند { $time }
+scores-show-final = عرض النتائج النهائية
+scores-frags = القتلات
+scores-deaths = الوفيات

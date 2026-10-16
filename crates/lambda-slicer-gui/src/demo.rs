@@ -25,6 +25,7 @@ use crate::layout;
 use crate::library::WEAPONS;
 use crate::text::{self, Look};
 use crate::timeline::{EventKind, LaneKey, MarkKind, Model, SpanKind, bins, nearest, tick_step};
+use lambda_slicer_core::analysis::context::{PlayerScore, StandingSide, standing_at};
 
 const LABEL_WIDTH: f32 = 170.;
 const LANE_HEIGHT: f32 = 22.;
@@ -53,6 +54,9 @@ pub fn weapon_color(w: Option<Weapon>) -> Color32 {
 }
 
 const KILL_COLOR: Color32 = Color32::from_rgb(240, 70, 70);
+
+/// The tint of a chosen action window, on the timeline and its table rows
+const WINDOW_TINT: Color32 = Color32::from_rgba_premultiplied(40, 32, 10, 40);
 
 enum Loaded {
     Model(Arc<Model>),
@@ -115,13 +119,14 @@ pub struct Shown {
     pub weapon: Option<Weapon>,
 }
 
+/// Only kills at first, the rest one checkbox away
 impl Default for Shown {
     fn default() -> Self {
         Self {
-            shots: true,
-            actions: true,
+            shots: false,
+            actions: false,
             kills: true,
-            switches: true,
+            switches: false,
             weapon: None,
         }
     }
@@ -154,6 +159,9 @@ pub struct DemoView {
     rows_for: Option<Shown>,
     selected: Option<usize>,
     scroll_table: bool,
+    /// Frames left to scroll the table to the chosen window's first event.
+    /// A table seen for the first time has no size yet, so it gets a few
+    scroll_to_window: u8,
     /// The action window shaded on the timeline, and one to jump to once
     /// the analysis is in
     window: Option<usize>,
@@ -173,6 +181,7 @@ impl DemoView {
             rows_for: None,
             selected: None,
             scroll_table: false,
+            scroll_to_window: 0,
             window: None,
             open_window: None,
         }
@@ -196,6 +205,7 @@ impl DemoView {
                     let pad = ((w.1.end - w.1.start) * 0.1).max(3.);
                     self.view = (w.1.start - pad, w.1.end + pad);
                     self.window = Some(w.0);
+                    self.scroll_to_window = 3;
                 }
                 self.model = Some(m);
                 self.loader = None;
@@ -333,6 +343,7 @@ impl DemoView {
                 let pad = ((w.end - w.start) * 0.1).max(3.);
                 self.view = (w.start - pad, w.end + pad);
                 self.window = Some(i);
+                self.scroll_to_window = 3;
             }
         });
     }
@@ -458,7 +469,7 @@ impl DemoView {
                 Pos2::new(x(w.end).min(plot.max.x), plot.max.y),
             );
             if shade.width() > 0. {
-                painter.rect_filled(shade, 0., Color32::from_rgba_unmultiplied(255, 200, 60, 28));
+                painter.rect_filled(shade, 0., WINDOW_TINT);
             }
         }
 
@@ -683,7 +694,7 @@ impl DemoView {
         for c in &cols {
             table = table.column(match *c {
                 "column-event" => Column::remainder().at_least(120.),
-                "column-player" => Column::initial(170.).at_least(60.).clip(true),
+                "column-player" => Column::initial(170.).at_least(60.),
                 _ => Column::initial(100.).at_least(60.),
             });
         }
@@ -693,6 +704,20 @@ impl DemoView {
         {
             table = table.scroll_to_row(row, Some(egui::Align::Center));
             self.scroll_table = false;
+        }
+        // The chosen window's events are tinted, and the table starts at them
+        let window = self
+            .window
+            .and_then(|i| model.windows.get(i))
+            .map(|w| (w.start, w.end));
+        if self.scroll_to_window > 0
+            && let Some((start, _)) = window
+        {
+            let first = self.rows.partition_point(|r| model.events[*r].time < start);
+            if first < self.rows.len() {
+                table = table.scroll_to_row(first, Some(egui::Align::TOP));
+            }
+            self.scroll_to_window -= 1;
         }
         let mut clicked = None;
         table
@@ -714,8 +739,14 @@ impl DemoView {
                     let index = self.rows[row.index()];
                     let e = &model.events[index];
                     row.set_selected(self.selected == Some(index));
+                    let in_window = window.is_some_and(|(a, b)| e.time >= a && e.time <= b);
                     for c in &cols {
                         row.col(|ui| {
+                            if in_window {
+                                // Half the spacing on each side, so cells meet
+                                let r = ui.max_rect().expand2(ui.spacing().item_spacing / 2.);
+                                ui.painter().rect_filled(r, 0., WINDOW_TINT);
+                            }
                             let (s, own) = match *c {
                                 "column-time" => (
                                     DemoTime::from_f32(e.time)
@@ -761,6 +792,190 @@ impl DemoView {
         if let Some(i) = clicked {
             self.select(i, true);
         }
+    }
+
+    /// The scores at the selected event, or the final scores. Teams and the
+    /// two players of a duel get a column each, and other players share one
+    /// ranked list
+    fn scores(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool) {
+        let Some(model) = self.model.clone() else {
+            return;
+        };
+        let selected = self.selected.and_then(|i| model.events.get(i));
+        let time = selected.map(|e| e.time);
+        // The selected event's moment, or the last kill for the final scores,
+        // since players often leave once a game is over
+        let last_kill = model
+            .events
+            .iter()
+            .rev()
+            .find(|e| matches!(e.kind, EventKind::Kill { .. }));
+        let (segment, at) = match (selected, last_kill) {
+            (Some(e), _) | (None, Some(e)) => (e.segment, e.time),
+            (None, None) => (
+                model.score_updates.last().map_or(0, |u| u.segment),
+                f32::INFINITY,
+            ),
+        };
+        let standing = standing_at(&model.score_updates, &model.team_score_updates, segment, at);
+        if standing.sides.is_empty() {
+            return;
+        }
+        let ctx = ui.ctx().clone();
+        let heading = match time {
+            Some(t) => catalog.text_with(
+                "scores-at",
+                &[(
+                    "time",
+                    FluentValue::from(
+                        DemoTime::from_f32(t)
+                            .map(|d| d.to_string())
+                            .unwrap_or_default(),
+                    ),
+                )],
+            ),
+            None => catalog.text_with(
+                "scores-final",
+                &[(
+                    "time",
+                    FluentValue::from(
+                        last_kill
+                            .and_then(|e| DemoTime::from_f32(e.time))
+                            .map(|d| d.to_string())
+                            .unwrap_or_default(),
+                    ),
+                )],
+            ),
+        };
+        layout::row(ui, rtl, |ui| {
+            ui.label(text::widget_text(&ctx, &heading, rtl, None, Look::Strong));
+            if time.is_some()
+                && ui
+                    .small_button(text::widget_text(
+                        &ctx,
+                        &catalog.text("scores-show-final"),
+                        rtl,
+                        None,
+                        Look::Plain,
+                    ))
+                    .clicked()
+            {
+                self.selected = None;
+            }
+        });
+
+        // Columns run right to left in a right-to-left interface
+        let mut sides: Vec<&StandingSide> = if standing.teams || standing.sides.len() == 2 {
+            standing.sides.iter().collect()
+        } else {
+            Vec::new()
+        };
+        if rtl {
+            sides.reverse();
+        }
+        let frags = catalog.text("scores-frags");
+        let deaths = catalog.text("scores-deaths");
+        let side_ui = |ui: &mut Ui, side: &StandingSide, title: bool| {
+            if title {
+                let name = text::player_name(&side.name);
+                let color = match side.name.to_lowercase().as_str() {
+                    "red" => Some(Color32::from_rgb(235, 90, 90)),
+                    "blue" => Some(Color32::from_rgb(100, 150, 255)),
+                    _ => None,
+                };
+                let line = format!("{name}  {}", side.frags);
+                let w = text::widget_text(&ctx, &line, text::starts_rtl(&name), None, Look::Strong);
+                let w = match color {
+                    Some(c) => w.color(c),
+                    None => w,
+                };
+                ui.label(w);
+            }
+            // Name, frags and deaths as on the game's scoreboard, the other
+            // way round in a right-to-left interface
+            let cell = |ui: &mut Ui, k: usize, p: Option<&PlayerScore>| match (k, p) {
+                (0, None) => {
+                    ui.label("");
+                }
+                (1, None) => {
+                    ui.weak(frags.as_str());
+                }
+                (_, None) => {
+                    ui.weak(deaths.as_str());
+                }
+                (0, Some(p)) => {
+                    let name = text::player_name(&p.name);
+                    ui.set_min_width(120.);
+                    ui.label(text::widget_text(
+                        &ctx,
+                        &name,
+                        text::starts_rtl(&name),
+                        None,
+                        Look::Plain,
+                    ));
+                }
+                (1, Some(p)) => {
+                    ui.label(p.frags.to_string());
+                }
+                (_, Some(p)) => {
+                    ui.label(p.deaths.to_string());
+                }
+            };
+            let order: [usize; 3] = if rtl { [2, 1, 0] } else { [0, 1, 2] };
+            egui::Grid::new(ui.next_auto_id())
+                .num_columns(3)
+                .spacing([16., 2.])
+                .show(ui, |ui| {
+                    for k in order {
+                        cell(ui, k, None);
+                    }
+                    ui.end_row();
+                    for p in &side.players {
+                        for k in order {
+                            cell(ui, k, Some(p));
+                        }
+                        ui.end_row();
+                    }
+                });
+        };
+
+        // The longest column, or every player in a ranked list
+        let max_rows = if sides.is_empty() {
+            standing.sides.len()
+        } else {
+            standing
+                .sides
+                .iter()
+                .map(|s| s.players.len())
+                .max()
+                .unwrap_or(0)
+        };
+        let height = (ui.text_style_height(&egui::TextStyle::Body) + 4.) * (max_rows as f32 + 2.5);
+        egui::ScrollArea::vertical()
+            .id_salt("scores")
+            .max_height(height.min(200.))
+            .show(ui, |ui| {
+                if sides.is_empty() {
+                    // Three or more players without teams, as one ranked list
+                    let all = StandingSide {
+                        name: String::new(),
+                        frags: 0,
+                        deaths: 0,
+                        players: standing
+                            .sides
+                            .iter()
+                            .flat_map(|s| s.players.clone())
+                            .collect(),
+                    };
+                    side_ui(ui, &all, false);
+                } else {
+                    ui.columns(sides.len(), |cols| {
+                        for (col, side) in cols.iter_mut().zip(&sides) {
+                            side_ui(col, side, true);
+                        }
+                    });
+                }
+            });
     }
 
     /// The whole view. Returns true when it should close
@@ -816,22 +1031,6 @@ impl DemoView {
             return close;
         };
         layout::column(ui, rtl, |ui| {
-            if !model.scoreboard.sides.is_empty() {
-                let sides: Vec<String> = model
-                    .scoreboard
-                    .sides
-                    .iter()
-                    .take(4)
-                    .map(|s| format!("{} {}", text::player_name(&s.name), s.frags))
-                    .collect();
-                let mut score = sides.join(" – ");
-                if model.scoreboard.sides.len() > 4 {
-                    score.push_str(" – …");
-                }
-                let line =
-                    catalog.text_with("demo-final-score", &[("score", FluentValue::from(score))]);
-                ui.label(text::widget_text(&ctx, &line, rtl, None, Look::Strong));
-            }
             for n in &model.coverage_notes {
                 text::label(ui, &catalog.message(n), rtl);
             }
@@ -842,6 +1041,8 @@ impl DemoView {
         ui.separator();
         self.controls(ui, catalog, rtl);
         ui.add_space(4.);
+        self.scores(ui, catalog, rtl);
+        ui.separator();
         let timeline_height = (AXIS_HEIGHT + LANE_HEIGHT * model.lanes.len() as f32)
             .min(ui.available_height() * 0.55);
         egui::ScrollArea::vertical()

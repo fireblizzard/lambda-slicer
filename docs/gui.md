@@ -36,12 +36,20 @@ opens it beside a narrower library. Choosing another demo cancels that analysis.
 - **Selecting.** Hovering a mark shows its time, player and action at once. Clicking selects it, draws a
   line through the lanes and scrolls the event table to it. Clicking a table row selects its event
   and brings it into view.
-- **Filters.** Shots, other actions, kills and weapon switches can be hidden, and one weapon
-  chosen, for both the lanes and the table.
-- **Action windows.** Best action jumps to the busiest minute by action score
-  ([analysis profile](analysis-profile.md)), and the list beside it offers the best five with their
-  score, time and frags per side. The chosen window is shaded.
-- **Final score.** Shown above the timeline with team or player names.
+- **Filters.** Shots, other actions, kills and weapon switches can be shown, only kills at
+  first, and one weapon chosen, for both the lanes and the table.
+- **Golden minute.** The button jumps to the minute with the highest action score, shown as
+  intensity ([analysis profile](analysis-profile.md)), and the list beside it offers the best five
+  with their score, time and frags per side, under Most intense moments. The chosen minute is
+  shaded on the lanes, its events
+  are tinted the same in the table, and the table scrolls to the first of them.
+- **Scores.** Between the filters and the lanes, one column per team with its total and each
+  player's frags and deaths, two columns for a duel, and a ranked list for three or more players
+  without teams. It shows the final scores, as they stood at the last kill, until an event is
+  selected in the lanes or the table, then the scores at that moment. Players who left drop out,
+  as on the game's own scoreboard, and a team's `TeamScore` overrides its players' sum. Show final
+  scores goes back. The last kill decides the result because players often leave between the end
+  of a game and the end of the recording.
 - **Event table.** Every event in time order with its time, the player's name at that moment, the
   weapon (the death notice's weapon string for kills) and what happened.
 

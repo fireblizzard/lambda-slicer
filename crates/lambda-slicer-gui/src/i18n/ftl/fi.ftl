@@ -50,7 +50,7 @@ column-map = Kartta
 column-duration = Pituus
 column-gauss = Gauss
 column-kills = Tapot
-column-action = Toiminta
+column-action = Kiivaus
 column-spectating = Katsojana
 
 status-complete = Analysoitu
@@ -73,7 +73,7 @@ details-kills = { $count ->
     [one] { $count } tappo
    *[other] { $count } tappoa
 }
-details-action = Paras toimintapistemäärä { NUMBER($score, minimumFractionDigits: 2) }
+details-action = Suurin kiivaus { NUMBER($score, minimumFractionDigits: 2) }
 
 ## Skannaus
 
@@ -186,7 +186,12 @@ filter-from = Alkaen
 filter-to = Asti
 date-from-name = Päiväys tiedoston nimestä
 date-from-modified = Tiedoston viimeisin muokkausaika, jonka kopiointi tai lataus voi muuttaa
-timeline-best-action = Paras toiminta
-timeline-windows = Toimintahetket
+timeline-best-action = Kultainen minuutti
+timeline-windows = Kiivaimmat hetket
 timeline-window = { $rank }. { NUMBER($score, minimumFractionDigits: 2) } · { $start }–{ $end } · { $sides }
-demo-final-score = Lopputulos: { $score }
+
+scores-final = Lopputulokset viimeisen tapon kohdalla { $time }
+scores-at = Tilanne kohdassa { $time }
+scores-show-final = Näytä lopputulokset
+scores-frags = Fragit
+scores-deaths = Kuolemat

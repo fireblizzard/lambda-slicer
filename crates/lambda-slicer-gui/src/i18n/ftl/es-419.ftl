@@ -51,7 +51,7 @@ column-map = Mapa
 column-duration = Duración
 column-gauss = Gauss
 column-kills = Bajas
-column-action = Acción
+column-action = Intensidad
 column-spectating = Espectador
 
 status-complete = Analizada
@@ -76,7 +76,7 @@ details-kills = { $count ->
     [many] { $count } de bajas
    *[other] { $count } bajas
 }
-details-action = Mejor puntaje de acción { NUMBER($score, minimumFractionDigits: 2) }
+details-action = Mayor intensidad { NUMBER($score, minimumFractionDigits: 2) }
 
 ## Escaneo
 
@@ -191,7 +191,12 @@ filter-from = Desde
 filter-to = Hasta
 date-from-name = Fecha tomada del nombre del archivo
 date-from-modified = Fecha de la última modificación del archivo, que puede cambiar al copiarlo o descargarlo
-timeline-best-action = Mejor acción
-timeline-windows = Momentos de acción
+timeline-best-action = Minuto de oro
+timeline-windows = Momentos más intensos
 timeline-window = N.º { $rank } { NUMBER($score, minimumFractionDigits: 2) } · { $start }–{ $end } · { $sides }
-demo-final-score = Marcador final: { $score }
+
+scores-final = Puntajes finales, en la última baja { $time }
+scores-at = Puntajes a las { $time }
+scores-show-final = Ver puntajes finales
+scores-frags = Bajas
+scores-deaths = Muertes

@@ -52,7 +52,7 @@ column-map = Мапа
 column-duration = Тривалість
 column-gauss = Гаусс
 column-kills = Вбивства
-column-action = Екшен
+column-action = Напруга
 column-spectating = Спостереження
 
 status-complete = Розібрано
@@ -79,7 +79,7 @@ details-kills = { $count ->
     [many] { $count } вбивств
    *[other] { $count } вбивства
 }
-details-action = Найкраща оцінка екшену { NUMBER($score, minimumFractionDigits: 2) }
+details-action = Найвища напруга { NUMBER($score, minimumFractionDigits: 2) }
 
 ## Сканування
 
@@ -196,7 +196,12 @@ filter-from = З
 filter-to = По
 date-from-name = Дата з назви файлу
 date-from-modified = Дата останньої зміни файлу, вона може змінитися під час копіювання чи завантаження
-timeline-best-action = Найкращий екшен
-timeline-windows = Моменти екшену
+timeline-best-action = Золота хвилина
+timeline-windows = Найгарячіші моменти
 timeline-window = №{ $rank } { NUMBER($score, minimumFractionDigits: 2) } · { $start }–{ $end } · { $sides }
-demo-final-score = Підсумковий рахунок: { $score }
+
+scores-final = Підсумковий рахунок на останньому вбивстві { $time }
+scores-at = Рахунок на { $time }
+scores-show-final = Показати підсумковий рахунок
+scores-frags = Фраги
+scores-deaths = Смерті

@@ -49,7 +49,7 @@ column-map = 地图
 column-duration = 时长
 column-gauss = 高斯
 column-kills = 击杀
-column-action = 精彩度
+column-action = 激烈度
 column-spectating = 观战
 
 status-complete = 已分析
@@ -70,7 +70,7 @@ details-shots = { $count ->
 details-kills = { $count ->
    *[other] { $count } 次击杀
 }
-details-action = 最高精彩度 { NUMBER($score, minimumFractionDigits: 2) }
+details-action = 最高激烈度 { NUMBER($score, minimumFractionDigits: 2) }
 
 ## 扫描
 
@@ -181,7 +181,12 @@ filter-from = 从
 filter-to = 到
 date-from-name = 日期取自文件名
 date-from-modified = 日期为文件最后修改时间，复制或下载可能会改变它
-timeline-best-action = 最精彩时段
-timeline-windows = 精彩时段
+timeline-best-action = 黄金一分钟
+timeline-windows = 最激烈的时刻
 timeline-window = 第 { $rank } 名 { NUMBER($score, minimumFractionDigits: 2) } · { $start }–{ $end } · { $sides }
-demo-final-score = 最终比分：{ $score }
+
+scores-final = 最终比分（最后一次击杀 { $time }）
+scores-at = { $time } 时的比分
+scores-show-final = 显示最终比分
+scores-frags = 击杀
+scores-deaths = 死亡

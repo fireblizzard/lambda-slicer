@@ -51,7 +51,7 @@ column-map = Mapa
 column-duration = Duração
 column-gauss = Gauss
 column-kills = Abates
-column-action = Ação
+column-action = Intensidade
 column-spectating = Espectando
 
 status-complete = Analisada
@@ -76,7 +76,7 @@ details-kills = { $count ->
     [many] { $count } de abates
    *[other] { $count } abates
 }
-details-action = Melhor pontuação de ação { NUMBER($score, minimumFractionDigits: 2) }
+details-action = Maior intensidade { NUMBER($score, minimumFractionDigits: 2) }
 
 ## Escaneamento
 
@@ -191,7 +191,12 @@ filter-from = De
 filter-to = Até
 date-from-name = Data tirada do nome do arquivo
 date-from-modified = Data da última modificação do arquivo, que copiar ou baixar pode alterar
-timeline-best-action = Melhor ação
-timeline-windows = Momentos de ação
+timeline-best-action = Minuto de ouro
+timeline-windows = Momentos mais intensos
 timeline-window = Nº { $rank } { NUMBER($score, minimumFractionDigits: 2) } · { $start }–{ $end } · { $sides }
-demo-final-score = Placar final: { $score }
+
+scores-final = Placar final, no último abate { $time }
+scores-at = Placar em { $time }
+scores-show-final = Ver placar final
+scores-frags = Abates
+scores-deaths = Mortes

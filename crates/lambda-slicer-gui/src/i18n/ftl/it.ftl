@@ -51,7 +51,7 @@ column-map = Mappa
 column-duration = Durata
 column-gauss = Gauss
 column-kills = Uccisioni
-column-action = Azione
+column-action = Intensità
 column-spectating = Spettatore
 
 status-complete = Analizzata
@@ -76,7 +76,7 @@ details-kills = { $count ->
     [many] { $count } di uccisioni
    *[other] { $count } uccisioni
 }
-details-action = Miglior punteggio azione { NUMBER($score, minimumFractionDigits: 2) }
+details-action = Intensità massima { NUMBER($score, minimumFractionDigits: 2) }
 
 ## Scansione
 
@@ -191,7 +191,12 @@ filter-from = Dal
 filter-to = Al
 date-from-name = Data presa dal nome del file
 date-from-modified = Data dell’ultima modifica del file, che copiarlo o scaricarlo può cambiare
-timeline-best-action = Azione migliore
-timeline-windows = Momenti d’azione
+timeline-best-action = Minuto d’oro
+timeline-windows = Momenti più intensi
 timeline-window = N. { $rank } { NUMBER($score, minimumFractionDigits: 2) } · { $start }–{ $end } · { $sides }
-demo-final-score = Punteggio finale: { $score }
+
+scores-final = Punteggi finali, all’ultima uccisione { $time }
+scores-at = Punteggi a { $time }
+scores-show-final = Mostra i punteggi finali
+scores-frags = Frag
+scores-deaths = Morti

@@ -52,7 +52,7 @@ column-map = Mapa
 column-duration = Długość
 column-gauss = Gauss
 column-kills = Zabójstwa
-column-action = Akcja
+column-action = Intensywność
 column-spectating = Obserwacja
 
 status-complete = Przeanalizowane
@@ -79,7 +79,7 @@ details-kills = { $count ->
     [many] { $count } zabójstw
    *[other] { $count } zabójstwa
 }
-details-action = Najlepszy wynik akcji { NUMBER($score, minimumFractionDigits: 2) }
+details-action = Najwyższa intensywność { NUMBER($score, minimumFractionDigits: 2) }
 
 ## Skanowanie
 
@@ -196,7 +196,12 @@ filter-from = Od
 filter-to = Do
 date-from-name = Data z nazwy pliku
 date-from-modified = Data ostatniej modyfikacji pliku, którą kopiowanie lub pobieranie może zmienić
-timeline-best-action = Najlepsza akcja
-timeline-windows = Momenty akcji
+timeline-best-action = Złota minuta
+timeline-windows = Najgorętsze momenty
 timeline-window = Nr { $rank } { NUMBER($score, minimumFractionDigits: 2) } · { $start }–{ $end } · { $sides }
-demo-final-score = Wynik końcowy: { $score }
+
+scores-final = Wyniki końcowe, przy ostatnim zabójstwie { $time }
+scores-at = Wyniki o { $time }
+scores-show-final = Pokaż wyniki końcowe
+scores-frags = Fragi
+scores-deaths = Zgony

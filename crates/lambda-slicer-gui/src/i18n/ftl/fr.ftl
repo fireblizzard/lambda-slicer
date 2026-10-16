@@ -51,7 +51,7 @@ column-map = Carte
 column-duration = Durée
 column-gauss = Gauss
 column-kills = Éliminations
-column-action = Action
+column-action = Intensité
 column-spectating = Spectateur
 
 status-complete = Analysée
@@ -76,7 +76,7 @@ details-kills = { $count ->
     [many] { $count } d’éliminations
    *[other] { $count } éliminations
 }
-details-action = Meilleur score d’action { NUMBER($score, minimumFractionDigits: 2) }
+details-action = Intensité maximale { NUMBER($score, minimumFractionDigits: 2) }
 
 ## Analyse des dossiers
 
@@ -191,7 +191,12 @@ filter-from = Du
 filter-to = Au
 date-from-name = Date tirée du nom du fichier
 date-from-modified = Date de dernière modification du fichier, qu’une copie ou un téléchargement peut changer
-timeline-best-action = Meilleure action
-timeline-windows = Moments d’action
+timeline-best-action = Minute en or
+timeline-windows = Moments les plus intenses
 timeline-window = N° { $rank } { NUMBER($score, minimumFractionDigits: 2) } · { $start }–{ $end } · { $sides }
-demo-final-score = Score final : { $score }
+
+scores-final = Scores finaux, à la dernière élimination { $time }
+scores-at = Scores à { $time }
+scores-show-final = Voir les scores finaux
+scores-frags = Frags
+scores-deaths = Morts

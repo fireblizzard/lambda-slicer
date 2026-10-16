@@ -50,7 +50,7 @@ column-map = Harita
 column-duration = Süre
 column-gauss = Gauss
 column-kills = Öldürme
-column-action = Aksiyon
+column-action = Yoğunluk
 column-spectating = İzleyici
 
 status-complete = Analiz edildi
@@ -73,7 +73,7 @@ details-kills = { $count ->
     [one] { $count } öldürme
    *[other] { $count } öldürme
 }
-details-action = En iyi aksiyon puanı { NUMBER($score, minimumFractionDigits: 2) }
+details-action = En yüksek yoğunluk { NUMBER($score, minimumFractionDigits: 2) }
 
 ## Tarama
 
@@ -186,7 +186,12 @@ filter-from = Başlangıç
 filter-to = Bitiş
 date-from-name = Dosya adından alınan tarih
 date-from-modified = Dosyanın son değiştirilme tarihi; kopyalama ya da indirme bunu değiştirebilir
-timeline-best-action = En iyi aksiyon
-timeline-windows = Aksiyon anları
+timeline-best-action = Altın dakika
+timeline-windows = En yoğun anlar
 timeline-window = { $rank }. { NUMBER($score, minimumFractionDigits: 2) } · { $start }–{ $end } · { $sides }
-demo-final-score = Son skor: { $score }
+
+scores-final = Son skorlar, son öldürmede { $time }
+scores-at = { $time } anındaki skorlar
+scores-show-final = Son skorları göster
+scores-frags = Fraglar
+scores-deaths = Ölümler

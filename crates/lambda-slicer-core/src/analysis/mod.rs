@@ -19,12 +19,15 @@ use serde::Serialize;
 use crate::container::Limits;
 use crate::message::Message;
 use crate::state::{DecodeOptions, DecodeStatus, PlayerIdentity, decode_demo};
-use context::{Context, Coverage, Kill, Scoreboard, WeaponSwitch};
+use context::{
+    Context, Coverage, Kill, ScoreUpdate, Scoreboard, TeamScoreUpdate, WeaponSwitch, final_moment,
+    standing_at,
+};
 use events::recorded_events;
 use highlights::{ActionWindow, action_windows, link_kills};
 use weapons::{Action, ActivityInterval, PROFILE, Weapon, WeaponOccurrence, derive};
 
-pub const ANALYSIS_SCHEMA: u32 = 4;
+pub const ANALYSIS_SCHEMA: u32 = 5;
 
 /// Length of an action window in seconds, and how many are reported
 pub const ACTION_WINDOW: f32 = 60.;
@@ -82,6 +85,9 @@ pub struct AnalysisReport {
     pub coverage: Coverage,
     /// The final score of the last session
     pub scoreboard: Scoreboard,
+    /// Every score and team change, for the scores at any moment
+    pub score_updates: Vec<ScoreUpdate>,
+    pub team_score_updates: Vec<TeamScoreUpdate>,
 }
 
 fn summary_of(weapons: &mut Vec<WeaponSummary>, weapon: Weapon) -> &mut WeaponSummary {
@@ -183,8 +189,33 @@ pub fn analyze_demo_with(
         report.spectator_seconds,
     );
 
-    let scoreboard = context.scoreboard(&d);
+    // Departures from the name history, so scores at a moment leave out
+    // players who had gone
+    let mut score_updates = std::mem::take(&mut context.score_updates);
+    for change in &report.name_history {
+        if change.kind == crate::state::NameChangeKind::Left {
+            score_updates.push(ScoreUpdate {
+                segment: change.player.segment,
+                time: change.location.time(),
+                player: change.player.clone(),
+                team: String::new(),
+                frags: 0,
+                deaths: 0,
+                left: true,
+            });
+        }
+    }
+    // In decode order, each session's changes in time order
+    score_updates.sort_by(|a, b| a.segment.cmp(&b.segment).then(a.time.total_cmp(&b.time)));
     let mut kills = std::mem::take(&mut context.kills);
+    let team_score_updates = std::mem::take(&mut context.team_score_updates);
+    let (segment, time) = final_moment(&kills, &score_updates);
+    let scoreboard = Scoreboard::from(&standing_at(
+        &score_updates,
+        &team_score_updates,
+        segment,
+        time,
+    ));
     link_kills(&mut kills, &derived.occurrences, motion::gravity(&d));
     let action_windows = action_windows(&kills, ACTION_WINDOW, ACTION_WINDOWS);
 
@@ -208,5 +239,7 @@ pub fn analyze_demo_with(
         weapon_switches: context.switches,
         coverage,
         scoreboard,
+        score_updates,
+        team_score_updates,
     }
 }
