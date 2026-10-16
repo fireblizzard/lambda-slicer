@@ -37,7 +37,7 @@ pub struct WeaponSummary {
     pub weapon: Weapon,
     /// Fire and launch actions
     pub shots: usize,
-    /// Kills the death feed credits to this weapon, which are not shots
+    /// Kills of other players with this weapon, which are not shots
     pub kills: usize,
     /// Every recorded event of this weapon, activity updates included
     pub records: usize,
@@ -131,7 +131,7 @@ pub fn analyze_demo(path: &Path, limits: Limits) -> AnalysisReport {
         summary_of(&mut weapons, iv.weapon).intervals += 1;
     }
     for k in &context.kills {
-        if let Some(w) = k.weapon {
+        if let (context::KillCause::PlayerWeapon, Some(w)) = (k.cause, k.weapon) {
             summary_of(&mut weapons, w).kills += 1;
         }
     }

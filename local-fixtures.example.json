@@ -113,6 +113,71 @@
         "decode_complete": true,
         "crosscheck": "verified"
       }
+    },
+    {
+      "role": "weapon catalog: every scripted action, 32-slot match",
+      "path": "F:/SteamLibrary/steamapps/common/Half-Life/ag/20230909_224143_stalkyard.dem",
+      "bytes": 32945079,
+      "blake3": "371f94b4cd2fb733fa431960d6b1f5e5da28126497c9d69fd829e8b966b7d9cb",
+      "expect": {
+        "decode_complete": true,
+        "crosscheck": "verified",
+        "recording_kind": "multiplayer_view",
+        "shots": {
+          "glock": 34,
+          "python": 34,
+          "mp5": 1368,
+          "crossbow": 402,
+          "shotgun": 436,
+          "rpg": 76,
+          "gauss": 2716,
+          "hivehand": 60
+        },
+        "unattributed_shots": 0
+      },
+      "notes": "Also has crowbar swings, egon starts and stops, 74 snark release attempts and 73 tripmine placement attempts, none of which are shots. Gauss: 2,716 shots against 4,014 stops."
+    },
+    {
+      "role": "singleplayer analysis",
+      "path": "F:/SteamLibrary/steamapps/common/Half-Life/ag/run_92.dem",
+      "bytes": 13345748,
+      "blake3": "9fbf2e4ffa75fba2dee639c1ab849b0ff6e9f35c6fc31594e5fd75f4d4c5ffb0",
+      "expect": {
+        "decode_complete": true,
+        "crosscheck": "verified",
+        "recording_kind": "singleplayer",
+        "shots": {
+          "mp5": 28,
+          "shotgun": 5,
+          "gauss": 3,
+          "hivehand": 11
+        },
+        "unattributed_shots": 0
+      },
+      "notes": "Singleplayer speedrun. The player's shots arrive as network events, with no local demo events."
+    },
+    {
+      "role": "unknown actors: out-of-view players on a 2018 server",
+      "path": "F:/HLScreeniesDemos/09aug2018/20180208_000722_crossfire.dem",
+      "bytes": 76563960,
+      "blake3": "5d4eb2e050149f30c4d64282456e14c98e3a6ba1d2abe45409a66373a1ff96fa",
+      "expect": {
+        "decode_complete": true,
+        "crosscheck": "verified",
+        "recording_kind": "multiplayer_view",
+        "shots": {
+          "glock": 535,
+          "python": 44,
+          "mp5": 942,
+          "crossbow": 68,
+          "shotgun": 15,
+          "rpg": 113,
+          "gauss": 528,
+          "hivehand": 33
+        },
+        "unattributed_shots": 1028
+      },
+      "notes": "Events of the out-of-view opponent carry a packet index equal to the count of entities numbered below 256 and no entindex, so they land on unrelated entities such as a laser beam. Their shooter is reported as unknown."
     }
   ]
 }

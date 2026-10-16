@@ -8,6 +8,7 @@ use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand, ValueEnum};
 use serde::Serialize;
 
+use lambda_slicer_core::analysis::context::KillCause;
 use lambda_slicer_core::analysis::weapons::{Actor, IntervalEnd};
 use lambda_slicer_core::analysis::{AnalysisReport, analyze_demo};
 use lambda_slicer_core::container::Limits;
@@ -729,16 +730,24 @@ fn print_analysis(r: &AnalysisReport) {
             w.kills
         );
     }
-    let unmapped: Vec<_> = r.kills.iter().filter(|k| k.weapon.is_none()).collect();
-    if !unmapped.is_empty() {
-        let mut names: Vec<_> = unmapped.iter().map(|k| k.weapon_name.as_str()).collect();
-        names.sort_unstable();
-        names.dedup();
-        println!(
-            "  kills by other causes: {} ({})",
-            unmapped.len(),
-            names.join(", ")
-        );
+    let mut causes: Vec<(KillCause, Vec<&str>, usize)> = Vec::new();
+    for k in r
+        .kills
+        .iter()
+        .filter(|k| k.cause != KillCause::PlayerWeapon)
+    {
+        match causes.iter_mut().find(|(c, _, _)| *c == k.cause) {
+            Some((_, names, n)) => {
+                *n += 1;
+                if !names.contains(&k.weapon_name.as_str()) {
+                    names.push(&k.weapon_name);
+                }
+            }
+            None => causes.push((k.cause, vec![&k.weapon_name], 1)),
+        }
+    }
+    for (cause, names, n) in &causes {
+        println!("  kills, {cause:?}: {n} ({})", names.join(", "));
     }
     println!(
         "  {} weapon switches by the recorder",

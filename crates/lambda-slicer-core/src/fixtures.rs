@@ -7,6 +7,8 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 use crate::analysis::analyze_demo;
+use crate::analysis::context::RecordingKind;
+use crate::analysis::weapons::Actor;
 use crate::container::Limits;
 use crate::library::fingerprint::hash_file;
 use crate::state::{DecodeOptions, DecodeStatus, decode_demo};
@@ -52,6 +54,9 @@ pub struct Expectations {
     /// Exact shot counts by weapon name (`analysis::weapons::Weapon::name`),
     /// from the analysis profile
     pub shots: Option<BTreeMap<String, usize>>,
+    /// Shots whose actor is not a known player
+    pub unattributed_shots: Option<usize>,
+    pub recording_kind: Option<RecordingKind>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -207,9 +212,12 @@ pub fn check_fixture(f: &Fixture) -> FixtureResult {
         }
     }
 
-    if let (Some(_), Some(want)) = (&report, &f.expect.shots) {
+    let e = &f.expect;
+    let wants_analysis =
+        e.shots.is_some() || e.unattributed_shots.is_some() || e.recording_kind.is_some();
+    if let (Some(_), true) = (&report, wants_analysis) {
         let r = analyze_demo(&f.path, Limits::default());
-        for (weapon, n) in want {
+        for (weapon, n) in e.shots.iter().flatten() {
             let got = r
                 .weapons
                 .iter()
@@ -218,6 +226,27 @@ pub fn check_fixture(f: &Fixture) -> FixtureResult {
             if got != *n {
                 m.push(format!("shots {weapon}: expected {n}, found {got}"));
             }
+        }
+
+        let unattributed = r
+            .occurrences
+            .iter()
+            .filter(|o| o.shot && !matches!(o.actor, Actor::Player { .. }))
+            .count();
+        if let Some(want) = e.unattributed_shots
+            && want != unattributed
+        {
+            m.push(format!(
+                "unattributed shots: expected {want}, found {unattributed}"
+            ));
+        }
+        if let Some(want) = e.recording_kind
+            && want != r.coverage.kind
+        {
+            m.push(format!(
+                "recording kind: expected {want:?}, found {:?}",
+                r.coverage.kind
+            ));
         }
     }
 

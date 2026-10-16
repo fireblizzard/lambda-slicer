@@ -191,7 +191,7 @@ pub enum Actor {
     },
     /// A player entity whose occupant is not known at that time
     UnknownPlayer { entity: i32 },
-    /// An entity outside the player range, such as a monster
+    /// In singleplayer, an entity outside the player range, such as a monster
     Entity { entity: i32 },
     /// No entity resolved
     Unknown,
@@ -205,6 +205,12 @@ pub enum Attribution {
     ExplicitEntity,
     /// Position in the packet's complete entity array
     PacketEntity,
+    /// In multiplayer, the record names an entity outside the player range,
+    /// while every weapon script here is a player's. Servers that hide
+    /// players out of view send such entities (masked numbers, or a packet
+    /// index meant as "not in the packet" that lands on another entity), so
+    /// the shooter is unknown
+    NonPlayerEntity,
     /// No entity in the record, or the packet index could not be resolved
     Unresolved,
 }
@@ -232,12 +238,17 @@ fn actor(e: &RecordedEvent, max_clients: u8) -> (Actor, Attribution) {
         return (Actor::Unknown, Attribution::Unresolved);
     }
 
+    let player_slot = entity <= i32::from(max_clients);
+    if !player_slot && max_clients > 1 {
+        return (Actor::Unknown, Attribution::NonPlayerEntity);
+    }
+
     let actor = match &e.player {
         Some(identity) => Actor::Player {
             entity,
             identity: identity.clone(),
         },
-        None if entity <= i32::from(max_clients) => Actor::UnknownPlayer { entity },
+        None if player_slot => Actor::UnknownPlayer { entity },
         None => Actor::Entity { entity },
     };
 
@@ -538,20 +549,34 @@ mod tests {
     fn actors_without_a_known_occupant_are_labelled() {
         let mut unknown = event(0, 1.0, "rpg.sc", 0, 0);
         unknown.actor = ActorResolution::Unknown;
-        let mut monster = event(1, 1.0, "rpg.sc", 0, 0);
-        monster.actor = ActorResolution::Explicit { entity: 40 };
+        let mut other = event(1, 1.0, "rpg.sc", 0, 0);
+        other.actor = ActorResolution::Explicit { entity: 40 };
         let player = event(2, 1.0, "rpg.sc", 0, 0);
+        let events = [unknown, other, player];
 
-        let d = derive(&[unknown, monster, player], 2);
-        let actors: Vec<_> = d.occurrences.iter().map(|o| o.actor.clone()).collect();
+        // In multiplayer, a weapon event from a non-player entity has an
+        // unknown shooter
+        let d = derive(&events, 2);
+        let actors: Vec<_> = d
+            .occurrences
+            .iter()
+            .map(|o| (o.actor.clone(), o.attribution))
+            .collect();
         assert_eq!(
             actors,
             [
-                Actor::Unknown,
-                Actor::Entity { entity: 40 },
-                Actor::UnknownPlayer { entity: 1 },
+                (Actor::Unknown, Attribution::Unresolved),
+                (Actor::Unknown, Attribution::NonPlayerEntity),
+                (
+                    Actor::UnknownPlayer { entity: 1 },
+                    Attribution::ExplicitEntity
+                ),
             ]
         );
+
+        // In singleplayer it may be a monster
+        let d = derive(&events, 1);
+        assert_eq!(d.occurrences[1].actor, Actor::Entity { entity: 40 });
     }
 
     #[test]
