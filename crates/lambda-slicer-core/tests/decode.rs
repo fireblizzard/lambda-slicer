@@ -741,7 +741,11 @@ fn a_full_update_reencodes_the_decoded_state() {
     assert_eq!(after.sequence, 12);
     assert!(!after.inferred);
     assert_same_state(&d, &before, &after);
-    assert_eq!(stats, EncodeStats::default());
+    assert!(
+        stats.approximations.is_empty(),
+        "{:?}",
+        stats.approximations
+    );
 }
 
 #[test]

@@ -356,7 +356,9 @@ again and compared field by field. In `naz_crossfire_pb_01.dem` (1,512 snapshots
 demos (13,170 snapshots, 308,452 entities), no field outside time windows differed and the
 largest update was 1,048 bytes. Of 8,860 inexact time windows, 4,725 lie outside the 8-bit window
 (`animtime` more than 1.27 s old, which a real full update cannot send either) and the rest
-differ only by float rounding. Exports report both counts.
+differ only by float rounding. The encoder records each inexact value with its place (entity,
+clientdata or weapon slot), field, values and the field's resolution, and sends the nearest
+value when no offset is exact.
 
 ## Restart export (M3, experimental)
 
@@ -441,7 +443,7 @@ group. The report lists every carried effect.
 |---|---|
 | Outer clock | Kept groups rebased so the first keeps its original spacing after the bootstrap group at 0. Frame numbers restart at 1 |
 | Server clocks | `svc_time`, entity, clientdata and weapon timers, demo info and event delays stay in the source's coordinates |
-| Time windows | Bootstrap values re-encoded against the bootstrap frame's own `svc_time`, exact where the window allows, clamped and counted otherwise |
+| Time windows | Bootstrap values re-encoded against the bootstrap frame's own `svc_time`. Exact where possible, otherwise rounded within the field's resolution. Clamping is accepted only for an entity's `animtime`, which only sets an animation's phase, and refused for every other field (`UnrepresentableTimeField`) |
 | Sequences | All seven sequence fields kept. Bootstrap frames reuse their source sequence numbers, so kept deltas resolve in the client's ring unchanged |
 | Bootstrap | Full updates for referenced pre-start frames and the newest one, plus replayed persistent messages and carried charge records |
 | Packet size | Full updates measured up to 1,048 bytes, and real LOADING records exceed 11,000, so no splitting was needed |
@@ -454,8 +456,13 @@ the range (`CrossSegmentRange`), and a referenced base that is not in the record
 
 **Validation before publishing:** structural inspection, then the output and the source are
 decoded side by side. Every kept record must have the source's bytes, and every kept snapshot
-must decode to the source's values. Only time-window fields may differ, inherited from bootstrap
-values the window cannot express. They are counted in the report.
+must decode to the source's values. A time-window field may differ only by exactly one of the
+bootstrap's recorded approximations: same place and field, the source holding the value meant
+and the output the value sent. That is the case while the field is inherited unchanged from the
+bootstrap. Any other difference, a time-window field included, fails the export and names the
+first unexplained fields. The report lists each accepted approximation once per place and field
+with its largest error, for example `entity 129 animtime clamped by up to 7.305 s` in the
+crossfire slice and `entity 2 animtime rounded by up to 0.005 s` in the vengeance one.
 
 **Measured (2026-10-15):** `naz_crossfire_pb_01.dem`, `[1:36, 4:48)`: one bootstrap frame (602
 bytes), 54 persistent messages (850 bytes), 24,067 kept snapshots with no differing field

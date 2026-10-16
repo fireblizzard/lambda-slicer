@@ -7,7 +7,9 @@
 //! exactly. Time-window fields are the exception, because they are sent
 //! relative to the server time of the packet carrying them. They are
 //! re-encoded against the new packet's time with an offset that reproduces
-//! the decoded value bit for bit where one exists, and counted otherwise
+//! the decoded value bit for bit where one exists. Otherwise the nearest
+//! value is sent, and each such approximation is recorded with its place,
+//! field and values, so callers can decide which ones they accept
 
 use super::bit::SignMagnitude;
 use super::bitwrite::BitWriter;
@@ -18,15 +20,57 @@ use super::messages::svc;
 /// covers the whole range of 8-bit windows
 const SEARCH_SPAN: i64 = 1024;
 
+/// The struct a field belongs to
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Place {
+    Entity(u16),
+    Client,
+    Weapon(u8),
+}
+
+/// How a time-window value was encoded
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Fit {
+    Exact,
+    /// No offset reproduces the float bits, so the nearest was sent
+    Rounded,
+    /// The value lies outside the window, so the offset was clamped and the
+    /// value moves by more than rounding
+    Clamped,
+}
+
+/// A time-window value the client will not decode exactly
+#[derive(Clone, Debug, PartialEq)]
+pub struct Approximation {
+    pub place: Place,
+    pub field: String,
+    pub fit: Fit,
+    /// f32 bits of the value meant and of the value the client decodes
+    pub original_bits: u32,
+    pub written_bits: u32,
+    /// Seconds between neighbouring values the field can express
+    pub resolution: f32,
+}
+
+impl Approximation {
+    /// Seconds between the value meant and the value sent
+    pub fn error(&self) -> f32 {
+        (f32::from_bits(self.written_bits) - f32::from_bits(self.original_bits)).abs()
+    }
+}
+
 /// Fields an encoder could not reproduce exactly
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct EncodeStats {
     /// Time-window fields with no offset in range that decodes to the same
     /// float bits under the new server time
     pub inexact_time_windows: u32,
-    /// Of those, the fields whose value lies outside the window altogether,
-    /// so the offset is clamped and the value moves by more than rounding
+    /// Of those, the fields whose value lies outside the window altogether
     pub clamped_time_windows: u32,
+    /// Every inexact time-window value
+    pub approximations: Vec<Approximation>,
+    /// The struct being written, set by the message writers
+    place: Option<Place>,
 }
 
 /// A value compared the way the engine compares struct contents, with
@@ -74,14 +118,6 @@ fn time_window_value(field: &DeltaField, offset: i64, time_bits: u32) -> u32 {
     }
 }
 
-/// How a time-window value was encoded
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Fit {
-    Exact,
-    Rounded,
-    Clamped,
-}
-
 /// The offset to send so the client decodes `target` under `time_bits`
 fn time_window_offset(field: &DeltaField, target: u32, time_bits: u32) -> (i64, Fit) {
     let width = match field.kind() {
@@ -107,12 +143,25 @@ fn time_window_offset(field: &DeltaField, target: u32, time_bits: u32) -> (i64, 
         .chain(engine - span..=engine + span)
         .filter(|o| (-limit..=limit).contains(o))
         .find(|&o| time_window_value(field, o, time_bits) == target);
-
-    match found {
-        Some(o) => (o, Fit::Exact),
-        None if unclamped != engine => (engine, Fit::Clamped),
-        None => (engine, Fit::Rounded),
+    if let Some(o) = found {
+        return (o, Fit::Exact);
     }
+    if unclamped != engine {
+        return (engine, Fit::Clamped);
+    }
+
+    // The nearest of the engine's choice and its neighbours
+    let distance = |o: i64| {
+        let v = f32::from_bits(time_window_value(field, o, time_bits));
+        (v - f32::from_bits(target)).abs()
+    };
+    let nearest = (-3..=3)
+        .map(|d| engine + d)
+        .filter(|o| (-limit..=limit).contains(o))
+        .min_by(|a, b| distance(*a).total_cmp(&distance(*b)))
+        .unwrap_or(engine);
+
+    (nearest, Fit::Rounded)
 }
 
 fn write_value(
@@ -140,6 +189,18 @@ fn write_value(
             let (offset, fit) = time_window_offset(field, target, time_bits);
             if fit != Fit::Exact {
                 stats.inexact_time_windows += 1;
+                let scale = match field.kind() {
+                    Kind::TimeWindow8 => 100.,
+                    _ => field.premultiply() as f32,
+                };
+                stats.approximations.push(Approximation {
+                    place: stats.place.unwrap_or(Place::Client),
+                    field: field.name_lossy(),
+                    fit,
+                    original_bits: target,
+                    written_bits: time_window_value(field, offset, time_bits),
+                    resolution: 1. / scale,
+                });
             }
             if fit == Fit::Clamped {
                 stats.clamped_time_windows += 1;
@@ -283,6 +344,7 @@ pub fn write_full_entities(
         }
         w.bit(false);
 
+        stats.place = Some(Place::Entity(e.number));
         write_delta(w, e.schema, e.baseline, e.state, true, time_bits, stats);
     }
 
@@ -305,6 +367,7 @@ pub fn write_full_clientdata(
     w.bit(false);
 
     let zero = StructState::default();
+    stats.place = Some(Place::Client);
     write_delta(w, client_schema, &zero, client, true, time_bits, stats);
 
     if let Some(schema) = weapon_schema {
@@ -316,6 +379,7 @@ pub fn write_full_clientdata(
 
             w.bit(true);
             w.bits(slot as u32, 6);
+            stats.place = Some(Place::Weapon(slot as u8));
             write_delta(w, schema, &zero, state, true, time_bits, stats);
         }
     }

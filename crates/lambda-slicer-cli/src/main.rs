@@ -284,10 +284,13 @@ fn run() -> Result<ExitCode> {
                         "  time windows: {} inexact, {} outside the window",
                         r.inexact_time_windows, r.clamped_time_windows
                     );
+                    for a in &r.approximations {
+                        println!("  approximation: {a}");
+                    }
                     let v = &r.validation;
                     println!(
-                        "  validation: {} kept snapshots compared, {} time-window and {} other field differences",
-                        v.compared_snapshots, v.time_window_differences, v.other_differences
+                        "  validation: {} kept snapshots compared, {} differences explained by approximations, {} unexplained",
+                        v.compared_snapshots, v.approximated_differences, v.other_differences
                     );
 
                     let name = r

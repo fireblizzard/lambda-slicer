@@ -61,4 +61,6 @@ pub enum ExportError {
     UnknownPersistentMessage(String),
     #[error("{0} is under way at the start and cannot be carried over it yet")]
     ActiveEffect(String),
+    #[error("a bootstrap time field cannot be sent faithfully: {0}")]
+    UnrepresentableTimeField(String),
 }

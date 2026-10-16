@@ -34,10 +34,10 @@ use crate::container::{
     encode_frame, encode_header, tag,
 };
 use crate::protocol::bitwrite::BitWriter;
-use crate::protocol::delta::{DeltaSchema, Kind, StructState};
+use crate::protocol::delta::{DeltaSchema, Kind, StructState, Value};
 use crate::protocol::encode::{
-    EncodeStats, FullEntity, differing_fields, write_full_clientdata, write_full_entities,
-    write_time,
+    Approximation, EncodeStats, Fit, FullEntity, Place, differing_fields, write_full_clientdata,
+    write_full_entities, write_time,
 };
 use crate::protocol::messages::Message;
 use crate::protocol::profile;
@@ -54,9 +54,9 @@ const BOOTSTRAP_WINDOW: u32 = 62;
 pub struct RestartValidation {
     /// Kept packets whose decoded output state was compared with the source
     pub compared_snapshots: u64,
-    /// Fields that differ only in time windows, inherited from bootstrap
-    /// values the window cannot express exactly
-    pub time_window_differences: u64,
+    /// Time-window fields that differ by exactly a bootstrap approximation,
+    /// inherited unchanged since the bootstrap
+    pub approximated_differences: u64,
     /// Any other differing field, which fails the export
     pub other_differences: u64,
 }
@@ -89,6 +89,9 @@ pub struct RestartReport {
     pub kept_network_records: u64,
     pub inexact_time_windows: u32,
     pub clamped_time_windows: u32,
+    /// Every accepted approximation, once per place and field with its
+    /// largest error
+    pub approximations: Vec<String>,
     pub validation: RestartValidation,
 }
 
@@ -672,38 +675,81 @@ fn write(path: &Path, out: &mut File, p: &Plan, limits: Limits) -> Result<Writte
         .map_err(io_err(dest))?;
     out.flush().map_err(io_err(dest))?;
 
+    accept(&stats.approximations)?;
+
     Ok(Written {
         bootstrap_bytes,
         stats,
     })
 }
 
-/// Field differences found so far, split into time windows and the rest
+/// Field differences found so far. A time-window difference counts as
+/// approximated only when it is exactly a bootstrap approximation of the
+/// same place and field, the source still holding the value meant and the
+/// output the value sent. Everything else is unexplained
 #[derive(Default)]
 struct Tally {
     windows: u64,
     other: u64,
+    /// The first unexplained fields, for the error
+    first: Vec<String>,
 }
 
 impl Tally {
-    fn add(&mut self, schema: &DeltaSchema, x: &StructState, y: &StructState) {
+    fn add(
+        &mut self,
+        place: Place,
+        schema: &DeltaSchema,
+        x: &StructState,
+        y: &StructState,
+        approximations: &[Approximation],
+    ) {
         for i in differing_fields(schema, x, y) {
-            match schema.fields[i].kind() {
-                Kind::TimeWindow8 | Kind::TimeWindowBig => self.windows += 1,
-                _ => self.other += 1,
+            let field = &schema.fields[i];
+            let name = field.name_lossy();
+            let bits = |s: &StructState| match s.value(schema, &name) {
+                Some(Value::Float(f)) => Some(f.to_bits()),
+                _ => None,
+            };
+
+            let window = matches!(field.kind(), Kind::TimeWindow8 | Kind::TimeWindowBig);
+            let explained = window
+                && approximations.iter().any(|a| {
+                    a.place == place
+                        && a.field == name
+                        && Some(a.original_bits) == bits(x)
+                        && Some(a.written_bits) == bits(y)
+                });
+            if explained {
+                self.windows += 1;
+                continue;
+            }
+
+            self.other += 1;
+            if self.first.len() < 3 {
+                self.first.push(format!("{} {name}", place_name(place)));
             }
         }
     }
 }
 
+fn place_name(place: Place) -> String {
+    match place {
+        Place::Entity(n) => format!("entity {n}"),
+        Place::Client => "clientdata".into(),
+        Place::Weapon(slot) => format!("weapon {slot}"),
+    }
+}
+
 /// Field differences between two snapshots
-fn compare(d: &Decoder, a: &Snapshot, b: &Snapshot) -> Tally {
+fn compare(d: &Decoder, a: &Snapshot, b: &Snapshot, approximations: &[Approximation]) -> Tally {
     let mut tally = Tally::default();
     match (&a.entities, &b.entities) {
         (Some(x), Some(y)) if x.iter().map(|e| e.number).eq(y.iter().map(|e| e.number)) => {
             for (e, f) in x.iter().zip(y.iter()) {
+                let place = Place::Entity(e.number);
                 match d.entity_schema(e.number, e.custom) {
-                    Some(s) => tally.add(&s, &e.fields, &f.fields),
+                    Some(s) => tally.add(place, &s, &e.fields, &f.fields, approximations),
                     None => tally.other += 1,
                 }
             }
@@ -716,17 +762,78 @@ fn compare(d: &Decoder, a: &Snapshot, b: &Snapshot) -> Tally {
     if let Some(s) = d.schema("clientdata_t") {
         let x = a.clientdata.as_deref().unwrap_or(&empty);
         let y = b.clientdata.as_deref().unwrap_or(&empty);
-        tally.add(&s, x, y);
+        tally.add(Place::Client, &s, x, y, approximations);
     }
     if let (Some(s), Some(x), Some(y)) = (d.schema("weapon_data_t"), &a.weapons, &b.weapons) {
         for slot in 0..64 {
             let left = x[slot].as_deref().unwrap_or(&empty);
             let right = y[slot].as_deref().unwrap_or(&empty);
-            tally.add(&s, left, right);
+            tally.add(Place::Weapon(slot as u8), &s, left, right, approximations);
         }
     }
 
     tally
+}
+
+/// Fields whose clamped value only sets an animation's phase. A clamped
+/// `animtime` restarts the animation at a different frame, while clamping
+/// any other time field would move an event in time
+const CLAMP_ALLOWED: &[&str] = &["animtime"];
+
+/// Refuse approximations beyond what the field's resolution explains, and
+/// clamping of any field but an entity's animation time
+fn accept(approximations: &[Approximation]) -> Result<(), ExportError> {
+    for a in approximations {
+        let where_ = format!("{} {}", place_name(a.place), a.field);
+        match a.fit {
+            Fit::Exact => {}
+            Fit::Rounded if a.error() <= a.resolution => {}
+            Fit::Rounded => {
+                return Err(ExportError::UnrepresentableTimeField(format!(
+                    "{where_} rounds by {:.4} s, more than its {:.4} s resolution",
+                    a.error(),
+                    a.resolution
+                )));
+            }
+            Fit::Clamped
+                if matches!(a.place, Place::Entity(_))
+                    && CLAMP_ALLOWED.contains(&a.field.as_str()) => {}
+            Fit::Clamped => {
+                return Err(ExportError::UnrepresentableTimeField(format!(
+                    "{where_} lies {:.2} s outside its time window",
+                    a.error()
+                )));
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// One line per place and field, with the largest error
+fn summarize(approximations: &[Approximation]) -> Vec<String> {
+    let mut worst: Vec<(Place, &str, Fit, f32)> = Vec::new();
+    for a in approximations {
+        match worst
+            .iter_mut()
+            .find(|(p, f, fit, _)| *p == a.place && *f == a.field && *fit == a.fit)
+        {
+            Some(w) => w.3 = w.3.max(a.error()),
+            None => worst.push((a.place, &a.field, a.fit, a.error())),
+        }
+    }
+
+    worst
+        .into_iter()
+        .map(|(place, field, fit, error)| {
+            let how = if fit == Fit::Clamped {
+                "clamped"
+            } else {
+                "rounded"
+            };
+            format!("{} {field} {how} by up to {error:.3} s", place_name(place))
+        })
+        .collect()
 }
 
 /// Decode source and output side by side over the kept packets and compare
@@ -735,8 +842,10 @@ fn validate(
     source: &Path,
     output: &Path,
     p: &Plan,
+    approximations: &[Approximation],
     limits: Limits,
-) -> Result<RestartValidation, ExportError> {
+) -> Result<(RestartValidation, Option<String>), ExportError> {
+    let mut first_unexplained: Option<String> = None;
     let mut src = open(source, limits)?;
     let mut src_d = Decoder::new();
     decode_loading(&mut src, &mut src_d)?;
@@ -775,7 +884,7 @@ fn validate(
 
     let mut v = RestartValidation {
         compared_snapshots: 0,
-        time_window_differences: 0,
+        approximated_differences: 0,
         other_differences: 0,
     };
     for item in src.frames(1)? {
@@ -813,10 +922,13 @@ fn validate(
             continue;
         }
 
-        let tally = compare(&src_d, a, b);
+        let tally = compare(&src_d, a, b, approximations);
         v.compared_snapshots += 1;
-        v.time_window_differences += tally.windows;
+        v.approximated_differences += tally.windows;
         v.other_differences += tally.other;
+        if tally.other > 0 && first_unexplained.is_none() {
+            first_unexplained = Some(format!("{} at {}", tally.first.join(", "), at(&lf.frame)));
+        }
     }
 
     if next_output(&mut out_d)?.is_some() {
@@ -825,7 +937,7 @@ fn validate(
         ));
     }
 
-    Ok(v)
+    Ok((v, first_unexplained))
 }
 
 pub fn run_restart(
@@ -865,14 +977,15 @@ pub fn run_restart(
             }
 
             let planned = planned.borrow();
-            let Some((snapshot, p, _)) = planned.as_ref() else {
+            let Some((snapshot, p, written)) = planned.as_ref() else {
                 return Err(ExportError::Validation("no plan".into()));
             };
-            let v = validate(snapshot, tmp, p, limits)?;
+            let (v, first) = validate(snapshot, tmp, p, &written.stats.approximations, limits)?;
             if v.other_differences > 0 {
                 return Err(ExportError::Validation(format!(
-                    "{} decoded fields differ from the source",
-                    v.other_differences
+                    "{} decoded fields differ from the source, first {}",
+                    v.other_differences,
+                    first.unwrap_or_default()
                 )));
             }
 
@@ -903,6 +1016,53 @@ pub fn run_restart(
         kept_network_records: p.kept_network_records,
         inexact_time_windows: written.stats.inexact_time_windows,
         clamped_time_windows: written.stats.clamped_time_windows,
+        approximations: summarize(&written.stats.approximations),
         validation,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn approximation(place: Place, field: &str, fit: Fit, error: f32) -> Approximation {
+        Approximation {
+            place,
+            field: field.into(),
+            fit,
+            original_bits: 10f32.to_bits(),
+            written_bits: (10. + error).to_bits(),
+            resolution: 0.01,
+        }
+    }
+
+    #[test]
+    fn rounding_is_accepted_within_the_field_resolution() {
+        let within = approximation(Place::Entity(3), "starttime", Fit::Rounded, 0.004);
+        assert!(accept(&[within]).is_ok());
+
+        let beyond = approximation(Place::Entity(3), "starttime", Fit::Rounded, 0.03);
+        assert!(matches!(
+            accept(&[beyond]),
+            Err(ExportError::UnrepresentableTimeField(_))
+        ));
+    }
+
+    #[test]
+    fn only_an_entity_animtime_may_be_clamped() {
+        let animtime = approximation(Place::Entity(3), "animtime", Fit::Clamped, 2.);
+        assert!(accept(&[animtime]).is_ok());
+
+        for refused in [
+            approximation(Place::Entity(3), "starttime", Fit::Clamped, 2.),
+            approximation(Place::Entity(3), "impacttime", Fit::Clamped, 2.),
+            approximation(Place::Client, "animtime", Fit::Clamped, 2.),
+            approximation(Place::Weapon(4), "fuser1", Fit::Clamped, 2.),
+        ] {
+            assert!(matches!(
+                accept(&[refused]),
+                Err(ExportError::UnrepresentableTimeField(_))
+            ));
+        }
+    }
 }

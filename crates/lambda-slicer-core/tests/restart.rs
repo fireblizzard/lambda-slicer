@@ -77,7 +77,7 @@ fn network(
 }
 
 /// Clientdata health and entity 1's model, both as deltas from `from`
-fn step(seconds: f32, from: u8, value: i64, extra: &[u8]) -> Vec<u8> {
+fn step(seconds: f32, from: u8, value: i64, extra: &[u8], animtime: Option<i64>) -> Vec<u8> {
     let mut w = BitWriter::new();
     time(&mut w, 10. + seconds);
     w.bytes(extra);
@@ -96,7 +96,10 @@ fn step(seconds: f32, from: u8, value: i64, extra: &[u8]) -> Vec<u8> {
     w.bit(true);
     w.bits(1, 11);
     w.bit(false);
-    delta(&mut w, ENTITY, &[(1, value)]);
+    match animtime {
+        Some(offset) => delta(&mut w, ENTITY, &[(1, value), (2, offset)]),
+        None => delta(&mut w, ENTITY, &[(1, value)]),
+    }
     w.bits(0, 16);
 
     w.finish()
@@ -110,6 +113,9 @@ struct Recording {
     recorded_weapons: u32,
     /// Demo records written before the network record of a group, by group
     records: Vec<(i32, FrameBody)>,
+    /// Groups that also set entity 1's animtime, as (group, offset back
+    /// from the packet's server time in hundredths)
+    animtimes: Vec<(i32, i64)>,
 }
 
 impl Recording {
@@ -123,6 +129,7 @@ impl Recording {
             groups,
             recorded_weapons: 1 << 9,
             records: Vec::new(),
+            animtimes: Vec::new(),
         }
     }
 
@@ -160,7 +167,12 @@ impl Recording {
         for (k, (from, extra)) in self.groups.iter().enumerate() {
             let n = k as i32 + 1;
             let t = n as f32 * STEP;
-            group(t, n, step(t, *from, i64::from(n), extra));
+            let animtime = self
+                .animtimes
+                .iter()
+                .find(|(g, _)| *g == n)
+                .map(|(_, o)| *o);
+            group(t, n, step(t, *from, i64::from(n), extra, animtime));
         }
 
         let end = (self.groups.len() + 1) as f32 * STEP;
@@ -607,4 +619,24 @@ fn an_expired_or_hidden_vote_is_not_replayed() {
     rec.groups[28].1 = vote(0);
     let (_out, _dir, r) = slice(&rec, 30, None).unwrap();
     assert_eq!(r.expired_notices, 1);
+}
+
+#[test]
+fn an_old_animtime_is_clamped_reported_and_explained() {
+    // Entity 1's animation started at group 5 and entity 5's with the full
+    // update, both too long before the start for the 8-bit window. Later
+    // deltas leave them alone, so the output keeps the clamped values
+    let mut rec = Recording::steady(60, 1);
+    rec.animtimes.push((5, 3));
+
+    let (_out, _dir, r) = slice(&rec, 30, None).unwrap();
+    assert_eq!(r.clamped_time_windows, 2);
+    let fields: Vec<_> = r
+        .approximations
+        .iter()
+        .map(|a| a.split(" clamped").next().unwrap())
+        .collect();
+    assert_eq!(fields, ["entity 1 animtime", "entity 5 animtime"]);
+    assert_eq!(r.validation.approximated_differences, 2 * 30);
+    assert_eq!(r.validation.other_differences, 0);
 }
