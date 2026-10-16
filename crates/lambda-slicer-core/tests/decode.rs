@@ -6,6 +6,8 @@ mod common;
 use std::sync::Arc;
 
 use common::stream::*;
+use lambda_slicer_core::analysis::context::Context;
+use lambda_slicer_core::analysis::weapons::Weapon;
 use lambda_slicer_core::container::NetworkFrame;
 use lambda_slicer_core::protocol::bitwrite::BitWriter;
 use lambda_slicer_core::protocol::delta::{StructState, Value};
@@ -828,4 +830,80 @@ fn time_windows_are_reencoded_against_the_new_server_time() {
     let mut w = BitWriter::new();
     write_full_entities(&mut w, &full, false, 12.5f32.to_bits(), &mut stats);
     assert_eq!(stats.clamped_time_windows, 1);
+}
+
+/// Register user message `id` as `name`, fixed size or variable (255)
+fn register(w: &mut BitWriter, id: u8, name: &str, size: u8) {
+    w.u8(svc::NEWUSERMSG);
+    w.u8(id);
+    w.u8(size);
+    let mut raw = [0u8; 16];
+    raw[..name.len()].copy_from_slice(name.as_bytes());
+    w.bytes(&raw);
+}
+
+#[test]
+fn kills_keep_the_identities_of_their_time_and_switches_only_record_changes() {
+    let mut w = BitWriter::new();
+    register(&mut w, 71, "DeathMsg", 255);
+    register(&mut w, 72, "CurWeapon", 3);
+    userinfo(&mut w, 0, 5, r"\name\Alice");
+    userinfo(&mut w, 1, 6, r"\name\Bob");
+
+    // Alice (entity 1) kills Bob (entity 2) with the gauss, then the world
+    // kills Alice
+    for (killer, victim, weapon) in [(1u8, 2u8, &b"gauss"[..]), (0, 1, b"world")] {
+        w.u8(71);
+        w.u8((2 + weapon.len() + 1) as u8);
+        w.bytes(&[killer, victim]);
+        w.bytes(weapon);
+        w.bytes(&[0]);
+    }
+
+    // Gauss, the same gauss with less ammo, an inactive update, then the
+    // crowbar
+    for body in [[1u8, 9, 20], [1, 9, 18], [0, 7, 8], [1, 1, 255]] {
+        w.u8(72);
+        w.bytes(&body);
+    }
+
+    let mut context = Context::default();
+    let mut d = Decoder::new();
+    d.network_frame(loc(0), &frame(1, setup()), |_, _| {})
+        .unwrap();
+    let at = loc(1);
+    d.network_frame(at, &frame(2, w.finish()), |dec, m| {
+        context.observe(&at, dec, m)
+    })
+    .unwrap();
+
+    let kills: Vec<_> = context
+        .kills
+        .iter()
+        .map(|k| {
+            (
+                k.killer.as_ref().map(|p| p.name.as_str()),
+                k.victim.as_ref().map(|p| p.name.as_str()),
+                k.weapon_name.as_str(),
+                k.weapon,
+            )
+        })
+        .collect();
+    assert_eq!(
+        kills,
+        [
+            (Some("Alice"), Some("Bob"), "gauss", Some(Weapon::Gauss)),
+            (None, Some("Alice"), "world", None),
+        ]
+    );
+
+    let switches: Vec<_> = context
+        .switches
+        .iter()
+        .map(|s| (s.weapon, s.clip))
+        .collect();
+    assert_eq!(
+        switches,
+        [(Some(Weapon::Gauss), 20), (Some(Weapon::Crowbar), -1)]
+    );
 }

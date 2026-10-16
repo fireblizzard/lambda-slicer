@@ -710,16 +710,40 @@ fn print_analysis(r: &AnalysisReport) {
     }
     println!("  {} recorded events", r.events);
 
-    println!("  weapon        shots  records  intervals");
+    println!(
+        "  {:?}: {} local and {} network events, {} kills",
+        r.coverage.kind, r.coverage.local_events, r.coverage.network_events, r.coverage.kills
+    );
+    for n in &r.coverage.notes {
+        println!("    {n}");
+    }
+
+    println!("  weapon        shots  records  intervals  kills");
     for w in &r.weapons {
         println!(
-            "  {:<12} {:>6} {:>8} {:>10}",
+            "  {:<12} {:>6} {:>8} {:>10} {:>6}",
             format!("{:?}", w.weapon),
             w.shots,
             w.records,
-            w.intervals
+            w.intervals,
+            w.kills
         );
     }
+    let unmapped: Vec<_> = r.kills.iter().filter(|k| k.weapon.is_none()).collect();
+    if !unmapped.is_empty() {
+        let mut names: Vec<_> = unmapped.iter().map(|k| k.weapon_name.as_str()).collect();
+        names.sort_unstable();
+        names.dedup();
+        println!(
+            "  kills by other causes: {} ({})",
+            unmapped.len(),
+            names.join(", ")
+        );
+    }
+    println!(
+        "  {} weapon switches by the recorder",
+        r.weapon_switches.len()
+    );
 
     println!("  actions (count, with a known player)");
     for a in &r.actions {

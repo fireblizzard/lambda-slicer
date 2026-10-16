@@ -32,7 +32,11 @@ pub enum Weapon {
     Gauss,
     Egon,
     Hivehand,
+    /// No event script. Seen only as the recorder's weapon and in kills
+    Handgrenade,
     Tripmine,
+    /// No event script. Seen only as the recorder's weapon and in kills
+    Satchel,
     Snark,
 }
 
@@ -50,9 +54,33 @@ impl Weapon {
             Weapon::Gauss => "gauss",
             Weapon::Egon => "egon",
             Weapon::Hivehand => "hivehand",
+            Weapon::Handgrenade => "handgrenade",
             Weapon::Tripmine => "tripmine",
+            Weapon::Satchel => "satchel",
             Weapon::Snark => "snark",
         }
+    }
+
+    /// The weapon with a standard Half-Life ID. ID 5 is the legacy chaingun
+    /// define and not a weapon
+    pub fn from_id(id: u8) -> Option<Weapon> {
+        Some(match id {
+            1 => Weapon::Crowbar,
+            2 => Weapon::Glock,
+            3 => Weapon::Python,
+            4 => Weapon::Mp5,
+            6 => Weapon::Crossbow,
+            7 => Weapon::Shotgun,
+            8 => Weapon::Rpg,
+            9 => Weapon::Gauss,
+            10 => Weapon::Egon,
+            11 => Weapon::Hivehand,
+            12 => Weapon::Handgrenade,
+            13 => Weapon::Tripmine,
+            14 => Weapon::Satchel,
+            15 => Weapon::Snark,
+            _ => return None,
+        })
     }
 
     /// Standard Half-Life weapon ID (`dlls/weapons.h`)
@@ -68,7 +96,9 @@ impl Weapon {
             Weapon::Gauss => 9,
             Weapon::Egon => 10,
             Weapon::Hivehand => 11,
+            Weapon::Handgrenade => 12,
             Weapon::Tripmine => 13,
+            Weapon::Satchel => 14,
             Weapon::Snark => 15,
         }
     }

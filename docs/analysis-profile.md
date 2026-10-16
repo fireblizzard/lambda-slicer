@@ -50,7 +50,8 @@ The gauss rows follow the server (OpenAG `dlls/gauss.cpp`). A shot sends `gauss.
 followed 10 ms later by a reliable stop with `bparam2 = 1`, which is also sent on holster.
 Counting every `gauss.sc` record would therefore roughly double the shots.
 
-Handgrenade and satchel have no weapon event script, and kills (`DeathMsg`) are not yet analysed.
+Handgrenade and satchel have no weapon event script. They appear only as the recorder's weapon and
+in kills.
 
 ## Intervals
 
@@ -60,6 +61,40 @@ Gauss charging and egon beams become intervals per weapon, session and actor:
   later update without an open interval opens one with an unseen start;
 - updates extend it, and a gauss shot or stop or an egon stop ends it;
 - updates more than 1 s apart, or the end of the recording, end it with an unseen end.
+
+## Kills
+
+`DeathMsg` is killer entity, victim entity and a weapon string (OpenAG
+`dlls/multiplay_gamerules.cpp`). The string is the killer's active weapon, or the inflictor's class
+name without its `weapon_`, `monster_` or `func_` prefix, or `world`, or `teammate`. Each kill keeps
+the killer and victim occupants when the message arrived and the raw string, mapped to a weapon
+where the name is unambiguous:
+
+| String | Weapon |
+|---|---|
+| `crowbar`, `9mmhandgun`, `357`, `9mmAR`, `shotgun`, `gauss`, `egon`, `handgrenade`, `tripmine`, `satchel`, `snark` | the weapon of that name |
+| `crossbow` or `bolt`, `rpg` or `rpg_rocket`, `hornetgun` or `hornet` | crossbow, rpg, hivehand |
+| `tau_cannon`, `gluon gun` | gauss, egon (renamed in later versions) |
+| `grenade`, `world`, `teammate`, anything else | none; `grenade` may be the mp5, a hand grenade or a satchel |
+
+A kill is not a shot, and its time is when the death was announced, not when the weapon was used.
+The death feed goes to every client, so it covers all players, unlike their events.
+
+## The recorder's weapon
+
+`CurWeapon` (state, signed weapon ID, signed clip, `cl_dll/ammo.cpp`) is sent only to the recording
+player. A weapon switch is recorded whenever a message with state 1 names a different weapon than
+the last one. State 0 updates another weapon's clip and does not select it.
+
+## Coverage
+
+| Kind | When | Notes |
+|---|---|---|
+| multiplayer view | more than one client, not HLTV | other players' events reach the client only while the server counts them as visible, so their counts are lower bounds. Without local events, the recorder's own actions are missing unless the server sent them |
+| singleplayer | one client | other actors are monsters or world entities, and there is no death feed |
+| HLTV | spectator proxy | no recording player, and events follow the proxy's view |
+
+The report also counts local and network events.
 
 ## Actors
 
@@ -77,6 +112,11 @@ event of that weapon, updates included) and intervals, and per weapon, action an
 of actions and how many have a known player.
 
 **Measured (2026-10-16):**
+
+- `naz_crossfire_pb_01.dem` also has 231 kills, 200 of them by gauss (both players), 1 by
+  `grenade` (unmapped), and 156 weapon switches by the recorder.
+- `run_108.dem` (singleplayer, `c1a0e`) has no events and one weapon switch, and is labelled
+  singleplayer.
 
 - `naz_crossfire_pb_01.dem`: 72,820 gauss records hold 550 shots (531 charged, 19 primary), 595
   stops and 545 charge intervals, 5 of them with an unseen end. Every action has a known player.

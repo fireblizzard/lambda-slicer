@@ -4,6 +4,7 @@
 //! derives weapon actions and activity intervals from them with a versioned
 //! profile. Counts say whether they are raw records or actions
 
+pub mod context;
 pub mod events;
 pub mod weapons;
 
@@ -13,6 +14,7 @@ use serde::Serialize;
 
 use crate::container::Limits;
 use crate::state::{DecodeOptions, DecodeStatus, PlayerIdentity, decode_demo};
+use context::{Context, Coverage, Kill, WeaponSwitch};
 use events::recorded_events;
 use weapons::{Action, ActivityInterval, PROFILE, Weapon, WeaponOccurrence, derive};
 
@@ -29,12 +31,14 @@ pub struct ActionCount {
     pub attributed: usize,
 }
 
-/// Per weapon: shots and the raw records behind every action
+/// Shots per weapon, and the raw records behind every action
 #[derive(Clone, Debug, Serialize)]
 pub struct WeaponSummary {
     pub weapon: Weapon,
     /// Fire and launch actions
     pub shots: usize,
+    /// Kills the death feed credits to this weapon, which are not shots
+    pub kills: usize,
     /// Every recorded event of this weapon, activity updates included
     pub records: usize,
     pub intervals: usize,
@@ -58,6 +62,10 @@ pub struct AnalysisReport {
     pub intervals: Vec<ActivityInterval>,
     /// Event scripts the profile does not know, with their record counts
     pub unclassified: Vec<(String, usize)>,
+    pub kills: Vec<Kill>,
+    /// The recorder's active weapon over time
+    pub weapon_switches: Vec<WeaponSwitch>,
+    pub coverage: Coverage,
 }
 
 fn summary_of(weapons: &mut Vec<WeaponSummary>, weapon: Weapon) -> &mut WeaponSummary {
@@ -67,6 +75,7 @@ fn summary_of(weapons: &mut Vec<WeaponSummary>, weapon: Weapon) -> &mut WeaponSu
             weapons.push(WeaponSummary {
                 weapon,
                 shots: 0,
+                kills: 0,
                 records: 0,
                 intervals: 0,
             });
@@ -82,7 +91,8 @@ pub fn analyze_demo(path: &Path, limits: Limits) -> AnalysisReport {
         limits,
         collect_events: true,
     };
-    let (report, d) = decode_demo(path, &options, |_, _, _| {});
+    let mut context = Context::default();
+    let (report, d) = decode_demo(path, &options, |loc, d, m| context.observe(loc, d, m));
     let events = recorded_events(&d);
     let derived = derive(&events, report.max_clients);
 
@@ -120,9 +130,19 @@ pub fn analyze_demo(path: &Path, limits: Limits) -> AnalysisReport {
     for iv in &derived.intervals {
         summary_of(&mut weapons, iv.weapon).intervals += 1;
     }
+    for k in &context.kills {
+        if let Some(w) = k.weapon {
+            summary_of(&mut weapons, w).kills += 1;
+        }
+    }
     weapons.sort_by_key(|w| w.weapon);
 
     let recorder = d.player_for_entity(i64::from(report.player_num) + 1);
+    let local = events
+        .iter()
+        .filter(|e| e.source == crate::state::EventSource::Demo)
+        .count();
+    let coverage = context.coverage(&d, local, events.len() - local);
 
     AnalysisReport {
         schema: ANALYSIS_SCHEMA,
@@ -138,5 +158,8 @@ pub fn analyze_demo(path: &Path, limits: Limits) -> AnalysisReport {
         occurrences: derived.occurrences,
         intervals: derived.intervals,
         unclassified: derived.unclassified,
+        kills: context.kills,
+        weapon_switches: context.switches,
+        coverage,
     }
 }
