@@ -19,9 +19,14 @@ Toolchain: Rust **1.98.1** (`rust-toolchain.toml`), edition 2024. `Cargo.lock` i
 | ctrlc | 3.5.2 | MIT OR Apache-2.0 | CLI scan cancellation |
 | eframe | 0.37.0 | MIT OR Apache-2.0 | GUI (egui, harfrust shaping, system font discovery) |
 | unicode-bidi | 0.3.18 | MIT OR Apache-2.0 | right-to-left text order in the GUI |
-| image (dev, `png`) | 0.25.10 | MIT OR Apache-2.0 | spike screenshots |
+| image (`png`) | 0.25.10 | MIT OR Apache-2.0 | GUI screenshots for checking languages |
+| fluent-bundle | 0.16.0 | Apache-2.0 OR MIT | interface catalogs and plurals |
+| intl-memoizer | 0.5.3 | Apache-2.0 OR MIT | Fluent number formatter signature |
+| unic-langid | 0.9.6 | MIT OR Apache-2.0 | language tags |
+| sys-locale | 0.3.2 | MIT OR Apache-2.0 | system language on first run |
+| fluent-syntax, intl_pluralrules, fluent-langneg, tempfile (dev) | 0.12.0, 7.0.2, 0.13.1, 3.27.0 | Apache-2.0 OR MIT | catalog and settings tests |
 
-Not yet added (later milestones): `rfd` (file dialogs, M6), `fluent-bundle` (catalogs, M6), `tracing`. Discovery uses
+Not yet added (later milestones): `rfd` (file dialogs, M6), `tracing`. Discovery uses
 `std::fs` instead of `walkdir`, to control which links are followed.
 
 ## Codec decision

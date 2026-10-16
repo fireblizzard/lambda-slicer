@@ -28,7 +28,7 @@ JSON show the English text, and the GUI looks the code up in its catalog for the
 | Opening and reading a demo | `io-*`, `container-*`, `container-frame-*` |
 | Protocol | `protocol-unsupported`, `protocol-unsupported-network` |
 | Network decoding | `decode-failed`, with the English diagnostic as `detail` |
-| Coverage notes | `coverage-visible-only`, `coverage-no-local-events`, `coverage-singleplayer`, `coverage-hltv`, `coverage-mostly-spectating` |
+| Coverage notes | `coverage-visible-only`, `coverage-no-local-events`, `coverage-singleplayer`, `coverage-hltv`, `coverage-unknown`, `coverage-mostly-spectating` |
 | Export blockers | `export-*` |
 | Library | `cache-*`, `analysis-panicked`, and scan outcomes as enum tags |
 

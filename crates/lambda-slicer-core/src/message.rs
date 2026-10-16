@@ -79,6 +79,7 @@ pub const CODES: &[&str] = &[
     "coverage-mostly-spectating",
     "coverage-no-local-events",
     "coverage-singleplayer",
+    "coverage-unknown",
     "coverage-visible-only",
     "decode-failed",
     "export-active-effect",

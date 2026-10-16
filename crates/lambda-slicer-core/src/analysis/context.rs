@@ -97,6 +97,8 @@ pub enum RecordingKind {
     Singleplayer,
     /// A spectator proxy recording
     Hltv,
+    /// Decoding stopped before the server said how many players it holds
+    Unknown,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -359,7 +361,9 @@ impl Context {
     ) -> Coverage {
         let kind = if d.hltv {
             RecordingKind::Hltv
-        } else if d.max_clients <= 1 {
+        } else if d.max_clients == 0 {
+            RecordingKind::Unknown
+        } else if d.max_clients == 1 {
             RecordingKind::Singleplayer
         } else {
             RecordingKind::MultiplayerView
@@ -385,6 +389,11 @@ impl Context {
                 "coverage-singleplayer",
                 "Singleplayer: actors other than the player are monsters or world entities, and \
                  there is no death feed",
+            )),
+            RecordingKind::Unknown => notes.push(Note::new(
+                "coverage-unknown",
+                "The recording did not decode far enough to tell what kind it is, so nothing \
+                 can be said about its events",
             )),
             RecordingKind::Hltv => notes.push(Note::new(
                 "coverage-hltv",
@@ -433,6 +442,10 @@ mod tests {
     fn coverage_follows_the_recording_kind() {
         let mut d = Decoder::new();
         let context = Context::default();
+
+        let c = context.coverage(&d, 0, 0, 0., 0.);
+        assert_eq!(c.kind, RecordingKind::Unknown);
+        assert_eq!(c.notes[0].code, "coverage-unknown");
 
         d.max_clients = 1;
         let c = context.coverage(&d, 5, 0, 10., 0.);

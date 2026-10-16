@@ -117,6 +117,7 @@ the last one. State 0 updates another weapon's clip and does not select it.
 | multiplayer view | more than one client, not HLTV | other players' events reach the client only while the server counts them as visible, so their counts are lower bounds. Without local events, the recorder's own actions are missing unless the server sent them |
 | singleplayer | one client | other actors are monsters or world entities, and there is no death feed |
 | HLTV | spectator proxy | no recording player, and events follow the proxy's view |
+| unknown | decoding stopped before the server info | nothing can be said about its events |
 
 The report also counts local and network events.
 
