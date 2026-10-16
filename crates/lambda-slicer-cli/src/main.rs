@@ -8,6 +8,8 @@ use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand, ValueEnum};
 use serde::Serialize;
 
+use lambda_slicer_core::analysis::weapons::{Actor, IntervalEnd};
+use lambda_slicer_core::analysis::{AnalysisReport, analyze_demo};
 use lambda_slicer_core::container::Limits;
 use lambda_slicer_core::fixtures::{MANIFEST_ENV, check_fixture, load_manifest};
 use lambda_slicer_core::library::fingerprint::full_fingerprint;
@@ -88,6 +90,16 @@ enum Command {
         /// with `--json -`
         #[arg(long, num_args = 2, value_names = ["FROM", "TO"])]
         trace: Option<Vec<DemoTime>>,
+    },
+    /// Weapon actions, charge intervals and actors from the recorded events
+    Analyze {
+        path: PathBuf,
+        /// Write the JSON report to a file, or `-` for stdout
+        #[arg(long)]
+        json: Option<PathBuf>,
+        /// List every weapon action with its actor
+        #[arg(long)]
+        occurrences: bool,
     },
     /// Cross-check decoded state against client-recorded values. Exit codes are
     /// 0 verified, 1 failed, 2 inconclusive
@@ -313,6 +325,32 @@ fn run() -> Result<ExitCode> {
             events,
             trace,
         } => return decode_cmd(&path, json.as_deref(), events, trace.as_deref()),
+        Command::Analyze {
+            path,
+            json,
+            occurrences,
+        } => {
+            if json.as_deref().is_some_and(is_stdout) && occurrences {
+                bail!(
+                    "--occurrences prints text to stdout, so use it with --json FILE, not --json -"
+                );
+            }
+
+            let r = analyze_demo(&path, limits);
+            match &json {
+                Some(target) => write_json(target, &r)?,
+                None => print_analysis(&r),
+            }
+            if occurrences {
+                print_occurrences(&r);
+            }
+
+            return Ok(if r.decode == DecodeStatus::Complete {
+                ExitCode::SUCCESS
+            } else {
+                ExitCode::FAILURE
+            });
+        }
         Command::Crosscheck { path, json } => {
             let r = crosscheck_demo(&path, Limits::default());
             match &json {
@@ -650,6 +688,76 @@ fn decode_cmd(
     } else {
         ExitCode::FAILURE
     })
+}
+
+fn actor_name(a: &Actor) -> String {
+    match a {
+        Actor::Player { identity, .. } => format!("{} (slot {})", identity.name, identity.slot),
+        Actor::UnknownPlayer { entity } => format!("Unknown player (entity {entity})"),
+        Actor::Entity { entity } => format!("entity {entity}"),
+        Actor::Unknown => "Unknown actor".into(),
+    }
+}
+
+fn print_analysis(r: &AnalysisReport) {
+    println!("{}", r.path);
+    println!("  decode {:?}, profile {}", r.decode, r.profile);
+    if let Some(e) = &r.decode_error {
+        println!("  decode stopped: {e}");
+    }
+    if let Some(p) = &r.recorder {
+        println!("  recorder: {} (slot {})", p.name, p.slot);
+    }
+    println!("  {} recorded events", r.events);
+
+    println!("  weapon        shots  records  intervals");
+    for w in &r.weapons {
+        println!(
+            "  {:<12} {:>6} {:>8} {:>10}",
+            format!("{:?}", w.weapon),
+            w.shots,
+            w.records,
+            w.intervals
+        );
+    }
+
+    println!("  actions (count, with a known player)");
+    for a in &r.actions {
+        let action = match a.mode {
+            Some(m) => format!("{:?} {:?} ({m})", a.weapon, a.action),
+            None => format!("{:?} {:?}", a.weapon, a.action),
+        };
+        println!("    {action:<36} {:>7} {:>7}", a.count, a.attributed);
+    }
+
+    let unknown_start = r.intervals.iter().filter(|i| !i.start_known).count();
+    let unknown_end = r
+        .intervals
+        .iter()
+        .filter(|i| i.end_reason == IntervalEnd::Unknown)
+        .count();
+    println!(
+        "  {} activity intervals, {unknown_start} with an unseen start, {unknown_end} with an unseen end",
+        r.intervals.len()
+    );
+    for (name, n) in &r.unclassified {
+        println!("  not in the profile: {name} ({n} records)");
+    }
+}
+
+fn print_occurrences(r: &AnalysisReport) {
+    for o in &r.occurrences {
+        let t = DemoTime::from_f32(o.time).map_or_else(|| o.time.to_string(), |t| t.to_string());
+        let mode = o.mode.map(|m| format!(" ({m})")).unwrap_or_default();
+        println!(
+            "{t} {:<9} {:<16} {:<38} {:?}, {:?}",
+            format!("{:?}", o.weapon),
+            format!("{:?}{mode}", o.action),
+            actor_name(&o.actor),
+            o.evidence,
+            o.attribution
+        );
+    }
 }
 
 fn print_crosscheck(r: &CrossCheckReport) {

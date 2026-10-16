@@ -1,6 +1,7 @@
 //! Lambda Slicer core, covering GoldSrc demo container access, analysis, and
 //! export. This crate has no GUI dependencies
 
+pub mod analysis;
 pub mod container;
 pub mod fixtures;
 pub mod library;

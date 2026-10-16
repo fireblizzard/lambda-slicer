@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+use crate::analysis::analyze_demo;
 use crate::container::Limits;
 use crate::library::fingerprint::hash_file;
 use crate::state::{DecodeOptions, DecodeStatus, decode_demo};
@@ -48,6 +49,9 @@ pub struct Expectations {
     pub events: Option<BTreeMap<String, u64>>,
     /// Expected cross-check outcome (see `validate::crosscheck::Outcome`)
     pub crosscheck: Option<Outcome>,
+    /// Exact shot counts by weapon name (`analysis::weapons::Weapon::name`),
+    /// from the analysis profile
+    pub shots: Option<BTreeMap<String, usize>>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -200,6 +204,20 @@ pub fn check_fixture(f: &Fixture) -> FixtureResult {
                 "crosscheck: expected {want:?}, found {:?}: {:?}",
                 r.outcome, r.reasons
             ));
+        }
+    }
+
+    if let (Some(_), Some(want)) = (&report, &f.expect.shots) {
+        let r = analyze_demo(&f.path, Limits::default());
+        for (weapon, n) in want {
+            let got = r
+                .weapons
+                .iter()
+                .find(|w| w.weapon.name() == weapon)
+                .map_or(0, |w| w.shots);
+            if got != *n {
+                m.push(format!("shots {weapon}: expected {n}, found {got}"));
+            }
         }
     }
 

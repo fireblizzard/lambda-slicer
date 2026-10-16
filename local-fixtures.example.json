@@ -34,9 +34,18 @@
           "events/glock1.sc": 87,
           "events/egon_stop.sc": 27
         },
-        "crosscheck": "verified"
+        "crosscheck": "verified",
+        "shots": {
+          "gauss": 550,
+          "glock": 94,
+          "rpg": 24,
+          "crossbow": 22,
+          "hivehand": 21,
+          "mp5": 15,
+          "shotgun": 7
+        }
       },
-      "notes": "Two-player crossfire match with recorder gauss use (1,100 local gauss.sc records) and opponent events via svc_event. Gauss counts are raw records, not validated shots."
+      "notes": "Two-player crossfire match with recorder gauss use (1,100 local gauss.sc records) and opponent events via svc_event. Event counts are raw records. Shots follow the analysis profile: 1,145 gauss.sc records hold 550 shots (531 charged, 19 primary) and 595 stops."
     },
     {
       "role": "campaign-map candidate, mode unverified",

@@ -152,6 +152,8 @@ pub enum ActorResolution {
 #[derive(Clone, Debug)]
 pub struct DecodedEvent {
     pub location: FrameLocation,
+    /// Session the event belongs to, counted from 1 at each server info
+    pub segment: u32,
     pub source: EventSource,
     pub message_ordinal: Option<u32>,
     pub index: u16,
@@ -903,6 +905,7 @@ impl Decoder {
 
                     self.record_event(DecodedEvent {
                         location,
+                        segment: self.segment,
                         source: EventSource::Svc,
                         message_ordinal: Some(ordinal),
                         index: e.index,
@@ -930,6 +933,7 @@ impl Decoder {
 
                 self.record_event(DecodedEvent {
                     location,
+                    segment: self.segment,
                     source: EventSource::SvcReliable,
                     message_ordinal: Some(ordinal),
                     index: e.index,
@@ -1058,6 +1062,7 @@ impl Decoder {
 
         self.record_event(DecodedEvent {
             location,
+            segment: self.segment,
             source: EventSource::Demo,
             message_ordinal: None,
             index,
