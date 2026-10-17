@@ -8,6 +8,7 @@
 //! bins at wide zoom. The full report is dropped once this is built
 
 use lambda_slicer_core::analysis::AnalysisReport;
+use lambda_slicer_core::analysis::accuracy::ShotOutcome;
 use lambda_slicer_core::analysis::context::{Coverage, KillCause, ScoreUpdate, TeamScoreUpdate};
 use lambda_slicer_core::analysis::weapons::{Action, Actor, IntervalEnd, Weapon};
 use lambda_slicer_core::message::Message;
@@ -93,6 +94,9 @@ pub enum EventKind {
         victim: Option<String>,
         weapon_name: String,
         cause: KillCause,
+        /// The killer's slot and incarnation
+        killer: Option<(u8, u32)>,
+        headshot: Option<bool>,
     },
     Switch,
 }
@@ -133,6 +137,10 @@ pub struct Model {
     /// Score and team changes, for the scores at any moment
     pub score_updates: Vec<ScoreUpdate>,
     pub team_score_updates: Vec<TeamScoreUpdate>,
+    /// Every counted shot's outcome, for accuracy at any moment
+    pub shots: Vec<ShotOutcome>,
+    /// The recording player's slot and incarnation
+    pub recorder: Option<(u8, u32)>,
 }
 
 fn key_of(p: &PlayerIdentity) -> LaneKey {
@@ -271,6 +279,8 @@ impl Model {
                     victim: victim.clone(),
                     weapon_name: k.weapon_name.clone(),
                     cause: k.cause,
+                    killer: killer.map(|p| (p.slot, p.incarnation)),
+                    headshot: k.headshot,
                 },
             };
             b.mark(lane, k.time, MarkKind::Kill, k.weapon, event);
@@ -367,6 +377,8 @@ impl Model {
                 .collect(),
             score_updates: r.score_updates.clone(),
             team_score_updates: r.team_score_updates.clone(),
+            shots: r.shot_outcomes.clone(),
+            recorder: r.recorder.as_ref().map(|p| (p.slot, p.incarnation)),
         }
     }
 }

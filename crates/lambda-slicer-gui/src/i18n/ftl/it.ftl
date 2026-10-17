@@ -208,3 +208,18 @@ legend-kill = Uccisione
 legend-death = Morte
 legend-switch = Cambio d’arma
 timeline-help = Ogni riga è un giocatore. Scorri per lo zoom, trascina per spostarti, doppio clic per vedere tutto, clic su un segno per selezionarlo.
+
+column-headshots = Colpi alla testa
+filter-headshots = Uccisioni con colpo alla testa
+event-headshot = colpo alla testa
+scores-headshots = CT
+
+column-accuracy = Precisione
+filter-min-accuracy = Precisione minima (%)
+scores-accuracy = Prec.
+
+help-headshots = Uccisioni con un colpo alla testa, riconosciute dall’animazione di morte della vittima. Le esplosioni non contano. Si mostrano solo quelle di chi registra, perché gli altri giocatori uccidono spesso fuori dalla sua vista. In un duello anche quelle dell’avversario, dato che colpiscono tutte chi registra.
+help-headshots-column = Uccisioni di chi registra con un colpo alla testa, riconosciute dall’animazione di morte della vittima. Le esplosioni non contano. Quelle degli altri giocatori non contano, perché avvengono spesso fuori dalla vista della registrazione.
+help-accuracy = La quota di colpi andati a segno, in base al sangue che un colpo lascia lungo la linea di mira, meno le corrispondenze casuali. Comprende glock, python, proiettili dell’MP5, fucile a pompa, balestra con zoom e i colpi diretti del raggio gauss. Esplosioni e rimbalzi del gauss non lasciano sangue e non contano. Mostrata solo per chi registra, dopo almeno 50 colpi.
+help-headshot-filter = Demo con almeno un’uccisione con colpo alla testa visibile nella registrazione, di qualsiasi giocatore.
+help-accuracy-filter = Demo in cui chi registra ha colpito almeno questa quota dei suoi colpi.

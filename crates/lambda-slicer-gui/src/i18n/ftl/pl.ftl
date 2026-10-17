@@ -213,3 +213,18 @@ legend-kill = Zabójstwo
 legend-death = Zgon
 legend-switch = Zmiana broni
 timeline-help = Każdy wiersz to gracz. Przewiń, by przybliżyć, przeciągnij, by przesunąć, kliknij dwukrotnie, by zobaczyć całość, kliknij znacznik, by go wybrać.
+
+column-headshots = Strzały w głowę
+filter-headshots = Zabójstwa strzałem w głowę
+event-headshot = w głowę
+scores-headshots = SG
+
+column-accuracy = Celność
+filter-min-accuracy = Celność co najmniej (%)
+scores-accuracy = Cel.
+
+help-headshots = Zabójstwa trafieniem w głowę, rozpoznane po animacji śmierci ofiary. Wybuchy się nie liczą. Pokazywane są tylko zabójstwa nagrywającego, bo inni gracze często zabijają poza jego polem widzenia. W pojedynku pokazywane są też zabójstwa przeciwnika, bo wszystkie dotyczą nagrywającego.
+help-headshots-column = Zabójstwa nagrywającego trafieniem w głowę, rozpoznane po animacji śmierci ofiary. Wybuchy się nie liczą. Zabójstwa innych graczy nie są liczone, bo często dzieją się poza polem widzenia nagrania.
+help-accuracy = Odsetek strzałów, które trafiły, ustalony na podstawie krwi, jaką trafienie zostawia na linii celowania, po odjęciu przypadkowych dopasowań. Obejmuje glocka, pythona, pociski MP5, strzelbę, kuszę z lunetą i bezpośrednie trafienia wiązki gaussa. Wybuchy i odbicia gaussa nie zostawiają krwi i nie są liczone. Pokazywany tylko dla nagrywającego, po co najmniej 50 strzałach.
+help-headshot-filter = Dema z co najmniej jednym zabójstwem w głowę widocznym w nagraniu, przez dowolnego gracza.
+help-accuracy-filter = Dema, w których nagrywający trafił co najmniej taki odsetek strzałów.

@@ -4,6 +4,7 @@
 //! derives weapon actions and activity intervals from them with a versioned
 //! profile. Counts say whether they are raw records or actions
 
+pub mod accuracy;
 pub mod context;
 pub mod events;
 pub mod highlights;
@@ -19,6 +20,7 @@ use serde::Serialize;
 use crate::container::Limits;
 use crate::message::Message;
 use crate::state::{DecodeOptions, DecodeStatus, PlayerIdentity, decode_demo};
+use accuracy::{PlayerAccuracy, ShotOutcome};
 use context::{
     Context, Coverage, Kill, ScoreUpdate, Scoreboard, TeamScoreUpdate, WeaponSwitch, final_moment,
     standing_at,
@@ -27,7 +29,7 @@ use events::recorded_events;
 use highlights::{ActionWindow, action_windows, link_kills};
 use weapons::{Action, ActivityInterval, PROFILE, Weapon, WeaponOccurrence, derive};
 
-pub const ANALYSIS_SCHEMA: u32 = 5;
+pub const ANALYSIS_SCHEMA: u32 = 8;
 
 /// Length of an action window in seconds, and how many are reported
 pub const ACTION_WINDOW: f32 = 60.;
@@ -88,6 +90,17 @@ pub struct AnalysisReport {
     /// Every score and team change, for the scores at any moment
     pub score_updates: Vec<ScoreUpdate>,
     pub team_score_updates: Vec<TeamScoreUpdate>,
+    /// Whether each counted shot hit, and each player's accuracy
+    /// ([`accuracy`])
+    #[serde(skip)]
+    pub shot_outcomes: Vec<ShotOutcome>,
+    pub accuracy: Vec<PlayerAccuracy>,
+    /// The recording player's accuracy, from its exact aim, when it fired
+    /// enough counted shots
+    pub recorder_accuracy: Option<f64>,
+    /// The recording player's headshot kills. Other players' are often out
+    /// of view and so incomplete
+    pub recorder_headshots: Option<u32>,
 }
 
 fn summary_of(weapons: &mut Vec<WeaponSummary>, weapon: Weapon) -> &mut WeaponSummary {
@@ -171,6 +184,19 @@ pub fn analyze_demo_with(
     weapons.sort_by_key(|w| w.weapon);
 
     let recorder = d.player_for_entity(i64::from(report.player_num) + 1);
+    let recorder_entity = (!report.hltv).then(|| u16::from(report.player_num) + 1);
+    let (shot_outcomes, accuracy) = accuracy::assess(
+        &derived.occurrences,
+        &context.blood,
+        &context.poses,
+        recorder_entity,
+    );
+    let recorder_accuracy = accuracy
+        .iter()
+        .filter(|a| a.exact)
+        .map(|a| (a.shots, a.hits, a.chance))
+        .reduce(|x, y| (x.0 + y.0, x.1 + y.1, x.2 + y.2))
+        .and_then(|(s, h, c)| accuracy::accuracy(s, h, c));
     let mut players: Vec<PlayerIdentity> = Vec::new();
     for change in &report.name_history {
         if !players.contains(&change.player) {
@@ -208,6 +234,17 @@ pub fn analyze_demo_with(
     // In decode order, each session's changes in time order
     score_updates.sort_by(|a, b| a.segment.cmp(&b.segment).then(a.time.total_cmp(&b.time)));
     let mut kills = std::mem::take(&mut context.kills);
+    let recorder_headshots = recorder.as_ref().map(|rec| {
+        kills
+            .iter()
+            .filter(|k| k.headshot == Some(true))
+            .filter(|k| {
+                k.killer.as_ref().is_some_and(|p| {
+                    (p.segment, p.slot, p.incarnation) == (rec.segment, rec.slot, rec.incarnation)
+                })
+            })
+            .count() as u32
+    });
     let team_score_updates = std::mem::take(&mut context.team_score_updates);
     let (segment, time) = final_moment(&kills, &score_updates);
     let scoreboard = Scoreboard::from(&standing_at(
@@ -241,5 +278,9 @@ pub fn analyze_demo_with(
         scoreboard,
         score_updates,
         team_score_updates,
+        shot_outcomes,
+        accuracy,
+        recorder_accuracy,
+        recorder_headshots,
     }
 }

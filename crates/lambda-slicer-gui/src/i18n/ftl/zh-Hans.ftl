@@ -198,3 +198,18 @@ legend-kill = 击杀
 legend-death = 死亡
 legend-switch = 切换武器
 timeline-help = 每一行是一名玩家。滚动以缩放，拖动以移动，双击查看全部，点击标记以选中。
+
+column-headshots = 爆头
+filter-headshots = 爆头击杀
+event-headshot = 爆头
+scores-headshots = 爆头
+
+column-accuracy = 命中率
+filter-min-accuracy = 命中率至少（%）
+scores-accuracy = 命中率
+
+help-headshots = 爆头击杀，根据受害者的死亡动作判断。爆炸不计入。只显示录制者的爆头，因为其他玩家常在录像视野之外击杀。在一对一中也显示对手的爆头，因为对手的击杀都是针对录制者。
+help-headshots-column = 录制者的爆头击杀，根据受害者的死亡动作判断。爆炸不计入。其他玩家的击杀不计入，因为它们常发生在录像视野之外。
+help-accuracy = 命中射击所占比例，根据命中在瞄准线上留下的血迹判断，并扣除偶然重合。包括格洛克、蟒蛇、MP5 子弹、霰弹枪、开镜十字弩和高斯光束的直接命中。爆炸和高斯反射不留血迹，不计入。只显示录制者的命中率，且至少 50 次射击后才显示。
+help-headshot-filter = 至少有一次录像中可见的爆头击杀的录像，任何玩家均可。
+help-accuracy-filter = 录制者命中率至少达到该比例的录像。

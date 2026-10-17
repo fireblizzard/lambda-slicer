@@ -158,6 +158,10 @@ pub struct Filters {
     /// Recording date bounds, inclusive
     pub from: Option<Ymd>,
     pub to: Option<Ymd>,
+    /// Only demos with a headshot kill
+    pub headshot: bool,
+    /// Lowest accuracy of the recording player in percent, 0 for any
+    pub min_accuracy: f32,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -170,12 +174,14 @@ enum Col {
     Score,
     Gauss,
     Kills,
+    Headshots,
+    Accuracy,
     Action,
     Spectating,
 }
 
 impl Col {
-    const ALL: [Col; 10] = [
+    const ALL: [Col; 12] = [
         Col::Status,
         Col::Name,
         Col::Date,
@@ -184,6 +190,8 @@ impl Col {
         Col::Score,
         Col::Gauss,
         Col::Kills,
+        Col::Headshots,
+        Col::Accuracy,
         Col::Action,
         Col::Spectating,
     ];
@@ -199,6 +207,8 @@ impl Col {
             Col::Score => "score",
             Col::Gauss => "gauss",
             Col::Kills => "kills",
+            Col::Headshots => "headshots",
+            Col::Accuracy => "accuracy",
             Col::Action => "action",
             Col::Spectating => "spectating",
         }
@@ -214,8 +224,19 @@ impl Col {
             Col::Score => "column-score",
             Col::Gauss => "column-gauss",
             Col::Kills => "column-kills",
+            Col::Headshots => "column-headshots",
+            Col::Accuracy => "column-accuracy",
             Col::Action => "column-action",
             Col::Spectating => "column-spectating",
+        }
+    }
+
+    /// What the column's figure means, for its heading's tooltip
+    fn help(self) -> Option<&'static str> {
+        match self {
+            Col::Headshots => Some("help-headshots-column"),
+            Col::Accuracy => Some("help-accuracy"),
+            _ => None,
         }
     }
 
@@ -228,6 +249,8 @@ impl Col {
             Col::Duration => Some(Sort::Duration),
             Col::Gauss => Some(Sort::Gauss),
             Col::Kills => Some(Sort::Kills),
+            Col::Headshots => Some(Sort::Headshots),
+            Col::Accuracy => Some(Sort::Accuracy),
             Col::Action => Some(Sort::Action),
             Col::Spectating => Some(Sort::Spectating),
         }
@@ -281,8 +304,8 @@ impl LibraryView {
             cache: None,
             filters: Filters::default(),
             applied: None,
-            sort: Sort::Path,
-            descending: false,
+            sort: Sort::Date,
+            descending: true,
             total: 0,
             pages: HashMap::new(),
             stale: true,
@@ -321,8 +344,13 @@ impl LibraryView {
             min_duration: (f.min_minutes > 0.).then_some(f.min_minutes * 60.),
             min_spectating: (f.spectating == Spectating::Mostly).then_some(0.5000001),
             max_spectating: (f.spectating == Spectating::Playing).then_some(0.5),
+            min_accuracy: (f.min_accuracy > 0.).then_some(f64::from(f.min_accuracy) / 100.),
             from_date: f.from.map(Ymd::iso),
             to_date: f.to.map(Ymd::iso),
+            kills: lambda_slicer_core::library::cache::KillQuery {
+                headshot: f.headshot,
+                ..Default::default()
+            },
             sort: self.sort,
             descending: self.descending,
             limit: PAGE,
@@ -443,6 +471,22 @@ impl LibraryView {
                     }
                 });
 
+            ui.checkbox(&mut self.filters.headshot, t("filter-headshots"))
+                .on_hover_text(text::help(&ctx, &catalog.text("help-headshot-filter"), rtl));
+            let accuracy_help = text::help(&ctx, &catalog.text("help-accuracy-filter"), rtl);
+            let min_accuracy = &mut self.filters.min_accuracy;
+            layout::unbroken(ui, "accuracy", |ui| {
+                ui.label(t("filter-min-accuracy"))
+                    .on_hover_text(accuracy_help.clone());
+                ui.add(
+                    egui::DragValue::new(min_accuracy)
+                        .range(0.0..=100.0)
+                        .speed(1.)
+                        .custom_formatter(|v, _| catalog.number(v, 0))
+                        .custom_parser(parse_number),
+                )
+                .on_hover_text(accuracy_help);
+            });
             date_filter(
                 ui,
                 catalog,
@@ -551,6 +595,10 @@ impl LibraryView {
                                 .selectable(false)
                                 .sense(egui::Sense::click()),
                         );
+                        let r = match c.help() {
+                            Some(key) => r.on_hover_text(text::help(&ctx, &catalog.text(key), rtl)),
+                            None => r,
+                        };
                         if r.clicked() {
                             sort_by = c.sort();
                         }
@@ -658,6 +706,26 @@ impl LibraryView {
                                 };
                                 let color = Some(ui.visuals().hyperlink_color);
                                 Self::cell(ui, &ctx, &text, false, color);
+                            }
+                            Col::Accuracy => {
+                                let text = file
+                                    .accuracy
+                                    .map(|a| {
+                                        catalog.text_with(
+                                            "library-percent",
+                                            &[("percent", FluentValue::from((a * 100.).round()))],
+                                        )
+                                    })
+                                    .unwrap_or_default();
+                                Self::cell(ui, &ctx, &text, rtl, None);
+                            }
+                            Col::Headshots => {
+                                let text = file
+                                    .headshots
+                                    .filter(|k| *k > 0)
+                                    .map(|k| catalog.number(k as f64, 0))
+                                    .unwrap_or_default();
+                                Self::cell(ui, &ctx, &text, false, None);
                             }
                             Col::Kills => {
                                 let text = file

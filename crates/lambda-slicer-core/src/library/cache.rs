@@ -21,7 +21,7 @@ use crate::message::Message;
 use crate::state::{DECODE_REPORT_SCHEMA, DecodeStatus};
 
 /// Layout of the tables below. A different value rebuilds the cache
-pub const CACHE_SCHEMA: i64 = 3;
+pub const CACHE_SCHEMA: i64 = 5;
 
 #[derive(Debug, thiserror::Error)]
 pub enum CacheError {
@@ -119,6 +119,8 @@ CREATE TABLE files(
     shots INTEGER,
     unknown_shots INTEGER,
     kills INTEGER,
+    headshots INTEGER,
+    accuracy REAL,
     best_window REAL,
     coverage_json TEXT,
     recorded_at TEXT,
@@ -165,7 +167,8 @@ CREATE TABLE kills(
     killer_speed REAL,
     victim_speed REAL,
     distance REAL,
-    shot_flight REAL
+    shot_flight REAL,
+    headshot INTEGER
 );
 CREATE INDEX kills_file ON kills(file_id, time);
 CREATE INDEX kills_weapon ON kills(weapon, file_id);
@@ -267,6 +270,8 @@ pub struct KillQuery {
     /// Killer or victim moving at least this fast horizontally, in units
     /// per second
     pub min_speed: Option<f32>,
+    /// A kill by a hit to the head
+    pub headshot: bool,
 }
 
 impl KillQuery {
@@ -275,6 +280,7 @@ impl KillQuery {
             && !self.victim_airborne
             && !self.killer_airborne
             && self.min_speed.is_none()
+            && !self.headshot
     }
 }
 
@@ -302,6 +308,8 @@ pub enum Sort {
     Scanned,
     Gauss,
     Date,
+    Headshots,
+    Accuracy,
 }
 
 impl Sort {
@@ -316,6 +324,8 @@ impl Sort {
             Sort::Scanned => "f.scanned_at",
             Sort::Gauss => "gauss",
             Sort::Date => "f.recorded_at",
+            Sort::Headshots => "f.headshots",
+            Sort::Accuracy => "f.accuracy",
         }
     }
 }
@@ -341,6 +351,8 @@ pub struct FileQuery {
     pub kills: KillQuery,
     /// Lowest best action window score
     pub min_action: Option<f64>,
+    /// Lowest accuracy of the recording player, as a fraction
+    pub min_accuracy: Option<f64>,
     pub sort: Sort,
     pub descending: bool,
     /// Rows to skip and rows to return, for paging
@@ -360,6 +372,7 @@ pub struct KillRow {
     pub killer_speed: Option<f32>,
     pub victim_speed: Option<f32>,
     pub distance: Option<f32>,
+    pub headshot: Option<bool>,
 }
 
 /// A message read back from the cache, with its code and arguments
@@ -392,6 +405,10 @@ pub struct FileRow {
     /// Gauss shots, the weapon the library highlights
     pub gauss: Option<i64>,
     pub kills: Option<i64>,
+    /// The recording player's kills by a hit to the head
+    pub headshots: Option<i64>,
+    /// The recording player's accuracy, as a fraction
+    pub accuracy: Option<f64>,
     pub best_window: Option<f64>,
     /// The kills that matched the kill conditions, when there were any
     pub matching_kills: Vec<KillRow>,
@@ -531,10 +548,11 @@ impl Cache {
                 full_hash, version, status, error, error_code, error_args, map, game_dir,
                 demo_protocol, network_protocol, duration, recording_kind, max_clients, recorder,
                 playback, spectator_fraction, shots, unknown_shots, kills, best_window,
-                coverage_json, recorded_at, date_source, score, score_json, scanned_at)
+                coverage_json, recorded_at, date_source, score, score_json, headshots, accuracy,
+                scanned_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16,
                 ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30, ?31,
-                ?32)",
+                ?32, ?33, ?34)",
             params![
                 display,
                 native_bytes(e.path),
@@ -567,6 +585,8 @@ impl Cache {
                 recorded.as_ref().map(|r| r.1.name()),
                 r.map(|r| r.scoreboard.summary(3)).filter(|s| !s.is_empty()),
                 r.map(|r| serde_json::to_string(&r.scoreboard).unwrap_or_default()),
+                r.and_then(|r| r.recorder_headshots),
+                r.and_then(|r| r.recorder_accuracy),
                 scanned_at,
             ],
         )?;
@@ -606,8 +626,9 @@ impl Cache {
             let mut kills = tx.prepare(
                 "INSERT INTO kills(file_id, kill_id, segment, time, weapon, weapon_profile,
                     shot_weapon, cause, killer, victim, killer_airborne, victim_airborne,
-                    killer_speed, victim_speed, distance, shot_flight)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
+                    killer_speed, victim_speed, distance, shot_flight, headshot)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16,
+                    ?17)",
             )?;
             for (n, k) in r.kills.iter().enumerate() {
                 let c = k.context.as_ref();
@@ -628,6 +649,7 @@ impl Cache {
                     c.and_then(|c| c.victim.horizontal_speed),
                     c.and_then(|c| c.distance),
                     c.and_then(|c| c.shot.as_ref().map(|s| s.flight)),
+                    k.headshot,
                 ])?;
             }
 
@@ -696,6 +718,9 @@ impl Cache {
         if q.killer_airborne {
             c.push("k.killer_airborne = 1".into());
         }
+        if q.headshot {
+            c.push("k.headshot = 1".into());
+        }
         if let Some(s) = q.min_speed {
             args.push(Box::new(s));
             c.push(format!(
@@ -758,6 +783,10 @@ impl Cache {
             args.push(Box::new(s));
             c.push(format!("f.best_window >= ?{}", args.len()));
         }
+        if let Some(a) = q.min_accuracy {
+            args.push(Box::new(a));
+            c.push(format!("f.accuracy >= ?{}", args.len()));
+        }
         if !q.kills.is_empty() {
             let kill_sql = Self::kill_conditions(&q.kills, &mut args);
             c.push(format!(
@@ -793,7 +822,7 @@ impl Cache {
                 f.recorder, f.shots,
                 (SELECT w.shots FROM weapons w WHERE w.file_id = f.id AND w.weapon = 'gauss')
                     AS gauss,
-                f.recorded_at, f.date_source, f.score
+                f.recorded_at, f.date_source, f.score, f.headshots, f.accuracy
              FROM files f WHERE {conditions}
              ORDER BY {} {direction} NULLS LAST, f.path
              LIMIT ?{limit} OFFSET ?{offset}",
@@ -813,6 +842,8 @@ impl Cache {
                 recorded_at: r.get(15)?,
                 date_source: r.get(16)?,
                 score: r.get(17)?,
+                headshots: r.get(18)?,
+                accuracy: r.get(19)?,
                 spectator_fraction: r.get(6)?,
                 shots: r.get(13)?,
                 gauss: r.get(14)?,
@@ -853,7 +884,7 @@ impl Cache {
         let conditions = Self::kill_conditions(q, &mut args);
         let sql = format!(
             "SELECT time, weapon, cause, killer, victim, killer_airborne, victim_airborne,
-                killer_speed, victim_speed, distance
+                killer_speed, victim_speed, distance, headshot
              FROM kills k WHERE k.file_id = ?1 AND {conditions} ORDER BY kill_id"
         );
         let mut stmt = self.conn.prepare(&sql)?;
@@ -870,6 +901,7 @@ impl Cache {
                 killer_speed: r.get(7)?,
                 victim_speed: r.get(8)?,
                 distance: r.get(9)?,
+                headshot: r.get(10)?,
             })
         })?;
 

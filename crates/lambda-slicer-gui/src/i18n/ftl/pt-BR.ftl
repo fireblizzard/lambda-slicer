@@ -208,3 +208,18 @@ legend-kill = Abate
 legend-death = Morte
 legend-switch = Troca de arma
 timeline-help = Cada linha é um jogador. Role para aproximar, arraste para mover, clique duas vezes para ver tudo e clique numa marca para selecioná-la.
+
+column-headshots = Headshots
+filter-headshots = Abates com headshot
+event-headshot = headshot
+scores-headshots = HS
+
+column-accuracy = Precisão
+filter-min-accuracy = Precisão mínima (%)
+scores-accuracy = Prec.
+
+help-headshots = Abates por headshot, lidos da animação de morte da vítima. Explosões não contam. Só aparecem os headshots de quem gravou, porque os outros jogadores costumam matar fora da visão da gravação. Num duelo aparecem também os do adversário, já que todos os abates dele são em quem gravou.
+help-headshots-column = Headshots de quem gravou, lidos da animação de morte da vítima. Explosões não contam. Os dos outros jogadores não contam, porque costumam acontecer fora da visão da gravação.
+help-accuracy = A parte dos disparos que acertaram, pelo sangue que um acerto deixa na linha de mira, descontando coincidências ao acaso. Vale para a glock, a python, as balas da MP5, a escopeta, a besta com zoom e os acertos diretos do raio gauss. Explosões e reflexos do gauss não deixam sangue e não contam. Aparece só para quem gravou, depois de pelo menos 50 disparos.
+help-headshot-filter = Demos com pelo menos um headshot que a gravação viu, de qualquer jogador.
+help-accuracy-filter = Demos em que quem gravou acertou pelo menos esta parte dos disparos.

@@ -43,6 +43,10 @@ struct Cli {
 }
 
 #[derive(Subcommand)]
+#[allow(
+    clippy::large_enum_variant,
+    reason = "parsed once per run, so its size does not matter"
+)]
 enum Command {
     /// Read the header, directory, and every frame record of a demo
     Inspect {
@@ -126,6 +130,9 @@ enum Command {
         /// in units per second
         #[arg(long, requires = "kills")]
         min_speed: Option<f32>,
+        /// Only kills by a hit to the head
+        #[arg(long, requires = "kills")]
+        headshot: bool,
     },
     /// Cross-check decoded state against client-recorded values. Exit codes are
     /// 0 verified, 1 failed, 2 inconclusive
@@ -211,13 +218,19 @@ enum Command {
         /// fast horizontally, in units per second
         #[arg(long)]
         min_speed: Option<f32>,
+        /// Has a kill by a hit to the head
+        #[arg(long)]
+        headshot: bool,
+        /// The recording player hit at least this percentage of its shots
+        #[arg(long)]
+        min_accuracy: Option<f64>,
         /// Best action window scoring at least this
         #[arg(long)]
         min_action: Option<f64>,
         /// List the best action windows across the library instead of files
         #[arg(long, conflicts_with_all = ["text", "min_duration", "from", "to", "map", "player", "min_spectating", "max_spectating",
             "weapon_used", "kill_weapon", "victim_airborne", "killer_airborne", "min_speed",
-            "min_action"])]
+            "headshot", "min_accuracy", "min_action"])]
         windows: bool,
         #[arg(long, default_value_t = 50)]
         limit: usize,
@@ -441,6 +454,7 @@ fn run() -> Result<ExitCode> {
             victim_airborne,
             killer_airborne,
             min_speed,
+            headshot,
         } => {
             if json.as_deref().is_some_and(is_stdout) && (occurrences || kills) {
                 bail!(
@@ -462,6 +476,7 @@ fn run() -> Result<ExitCode> {
                     victim_airborne,
                     killer_airborne,
                     min_speed,
+                    headshot,
                 };
                 print_kills(&r, &filter);
             }
@@ -570,6 +585,8 @@ fn run() -> Result<ExitCode> {
             victim_airborne,
             killer_airborne,
             min_speed,
+            headshot,
+            min_accuracy,
             min_action,
             windows,
             limit,
@@ -600,8 +617,10 @@ fn run() -> Result<ExitCode> {
                     victim_airborne,
                     killer_airborne,
                     min_speed,
+                    headshot,
                 },
                 min_action,
+                min_accuracy: min_accuracy.map(|p| p / 100.),
                 text,
                 min_duration,
                 from_date: from,
@@ -1014,6 +1033,7 @@ struct KillFilter {
     victim_airborne: bool,
     killer_airborne: bool,
     min_speed: Option<f32>,
+    headshot: bool,
 }
 
 impl KillFilter {
@@ -1036,6 +1056,9 @@ impl KillFilter {
             return false;
         }
         if self.killer_airborne && c.killer.airborne != Some(true) {
+            return false;
+        }
+        if self.headshot && k.headshot != Some(true) {
             return false;
         }
         if let Some(min) = self.min_speed {
@@ -1079,8 +1102,13 @@ fn print_kills(r: &AnalysisReport, filter: &KillFilter) {
             .distance
             .map(|d| format!(" at {d:.0}u"))
             .unwrap_or_default();
+        let head = if k.headshot == Some(true) {
+            " headshot"
+        } else {
+            ""
+        };
         println!(
-            "{} {:<20} killed {:<20} with {:<12} killer {:<18} victim {:<18}{distance}{flight}",
+            "{} {:<20} killed {:<20} with {:<12} killer {:<18} victim {:<18}{distance}{flight}{head}",
             clock(k.time),
             name(&k.killer, k.killer_entity),
             name(&k.victim, k.victim_entity),
@@ -1312,7 +1340,7 @@ fn print_files(rows: &[FileRow]) {
                 speed.map_or_else(|| state.to_string(), |s| format!("{state} {s:.0}u/s"))
             };
             println!(
-                "    {} {} killed {} with {}, killer {}, victim {}{}",
+                "    {} {} killed {} with {}, killer {}, victim {}{}{}",
                 clock(k.time),
                 k.killer.as_deref().unwrap_or("?"),
                 k.victim.as_deref().unwrap_or("?"),
@@ -1321,7 +1349,12 @@ fn print_files(rows: &[FileRow]) {
                 motion(k.victim_airborne, k.victim_speed),
                 k.distance
                     .map(|d| format!(" at {d:.0}u"))
-                    .unwrap_or_default()
+                    .unwrap_or_default(),
+                if k.headshot == Some(true) {
+                    ", headshot"
+                } else {
+                    ""
+                }
             );
         }
     }

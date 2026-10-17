@@ -203,3 +203,18 @@ legend-kill = Tappo
 legend-death = Kuolema
 legend-switch = Aseen vaihto
 timeline-help = Jokainen rivi on pelaaja. Vieritä zoomataksesi, vedä siirtääksesi, kaksoisnapsauta nähdäksesi kaiken ja napsauta merkkiä valitaksesi sen.
+
+column-headshots = Päälaukaukset
+filter-headshots = Päälaukaustapot
+event-headshot = päälaukaus
+scores-headshots = PL
+
+column-accuracy = Tarkkuus
+filter-min-accuracy = Tarkkuus vähintään (%)
+scores-accuracy = Tark.
+
+help-headshots = Tapot osumalla päähän, tunnistettu uhrin kuolinanimaatiosta. Räjähdykset eivät lasketa. Vain tallentajan tapot näytetään, koska muut pelaajat tappavat usein tallennuksen näkymän ulkopuolella. Kaksintaistelussa näytetään myös vastustajan tapot, koska ne kaikki kohdistuvat tallentajaan.
+help-headshots-column = Tallentajan tapot osumalla päähän, tunnistettu uhrin kuolinanimaatiosta. Räjähdykset eivät lasketa. Muiden pelaajien tappoja ei lasketa, koska ne tapahtuvat usein tallennuksen näkymän ulkopuolella.
+help-accuracy = Osuneiden laukausten osuus, päätelty verestä, jonka osuma jättää tähtäyslinjalle, vähennettynä sattumanvaraisilla osumilla. Mukana ovat glock, python, MP5:n luodit, haulikko, tähtäimellä ammuttu varsijousi ja gauss-säteen suorat osumat. Räjähdykset ja gaussin heijastukset eivät jätä verta eivätkä lasketa. Näytetään vain tallentajalle ja vasta vähintään 50 laukauksen jälkeen.
+help-headshot-filter = Demot, joissa on vähintään yksi tallennuksessa näkyvä päälaukaustappo, kenen tahansa.
+help-accuracy-filter = Demot, joissa tallentaja osui vähintään tähän osuuteen laukauksistaan.

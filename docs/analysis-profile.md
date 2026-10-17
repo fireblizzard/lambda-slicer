@@ -133,6 +133,66 @@ observed in first person (mode 4) throughout, and recorded bhop runs of other pl
 99% spectating. Across the 2,000-demo sample, 93 demos spend some time spectating and 62 spend
 more than half.
 
+## Headshots
+
+Half-Life's death notice has no headshot flag, and demos record no hit locations. The server does
+pick a dying player's animation from the body part of the last hit (`GetDeathActivity`), and every
+snapshot carries that animation as the entity's `sequence`. In the standard `player.mdl`
+sequences 18 to 24 are the deaths, and 22 `headshot` and 23 `die_spin` both have
+`ACT_DIE_HEADSHOT`, one picked at random. A kill is a headshot when the victim's sequence in the
+first packet after the death notice is 22 or 23.
+
+- Only a player's direct hit counts: crowbar, glock, python, MP5 bullets, shotgun, crossbow, gauss
+  and egon, whose damage goes through `TraceAttack`. Explosions and hornets damage without a body
+  part, so the animation would come from an earlier hit, and those kills are not headshots.
+- A victim the recording does not see within a second, or one gibbed and left in an aiming pose,
+  leaves the headshot unknown. Other players' headshot counts are therefore incomplete and only the
+  recording player's are shown, except in a duel, where every kill by the opponent is of the
+  recording player, whose death the recording always shows. A headshot that was seen is certain,
+  so the headshot kill filters use every one.
+
+**Measured (2026-10-17):** `stalkx_5o5_asasasdgwgw.dem` has 49 headshot kills of 249 kills whose
+victim was seen, 22 of them with the MP5 and 16 with the glock. Of 22 rocket kills whose victim was seen, 3
+showed the headshot death from an earlier hit, which the weapon rule leaves out.
+
+## Accuracy
+
+Demos record no hits, but a hit through `TraceAttack` makes the server send a blood sprite
+(`TE_BLOODSPRITE`) at the impact point to clients that can see it. A shot is a hit when blood
+appears along its aim line between 0.05 s before and 0.25 s after it, within 16 units plus the
+weapon's spread (12 degrees for the shotgun, 6 for the MP5 and glock, 3 otherwise).
+
+- **Aim.** The recording player's aim is exact, from its own events. Other players' events carry the
+  model's pitch, a third of the view pitch, so their aim is rebuilt from the snapshot pose at the
+  shot, pitch times minus three, eye 28 units above the origin. Shots with no pose within 0.1 s,
+  usually by players out of view, are not counted.
+- **Chance.** Several players shooting one target put the same blood on more than one aim line.
+  Shifting every blood sprite 1.5 s later and matching again counts those chance matches, and
+  accuracy is hits less chance matches over shots. Giving each blood sprite to only the closest
+  shot was tried and is worse, since rebuilt aims then take the recorder's real hits.
+- **Weapons.** Glock, python, MP5 bullets, shotgun, zoomed crossbow and the gauss beam's direct hit.
+  Explosions, gauss reflections and punch-through and hornets deal damage without blood, and
+  unzoomed bolts fly too long to match, so they are left out. Gauss accuracy is direct beam hits
+  only.
+- **Shown.** Only the recording player's accuracy is shown, with at least 50 counted shots. Other
+  players' kills and shots often happen outside what the recording client receives, so their
+  figures are incomplete as well as approximate.
+
+**Measured (2026-10-17)** with `aim_probe`, comparing kill recall, the share of visible direct-hit
+kills with a matched hit by the killer in the half second before, and chance matches.
+
+| Demo | Aim | Accuracy | Chance | Kills with a hit |
+|---|---|---|---|---|
+| `stalkx_5o5_asasasdgwgw.dem` | recorder, exact | 45.4% | 7.3% | 56 of 56 |
+| | others, rebuilt | 33.7% | 5.0% | 118 of 151 |
+| `20230909_224143_stalkyard.dem` | recorder, exact | 44.0% | 6.1% | 83 of 83 |
+| | others, rebuilt | 31.7% | 8.1% | 104 of 143 |
+
+The exact aim finds a hit before every kill. The rebuilt aim finds one before about three kills in
+four, and duels do no better (8 of 13, 51 of 51, 35 of 44 and 74 of 85 in four), so other players'
+accuracy is not shown. The other probes are
+`blood_probe` (blood sizes and heights) and `death_probe` (death animations).
+
 ## Highlights
 
 Highlights are filters for finding moments worth a closer look, such as midair or fast kills and

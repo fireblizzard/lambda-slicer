@@ -316,6 +316,14 @@ pub fn widget_text(
     WidgetText::Galley(merge(ctx, text, lines, &font, color, rtl_base))
 }
 
+/// How wide an explanation in a tooltip wraps
+pub const HELP_WIDTH: f32 = 360.;
+
+/// An explanation for a tooltip, wrapped to a readable width
+pub fn help(ctx: &Context, text: &str, rtl_base: bool) -> WidgetText {
+    widget_text(ctx, text, rtl_base, Some(HELP_WIDTH), Look::Plain)
+}
+
 /// A label wrapping to the available width, ordered and aligned for the
 /// interface's direction
 pub fn label(ui: &mut Ui, text: &str, rtl_base: bool) -> egui::Response {

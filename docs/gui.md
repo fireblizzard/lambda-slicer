@@ -10,7 +10,8 @@ analysis and saves the window, for checking a screen in any language.
 ## Library
 
 The left side lists the library cache ([library](library.md)): status, name, recording date, map,
-length, final score, gauss shots, kills, best action score and spectating share. Right-clicking any
+length, final score, gauss shots, kills, the recording player's headshot kills and accuracy, best
+action score and spectating share, newest first. Right-clicking any
 heading chooses the columns, which are kept in the settings. Gauss shots, the number of primary and
 charged gauss shots the recording saw from every player, start hidden. Beside an open demo only
 name, date, map, length, score and gauss shots show. Rows load a page
@@ -50,7 +51,11 @@ opens it beside a narrower library. Choosing another demo cancels that analysis.
   player's frags and deaths, two columns for a duel, and a ranked list for three or more players
   without teams. It shows the final scores, as they stood at the last kill, until an event is
   selected in the lanes or the table, then the scores at that moment. Players who left drop out,
-  as on the game's own scoreboard, and a team's `TeamScore` overrides its players' sum. Show final
+  as on the game's own scoreboard, and a team's `TeamScore` overrides its players' sum. HS counts
+  headshot kills and Acc. the share of shots that hit, for the recording player only, as other
+  players' often happen out of the recording's view. In a duel the opponent's headshots show too
+  ([analysis profile](analysis-profile.md)). Hovering HS or Acc. here, the library's Headshots and
+  Accuracy headings, or their filters explains how each is worked out. Show final
   scores goes back. The last kill decides the result because players often leave between the end
   of a game and the end of the recording.
 - **Event table.** Every event in time order with its time, the player's name at that moment, the

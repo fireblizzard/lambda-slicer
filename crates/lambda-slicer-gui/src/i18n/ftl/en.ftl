@@ -204,3 +204,18 @@ legend-kill = Kill
 legend-death = Death
 legend-switch = Weapon switch
 timeline-help = Each row is a player. Scroll to zoom, drag to move, double-click to see everything, click a mark to select it.
+
+column-headshots = Headshots
+filter-headshots = Headshot kills
+event-headshot = headshot
+scores-headshots = HS
+
+column-accuracy = Accuracy
+filter-min-accuracy = Accuracy at least (%)
+scores-accuracy = Acc.
+
+help-headshots = Kills by a hit to the head, read from the death animation the victim plays. Explosions don’t count. Only the recording player’s are shown, because other players often kill out of the recording’s view. In a duel the opponent’s are shown too, since all their kills are of the recording player.
+help-headshots-column = The recording player’s kills by a hit to the head, read from the death animation the victim plays. Explosions don’t count. Other players’ kills aren’t counted, because they often happen out of the recording’s view.
+help-accuracy = The share of shots that hit, from the blood a hit leaves along the aim, minus matches that happen by chance. It covers the glock, python, MP5 bullets, shotgun, zoomed crossbow and the gauss beam’s direct hits. Explosions and gauss reflections leave no blood and aren’t counted. Shown for the recording player only, after at least 50 shots.
+help-headshot-filter = Demos with at least one kill by a hit to the head that the recording saw, by any player.
+help-accuracy-filter = Demos where the recording player hit at least this share of their shots.

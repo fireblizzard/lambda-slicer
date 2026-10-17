@@ -64,6 +64,7 @@ and check them against the source, independently of the cache.
   weapon matches the death notice string, the profile weapon or the linked shot's weapon,
   ignoring case
 - `--min-action SCORE` (best action window)
+- `--headshot` (a kill by a hit to the head), `--min-accuracy PERCENT` (the recording player's)
 - `--text TEXT` (path), `--min-duration SECONDS`, `--from YYYY-MM-DD`, `--to YYYY-MM-DD`
   (recording date)
 

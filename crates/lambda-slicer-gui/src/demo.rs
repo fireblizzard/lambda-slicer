@@ -25,6 +25,7 @@ use crate::layout;
 use crate::library::WEAPONS;
 use crate::text::{self, Look};
 use crate::timeline::{EventKind, LaneKey, MarkKind, Model, SpanKind, bins, nearest, tick_step};
+use lambda_slicer_core::analysis::accuracy::accuracy;
 use lambda_slicer_core::analysis::context::{PlayerScore, StandingSide, standing_at};
 
 const LABEL_WIDTH: f32 = 170.;
@@ -396,17 +397,26 @@ impl DemoView {
                     None => a,
                 }
             }
-            EventKind::Kill { victim, .. } => catalog.text_with(
-                "event-kill",
-                &[(
-                    "victim",
-                    FluentValue::from(
-                        victim
-                            .as_deref()
-                            .map_or_else(|| "?".into(), text::player_name),
-                    ),
-                )],
-            ),
+            EventKind::Kill {
+                victim, headshot, ..
+            } => {
+                let killed = catalog.text_with(
+                    "event-kill",
+                    &[(
+                        "victim",
+                        FluentValue::from(
+                            victim
+                                .as_deref()
+                                .map_or_else(|| "?".into(), text::player_name),
+                        ),
+                    )],
+                );
+                if *headshot == Some(true) {
+                    format!("{killed} · {}", catalog.text("event-headshot"))
+                } else {
+                    killed
+                }
+            }
             EventKind::Switch => catalog.text("event-switch"),
         }
     }
@@ -867,7 +877,7 @@ impl DemoView {
 
     /// The scores at the selected event, or the final scores. Teams and the
     /// two players of a duel get a column each, and other players share one
-    /// ranked list
+    /// ranked list. Headshot kills count those the recording could see
     fn scores(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool) {
         let Some(model) = self.model.clone() else {
             return;
@@ -889,6 +899,21 @@ impl DemoView {
             ),
         };
         let standing = standing_at(&model.score_updates, &model.team_score_updates, segment, at);
+        // Other players' kills and shots often happen outside what the
+        // recording client receives, so their headshots and accuracy are
+        // incomplete. Only the recording player's are shown, and in a duel
+        // the opponent's headshots too, since every kill there is of the
+        // recording player, whose death the recording always shows
+        let recorder = model.recorder;
+        // Two players, as teams of one or without teams
+        let players: Vec<(u8, u32)> = standing
+            .sides
+            .iter()
+            .flat_map(|s| s.players.iter().map(|p| (p.slot, p.incarnation)))
+            .collect();
+        let duel = players.len() == 2 && recorder.is_some_and(|r| players.contains(&r));
+        let shows_heads = |key: (u8, u32)| duel || Some(key) == recorder;
+        let shows_accuracy = |key: (u8, u32)| Some(key) == recorder;
         if standing.sides.is_empty() {
             return;
         }
@@ -946,6 +971,40 @@ impl DemoView {
         }
         let frags = catalog.text("scores-frags");
         let deaths = catalog.text("scores-deaths");
+        let heads_title = catalog.text("scores-headshots");
+        let accuracy_title = catalog.text("scores-accuracy");
+        let heads_help = catalog.text("help-headshots");
+        let accuracy_help = catalog.text("help-accuracy");
+        // Shots, hits, chance matches and exactness per connection up to the
+        // moment shown
+        let mut aims: std::collections::HashMap<(u8, u32), (u32, u32, u32, bool)> =
+            Default::default();
+        for s in model
+            .shots
+            .iter()
+            .filter(|s| s.segment == segment && s.time <= at)
+        {
+            let e = aims.entry((s.slot, s.incarnation)).or_default();
+            e.0 += 1;
+            e.1 += u32::from(s.hit);
+            e.2 += u32::from(s.chance);
+            e.3 |= s.exact;
+        }
+        // Headshot kills per connection up to the moment shown
+        let mut heads: std::collections::HashMap<(u8, u32), u32> = Default::default();
+        for e in &model.events {
+            if e.segment != segment || e.time > at {
+                continue;
+            }
+            if let EventKind::Kill {
+                killer: Some(k),
+                headshot: Some(true),
+                ..
+            } = e.kind
+            {
+                *heads.entry(k).or_default() += 1;
+            }
+        }
         let side_ui = |ui: &mut Ui, side: &StandingSide, title: bool| {
             if title {
                 let name = text::player_name(&side.name);
@@ -971,8 +1030,19 @@ impl DemoView {
                 (1, None) => {
                     ui.weak(frags.as_str());
                 }
-                (_, None) => {
+                (2, None) => {
                     ui.weak(deaths.as_str());
+                }
+                (3, None) => {
+                    ui.weak(heads_title.as_str())
+                        .on_hover_text(text::help(&ctx, &heads_help, rtl));
+                }
+                (_, None) => {
+                    ui.weak(accuracy_title.as_str()).on_hover_text(text::help(
+                        &ctx,
+                        &accuracy_help,
+                        rtl,
+                    ));
                 }
                 (0, Some(p)) => {
                     let name = text::player_name(&p.name);
@@ -988,13 +1058,42 @@ impl DemoView {
                 (1, Some(p)) => {
                     ui.label(p.frags.to_string());
                 }
-                (_, Some(p)) => {
+                (2, Some(p)) => {
                     ui.label(p.deaths.to_string());
                 }
+                (3, Some(p)) => {
+                    let key = (p.slot, p.incarnation);
+                    if shows_heads(key) {
+                        let n = heads.get(&key).copied().unwrap_or(0);
+                        ui.label(n.to_string());
+                    } else {
+                        ui.label("");
+                    }
+                }
+                (_, Some(p)) => {
+                    // Blank for others, and with too few shots to tell
+                    let key = (p.slot, p.incarnation);
+                    let text = aims
+                        .get(&key)
+                        .filter(|_| shows_accuracy(key))
+                        .and_then(|&(s, h, c, _)| accuracy(s, h, c))
+                        .map(|v| {
+                            catalog.text_with(
+                                "library-percent",
+                                &[("percent", FluentValue::from((v * 100.).round()))],
+                            )
+                        })
+                        .unwrap_or_default();
+                    ui.label(text::widget_text(&ctx, &text, rtl, None, Look::Plain));
+                }
             };
-            let order: [usize; 3] = if rtl { [2, 1, 0] } else { [0, 1, 2] };
+            let order: [usize; 5] = if rtl {
+                [4, 3, 2, 1, 0]
+            } else {
+                [0, 1, 2, 3, 4]
+            };
             egui::Grid::new(ui.next_auto_id())
-                .num_columns(3)
+                .num_columns(5)
                 .spacing([16., 2.])
                 .show(ui, |ui| {
                     for k in order {

@@ -203,3 +203,18 @@ legend-kill = Öldürme
 legend-death = Ölüm
 legend-switch = Silah değişimi
 timeline-help = Her satır bir oyuncudur. Yakınlaştırmak için kaydırın, taşımak için sürükleyin, hepsini görmek için çift tıklayın, seçmek için bir işarete tıklayın.
+
+column-headshots = Kafa vuruşları
+filter-headshots = Kafadan öldürmeler
+event-headshot = kafadan
+scores-headshots = KV
+
+column-accuracy = İsabet
+filter-min-accuracy = En az isabet (%)
+scores-accuracy = İsabet
+
+help-headshots = Kafaya isabetle yapılan öldürmeler; kurbanın ölüm animasyonundan anlaşılır. Patlamalar sayılmaz. Yalnızca kaydedenin öldürmeleri gösterilir, çünkü diğer oyuncular çoğu zaman kaydın göremediği yerlerde öldürür. Düelloda rakibinkiler de gösterilir, çünkü rakibin tüm öldürmeleri kaydedene karşıdır.
+help-headshots-column = Kaydedenin kafaya isabetle yaptığı öldürmeler; kurbanın ölüm animasyonundan anlaşılır. Patlamalar sayılmaz. Diğer oyuncuların öldürmeleri sayılmaz, çünkü çoğu zaman kaydın göremediği yerlerde olur.
+help-accuracy = İsabet eden atışların oranı; bir isabetin nişan hattında bıraktığı kana göre, rastlantısal eşleşmeler çıkarılarak hesaplanır. Glock, python, MP5 mermileri, pompalı, dürbünlü arbalet ve gauss ışınının doğrudan isabetleri sayılır. Patlamalar ve gauss sekmeleri kan bırakmaz, sayılmaz. Yalnızca kaydeden için, en az 50 atıştan sonra gösterilir.
+help-headshot-filter = Herhangi bir oyuncunun, kayıtta görülen en az bir kafadan öldürmesi olan demolar.
+help-accuracy-filter = Kaydedenin atışlarının en az bu kadarını isabet ettirdiği demolar.

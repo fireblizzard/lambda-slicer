@@ -208,3 +208,18 @@ legend-kill = Baja
 legend-death = Muerte
 legend-switch = Cambio de arma
 timeline-help = Cada fila es un jugador. Usa la rueda para acercar, arrastra para moverte, haz doble clic para ver todo y clic en una marca para seleccionarla.
+
+column-headshots = Headshots
+filter-headshots = Bajas con headshot
+event-headshot = headshot
+scores-headshots = HS
+
+column-accuracy = Precisión
+filter-min-accuracy = Precisión mínima (%)
+scores-accuracy = Prec.
+
+help-headshots = Bajas por headshot, según la animación de muerte de la víctima. Las explosiones no cuentan. Solo se muestran los headshots de quien grabó, porque los demás jugadores suelen matar fuera de la vista de la grabación. En un duelo también se muestran los del rival, ya que todas sus bajas son sobre quien grabó.
+help-headshots-column = Headshots de quien grabó, según la animación de muerte de la víctima. Las explosiones no cuentan. Los de los demás jugadores no se cuentan, porque suelen ocurrir fuera de la vista de la grabación.
+help-accuracy = La parte de los disparos que impactaron, según la sangre que deja un impacto en la línea de tiro, descontando las coincidencias casuales. Incluye la glock, la python, las balas de la MP5, la escopeta, la ballesta con zoom y los impactos directos del rayo de la gauss. Las explosiones y los rebotes de la gauss no dejan sangre y no cuentan. Solo se muestra para quien grabó, después de al menos 50 disparos.
+help-headshot-filter = Demos con al menos un headshot que la grabación vio, de cualquier jugador.
+help-accuracy-filter = Demos en las que quien grabó acertó al menos esta parte de sus disparos.

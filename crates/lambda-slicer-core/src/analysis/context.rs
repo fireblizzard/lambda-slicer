@@ -14,6 +14,7 @@
 //! gun is the killer, with the gun's name. Singleplayer sends no death
 //! messages at all
 
+use super::accuracy::{Blood, Pose, TE_BLOODSPRITE, blood_origin};
 use crate::message::Message as Note;
 use serde::{Deserialize, Serialize};
 
@@ -75,6 +76,42 @@ pub struct Kill {
     pub killer_samples: Vec<Sample>,
     /// Movement, linked shot and distance, filled after the decode
     pub context: Option<KillContext>,
+    /// Whether the killing hit was to the head, from the victim's death
+    /// animation. None when it could not be seen, such as a victim out of
+    /// view or gibbed, or when the kill was not a player's direct hit
+    pub headshot: Option<bool>,
+}
+
+/// Death animations of the standard `player.mdl`, which the server picks by
+/// the last body part hit (`GetDeathActivity`). Sequences 22 `headshot` and
+/// 23 `die_spin` both have `ACT_DIE_HEADSHOT`
+const DEATH_SEQUENCES: std::ops::RangeInclusive<i64> = 18..=24;
+const HEADSHOT_SEQUENCES: [i64; 2] = [22, 23];
+
+/// Weapons whose hits go through `TraceAttack`, which records the body part.
+/// Explosions and hornets damage without it, so the death animation would
+/// come from an earlier hit
+fn hits_body_parts(w: Weapon) -> bool {
+    matches!(
+        w,
+        Weapon::Crowbar
+            | Weapon::Glock
+            | Weapon::Python
+            | Weapon::Mp5
+            | Weapon::Shotgun
+            | Weapon::Crossbow
+            | Weapon::Gauss
+            | Weapon::Egon
+    )
+}
+
+/// Whether an entity sequence is a headshot death. Other deaths give false,
+/// and anything else gives None, such as a gibbed player still in an aiming
+/// pose
+pub fn headshot_sequence(sequence: i64) -> Option<bool> {
+    DEATH_SEQUENCES
+        .contains(&sequence)
+        .then(|| HEADSHOT_SEQUENCES.contains(&sequence))
 }
 
 /// The recorder's active weapon from this time on
@@ -348,6 +385,9 @@ pub struct PlayerScore {
     pub name: String,
     pub frags: i32,
     pub deaths: i32,
+    /// The connection, so other per-player counts can be matched to it
+    pub slot: u8,
+    pub incarnation: u32,
 }
 
 /// A team, or a player outside team play, with its players
@@ -391,20 +431,28 @@ pub fn standing_at(
         }
     }
 
-    // Each counted player as of `time`, or as first seen when not yet
-    let mut players: Vec<(String, String, i32, i32)> = keys
+    // Each counted player with their team, as of `time` or as first seen
+    // when not yet
+    let score = |u: &ScoreUpdate, now: bool| PlayerScore {
+        name: u.player.name.clone(),
+        frags: if now { u.frags } else { 0 },
+        deaths: if now { u.deaths } else { 0 },
+        slot: u.player.slot,
+        incarnation: u.player.incarnation,
+    };
+    let mut players: Vec<(PlayerScore, String)> = keys
         .iter()
         .filter_map(|k| {
             let mut mine = in_segment().filter(|u| key(u) == *k);
             let first = mine.clone().next()?;
             match mine.rfind(|u| u.time <= time) {
                 Some(u) if u.left => None,
-                Some(u) => Some((u.player.name.clone(), u.team.clone(), u.frags, u.deaths)),
-                None => Some((first.player.name.clone(), first.team.clone(), 0, 0)),
+                Some(u) => Some((score(u, true), u.team.clone())),
+                None => Some((score(first, false), first.team.clone())),
             }
         })
         .collect();
-    players.sort_by(|a, b| b.2.cmp(&a.2).then(a.3.cmp(&b.3)));
+    players.sort_by(|a, b| b.0.frags.cmp(&a.0.frags).then(a.0.deaths.cmp(&b.0.deaths)));
 
     let teams: Vec<String> = {
         let mut t: Vec<String> = Vec::new();
@@ -415,11 +463,6 @@ pub fn standing_at(
         }
         t
     };
-    let score = |p: &(String, String, i32, i32)| PlayerScore {
-        name: p.0.clone(),
-        frags: p.2,
-        deaths: p.3,
-    };
 
     let mut sides: Vec<StandingSide> = if teams.len() >= 2 {
         teams
@@ -428,7 +471,7 @@ pub fn standing_at(
                 let members: Vec<PlayerScore> = players
                     .iter()
                     .filter(|p| p.1.eq_ignore_ascii_case(team))
-                    .map(score)
+                    .map(|p| p.0.clone())
                     .collect();
                 let set = team_updates
                     .iter()
@@ -447,10 +490,10 @@ pub fn standing_at(
         players
             .iter()
             .map(|p| StandingSide {
-                name: p.0.clone(),
-                frags: p.2,
-                deaths: p.3,
-                players: vec![score(p)],
+                name: p.0.name.clone(),
+                frags: p.0.frags,
+                deaths: p.0.deaths,
+                players: vec![p.0.clone()],
             })
             .collect()
     };
@@ -472,6 +515,14 @@ pub struct Context {
     teams: std::collections::BTreeMap<u8, String>,
     /// Frags and deaths by player entity, from `ScoreInfo`
     scores: std::collections::BTreeMap<u8, (i32, i32)>,
+    /// Kills whose victim's death animation is still to be seen, as kill
+    /// index, victim entity and time
+    pending_deaths: Vec<(usize, u8, f32)>,
+    /// Blood sprites in decode order, the trace of hits
+    pub blood: Vec<Blood>,
+    /// Player poses per snapshot, by segment and entity, for rebuilding aim
+    pub poses: std::collections::BTreeMap<(u32, u16), Vec<Pose>>,
+    last_pose: Option<(u32, f32)>,
     /// Every score and team change in order, for the scores at any moment
     pub score_updates: Vec<ScoreUpdate>,
     pub team_score_updates: Vec<TeamScoreUpdate>,
@@ -495,9 +546,93 @@ impl Context {
         });
     }
 
+    /// Each visible player's position and model angles, once per packet
+    fn record_poses(&mut self, loc: &FrameLocation, d: &Decoder) {
+        let now = (d.segment, loc.time());
+        if self.last_pose == Some(now) {
+            return;
+        }
+        self.last_pose = Some(now);
+        let (Some(snap), Some(schema)) = (d.latest_snapshot(), d.schema("entity_state_player_t"))
+        else {
+            return;
+        };
+        let Some(entities) = &snap.entities else {
+            return;
+        };
+        for e in entities
+            .iter()
+            .filter(|e| e.number >= 1 && e.number <= u16::from(d.max_clients))
+        {
+            let f = |n: &str| {
+                e.fields
+                    .value(&schema, n)
+                    .and_then(|v| v.as_f64())
+                    .unwrap_or(0.) as f32
+            };
+            self.poses
+                .entry((d.segment, e.number))
+                .or_default()
+                .push(Pose {
+                    time: loc.time(),
+                    origin: [f("origin[0]"), f("origin[1]"), f("origin[2]")],
+                    pitch: f("angles[0]"),
+                    yaw: f("angles[1]"),
+                });
+        }
+    }
+
+    /// Read the death animation of victims killed in earlier packets, from
+    /// the first packet after the death notice that shows them
+    fn resolve_deaths(&mut self, loc: &FrameLocation, d: &Decoder) {
+        if self.pending_deaths.is_empty() {
+            return;
+        }
+        let now = loc.time();
+        let snapshot = d.latest_snapshot();
+        let entities = snapshot.and_then(|s| s.entities.as_ref());
+        let schema = d.schema("entity_state_player_t");
+        let kills = &mut self.kills;
+        self.pending_deaths.retain(|&(index, victim, time)| {
+            // Given up after a second, or when time restarted with a new
+            // session, leaving the headshot unknown
+            if now < time || now - time > 1. {
+                return false;
+            }
+            // The death notice's own packet still shows the living player
+            if now == time {
+                return true;
+            }
+            let (Some(entities), Some(schema)) = (entities, &schema) else {
+                return true;
+            };
+            let Some(e) = entities.iter().find(|e| e.number == u16::from(victim)) else {
+                return true;
+            };
+            let Some(sequence) = e.fields.value(schema, "sequence").and_then(|v| v.as_i64()) else {
+                return true;
+            };
+            kills[index].headshot = headshot_sequence(sequence);
+            false
+        });
+    }
+
     pub fn observe(&mut self, loc: &FrameLocation, d: &Decoder, m: &ParsedMessage) {
         self.motion.observe(d);
+        self.resolve_deaths(loc, d);
+        self.record_poses(loc, d);
+        if let Message::TempEntity { kind, body } = &m.message
+            && *kind == TE_BLOODSPRITE
+            && let Some(origin) = blood_origin(body)
+        {
+            self.blood.push(Blood {
+                segment: d.segment,
+                time: loc.time(),
+                origin,
+            });
+        }
         if let Message::ServerInfo(_) = &m.message {
+            self.pending_deaths.clear();
             self.teams.clear();
             self.scores.clear();
         }
@@ -538,7 +673,17 @@ impl Context {
                     victim_state,
                     killer_samples: self.motion.samples(killer.into()),
                     context: None,
+                    headshot: None,
                 });
+                // Only a player's direct hit leaves the body part to read
+                let direct =
+                    cause == KillCause::PlayerWeapon && weapon.is_some_and(hits_body_parts);
+                let index = self.kills.len() - 1;
+                if direct {
+                    self.pending_deaths.push((index, victim, loc.time()));
+                } else if cause == KillCause::PlayerWeapon {
+                    self.kills[index].headshot = Some(false);
+                }
             }
             "ScoreInfo" => {
                 let short = |at: usize| {
@@ -851,6 +996,18 @@ mod tests {
                 "{name}"
             );
         }
+    }
+
+    #[test]
+    fn death_animations_tell_headshots() {
+        assert_eq!(headshot_sequence(22), Some(true));
+        assert_eq!(headshot_sequence(23), Some(true));
+        assert_eq!(headshot_sequence(18), Some(false));
+        assert_eq!(headshot_sequence(24), Some(false));
+        // An aiming pose, as a gibbed player keeps
+        assert_eq!(headshot_sequence(45), None);
+        assert!(hits_body_parts(Weapon::Mp5));
+        assert!(!hits_body_parts(Weapon::Rpg));
     }
 
     #[test]

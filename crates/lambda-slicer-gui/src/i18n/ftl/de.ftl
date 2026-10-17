@@ -203,3 +203,18 @@ legend-kill = Abschuss
 legend-death = Tod
 legend-switch = Waffenwechsel
 timeline-help = Jede Zeile ist ein Spieler. Scrollen zoomt, Ziehen verschiebt, Doppelklick zeigt alles, ein Klick auf eine Markierung wählt sie aus.
+
+column-headshots = Kopfschüsse
+filter-headshots = Abschüsse per Kopfschuss
+event-headshot = Kopfschuss
+scores-headshots = KS
+
+column-accuracy = Treffsicherheit
+filter-min-accuracy = Treffsicherheit mindestens (%)
+scores-accuracy = Treff.
+
+help-headshots = Abschüsse durch einen Treffer am Kopf, erkannt an der Todesanimation des Opfers. Explosionen zählen nicht. Gezeigt werden nur die der aufnehmenden Person, weil andere Spieler oft außerhalb ihres Blickfelds abschießen. Im Duell auch die des Gegners, da alle seine Abschüsse die aufnehmende Person treffen.
+help-headshots-column = Abschüsse der aufnehmenden Person durch einen Treffer am Kopf, erkannt an der Todesanimation des Opfers. Explosionen zählen nicht. Abschüsse anderer Spieler zählen nicht, weil sie oft außerhalb des Blickfelds der Aufnahme geschehen.
+help-accuracy = Der Anteil der Schüsse, die trafen, anhand des Bluts, das ein Treffer entlang der Schusslinie hinterlässt, abzüglich zufälliger Übereinstimmungen. Er umfasst Glock, Python, MP5-Kugeln, Schrotflinte, Armbrust mit Zoom und direkte Treffer des Gauss-Strahls. Explosionen und Gauss-Reflexionen hinterlassen kein Blut und zählen nicht. Nur für die aufnehmende Person und erst ab 50 Schüssen.
+help-headshot-filter = Demos mit mindestens einem Kopfschuss-Abschuss, den die Aufnahme zeigt, von beliebigen Spielern.
+help-accuracy-filter = Demos, in denen die aufnehmende Person mindestens diesen Anteil ihrer Schüsse traf.

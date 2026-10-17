@@ -208,3 +208,18 @@ legend-kill = Élimination
 legend-death = Mort
 legend-switch = Changement d’arme
 timeline-help = Chaque ligne est un joueur. La molette zoome, glisser déplace, un double-clic montre tout, un clic sur une marque la sélectionne.
+
+column-headshots = Tirs à la tête
+filter-headshots = Éliminations d’un tir à la tête
+event-headshot = tir à la tête
+scores-headshots = TT
+
+column-accuracy = Précision
+filter-min-accuracy = Précision minimale (%)
+scores-accuracy = Préc.
+
+help-headshots = Éliminations par un tir à la tête, reconnues à l’animation de mort de la victime. Les explosions ne comptent pas. Seules celles de la personne qui enregistre sont affichées, car les autres joueurs éliminent souvent hors de sa vue. En duel, celles de l’adversaire aussi, puisque toutes visent la personne qui enregistre.
+help-headshots-column = Éliminations de la personne qui enregistre par un tir à la tête, reconnues à l’animation de mort de la victime. Les explosions ne comptent pas. Celles des autres joueurs ne comptent pas, car elles ont souvent lieu hors de la vue de l’enregistrement.
+help-accuracy = La part des tirs qui ont touché, d’après le sang qu’un impact laisse sur la ligne de visée, moins les correspondances dues au hasard. Elle couvre le glock, le python, les balles du MP5, le fusil à pompe, l’arbalète avec zoom et les impacts directs du rayon gauss. Les explosions et les rebonds du gauss ne laissent pas de sang et ne comptent pas. Affichée pour la personne qui enregistre seulement, après au moins 50 tirs.
+help-headshot-filter = Démos avec au moins une élimination d’un tir à la tête visible dans l’enregistrement, par n’importe quel joueur.
+help-accuracy-filter = Démos où la personne qui enregistre a touché au moins cette part de ses tirs.

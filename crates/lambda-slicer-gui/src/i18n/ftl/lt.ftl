@@ -213,3 +213,18 @@ legend-kill = Nužudymas
 legend-death = Mirtis
 legend-switch = Ginklo keitimas
 timeline-help = Kiekviena eilutė yra žaidėjas. Slinkite, kad priartintumėte, tempkite, kad pastumtumėte, dukart spustelėkite, kad matytumėte viską, spustelėkite žymę, kad ją pasirinktumėte.
+
+column-headshots = Šūviai į galvą
+filter-headshots = Nužudymai šūviu į galvą
+event-headshot = į galvą
+scores-headshots = ŠG
+
+column-accuracy = Taiklumas
+filter-min-accuracy = Taiklumas bent (%)
+scores-accuracy = Taikl.
+
+help-headshots = Nužudymai pataikius į galvą, atpažinti iš aukos mirties animacijos. Sprogimai neskaičiuojami. Rodomi tik įrašančiojo nužudymai, nes kiti žaidėjai dažnai žudo už įrašo matomumo ribų. Dvikovoje rodomi ir priešininko, nes visi jo nužudymai yra įrašančiojo.
+help-headshots-column = Įrašančiojo nužudymai pataikius į galvą, atpažinti iš aukos mirties animacijos. Sprogimai neskaičiuojami. Kitų žaidėjų nužudymai neskaičiuojami, nes dažnai įvyksta už įrašo matomumo ribų.
+help-accuracy = Pataikiusių šūvių dalis, nustatyta pagal kraują, kurį pataikymas palieka taikymo linijoje, atėmus atsitiktinius sutapimus. Įtraukiami glock, python, MP5 kulkos, šautuvas, arbaletas su taikikliu ir tiesioginiai gauso spindulio pataikymai. Sprogimai ir gauso atšokimai kraujo nepalieka ir neskaičiuojami. Rodoma tik įrašančiajam ir tik po bent 50 šūvių.
+help-headshot-filter = Įrašai, kuriuose yra bent vienas įraše matomas nužudymas į galvą, bet kurio žaidėjo.
+help-accuracy-filter = Įrašai, kuriuose įrašantysis pataikė bent tokią šūvių dalį.
