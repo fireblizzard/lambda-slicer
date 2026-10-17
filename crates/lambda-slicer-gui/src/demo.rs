@@ -6,7 +6,7 @@
 //! crosses back to the window. Choosing another demo cancels the analysis
 
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver};
@@ -24,6 +24,7 @@ use lambda_slicer_core::state::DecodeStatus;
 use lambda_slicer_core::timeline::time::DemoTime;
 
 use crate::clips::{Clip, next_name, parse_time};
+use crate::export::{ClipKey, ExportJob, ExportState};
 use crate::i18n::Catalog;
 use crate::layout;
 use crate::library::WEAPONS;
@@ -183,6 +184,9 @@ pub struct DemoView {
     /// the analysis is in
     window: Option<usize>,
     pub open_window: Option<usize>,
+    /// Export every clip once the analysis is in, for checking exports
+    /// from the command line
+    pub export_on_load: bool,
     /// The timeline is hidden until asked for, as it takes some reading
     pub show_timeline: bool,
     /// This demo's clips. The app saves them when `clips_changed` is set
@@ -197,6 +201,11 @@ pub struct DemoView {
     pub padding: (f32, f32),
     /// What an export of each requested range would cut, worked out once
     snapped: HashMap<(DemoTime, DemoTime), Result<Snapped, Message>>,
+    /// Where exports go, the demo's own folder when none is set
+    pub export_folder: Option<PathBuf>,
+    export: Option<ExportJob>,
+    /// How each clip's latest export went, by its requested range
+    exports: HashMap<ClipKey, ExportState>,
 }
 
 impl DemoView {
@@ -223,11 +232,49 @@ impl DemoView {
             dragging: None,
             padding: (0., 0.),
             snapped: HashMap::new(),
+            export_folder: None,
+            export: None,
+            exports: HashMap::new(),
+            export_on_load: false,
+        }
+    }
+
+    /// The folder exports go to
+    fn export_dir(&self) -> PathBuf {
+        self.export_folder
+            .clone()
+            .or_else(|| self.path.parent().map(Path::to_path_buf))
+            .unwrap_or_default()
+    }
+
+    /// Export these clips one after another, unless an export is under way
+    fn start_export(&mut self, ctx: &egui::Context, mut keys: Vec<ClipKey>) {
+        keys.dedup();
+        if self.export.is_some() || keys.is_empty() {
+            return;
+        }
+        for k in &keys {
+            self.exports.insert(*k, ExportState::Waiting);
+        }
+        let job = ExportJob::start(self.path.clone(), self.export_dir(), keys, ctx.clone());
+        self.export = Some(job);
+    }
+
+    fn poll_export(&mut self) {
+        if let Some(job) = &mut self.export
+            && job.poll(&mut self.exports)
+        {
+            self.export = None;
         }
     }
 
     pub fn loading(&self) -> bool {
         self.loader.is_some()
+    }
+
+    /// Still analysing or exporting
+    pub fn busy(&self) -> bool {
+        self.loading() || self.export.is_some() || self.export_on_load
     }
 
     fn poll(&mut self) {
@@ -932,6 +979,30 @@ impl DemoView {
                     self.add_clip(catalog, range);
                 }
             }
+
+            // Every clip an export would not refuse, or stop after the clip
+            // under way
+            match &self.export {
+                Some(job) => {
+                    let r =
+                        ui.add_enabled(!job.cancelling(), egui::Button::new(t("export-cancel")));
+                    if r.clicked() {
+                        job.cancel();
+                    }
+                }
+                None => {
+                    let clips = self.clips.clone();
+                    let keys: Vec<ClipKey> = clips
+                        .iter()
+                        .filter(|c| self.snap(c).is_ok())
+                        .map(|c| (c.start, c.end))
+                        .collect();
+                    let r = ui.add_enabled(!keys.is_empty(), egui::Button::new(t("export-all")));
+                    if r.clicked() {
+                        self.start_export(&ctx, keys);
+                    }
+                }
+            }
         });
 
         if self.clips.is_empty() {
@@ -940,6 +1011,17 @@ impl DemoView {
             });
             return;
         }
+        let folder = self.export_dir().display().to_string();
+        let id = if self.export_folder.is_some() {
+            "export-folder"
+        } else {
+            "export-folder-beside"
+        };
+        let line = catalog.text_with(id, &[("folder", FluentValue::from(folder))]);
+        layout::column(ui, rtl, |ui| {
+            let width = Some(ui.available_width());
+            ui.label(text::widget_text(&ctx, &line, rtl, width, Look::Weak));
+        });
         let row_height = ui.text_style_height(&egui::TextStyle::Body) + 8.;
         let mut remove = None;
         egui::ScrollArea::vertical()
@@ -976,7 +1058,11 @@ impl DemoView {
         } else {
             Color32::TRANSPARENT
         };
-        let (mut remove, mut show) = (false, false);
+        let (mut remove, mut show, mut export) = (false, false, false);
+        let clip = self.clips[i].clone();
+        let snapped = self.snap(&clip);
+        let state = self.exports.get(&(clip.start, clip.end)).cloned();
+        let can_export = snapped.is_ok() && self.export.is_none();
         egui::Frame::new()
             .inner_margin(4.)
             .corner_radius(3.)
@@ -999,12 +1085,14 @@ impl DemoView {
                     self.time_field(ui, catalog, i, Edge::Start);
                     ui.label("–");
                     self.time_field(ui, catalog, i, Edge::End);
+                    export = ui
+                        .add_enabled(can_export, egui::Button::new(t("export-one")).small())
+                        .clicked();
                     show = ui.small_button(t("clip-show")).clicked();
                     remove = ui.small_button(t("clip-remove")).clicked();
                 });
 
-                let clip = self.clips[i].clone();
-                let (line, warn) = match self.snap(&clip) {
+                let (line, warn) = match &snapped {
                     Ok(s) if s.start == clip.start && s.end == clip.end => {
                         (catalog.text("clip-exact"), false)
                     }
@@ -1021,7 +1109,7 @@ impl DemoView {
                         );
                         (text, false)
                     }
-                    Err(m) => (catalog.message(&m), true),
+                    Err(m) => (catalog.message(m), true),
                 };
                 // The requested length, then the cut or the reason there is none
                 let length = catalog.text_with(
@@ -1040,11 +1128,88 @@ impl DemoView {
                         ui.label(text::widget_text(&ctx, &line, rtl, width, look));
                     }
                 });
+                if let Some(state) = &state {
+                    Self::export_state(ui, catalog, rtl, state);
+                }
             });
         if show {
             self.show_clip(i);
         }
+        if export {
+            self.start_export(&ctx, vec![(clip.start, clip.end)]);
+        }
         remove
+    }
+
+    /// How a clip's export went, and for a saved file how to play it
+    fn export_state(ui: &mut Ui, catalog: &Catalog, rtl: bool, state: &ExportState) {
+        let ctx = ui.ctx().clone();
+        let width = Some(ui.available_width());
+        let line = |ui: &mut Ui, s: &str, look: Look| {
+            ui.label(text::widget_text(&ctx, s, rtl, width, look));
+        };
+        match state {
+            ExportState::Waiting => {
+                layout::column(ui, rtl, |ui| {
+                    line(ui, &catalog.text("export-waiting"), Look::Weak)
+                });
+            }
+            ExportState::Running => {
+                layout::row(ui, rtl, |ui| {
+                    ui.spinner();
+                    line(ui, &catalog.text("export-running"), Look::Plain);
+                });
+            }
+            ExportState::Cancelled => {
+                layout::column(ui, rtl, |ui| {
+                    line(ui, &catalog.text("export-cancelled"), Look::Weak)
+                });
+            }
+            ExportState::Failed(m) => {
+                let warning = Look::Color(ui.visuals().warn_fg_color);
+                layout::column(ui, rtl, |ui| line(ui, &catalog.message(m), warning));
+            }
+            ExportState::Done(e) => {
+                let saved = catalog.text_with(
+                    "export-saved",
+                    &[
+                        ("path", FluentValue::from(e.path.display().to_string())),
+                        ("count", FluentValue::from(e.compared as f64)),
+                    ],
+                );
+                layout::column(ui, rtl, |ui| line(ui, &saved, Look::Plain));
+                // The console command, or where the file must go first
+                let name = e
+                    .path
+                    .file_stem()
+                    .map(|s| s.to_string_lossy().into_owned())
+                    .unwrap_or_default();
+                let (hint, command) = match &e.playdemo {
+                    Some(c) => (catalog.text("export-playdemo"), c.clone()),
+                    None => (
+                        catalog.text_with(
+                            "export-copy-first",
+                            &[("name", FluentValue::from(format!("{name}.dem")))],
+                        ),
+                        format!("playdemo {name}"),
+                    ),
+                };
+                layout::column(ui, rtl, |ui| line(ui, &hint, Look::Weak));
+                layout::row(ui, rtl, |ui| {
+                    ui.label(egui::RichText::new(&command).monospace().strong());
+                    let copy = text::widget_text(
+                        &ctx,
+                        &catalog.text("export-copy"),
+                        rtl,
+                        None,
+                        Look::Plain,
+                    );
+                    if ui.small_button(copy).clicked() {
+                        ui.ctx().copy_text(command.clone());
+                    }
+                });
+            }
+        }
     }
 
     /// A clip's start or end as text, read back when typing ends. Text that
@@ -1611,6 +1776,17 @@ impl DemoView {
     /// The whole view. Returns true when it should close
     pub fn ui(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool) -> bool {
         self.poll();
+        self.poll_export();
+        if self.export_on_load && self.model.is_some() {
+            self.export_on_load = false;
+            let clips = self.clips.clone();
+            let keys = clips
+                .iter()
+                .filter(|c| self.snap(c).is_ok())
+                .map(|c| (c.start, c.end))
+                .collect();
+            self.start_export(ui.ctx(), keys);
+        }
         let ctx = ui.ctx().clone();
         let name = self
             .path

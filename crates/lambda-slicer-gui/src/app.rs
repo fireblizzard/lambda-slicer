@@ -41,6 +41,8 @@ pub struct Launch {
     pub window: Option<usize>,
     /// Turn on both date filters, for checking how they wrap
     pub dates: bool,
+    /// Export every clip of the demo shown at start
+    pub export: bool,
 }
 
 pub struct App {
@@ -58,6 +60,7 @@ pub struct App {
     scan: Option<ScanJob>,
     demo: Option<DemoView>,
     open_window: Option<usize>,
+    export_on_open: bool,
     /// Files opened or dropped this session, scanned along with the folders
     opened: Vec<PathBuf>,
     /// Dropped items that were not demos or folders
@@ -118,6 +121,7 @@ impl App {
             scan: None,
             demo: None,
             open_window: launch.window,
+            export_on_open: launch.export,
             opened: launch.open,
             rejected: Vec::new(),
         }
@@ -527,6 +531,37 @@ impl App {
                         self.save_settings();
                     }
 
+                    // Where exported clips go
+                    ui.add_space(8.);
+                    ui.label(self.strong(ui.ctx(), "settings-export-folder"));
+                    let folder = match &self.settings.export_folder {
+                        Some(f) => f.display().to_string(),
+                        None => self.catalog.text("settings-export-beside"),
+                    };
+                    ui.label(text::widget_text(ui.ctx(), &folder, rtl, None, Look::Plain));
+                    let mut chosen = None;
+                    layout::row(ui, rtl, |ui| {
+                        if ui
+                            .button(self.t(ui.ctx(), "settings-export-choose"))
+                            .clicked()
+                            && let Some(f) = rfd::FileDialog::new().pick_folder()
+                        {
+                            chosen = Some(Some(f));
+                        }
+                        if self.settings.export_folder.is_some()
+                            && ui
+                                .button(self.t(ui.ctx(), "settings-export-beside"))
+                                .clicked()
+                        {
+                            chosen = Some(None);
+                        }
+                    });
+                    if let Some(f) = chosen {
+                        self.settings.export_folder = f;
+                        self.save_settings();
+                    }
+                    text::label(ui, &self.catalog.text("settings-export-hint"), rtl);
+
                     ui.add_space(8.);
                     ui.label(self.strong(ui.ctx(), "settings-folders"));
                     if self.settings.folders.is_empty() {
@@ -563,7 +598,7 @@ impl App {
             return;
         };
         // A demo still being analysed is waited for
-        let loading = self.demo.as_ref().is_some_and(DemoView::loading);
+        let loading = self.demo.as_ref().is_some_and(DemoView::busy);
         if shot.frames > 0 || loading {
             if !loading {
                 shot.frames -= 1;
@@ -645,6 +680,7 @@ impl eframe::App for App {
             (Some((path, duration)), _) => {
                 let mut d = DemoView::open(path.clone(), *duration, &ctx);
                 d.open_window = self.open_window.take();
+                d.export_on_load = std::mem::take(&mut self.export_on_open);
                 d.show_timeline = self.settings.show_timeline;
                 d.clips = self.clips.get(path);
                 self.demo = Some(d);
@@ -681,6 +717,7 @@ impl eframe::App for App {
             egui::CentralPanel::default().show(ui, |ui| {
                 if let Some(d) = &mut self.demo {
                     d.padding = (self.settings.preroll, self.settings.postroll);
+                    d.export_folder = self.settings.export_folder.clone();
                     close = d.ui(ui, &self.catalog, rtl);
                 }
             });

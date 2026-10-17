@@ -1,8 +1,10 @@
-//! Export. M1 provides only the S0 control exports used to qualify the
-//! container writer in the game. Arbitrary-start slicing (S1) needs the
-//! audited state decoder and is not implemented yet
+//! Export. The S0 control exports qualify the container writer in the game,
+//! and the S1 restart writes a range that plays on its own ([`restart`]).
+//! [`range`] tells where a restart would cut without running it, and
+//! [`naming`] suggests file names and the console command for a result
 
 pub mod controls;
+pub mod naming;
 pub mod ongoing;
 pub mod output;
 pub mod persistent;

@@ -26,6 +26,8 @@ pub struct Settings {
     /// around
     pub preroll: f32,
     pub postroll: f32,
+    /// Where clips are exported, beside each demo when none is set
+    pub export_folder: Option<PathBuf>,
 }
 
 /// The longest padding a clip takes around an event, in seconds
@@ -42,6 +44,7 @@ impl Default for Settings {
             show_timeline: false,
             preroll: 5.,
             postroll: 3.,
+            export_folder: None,
         }
     }
 }
@@ -122,6 +125,7 @@ mod tests {
             show_timeline: true,
             preroll: 2.5,
             postroll: 0.,
+            export_folder: Some(PathBuf::from("F:/clips")),
         };
         s.save_to(&path).unwrap();
         assert_eq!(Settings::load_from(&path), s);

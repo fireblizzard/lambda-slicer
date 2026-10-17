@@ -2,20 +2,23 @@
 //!
 //! `lambda-slicer-gui [PATH...] [--locale TAG] [--settings] [--timeline]
 //! [--dates] [--size WxH] [--cache FILE] [--clips FILE]
-//! [--demo FILE [--window N]] [--screenshot OUT.png [--frames N]]`
+//! [--demo FILE [--window N] [--export DIR]]
+//! [--screenshot OUT.png [--frames N]]`
 //!
 //! Demos and folders given as `PATH` are opened for this session. `--locale`
 //! overrides the saved language, `--cache` the library cache and `--clips`
-//! the clips file for this run. `--demo` shows a cached demo at start, on its `N`th golden minute
-//! candidate with `--window`. `--settings` opens the settings window,
+//! the clips file for this run. `--demo` shows a cached demo at start, on
+//! its `N`th golden minute candidate with `--window`, and `--export`
+//! exports its clips into `DIR`. `--settings` opens the settings window,
 //! `--timeline` shows demo timelines, `--dates` turns on both date filters
 //! and `--size` sets the window size. `--screenshot` saves the window to a
-//! PNG `N` frames after any demo has loaded and exits, for checking how a
-//! language renders
+//! PNG `N` frames after any demo has loaded and its exports finished, and
+//! exits, for checking how a language renders
 
 mod app;
 mod clips;
 mod demo;
+mod export;
 mod i18n;
 mod jobs;
 mod layout;
@@ -46,6 +49,7 @@ fn main() -> eframe::Result {
     let mut window = None;
     let mut size = [1280., 800.];
     let mut dates = false;
+    let mut export = None;
     while let Some(a) = args.next() {
         match a.as_str() {
             "--locale" => locale = args.next().as_deref().and_then(Locale::from_tag),
@@ -70,6 +74,7 @@ fn main() -> eframe::Result {
                 }
             }
             "--dates" => dates = true,
+            "--export" => export = args.next().map(PathBuf::from),
             flag if flag.starts_with("--") => eprintln!("ignoring argument {flag}"),
             path => open.push(PathBuf::from(path)),
         }
@@ -98,6 +103,9 @@ fn main() -> eframe::Result {
     if show_timeline {
         settings.show_timeline = true;
     }
+    if export.is_some() {
+        settings.export_folder = export.clone();
+    }
 
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default().with_inner_size(size),
@@ -119,6 +127,7 @@ fn main() -> eframe::Result {
                     demo,
                     window,
                     dates,
+                    export: export.is_some(),
                 },
             );
             app.start_scan(&cc.egui_ctx);

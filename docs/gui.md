@@ -89,6 +89,33 @@ and the lanes and are kept per demo in `clips.json` beside the settings.
 - **Sessions.** Times restart with each session of a recording and an export can only start in
   the first, so events and intense moments from later sessions cannot be clipped yet.
 
+## Export
+
+Export on a clip, or Export all clips, writes clips as demos that play on their own with the core's
+restart export ([engine validation](engine-validation.md)), one after another on a thread of their
+own. Clips an export would refuse are left out and their buttons are off.
+
+- **Where.** Beside the demo, or in the export folder chosen in Settings. The line above the clips
+  names the folder. Files are named as the plan suggests, for example
+  `stalkx_5o5_asasasdgwgw__01m36s000-04m48s000.dem`, with only ASCII letters, digits, `-`, `_` and
+  `.` from the demo's name, since the game's console splits a command at spaces. A taken name gets `_2`, `_3` and so on (`slice::naming`).
+- **Safety.** Nothing is ever replaced. The export writes a temporary file beside the destination,
+  validates it and publishes it under its final name only if no file took that name meanwhile, and
+  the clip says Saved only after that. A failure leaves no file and says why in orange, for example
+  a folder that does not exist.
+- **Progress.** The clip under way shows a spinner and the rest wait. Stop exporting skips the
+  clips not yet started, as the clip under way runs to its end. Closing the demo stops an export
+  the same way.
+- **Result.** The saved path and how many of the clip's snapshots were checked against the
+  original. Inside a mod folder, the nearest folder above with a `liblist.gam`, the console command
+  that plays it, such as `playdemo clips/stalkx_5o5_asasasdgwgw__01m36s000-04m48s000`, with a Copy
+  button. Elsewhere the clip says to copy the file into the mod folder first. The CLI's `slice` and
+  `control` print the same command.
+
+`--export DIR` with `--demo` exports every clip of that demo into `DIR` once it is analysed, and a
+screenshot run waits for it. On `stalkx_5o5_asasasdgwgw.dem` this gave files byte for byte the same
+as `lambda-slicer slice` with the same range.
+
 In Arabic the library moves to the right, lane labels sit right of the lanes, and the table's
 columns run right to left.
 

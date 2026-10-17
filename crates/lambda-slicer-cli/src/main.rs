@@ -23,6 +23,7 @@ use lambda_slicer_core::library::scan::{
 };
 use lambda_slicer_core::protocol::messages::{Message, svc};
 use lambda_slicer_core::slice::controls::{Control, run_control};
+use lambda_slicer_core::slice::naming;
 use lambda_slicer_core::slice::restart::run_restart;
 use lambda_slicer_core::state::{
     ActorResolution, DecodeOptions, DecodeStatus, DecodedEvent, Decoder, decode_demo,
@@ -359,17 +360,7 @@ fn run() -> Result<ExitCode> {
                         );
                     }
 
-                    let name = report
-                        .published
-                        .path
-                        .file_name()
-                        .unwrap_or_default()
-                        .to_string_lossy()
-                        .into_owned();
-                    println!(
-                        "  in-game: copy into the mod directory, then run: playdemo {}",
-                        name.trim_end_matches(".dem")
-                    );
+                    println!("  in-game: {}", in_game(&report.published.path));
                 }
             }
         }
@@ -425,17 +416,7 @@ fn run() -> Result<ExitCode> {
                         v.compared_snapshots, v.approximated_differences, v.other_differences
                     );
 
-                    let name = r
-                        .published
-                        .path
-                        .file_name()
-                        .unwrap_or_default()
-                        .to_string_lossy()
-                        .into_owned();
-                    println!(
-                        "  in-game: copy into the mod directory, then run: playdemo {}",
-                        name.trim_end_matches(".dem")
-                    );
+                    println!("  in-game: {}", in_game(&r.published.path));
                 }
             }
         }
@@ -1372,6 +1353,24 @@ fn print_windows(rows: &[WindowRow]) {
             w.weapons.join(", "),
             w.path
         );
+    }
+}
+
+/// How to play an exported demo, directly when it is inside a mod folder
+fn in_game(path: &Path) -> String {
+    match naming::playdemo(path) {
+        Some(command) => format!("run: {command}"),
+        None => {
+            let name = path
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .into_owned();
+            format!(
+                "copy into the mod directory, then run: playdemo {}",
+                name.trim_end_matches(".dem")
+            )
+        }
     }
 }
 

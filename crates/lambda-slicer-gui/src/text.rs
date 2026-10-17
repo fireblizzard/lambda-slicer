@@ -182,14 +182,47 @@ pub fn wrapped_lines(
         // the space it broke at
         let mut word_end = None;
         let mut line_width = 0.;
+        let visible = |s: &str| measure(&s.chars().filter(|c| !is_control(*c)).collect::<String>());
         for w in words(ptext) {
-            let ww = measure(&w.chars().filter(|c| !is_control(*c)).collect::<String>());
+            let ww = visible(w);
             if w.chars().all(char::is_whitespace) {
                 offset += w.len();
                 match word_end {
                     Some(_) => line_width += ww,
                     None => start = offset,
                 }
+                continue;
+            }
+            if ww > width {
+                // A word wider than a line, such as a path, breaks inside
+                // itself, after a separator where one fits
+                if let Some(end) = word_end {
+                    lines.push(order_line(&info, text, start..end));
+                }
+                let word_end_at = offset + w.len();
+                let mut from = offset;
+                while visible(&text[from..word_end_at]) > width {
+                    let rest = &text[from..word_end_at];
+                    let (mut fit, mut separator) = (None, None);
+                    for (i, c) in rest.char_indices() {
+                        let k = i + c.len_utf8();
+                        if visible(&rest[..k]) > width {
+                            break;
+                        }
+                        fit = Some(k);
+                        if matches!(c, '\\' | '/' | '-' | '_' | '.') {
+                            separator = Some(k);
+                        }
+                    }
+                    let first = rest.chars().next().map_or(rest.len(), char::len_utf8);
+                    let cut = separator.or(fit).unwrap_or(first);
+                    lines.push(order_line(&info, text, from..from + cut));
+                    from += cut;
+                }
+                start = from;
+                line_width = visible(&text[from..word_end_at]);
+                offset = word_end_at;
+                word_end = Some(offset);
                 continue;
             }
             if let Some(end) = word_end
@@ -347,6 +380,23 @@ mod tests {
 
     fn one(text: &str, rtl: bool) -> Vec<String> {
         visual_pieces(text, rtl)
+    }
+
+    #[test]
+    fn words_wider_than_a_line_break_after_separators() {
+        let text = "حُفظ في C:\\clips\\stalkx_5o5__01m36s000.dem جيد";
+        let lines = wrapped_lines(text, true, 12., |s| s.chars().count() as f32);
+        let widths: Vec<usize> = lines
+            .iter()
+            .map(|l| l.concat().chars().filter(|c| !is_control(*c)).count())
+            .collect();
+        assert!(widths.iter().all(|w| *w <= 12), "{lines:?}");
+        let all: String = lines.iter().map(|l| l.concat()).collect();
+        assert!(all.contains("clips"), "{lines:?}");
+        assert!(
+            lines.iter().any(|l| l.concat().ends_with("\\")),
+            "{lines:?}"
+        );
     }
 
     #[test]
