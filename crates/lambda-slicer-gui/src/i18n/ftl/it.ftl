@@ -228,7 +228,7 @@ clips-title = Clip
 clips-add-event = Clip { $start } – { $end }
 clips-add-event-none = Clip dell’evento scelto
 clips-select-event = Scegli prima un evento nell’elenco o sulla linea del tempo.
-clips-other-session = Per ora si può esportare solo la prima sessione della registrazione.
+clips-other-session = Una clip non può iniziare qui, perché una sessione precedente della registrazione ha gli stessi tempi.
 clips-add-window = Clip di questo momento intenso
 clips-empty = Ancora nessuna clip. Scegli un evento o uno dei momenti più intensi, poi aggiungi una clip attorno. Quanto una clip tiene prima e dopo un evento si regola nelle Impostazioni.
 clip-default-name = Clip { $number }
@@ -244,7 +244,7 @@ settings-clip-padding = Margine delle clip
 settings-preroll = Secondi prima dell’evento
 settings-postroll = Secondi dopo l’evento
 export-start-first-group = Un taglio non può iniziare dal primissimo fotogramma della registrazione. Inizia un po’ più tardi.
-export-start-later-session = L’inizio cade in una sessione successiva della registrazione, da cui un taglio non può ancora iniziare.
+export-start-during-loading = L’inizio cade mentre il gioco sta ancora caricando una mappa. Inizia un po’ più tardi.
 
 export-all = Esporta tutte le clip
 export-one = Esporta

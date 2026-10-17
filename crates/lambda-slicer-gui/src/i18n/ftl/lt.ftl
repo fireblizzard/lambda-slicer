@@ -233,7 +233,7 @@ clips-title = Klipai
 clips-add-event = Klipas { $start } – { $end }
 clips-add-event-none = Pasirinkto įvykio klipas
 clips-select-event = Pirmiausia pasirinkite įvykį sąraše arba laiko juostoje.
-clips-other-session = Kol kas galima eksportuoti tik pirmąją įrašo sesiją.
+clips-other-session = Klipas negali prasidėti čia, nes ankstesnė įrašo sesija turi tuos pačius laikus.
 clips-add-window = Šios intensyvios akimirkos klipas
 clips-empty = Klipų dar nėra. Pasirinkite įvykį arba vieną intensyviausių akimirkų ir pridėkite aplink jį klipą. Kiek klipas apima prieš įvykį ir po jo, nustatoma Nustatymuose.
 clip-default-name = Klipas { $number }
@@ -249,7 +249,7 @@ settings-clip-padding = Klipo paraštė
 settings-preroll = Sekundės prieš įvykį
 settings-postroll = Sekundės po įvykio
 export-start-first-group = Iškarpa negali prasidėti nuo pačio pirmojo įrašo kadro. Pradėkite šiek tiek vėliau.
-export-start-later-session = Pradžia yra vėlesnėje įrašo sesijoje, nuo kurios iškarpa dar negali prasidėti.
+export-start-during-loading = Pradžia patenka į žemėlapio įkėlimą. Pradėkite šiek tiek vėliau.
 
 export-all = Eksportuoti visus klipus
 export-one = Eksportuoti

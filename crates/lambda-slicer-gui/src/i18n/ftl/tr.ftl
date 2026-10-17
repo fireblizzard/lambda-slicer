@@ -223,7 +223,7 @@ clips-title = Klipler
 clips-add-event = Klip { $start } – { $end }
 clips-add-event-none = Seçili olayın klibi
 clips-select-event = Önce listeden ya da zaman çizelgesinden bir olay seçin.
-clips-other-session = Şimdilik yalnızca kaydın ilk oturumu dışa aktarılabilir.
+clips-other-session = Burada klip başlayamaz, çünkü kaydın daha önceki bir oturumu aynı zamanlara sahip.
 clips-add-window = Bu yoğun anın klibi
 clips-empty = Henüz klip yok. Bir olay ya da en yoğun anlardan birini seçin, sonra çevresine bir klip ekleyin. Klibin bir olaydan önce ve sonra ne kadar tuttuğu Ayarlar’dan değiştirilir.
 clip-default-name = Klip { $number }
@@ -239,7 +239,7 @@ settings-clip-padding = Klip payı
 settings-preroll = Olaydan önceki saniye
 settings-postroll = Olaydan sonraki saniye
 export-start-first-group = Bir kesim kaydın en ilk karesinden başlayamaz. Biraz daha sonradan başlatın.
-export-start-later-session = Başlangıç kaydın daha sonraki bir oturumunda, bir kesim henüz oradan başlayamaz.
+export-start-during-loading = Başlangıç, oyun hâlâ bir harita yüklerken. Biraz daha sonradan başlatın.
 
 export-all = Tüm klipleri dışa aktar
 export-one = Dışa aktar

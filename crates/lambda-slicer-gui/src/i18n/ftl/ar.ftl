@@ -243,7 +243,7 @@ clips-title = المقاطع
 clips-add-event = مقطع { $start } – { $end }
 clips-add-event-none = مقطع للحدث المحدد
 clips-select-event = اختر حدثًا من القائمة أو من الخط الزمني أولًا.
-clips-other-session = يمكن حاليًا تصدير الجلسة الأولى من التسجيل فقط.
+clips-other-session = لا يمكن أن يبدأ مقطع هنا، لأن جلسة سابقة من التسجيل لها الأوقات نفسها.
 clips-add-window = مقطع لهذه اللحظة الحماسية
 clips-empty = لا توجد مقاطع بعد. اختر حدثًا أو إحدى أكثر اللحظات حماسًا، ثم أضف مقطعًا حوله. يُضبط ما يحتفظ به المقطع قبل الحدث وبعده من الإعدادات.
 clip-default-name = مقطع { $number }
@@ -259,7 +259,7 @@ settings-clip-padding = هامش المقاطع
 settings-preroll = ثوانٍ قبل الحدث
 settings-postroll = ثوانٍ بعد الحدث
 export-start-first-group = لا يمكن أن يبدأ القطع من أول إطار في التسجيل. ابدأ بعده بقليل.
-export-start-later-session = البداية في جلسة لاحقة من التسجيل، ولا يمكن أن يبدأ القطع منها بعد.
+export-start-during-loading = البداية أثناء تحميل اللعبة لخريطة. ابدأ بعدها بقليل.
 
 export-all = تصدير كل المقاطع
 export-one = تصدير

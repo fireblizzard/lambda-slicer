@@ -472,7 +472,35 @@ output's own cross-check is *verified* with 48,134 of 48,134 server-copy samples
 `[60 s, 80 s)` from 200 sample demos: 162 are shorter than 80 s. Of the other 38, 30 exported
 with no differing field outside time windows (bootstraps of 1 to 9 frames), 7 were refused
 because their source fails its cross-check, and 1 because the start lies in a later session than
-its LOADING entry, which restarts do not support yet.
+its LOADING entry, which restarts did not support yet.
+
+### Later sessions (M7)
+
+A level change, or any new `svc_serverinfo`, starts a new session inside the playback entry. The
+client records that session's setup as ordinary playback records: `svc_serverinfo`, delta
+descriptions, user message registrations, resources, baselines, light styles, user info and
+`svc_signonnum`, then a full `svc_packetentities` in a later frame. In `run_92.dem`, a
+singleplayer speedrun, the first level change takes frames 455 to 468 (1.951 s to 2.055 s) and
+the full update arrives in frame 469. Unlike a multiplayer recording joined after a map change,
+its times keep running across sessions.
+
+A restart that starts in a later session writes those setup records as the output's LOADING
+entry with a terminal record of its own, and encodes the bootstrap with the schemas and
+baselines they define. Their bodies are unchanged, but their tag becomes 0, a startup record, as
+in every real LOADING entry. **Observed** in the game: as ordinary network records (tag 1) they
+wait for the playback clock to reach their source time, so a setup timed 22.8 s held the cut on
+the console for that long. Messages and effects from before the setup's sign-on belong
+to the previous map and are not replayed, and the setup's own messages arrive with the LOADING
+entry. A start is possible from the group after the session's first full update, once the
+setup has signed on. An earlier start is refused with `StartDuringLoading`, and a range with a
+new session inside it with `CrossSegmentRange` as before.
+
+**Measured (2026-10-17):** `run_92.dem` `[0:03, 0:10)`, `[0:30, 0:50)` and `[1:30, 1:40)`, in
+sessions 2, 3 and 5, exported with 1,683, 4,956 and 1,968 kept snapshots and no differing field
+outside time windows. `[0:20, 0:25)` and `[1:00, 1:20)` are refused because gibs are still
+flying at their start (`ActiveEffect`). The synthetic test
+`a_restart_starts_in_a_later_session_with_its_own_setup` covers the setup, the refusals and
+range snapping.
 
 # Validation against client-recorded values (M2)
 

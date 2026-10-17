@@ -223,7 +223,7 @@ clips-title = Clips
 clips-add-event = Clip { $start } – { $end }
 clips-add-event-none = Clip vom gewählten Ereignis
 clips-select-event = Wähle zuerst ein Ereignis in der Liste oder auf der Zeitleiste.
-clips-other-session = Vorerst lässt sich nur die erste Sitzung der Aufnahme exportieren.
+clips-other-session = Hier kann kein Clip beginnen, da eine frühere Sitzung der Aufnahme dieselben Zeiten hat.
 clips-add-window = Clip von diesem intensiven Moment
 clips-empty = Noch keine Clips. Wähle ein Ereignis oder einen der intensivsten Momente und lege einen Clip darum an. Wie viel ein Clip vor und nach einem Ereignis enthält, stellst du in den Einstellungen ein.
 clip-default-name = Clip { $number }
@@ -239,7 +239,7 @@ settings-clip-padding = Puffer um Clips
 settings-preroll = Sekunden vor dem Ereignis
 settings-postroll = Sekunden nach dem Ereignis
 export-start-first-group = Ein Schnitt kann nicht auf dem allerersten Frame der Aufnahme beginnen. Beginne etwas später.
-export-start-later-session = Der Anfang liegt in einer späteren Sitzung der Aufnahme, in der ein Schnitt noch nicht beginnen kann.
+export-start-during-loading = Der Anfang fällt in das Laden einer Map. Beginne etwas später.
 
 export-all = Alle Clips exportieren
 export-one = Exportieren

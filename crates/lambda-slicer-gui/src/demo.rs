@@ -344,13 +344,22 @@ impl DemoView {
         }
     }
 
-    /// The range clipping the selected event would take, when the event is
-    /// in the session an export can start in
+    /// The range clipping the selected event would take, when a start
+    /// there falls in the event's own session. Times restart with some
+    /// sessions, and an export starts at the first group with the time
     fn proposal(&self) -> Option<(f32, f32)> {
         let m = self.model.as_ref()?;
         let e = m.events.get(self.selected?)?;
-        (Some(e.segment) == m.groups.loading_segment)
-            .then(|| self.clamped(e.time - self.padding.0, e.time + self.padding.1))
+        let range = self.clamped(e.time - self.padding.0, e.time + self.padding.1);
+        self.starts_in(range.0, e.segment).then_some(range)
+    }
+
+    /// Whether a clip starting at `time` starts in `segment`
+    fn starts_in(&self, time: f32, segment: u32) -> bool {
+        let Some(m) = &self.model else {
+            return false;
+        };
+        DemoTime::from_f32(time).is_some_and(|t| m.groups.segment_at(t) == Some(segment))
     }
 
     /// A range kept within the recording
@@ -937,7 +946,6 @@ impl DemoView {
                     .unwrap_or_default(),
             )
         };
-        let export_segment = model.groups.loading_segment;
         layout::wrapping_row(ui, rtl, |ui| {
             ui.label(text::widget_text(
                 &ctx,
@@ -971,11 +979,11 @@ impl DemoView {
 
             // Around the chosen intense moment
             if let Some(w) = self.window.and_then(|i| model.windows.get(i)) {
-                let allowed = Some(w.segment) == export_segment;
+                let range = self.clamped(w.start - self.padding.0, w.end + self.padding.1);
+                let allowed = self.starts_in(range.0, w.segment);
                 let r = ui.add_enabled(allowed, egui::Button::new(t("clips-add-window")));
                 let r = r.on_disabled_hover_text(t("clips-other-session"));
                 if r.clicked() {
-                    let range = self.clamped(w.start - self.padding.0, w.end + self.padding.1);
                     self.add_clip(catalog, range);
                 }
             }

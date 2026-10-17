@@ -223,7 +223,7 @@ clips-title = Klipit
 clips-add-event = Klippi { $start } – { $end }
 clips-add-event-none = Klippi valitusta tapahtumasta
 clips-select-event = Valitse ensin tapahtuma luettelosta tai aikajanalta.
-clips-other-session = Toistaiseksi vain tallenteen ensimmäisen istunnon voi viedä.
+clips-other-session = Klippi ei voi alkaa tästä, koska tallenteen aiemmalla istunnolla on samat ajat.
 clips-add-window = Klippi tästä kiivaasta hetkestä
 clips-empty = Klippejä ei vielä ole. Valitse tapahtuma tai jokin kiivaimmista hetkistä ja lisää sen ympärille klippi. Sen, paljonko klippi ottaa ennen tapahtumaa ja sen jälkeen, voi säätää asetuksissa.
 clip-default-name = Klippi { $number }
@@ -239,7 +239,7 @@ settings-clip-padding = Klipin marginaali
 settings-preroll = Sekuntia ennen tapahtumaa
 settings-postroll = Sekuntia tapahtuman jälkeen
 export-start-first-group = Leikkaus ei voi alkaa tallenteen aivan ensimmäisestä ruudusta. Aloita hieman myöhemmin.
-export-start-later-session = Alku osuu tallenteen myöhempään istuntoon, josta leikkaus ei vielä voi alkaa.
+export-start-during-loading = Alku osuu kartan lataukseen. Aloita hieman myöhemmin.
 
 export-all = Vie kaikki klipit
 export-one = Vie

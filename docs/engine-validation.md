@@ -9,7 +9,7 @@ Plan §6.1 requires S0 controls to pass in the installed Windows game **before**
 |---|---|
 | Game install | `F:\SteamLibrary\steamapps\common\Half-Life` |
 | Mod | `ag` (liblist labels AG 6.7/openag.pro; server DLL is Metamod — customized install) |
-| Exact engine/client build | **not yet recorded** — fill in from the game console `version` output |
+| Exact engine/client build | Protocol 48, exe version 1.1.2.2 (valve), build 8684 of Aug 3 2020 (console `version`, 2026-10-17) |
 
 ## S0 controls — generated and played 2026-10-14
 
@@ -193,3 +193,75 @@ startup event and should show the beam (with a wind-up sound) from the first fra
 |---|---|---|---|
 | S1 sound loop `[2:00, 2:20)` | 2026-10-16 | matches original, not audible | The loop (started 1:57.8, stopped 2:20.2) is not audible at this point in the original either, so the carry cannot be judged by ear here. |
 | S1 HUD text `[1:00, 1:20)` | 2026-10-16 | pass | The timer text shows from the first frame and updates like the original. |
+
+## M7 release matrix
+
+The release gate (implementation plan §10, M7) needs the Windows game to play multiplayer,
+singleplayer and spectator cuts, including cuts that start after a level change. M7 made a
+restart start in any session of a recording: the output's LOADING entry is then the setup the
+session recorded in playback, from its `svc_serverinfo` to its `svc_signonnum` ("Later sessions"
+in `docs/protocol-profile-5-48.md`). Generated 2026-10-17 with the release CLI:
+
+```powershell
+$sp = 'F:\SteamLibrary\steamapps\common\Half-Life\ag\run_92.dem'
+.\target\release\lambda-slicer.exe slice $sp --start 0:03 --end 0:10 --output work\ls_m7_sp_session2.dem
+.\target\release\lambda-slicer.exe slice $sp --start 0:30 --end 0:50 --output work\ls_m7_sp_session3.dem
+.\target\release\lambda-slicer.exe slice $sp --start 1:30 --end 1:40 --output work\ls_m7_sp_session5.dem
+.\target\release\lambda-slicer.exe slice F:\HLScreeniesDemos\05oct2019\ray_vs_alex_cross.dem --start 0:30 --end 0:50 --output work\ls_m7_spectator.dem
+.\target\release\lambda-slicer.exe slice F:\HLScreeniesDemos\19jun2019\stalkx_5o5_asasasdgwgw.dem --start 1:36 --end 4:48 --output work\ls_m7_mp_4v4.dem
+```
+
+| Output | Source and kind | Effective range | Kept snapshots | Output BLAKE3 |
+|---|---|---|---|---|
+| `ls_m7_sp_session2` | `run_92.dem`, singleplayer speedrun, session 2 (`c3a1b`) | 00:00:03.000 to 00:00:10.001 | 1,683 | `2761d913…c3de06f8` |
+| `ls_m7_sp_session3` | session 3 (`c3a2e`) | 00:00:30.003 to 00:00:50.002 | 4,956 | `1554e619…f4443212` |
+| `ls_m7_sp_session5` | session 5 (`c3a2a`) | 00:01:30.001 to 00:01:40.003 | 1,968 | `4d0b9f90…99906913` |
+| `ls_m7_spectator` | `ray_vs_alex_cross.dem`, spectating throughout | 00:00:30.011 to 00:00:50.015 | 1,513 | `b51961a5…c39cb` |
+| `ls_m7_mp_4v4` | `stalkx_5o5_asasasdgwgw.dem`, 5 against 5 AG match on `stalkx`, also what the app's Export writes | 00:01:36.009 to 00:04:48.000 | 17,797 | `43534322…aedbc1e` |
+
+Every kept snapshot decoded identical to the source apart from approximated time windows. The
+sources' BLAKE3 hashes were the same before and after (`run_92.dem` `9fbf2e4f…c5ffb0`,
+`ray_vs_alex_cross.dem` `997e496b…315338`, `stalkx_5o5_asasasdgwgw.dem` `f64eaf60…835f50`), and
+`exports_leave_every_fixture_unchanged` in `tests/local_corpus.rs` repeats that for every fixture.
+
+### Procedure (to run in the game)
+
+1. Run `version` in the game console and record the output in the environment table above.
+2. Copy the five `work\ls_m7_*.dem` files into `F:\SteamLibrary\steamapps\common\Half-Life\ag\`.
+3. Play any demo once first, then `playdemo` each, for example `playdemo ls_m7_sp_session3`.
+4. Check, against the original at the same times:
+   - the singleplayer cuts open on their own map (`c3a1b`, `c3a2e`, `c3a2a`), not on `c3a1a`
+     where the recording begins, with the world, monsters, doors and lifts in place;
+   - the HUD (health, suit, ammo, current weapon) is right from the first frame and nothing of the
+     previous level shows;
+   - the spectator cut shows the spectated player's view as the original does, with the
+     spectator HUD;
+   - the 5 against 5 cut is like the earlier crossfire test: right from 1:36 to 4:48, with team
+     scores and the AG HUD;
+   - each plays to its end and stops cleanly, with no console errors, overflow or disconnect.
+
+### Results
+
+| Test | Date | Result | Observations |
+|---|---|---|---|
+| Engine `version` | 2026-10-17 | recorded | In the environment table above. |
+| `ls_m7_sp_session2` | 2026-10-17 | pass | Plays well, in both generations. |
+| `ls_m7_sp_session3` | 2026-10-17 | fail, then pass | First generation: `playdemo` printed "Playing demo from …" and nothing else happened, the console stayed up. Regenerated with startup records, it plays cleanly. |
+| `ls_m7_sp_session5` | 2026-10-17 | fail, then pass | As session 3. |
+| `ls_m7_diag_s3_early`, `ls_m7_diag_s5_early` | 2026-10-17 | fail, then pass | As session 3, ruling out the clock jump. Regenerated, both play cleanly. |
+| `ls_m7_spectator` | 2026-10-17 | pass | Plays well. |
+| `ls_m7_mp_4v4` | 2026-10-17 | pass | Opens on `stalkx` and plays well. |
+| `run_92.dem` itself | 2026-10-17 | pass | Plays through every level change. |
+
+**Cause of the session 3 and 5 failures.** The first generation wrote the later session's setup
+into LOADING as ordinary network records (tag 1), keeping their source times, 22.8 s and 86.6 s.
+Real LOADING entries hold startup records (tag 0), which the game reads at once whatever their
+time (176.7 s in `run_92.dem`, 1,210.6 s in `naz_crossfire_pb_01.dem`). The game holds ordinary
+records until its playback clock reaches their time, so the cuts would only have started after
+about 23 s and 87 s. Session 2's setup is timed 1.95 s, which went unnoticed. Two diagnostic cuts
+starting right after their level loaded (`ls_m7_diag_s3_early` `[0:23, 0:30)` and
+`ls_m7_diag_s5_early` `[1:27.5, 1:35)`) failed the same way, which ruled out the server clock jump
+at the start. The setup records are now written as startup records, the synthetic later-session
+test checks their tags, and the singleplayer cuts above were generated again (hashes above).
+All of them then played cleanly in the game, with no issue noticed, which completes the M7 engine
+matrix.

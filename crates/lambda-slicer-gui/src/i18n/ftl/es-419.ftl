@@ -228,7 +228,7 @@ clips-title = Clips
 clips-add-event = Crear clip { $start } – { $end }
 clips-add-event-none = Crear clip del evento elegido
 clips-select-event = Primero elige un evento en la lista o en la línea de tiempo.
-clips-other-session = Por ahora solo se puede exportar la primera sesión de la grabación.
+clips-other-session = Un clip no puede empezar aquí, porque una sesión anterior de la grabación tiene los mismos tiempos.
 clips-add-window = Crear clip de este momento intenso
 clips-empty = Todavía no hay clips. Elige un evento o uno de los momentos más intensos y crea un clip alrededor. Cuánto guarda un clip antes y después de un evento se ajusta en Configuración.
 clip-default-name = Clip { $number }
@@ -244,7 +244,7 @@ settings-clip-padding = Margen de los clips
 settings-preroll = Segundos antes del evento
 settings-postroll = Segundos después del evento
 export-start-first-group = Un corte no puede empezar en el primer cuadro de la grabación. Empieza un poco después.
-export-start-later-session = El inicio está en una sesión posterior de la grabación, donde todavía no puede empezar un corte.
+export-start-during-loading = El inicio cae mientras el juego todavía carga un mapa. Empieza un poco después.
 
 export-all = Exportar todos los clips
 export-one = Exportar

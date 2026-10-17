@@ -59,8 +59,8 @@ pub enum ExportError {
     ClientDroppedPackets(String),
     #[error("a new session starts at {0} inside the range")]
     CrossSegmentRange(String),
-    #[error("the start is in a later session than the LOADING entry describes")]
-    StartInLaterSession,
+    #[error("the start is while the game is still loading a session, before its first full update")]
+    StartDuringLoading,
     #[error("the start is at the first frame group, which an exact copy covers")]
     StartAtFirstGroup,
     #[error("delta base {0} before the start is not in the recording")]
@@ -92,7 +92,7 @@ impl Coded for ExportError {
             ExportError::UnprovenState(_) => "export-unproven-state",
             ExportError::ClientDroppedPackets(_) => "export-client-dropped-packets",
             ExportError::CrossSegmentRange(_) => "export-cross-segment",
-            ExportError::StartInLaterSession => "export-start-later-session",
+            ExportError::StartDuringLoading => "export-start-during-loading",
             ExportError::StartAtFirstGroup => "export-start-first-group",
             ExportError::MissingDeltaBase(_) => "export-missing-delta-base",
             ExportError::UnknownPersistentMessage(_) => "export-unknown-persistent-message",
@@ -129,7 +129,7 @@ impl Coded for ExportError {
             ExportError::ActiveEffect(effect) => vec![("effect", effect.clone().into())],
             ExportError::EmptyRange
             | ExportError::SourceFailedCrossCheck
-            | ExportError::StartInLaterSession
+            | ExportError::StartDuringLoading
             | ExportError::StartAtFirstGroup => Vec::new(),
         }
     }

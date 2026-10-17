@@ -218,7 +218,7 @@ clips-title = 片段
 clips-add-event = 片段 { $start } – { $end }
 clips-add-event-none = 为所选事件建片段
 clips-select-event = 请先在列表或时间轴上选择一个事件。
-clips-other-session = 目前只能导出录像的第一个会话。
+clips-other-session = 片段不能从这里开始，因为录像中较早的会话有相同的时间。
 clips-add-window = 为这个激烈时刻建片段
 clips-empty = 还没有片段。选择一个事件或一个最激烈的时刻，然后在其周围添加片段。片段在事件前后保留多长时间可在设置中调整。
 clip-default-name = 片段 { $number }
@@ -234,7 +234,7 @@ settings-clip-padding = 片段余量
 settings-preroll = 事件前的秒数
 settings-postroll = 事件后的秒数
 export-start-first-group = 剪切不能从录像的第一帧开始。请稍后一点开始。
-export-start-later-session = 起点位于录像中较晚的会话，剪切暂时无法从那里开始。
+export-start-during-loading = 起点位于游戏仍在加载地图时。请稍后一点开始。
 
 export-all = 导出全部片段
 export-one = 导出

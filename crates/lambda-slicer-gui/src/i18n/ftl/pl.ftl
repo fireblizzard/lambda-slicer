@@ -233,7 +233,7 @@ clips-title = Klipy
 clips-add-event = Klip { $start } – { $end }
 clips-add-event-none = Klip wybranego zdarzenia
 clips-select-event = Najpierw wybierz zdarzenie na liście lub na osi czasu.
-clips-other-session = Na razie można eksportować tylko pierwszą sesję nagrania.
+clips-other-session = Klip nie może zacząć się tutaj, bo wcześniejsza sesja nagrania ma te same czasy.
 clips-add-window = Klip tego gorącego momentu
 clips-empty = Nie ma jeszcze klipów. Wybierz zdarzenie lub jeden z najgorętszych momentów i dodaj wokół niego klip. Ile klip obejmuje przed zdarzeniem i po nim, ustawisz w Ustawieniach.
 clip-default-name = Klip { $number }
@@ -249,7 +249,7 @@ settings-clip-padding = Zapas wokół klipu
 settings-preroll = Sekundy przed zdarzeniem
 settings-postroll = Sekundy po zdarzeniu
 export-start-first-group = Wycinek nie może zaczynać się od pierwszej klatki nagrania. Zacznij odrobinę później.
-export-start-later-session = Początek wypada w późniejszej sesji nagrania, od której wycinek nie może jeszcze się zaczynać.
+export-start-during-loading = Początek wypada podczas wczytywania mapy. Zacznij odrobinę później.
 
 export-all = Eksportuj wszystkie klipy
 export-one = Eksportuj

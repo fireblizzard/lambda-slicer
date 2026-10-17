@@ -5,3 +5,4 @@ local-fixtures.json
 fuzz/target
 fuzz/corpus
 fuzz/artifacts
+/dist

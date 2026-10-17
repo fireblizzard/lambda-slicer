@@ -16,6 +16,9 @@
 //! PNG `N` frames after any demo has loaded and its exports finished, and
 //! exits, for checking how a language renders
 
+// A release build opens no console window beside the app
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 mod app;
 mod clips;
 mod demo;

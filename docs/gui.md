@@ -87,8 +87,9 @@ and the lanes and are kept per demo in `clips.json` beside the settings.
   in orange: an end past the recording, a range with nothing in it, a start on the very first
   frame, in a later session or with a new session inside it. Refusals that need the decoded state
   come from the export itself.
-- **Sessions.** Times restart with each session of a recording and an export can only start in
-  the first, so events and intense moments from later sessions cannot be clipped yet.
+- **Sessions.** A level or map change starts a new session. A clip can start in any session once
+  its map has loaded. Where a session's times repeat an earlier one's, a clip's start would land
+  in the earlier session, so the app offers no clip there.
 
 ## Export
 

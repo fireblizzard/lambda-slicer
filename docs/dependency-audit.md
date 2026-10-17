@@ -69,8 +69,12 @@ then checked by decoding the local corpus (see the scan there).
 
 The planning document called ReHLDS GPL-3.0; its file headers say GPL version 2 or later.
 
-## Open license decision
+## Project license
 
-The workspace is marked `UNLICENSED` until a project license is chosen. No `dem` (LGPL-3.0) or
-ReHLDS (GPL-2.0-or-later) code has been adapted; adapting any would constrain the project license
-and must be recorded here first.
+Chosen 2026-10-17: MIT OR Apache-2.0 (`LICENSE-MIT`, `LICENSE-APACHE`), like most of the Rust
+ecosystem the project builds on. No `dem` (LGPL-3.0) or ReHLDS (GPL-2.0-or-later) code has been
+adapted, as the references above were read to learn layouts only. Adapting any would constrain
+the license and must be recorded here first. Every shipped dependency is under a license
+compatible with MIT OR Apache-2.0 (MIT, Apache-2.0, BSD, ISC, Zlib, BSL-1.0, Unicode-3.0, and
+OFL-1.1 and the Ubuntu Font Licence for egui's bundled fonts), and the release carries their
+notices ([release](release.md)).

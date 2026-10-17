@@ -50,8 +50,6 @@ limit in this install, within the packet size limit above.
 
 Not review findings, but known gaps of the same kind:
 
-- **A start in a later session** than the LOADING entry describes, after a map change. Needs
-  that session's own signon state in the output.
 - **A range crossing packets the client dropped as too old.** The client's state is frozen during
   such a run, and the export would have to reproduce that.
 
@@ -66,7 +64,10 @@ later.
 - **Export.** A clip under way cannot be stopped, only the clips after it. The export pane shows
   refusals, progress, the validation count and the final path, but no separate protocol profile
   line, since a demo whose profile is unsupported does not analyse.
-- **Clips** can only be made in a recording's first session, as restarts are (above).
+- **Clips** in a session whose times repeat an earlier session's cannot be told apart from it,
+  since clips and the CLI name a time and not a session, so the app does not offer them there.
+- **Timeline lanes** show the same player once per session, the recorder marked only in the
+  last.
 - **Library.** Files from a folder removed in Settings stay listed until the cache is cleared.
 - **Arabic text fields** show their text in logical order while it is edited
   ([gui-text](gui-text.md)).

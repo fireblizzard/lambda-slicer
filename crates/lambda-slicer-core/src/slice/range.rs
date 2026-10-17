@@ -9,6 +9,8 @@
 //! export runs. Refusals that need the decoded state, such as unproven
 //! state or dropped packets, come only from the export itself
 
+use std::collections::BTreeMap;
+
 use serde::Serialize;
 
 use super::ExportError;
@@ -36,6 +38,9 @@ pub struct GroupIndex {
     pub groups: Vec<GroupStart>,
     /// Groups during which a new session began
     pub session_changes: Vec<usize>,
+    /// For each later session, the first group a restart can start at,
+    /// the one after its setup is complete and a full update arrived
+    pub ready: BTreeMap<u32, usize>,
     /// The time of the playback entry's terminal record
     pub end: Option<f32>,
 }
@@ -74,8 +79,10 @@ impl GroupIndex {
             });
         };
         let g = &self.groups[first];
-        if Some(g.segment) != self.loading_segment {
-            return Err(ExportError::StartInLaterSession);
+        if Some(g.segment) != self.loading_segment
+            && self.ready.get(&g.segment).is_none_or(|&r| first < r)
+        {
+            return Err(ExportError::StartDuringLoading);
         }
         if first == 0 {
             return Err(ExportError::StartAtFirstGroup);
@@ -118,6 +125,14 @@ impl GroupIndex {
             end: effective_end,
         })
     }
+
+    /// The session of the group a start at `start` would snap to
+    pub fn segment_at(&self, start: DemoTime) -> Option<u32> {
+        self.groups
+            .iter()
+            .find(|g| time(g.time) >= start && !g.demo_start)
+            .map(|g| g.segment)
+    }
 }
 
 #[cfg(test)]
@@ -142,6 +157,7 @@ mod tests {
             loading_segment: Some(1),
             groups,
             session_changes: Vec::new(),
+            ready: BTreeMap::new(),
             end: Some(1.1),
         }
     }
@@ -184,11 +200,19 @@ mod tests {
         let err = index().snap(at("1.5"), None).unwrap_err();
         assert!(matches!(err, ExportError::RangeBeyondEnd { .. }), "{err}");
 
+        // A later session from group 6, ready to start at group 8
         let mut i = index();
-        i.groups[6].segment = 2;
-        i.groups[7].segment = 2;
+        for g in &mut i.groups[6..] {
+            g.segment = 2;
+        }
         let err = i.snap(at("0.55"), None).unwrap_err();
-        assert!(matches!(err, ExportError::StartInLaterSession), "{err}");
+        assert!(matches!(err, ExportError::StartDuringLoading), "{err}");
+        i.ready.insert(2, 8);
+        let err = i.snap(at("0.55"), None).unwrap_err();
+        assert!(matches!(err, ExportError::StartDuringLoading), "{err}");
+        assert_eq!(i.snap(at("0.65"), None).unwrap().start, at("0.7"));
+        assert_eq!(i.segment_at(at("0.65")), Some(2));
+        assert_eq!(i.segment_at(at("0.25")), Some(1));
 
         let mut i = index();
         i.session_changes.push(7);

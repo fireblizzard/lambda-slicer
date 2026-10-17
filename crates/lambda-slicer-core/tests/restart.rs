@@ -116,6 +116,9 @@ struct Recording {
     /// Groups that also set entity 1's animtime, as (group, offset back
     /// from the packet's server time in hundredths)
     animtimes: Vec<(i32, i64)>,
+    /// A group where a new session sets itself up, as after a level change,
+    /// with its first full update in the next group
+    session_at: Option<i32>,
 }
 
 impl Recording {
@@ -130,6 +133,7 @@ impl Recording {
             recorded_weapons: 1 << 9,
             records: Vec::new(),
             animtimes: Vec::new(),
+            session_at: None,
         }
     }
 
@@ -172,7 +176,13 @@ impl Recording {
                 .iter()
                 .find(|(g, _)| *g == n)
                 .map(|(_, o)| *o);
-            group(t, n, step(t, *from, i64::from(n), extra, animtime));
+            let payload = match self.session_at {
+                // The setup ends with the sign-on, as a real one does
+                Some(s) if s == n => [setup_with(48, RESOURCES), vec![svc::SIGNONNUM, 1]].concat(),
+                Some(s) if s + 1 == n => full_packet(FIRST + n),
+                _ => step(t, *from, i64::from(n), extra, animtime),
+            };
+            group(t, n, payload);
         }
 
         let end = (self.groups.len() + 1) as f32 * STEP;
@@ -668,4 +678,78 @@ fn the_group_index_snaps_ranges_as_the_restart_does() {
     // The same refusals
     let err = report.groups.snap(at(25), Some(at(80))).unwrap_err();
     assert!(matches!(err, ExportError::RangeBeyondEnd { .. }), "{err}");
+}
+
+#[test]
+fn a_restart_starts_in_a_later_session_with_its_own_setup() {
+    // A new session sets up in group 30 and has its full update in group 31
+    let mut rec = Recording::steady(60, 1);
+    rec.session_at = Some(30);
+    let dir = tempfile::tempdir().unwrap();
+    let src = write(dir.path(), "src.dem", &rec.bytes());
+    let (report, _) = decode_demo(&src, &DecodeOptions::default(), |_, _, _| {});
+    assert_eq!(report.groups.ready.get(&2), Some(&32));
+
+    // A start at the setup's group is still in the old session, which then
+    // changes inside the range. The full update's group is still loading
+    let early = |g: i32| {
+        let path = dir.path().join(format!("early{g}.dem"));
+        let restart = run_restart(&src, &path, at(g), None, Limits::default()).unwrap_err();
+        (restart, report.groups.snap(at(g), None).unwrap_err())
+    };
+    let (restart, snap) = early(30);
+    assert!(
+        matches!(restart, ExportError::CrossSegmentRange(_)),
+        "{restart}"
+    );
+    assert!(matches!(snap, ExportError::CrossSegmentRange(_)), "{snap}");
+    let (restart, snap) = early(31);
+    assert!(
+        matches!(restart, ExportError::StartDuringLoading),
+        "{restart}"
+    );
+    assert!(matches!(snap, ExportError::StartDuringLoading), "{snap}");
+
+    let out = dir.path().join("later.dem");
+    let r = run_restart(&src, &out, at(40), Some(at(50)), Limits::default()).unwrap();
+    assert_eq!(r.validation.other_differences, 0);
+    assert_eq!(r.kept_network_records, 10);
+    let snapped = report.groups.snap(at(40), Some(at(50))).unwrap();
+    assert_eq!(snapped.start.to_string(), r.effective_start);
+    assert_eq!(snapped.end.to_string(), r.effective_end);
+
+    // The output's LOADING entry is the new session's setup, as startup
+    // records like a real one, so it decodes as one session ending on group
+    // 49's state
+    let mut reader =
+        DemoReader::new(std::fs::File::open(&out).unwrap(), Limits::default()).unwrap();
+    let tags: Vec<u8> = reader
+        .frames(0)
+        .unwrap()
+        .map(|f| f.unwrap().frame.tag)
+        .collect();
+    assert_eq!(tags.last(), Some(&tag::NEXT_SECTION));
+    assert!(
+        tags[..tags.len() - 1]
+            .iter()
+            .all(|t| *t == tag::NETWORK_START),
+        "{tags:?}"
+    );
+    let (out_report, _) = decode_demo(&out, &DecodeOptions::default(), |_, _, _| {});
+    assert_eq!(out_report.status, DecodeStatus::Complete);
+    assert_eq!(out_report.stats.segments, 1);
+    assert_eq!(last_model(&out), Some(Value::Int(49)));
+
+    // Group 32 deltas from the full update, which is not in the range, so it
+    // is written as the bootstrap
+    let r = run_restart(
+        &src,
+        &dir.path().join("ready.dem"),
+        at(32),
+        Some(at(35)),
+        Limits::default(),
+    )
+    .unwrap();
+    assert_eq!(r.bootstrap_sequences, [41]);
+    assert_eq!(r.validation.other_differences, 0);
 }

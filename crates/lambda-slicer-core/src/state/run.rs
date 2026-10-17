@@ -12,7 +12,7 @@ use serde::Serialize;
 use super::world::{DecodeStats, Decoder, FrameLocation, NameChange, PlayerInfo};
 use crate::container::{DemoReader, FrameBody, Limits};
 use crate::message::{Coded, Message, io_message};
-use crate::protocol::messages::ParsedMessage;
+use crate::protocol::messages::{Message as Wire, ParsedMessage};
 use crate::protocol::profile;
 use crate::slice::range::{GroupIndex, GroupStart};
 
@@ -154,6 +154,8 @@ pub fn decode_demo(
     report.status = DecodeStatus::Complete;
     report.groups.directory_types = reader.directory.iter().map(|d| d.entry_type).collect();
     let mut group_number: Option<i32> = None;
+    // Whether the current later session has signed on and had a full update
+    let (mut signed_on, mut full_update) = (true, true);
     'entries: for entry in 0..reader.directory.len() as u32 {
         if entry == 1 {
             report.groups.loading_segment = Some(decoder.segment);
@@ -207,18 +209,32 @@ pub fn decode_demo(
                 group_number = Some(lf.frame.frame_number);
             }
             let segment = decoder.segment;
+            let (mut signon_here, mut full_here) = (false, false);
             match &lf.frame.body {
                 FrameBody::Network(n) => {
-                    if let Err(e) =
-                        decoder.network_frame(location, n, |d, m| on_message(&location, d, m))
-                    {
+                    if let Err(e) = decoder.network_frame(location, n, |d, m| {
+                        match &m.message {
+                            Wire::SignOnNum(_) => signon_here = true,
+                            Wire::PacketEntities(_) => full_here = true,
+                            _ => {}
+                        }
+                        on_message(&location, d, m)
+                    }) {
                         report.error = Some(e.message());
                         report.status = DecodeStatus::Partial;
                         break 'entries;
                     }
-                    if entry == 1 && decoder.segment != segment && report.groups.end.is_none() {
-                        let group = report.groups.groups.len().saturating_sub(1);
-                        report.groups.session_changes.push(group);
+                    if entry == 1 && report.groups.end.is_none() {
+                        let g = &mut report.groups;
+                        if decoder.segment != segment {
+                            g.session_changes.push(g.groups.len().saturating_sub(1));
+                            (signed_on, full_update) = (false, false);
+                        }
+                        signed_on |= signon_here;
+                        full_update |= full_here;
+                        if signed_on && full_update && Some(decoder.segment) != g.loading_segment {
+                            g.ready.entry(decoder.segment).or_insert(g.groups.len());
+                        }
                     }
 
                     if entry > 0 {

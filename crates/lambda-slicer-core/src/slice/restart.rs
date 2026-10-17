@@ -1,7 +1,8 @@
 //! S1 restart export, a slice `[start, end)` that plays on its own
 //! (implementation plan §6)
 //!
-//! The output keeps the source's LOADING entry, then opens the playback
+//! The output keeps the LOADING entry of the session the start is in, then
+//! opens the playback
 //! entry with one bootstrap group. That group holds a full update for every
 //! frame before the start that the kept packets still reference as a delta
 //! base, sent under the frame's own sequence numbers. The kept frame groups
@@ -120,6 +121,10 @@ struct Plan {
     notes: Vec<String>,
     /// (snapshot, the source record that carried it) per bootstrap frame
     bootstrap: Vec<(Arc<Snapshot>, NetworkFrame)>,
+    /// The network records that set up the start's session, when it is a
+    /// later session than the source's LOADING entry describes. They become
+    /// the output's LOADING entry
+    setup: Option<Vec<Frame>>,
     /// Persistent messages replayed before the bootstrap updates, and how
     /// many there are
     persistent: Vec<u8>,
@@ -214,6 +219,14 @@ fn plan(
     let mut pending: Option<PendingSounds> = None;
     let loading_session = d.segment;
 
+    // A later session sets itself up inside the playback entry, from its
+    // server info to `svc_signonnum`. Those records are kept for a LOADING
+    // entry of its own. A start is possible once the setup is complete and a
+    // full update arrived, so there is a state to start from
+    let mut setup: Option<Vec<Frame>> = None;
+    let mut session_setup: Option<Vec<Frame>> = None;
+    let (mut signed_on, mut full_update) = (true, true);
+
     // Past the end, packets are still decoded until every sound that may
     // be playing at the start is confirmed or ruled out
     let mut past_end = false;
@@ -253,9 +266,17 @@ fn plan(
         }
 
         if new_group && kept.is_none() && t >= start && !matches!(f.body, FrameBody::DemoStart) {
-            if d.segment != loading_session {
-                return Err(ExportError::StartInLaterSession);
+            if !(signed_on && full_update) {
+                return Err(ExportError::StartDuringLoading);
             }
+            let start_setup = match d.segment == loading_session {
+                true => None,
+                false => Some(
+                    session_setup
+                        .clone()
+                        .ok_or(ExportError::StartDuringLoading)?,
+                ),
+            };
             if let Some(b) = persistent.blocker.take() {
                 return Err(ExportError::UnknownPersistentMessage(b));
             }
@@ -299,6 +320,7 @@ fn plan(
                 late: carried.messages,
                 notes: carried.notes,
                 bootstrap: Vec::new(),
+                setup: start_setup,
                 persistent: persistent_kept.engine,
                 persistent_count: persistent_kept.engine_count,
                 hud: persistent_kept.hud,
@@ -347,6 +369,8 @@ fn plan(
         let mut froms: Vec<u8> = Vec::new();
         let before = kept.is_none();
         let time = f.time();
+        let segment = d.segment;
+        let (mut signon_here, mut full_here) = (false, false);
         d.network_frame(loc, n, |dec, m| {
             if before {
                 persistent.observe(dec, m, &n.message, time);
@@ -357,10 +381,32 @@ fn plan(
             match &m.message {
                 Message::DeltaPacketEntities(p) => froms.extend(p.delta_from),
                 Message::ClientData(c) => froms.extend(c.delta_from),
+                Message::PacketEntities(_) => full_here = true,
+                Message::SignOnNum(_) => signon_here = true,
                 _ => {}
             }
         })
         .map_err(decode_err)?;
+
+        if before {
+            if d.segment != segment {
+                setup = Some(Vec::new());
+                session_setup = None;
+                (signed_on, full_update) = (false, false);
+            }
+            if let Some(records) = setup.as_mut() {
+                records.push(f.clone());
+                if signon_here {
+                    session_setup = setup.take();
+                    // The previous map's state is gone, and the setup's own
+                    // messages arrive with the LOADING entry
+                    persistent = Persistent::default();
+                    ongoing = Ongoing::default();
+                }
+            }
+            signed_on |= signon_here;
+            full_update |= full_here;
+        }
 
         let Some(p) = kept.as_mut() else {
             recent.push_back((**n).clone());
@@ -518,7 +564,19 @@ struct Written {
 fn write(path: &Path, out: &mut File, p: &Plan, limits: Limits) -> Result<Written, ExportError> {
     let mut reader = open(path, limits)?;
     let mut d = Decoder::new();
-    decode_loading(&mut reader, &mut d)?;
+    match &p.setup {
+        // The bootstrap is encoded with the schemas and baselines of the
+        // session the client loads
+        Some(records) => {
+            for f in records {
+                if let FrameBody::Network(n) = &f.body {
+                    let loc = location(0, 0, 0, f);
+                    d.network_frame(loc, n, |_, _| {}).map_err(decode_err)?;
+                }
+            }
+        }
+        None => decode_loading(&mut reader, &mut d)?,
+    }
 
     let dest = Path::new("<output>");
     let mut header = reader.header.clone();
@@ -537,10 +595,40 @@ fn write(path: &Path, out: &mut File, p: &Plan, limits: Limits) -> Result<Writte
         w.put(&buf).map_err(io_err(dest))
     };
 
-    // LOADING, unchanged
+    // LOADING, unchanged, or the later session's setup records and a
+    // terminal record of its own
     let start = w.pos;
-    for item in reader.frames(0)? {
-        put(&mut w, &item?.frame)?;
+    match &p.setup {
+        Some(records) => {
+            // LOADING holds startup records, which the game reads at once.
+            // As ordinary network records they would wait for the playback
+            // clock to reach their time in the source, as the game showed
+            for f in records {
+                let startup = Frame {
+                    tag: tag::NETWORK_START,
+                    ..f.clone()
+                };
+                put(&mut w, &startup)?;
+            }
+            let last = records.last().ok_or_else(|| {
+                ExportError::Unsupported("the session has no setup records".into())
+            })?;
+            let terminal = Frame {
+                tag: tag::NEXT_SECTION,
+                time_bits: last.time_bits,
+                frame_number: last.frame_number + 1,
+                body: FrameBody::NextSection,
+            };
+            put(&mut w, &terminal)?;
+            if directory[0].frame_count != 0 {
+                directory[0].frame_count = to_i32(records.len() as u64, "LOADING record count")?;
+            }
+        }
+        None => {
+            for item in reader.frames(0)? {
+                put(&mut w, &item?.frame)?;
+            }
+        }
     }
     directory[0].offset = to_i32(start, "entry offset")?;
     directory[0].length = to_i32(w.pos - start, "entry length")?;
