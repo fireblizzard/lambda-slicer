@@ -9,7 +9,9 @@ still waits for a person to try it.
 and a release build, all `--locked`. `-Linux` repeats clippy, the tests and the release build in
 WSL, building into the Linux home. CI (`.github/workflows/ci.yml`) runs the same on
 `windows-latest` and `ubuntu-latest`, then packages on Windows and keeps the zip as a build
-artifact. The private corpus and the game stay out of CI. The local fixture checks run with
+artifact. The private corpus and the game stay out of CI. The first run on GitHub, for `00b9dee`
+on 2026-10-17, passed on both systems in about 13 minutes and produced the zip
+([run 39056627064](https://github.com/fireblizzard/lambda-slicer/actions/runs/39056627064)). The local fixture checks run with
 
 ```powershell
 $env:LAMBDA_SLICER_FIXTURE_MANIFEST = "$PWD\local-fixtures.json"
@@ -86,6 +88,6 @@ odd in [engine validation](engine-validation.md):
 ## Before calling it release-ready
 
 From plan §12: the M7 engine matrix played with observations recorded and the engine `version`
-recorded (both done 2026-10-17, game build 8684), the smoke test above done, CI green on GitHub,
-and the translations reviewed by native speakers. Known gaps
+recorded (both done 2026-10-17, game build 8684), CI green on GitHub (done 2026-10-17), the smoke
+test above done on the zip CI built, and the translations reviewed by native speakers. Known gaps
 that do not block the release are in [deferred](deferred.md).
