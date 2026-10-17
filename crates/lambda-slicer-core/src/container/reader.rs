@@ -162,23 +162,65 @@ impl<R: Read + Seek> DemoReader<R> {
                 what: "directory entry index",
                 detail: format!("{entry} of {}", self.directory.len()),
             })?;
-        let (start, end) = dir.region(self.file_len)?;
-        self.inner
-            .seek(SeekFrom::Start(start))
-            .map_err(io_at(start))?;
-
-        Ok(FrameIter {
-            r: &mut self.inner,
-            limits: self.limits,
+        let (start, _) = dir.region(self.file_len)?;
+        self.frames_from(FramePosition {
             entry,
-            pos: start,
-            end,
+            offset: start,
             ordinal: 0,
-            done: false,
             terminals: 0,
             after_terminal: 0,
         })
     }
+
+    /// Stream frames from where an earlier iterator stopped, as its
+    /// [`FrameIter::position`] gave it
+    pub fn frames_from(&mut self, at: FramePosition) -> Result<FrameIter<'_, R>, ContainerError> {
+        let dir = self
+            .directory
+            .get(at.entry as usize)
+            .ok_or(ContainerError::Range {
+                what: "directory entry index",
+                detail: format!("{} of {}", at.entry, self.directory.len()),
+            })?;
+        let (start, end) = dir.region(self.file_len)?;
+        if !(start..=end).contains(&at.offset) {
+            return Err(ContainerError::Range {
+                what: "frame position",
+                detail: format!("{} outside {start}..{end}", at.offset),
+            });
+        }
+        // Going on from where the last iterator stopped needs no seek, which
+        // would throw away a buffered reader's buffer
+        let current = self.inner.stream_position().map_err(io_at(at.offset))?;
+        if current != at.offset {
+            self.inner
+                .seek(SeekFrom::Start(at.offset))
+                .map_err(io_at(at.offset))?;
+        }
+
+        Ok(FrameIter {
+            r: &mut self.inner,
+            limits: self.limits,
+            entry: at.entry,
+            pos: at.offset,
+            end,
+            ordinal: at.ordinal,
+            done: false,
+            terminals: at.terminals,
+            after_terminal: at.after_terminal,
+        })
+    }
+}
+
+/// Where a frame iterator is within its entry, enough to go on from there
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FramePosition {
+    pub entry: u32,
+    /// Offset of the next frame to read
+    pub offset: u64,
+    pub ordinal: u64,
+    pub terminals: u64,
+    pub after_terminal: u64,
 }
 
 /// A frame plus its location in the source
@@ -203,6 +245,17 @@ pub struct FrameIter<'a, R> {
 }
 
 impl<R> FrameIter<'_, R> {
+    /// Where the next frame would be read from
+    pub fn position(&self) -> FramePosition {
+        FramePosition {
+            entry: self.entry,
+            offset: self.pos,
+            ordinal: self.ordinal,
+            terminals: self.terminals,
+            after_terminal: self.after_terminal,
+        }
+    }
+
     /// NextSection records read so far
     pub fn terminal_records(&self) -> u64 {
         self.terminals

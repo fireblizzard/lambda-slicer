@@ -2171,6 +2171,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "lambda-slicer-playback"
+version = "0.1.0"
+dependencies = [
+ "lambda-slicer-core",
+ "tempfile",
+]
+
+[[package]]
 name = "lambda-slicer-render"
 version = "0.1.0"
 dependencies = [

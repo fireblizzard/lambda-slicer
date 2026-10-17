@@ -11,7 +11,9 @@ mod writer;
 
 pub use frame::{ClientDataRecord, EventRecord, Frame, FrameBody, NetworkFrame, SoundRecord, tag};
 pub use index::{EntryIndex, FrameSpan, TagCounts, index_entry};
-pub use reader::{DemoReader, FrameIter, Limits, LocatedFrame, read_directory, read_header};
+pub use reader::{
+    DemoReader, FrameIter, FramePosition, Limits, LocatedFrame, read_directory, read_header,
+};
 pub use writer::{encode_directory, encode_frame, encode_header};
 
 use std::fmt;

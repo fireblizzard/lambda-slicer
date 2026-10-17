@@ -18,6 +18,37 @@ fn reader(bytes: Vec<u8>) -> Result<DemoReader<Cursor<Vec<u8>>>, ContainerError>
     DemoReader::new(Cursor::new(bytes), Limits::default())
 }
 
+#[test]
+fn frames_resume_where_an_iterator_stopped() {
+    let mut r = reader(common::demo(4)).unwrap();
+    let whole: Vec<(u64, u64)> = r
+        .frames(1)
+        .unwrap()
+        .map(|f| f.map(|f| (f.ordinal, f.offset)).unwrap())
+        .collect();
+
+    // Stop after every frame and go on from there
+    let mut resumed = Vec::new();
+    let mut at = r.frames(1).unwrap().position();
+    loop {
+        let mut frames = r.frames_from(at).unwrap();
+        let Some(next) = frames.next() else {
+            break;
+        };
+        let f = next.unwrap();
+        resumed.push((f.ordinal, f.offset));
+        at = frames.position();
+    }
+    assert_eq!(resumed, whole);
+
+    // A position outside the entry is refused
+    at.offset = 0;
+    assert!(matches!(
+        r.frames_from(at),
+        Err(ContainerError::Range { .. })
+    ));
+}
+
 fn write(dir: &Path, name: &str, bytes: &[u8]) -> PathBuf {
     let p = dir.join(name);
     std::fs::write(&p, bytes).unwrap();

@@ -425,7 +425,13 @@ impl StructState {
 
     /// Converted value of the named field of `schema`, zero when absent
     pub fn value(&self, schema: &DeltaSchema, name: &str) -> Option<Value> {
-        let field = &schema.fields[schema.field_index(name)?];
+        self.value_at(schema, schema.field_index(name)?)
+    }
+
+    /// [`StructState::value`] by the field's position in `schema`, for
+    /// readers that look the position up once
+    pub fn value_at(&self, schema: &DeltaSchema, index: usize) -> Option<Value> {
+        let field = schema.fields.get(index)?;
         Some(match self.entry(field.offset) {
             Some((_, f, w)) => convert(f, w),
             None if field.kind() == Kind::String => Value::Str(Vec::new()),
