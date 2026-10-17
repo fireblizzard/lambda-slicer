@@ -221,12 +221,13 @@ help-headshot-filter = Demos with at least one kill by a hit to the head that th
 help-accuracy-filter = Demos where the recording player hit at least this share of their shots.
 
 clips-title = Clips
+clips-new = New clip
 clips-add-event = Clip { $start } – { $end }
 clips-add-event-none = Clip the selected event
 clips-select-event = Select an event in the list or on the timeline first.
 clips-other-session = A clip cannot start here, as an earlier session of the recording has the same times.
 clips-add-window = Clip this intense moment
-clips-empty = No clips yet. Select an event or one of the most intense moments, then add a clip around it. How much a clip keeps before and after an event is set in Settings.
+clips-empty = No clips yet. Select an event or one of the most intense moments, then add a clip around it. How much a clip keeps before and after an event is set in Settings. New clip adds one whose start and end you type yourself.
 clip-default-name = Clip { $number }
 clip-name = Name
 clip-length = Length { $duration }

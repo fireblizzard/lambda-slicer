@@ -5,7 +5,7 @@ mod common;
 use std::path::{Path, PathBuf};
 
 use common::stream::{
-    CLIENT, ENTITY, EVENT_RESOURCE, SOUND_RESOURCE, delta, full_packet, setup_with, time,
+    CLIENT, ENTITY, EVENT_RESOURCE, SOUND_RESOURCE, delta, full_packet, setup_on, setup_with, time,
 };
 use common::{build, frame};
 use lambda_slicer_core::container::{
@@ -119,6 +119,9 @@ struct Recording {
     /// A group where a new session sets itself up, as after a level change,
     /// with its first full update in the next group
     session_at: Option<i32>,
+    /// The new session numbers its packets from [`FIRST`] again, as after a
+    /// reconnect, reusing sequences the previous session sent
+    sequence_reset: bool,
 }
 
 impl Recording {
@@ -134,6 +137,7 @@ impl Recording {
             records: Vec::new(),
             animtimes: Vec::new(),
             session_at: None,
+            sequence_reset: false,
         }
     }
 
@@ -149,6 +153,11 @@ impl Recording {
 
         let mut playback = vec![frame(tag::DEMO_START, 0., 0, FrameBody::DemoStart)];
         let records = &self.records;
+        let session = self.session_at.filter(|_| self.sequence_reset);
+        let sequence = |n: i32| match session {
+            Some(s) if n >= s => FIRST + n - s,
+            _ => FIRST + n,
+        };
         let mut group = |t: f32, n: i32, payload: Vec<u8>| {
             playback.push(frame(
                 tag::DEMO_BUFFER,
@@ -164,7 +173,7 @@ impl Recording {
                 };
                 playback.push(frame(tag, t, n, body.clone()));
             }
-            playback.push(network(tag::NETWORK, t, n, FIRST + n, payload));
+            playback.push(network(tag::NETWORK, t, n, sequence(n), payload));
         };
 
         group(0., 0, full_packet(FIRST));
@@ -178,8 +187,16 @@ impl Recording {
                 .map(|(_, o)| *o);
             let payload = match self.session_at {
                 // The setup ends with the sign-on, as a real one does
-                Some(s) if s == n => [setup_with(48, RESOURCES), vec![svc::SIGNONNUM, 1]].concat(),
-                Some(s) if s + 1 == n => full_packet(FIRST + n),
+                Some(s) if s == n => [
+                    setup_on(48, RESOURCES, b"maps/second.bsp"),
+                    vec![svc::SIGNONNUM, 1],
+                ]
+                .concat(),
+                Some(s) if s + 1 == n => full_packet(sequence(n)),
+                Some(s) if self.sequence_reset && n > s + 1 => {
+                    let from = (sequence(n) - 1) as u8;
+                    step(t, from, i64::from(n), extra, animtime)
+                }
                 _ => step(t, *from, i64::from(n), extra, animtime),
             };
             group(t, n, payload);
@@ -735,6 +752,9 @@ fn a_restart_starts_in_a_later_session_with_its_own_setup() {
             .all(|t| *t == tag::NETWORK_START),
         "{tags:?}"
     );
+    // and its header names the session's own map
+    assert_eq!(reader.header.map_name(), "second");
+    assert_eq!(reader.header.map_checksum, 0);
     let (out_report, _) = decode_demo(&out, &DecodeOptions::default(), |_, _, _| {});
     assert_eq!(out_report.status, DecodeStatus::Complete);
     assert_eq!(out_report.stats.segments, 1);
@@ -752,4 +772,35 @@ fn a_restart_starts_in_a_later_session_with_its_own_setup() {
     .unwrap();
     assert_eq!(r.bootstrap_sequences, [41]);
     assert_eq!(r.validation.other_differences, 0);
+}
+
+#[test]
+fn a_later_session_that_reuses_sequences_bootstraps_from_its_own_records() {
+    // The new session from group 30 numbers its packets from 10 again, so
+    // sequence 14 is both group 4's and group 34's
+    let mut rec = Recording::steady(60, 1);
+    rec.session_at = Some(30);
+    rec.sequence_reset = true;
+    let dir = tempfile::tempdir().unwrap();
+    let src = write(dir.path(), "src.dem", &rec.bytes());
+    let out = dir.path().join("out.dem");
+    let r = run_restart(&src, &out, at(35), Some(at(40)), Limits::default()).unwrap();
+    assert_eq!(r.bootstrap_sequences, [14]);
+    assert_eq!(r.validation.other_differences, 0);
+
+    // The bootstrap record carries group 34's demo info, not group 4's
+    let f = std::io::BufReader::new(std::fs::File::open(&out).unwrap());
+    let mut reader = DemoReader::new(f, Limits::default()).unwrap();
+    let bootstrap = reader
+        .frames(1)
+        .unwrap()
+        .map(|lf| lf.unwrap().frame)
+        .take_while(|f| f.frame_number == 0)
+        .find_map(|f| match f.body {
+            FrameBody::Network(n) if n.sequence[0] == 14 => Some(n),
+            _ => None,
+        })
+        .unwrap();
+    let time = f32::from_le_bytes(bootstrap.demo_info[..4].try_into().unwrap());
+    assert_eq!(DemoTime::from_f32(time), Some(at(34)));
 }

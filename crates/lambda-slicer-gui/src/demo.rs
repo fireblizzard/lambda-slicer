@@ -69,6 +69,9 @@ const CLIP_TINT: Color32 = Color32::from_rgba_premultiplied(14, 27, 40, 40);
 const CLIP_CHOSEN_TINT: Color32 = Color32::from_rgba_premultiplied(25, 47, 70, 70);
 const CLIP_EDGE: Color32 = Color32::from_rgb(140, 220, 255);
 
+/// The length of a clip made with New clip, before it is edited
+const NEW_CLIP_SECONDS: f32 = 10.;
+
 /// Clips to export, acted on once every clip row has drawn
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ExportRequest {
@@ -964,6 +967,15 @@ impl DemoView {
                 None,
                 Look::Strong,
             ));
+
+            // Any range, for a demo with no events or moments to start from,
+            // ten seconds from where the timeline shows, or from the start,
+            // to edit and check like any other clip
+            if ui.button(t("clips-new")).clicked() {
+                let from = if self.show_timeline { self.view.0 } else { 0. };
+                let range = self.clamped(from, from + NEW_CLIP_SECONDS);
+                self.add_clip(catalog, range);
+            }
 
             // Around the selected event, the button naming the range
             let event = self.selected.and_then(|i| model.events.get(i));

@@ -230,12 +230,13 @@ help-headshot-filter = Įrašai, kuriuose yra bent vienas įraše matomas nužud
 help-accuracy-filter = Įrašai, kuriuose įrašantysis pataikė bent tokią šūvių dalį.
 
 clips-title = Klipai
+clips-new = Naujas klipas
 clips-add-event = Klipas { $start } – { $end }
 clips-add-event-none = Pasirinkto įvykio klipas
 clips-select-event = Pirmiausia pasirinkite įvykį sąraše arba laiko juostoje.
 clips-other-session = Klipas negali prasidėti čia, nes ankstesnė įrašo sesija turi tuos pačius laikus.
 clips-add-window = Šios intensyvios akimirkos klipas
-clips-empty = Klipų dar nėra. Pasirinkite įvykį arba vieną intensyviausių akimirkų ir pridėkite aplink jį klipą. Kiek klipas apima prieš įvykį ir po jo, nustatoma Nustatymuose.
+clips-empty = Klipų dar nėra. Pasirinkite įvykį arba vieną intensyviausių akimirkų ir pridėkite aplink jį klipą. Kiek klipas apima prieš įvykį ir po jo, nustatoma Nustatymuose. Naujas klipas prideda klipą, kurio pradžią ir pabaigą įvedate patys.
 clip-default-name = Klipas { $number }
 clip-name = Pavadinimas
 clip-length = Trukmė { $duration }

@@ -75,13 +75,9 @@ impl ClipStore {
             Ok(store) => (store, None),
             Err(e) => {
                 let detail = e.to_string();
-                let seconds = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .map_or(0, |d| d.as_secs());
-                let moved = path.with_extension(format!("json.unreadable-{seconds}"));
-                let problem = match std::fs::rename(path, &moved) {
-                    Ok(()) => LoadProblem::Moved { moved, detail },
-                    Err(_) => LoadProblem::Unreadable { detail },
+                let problem = match keep_aside(path, &bytes) {
+                    Some(moved) => LoadProblem::Moved { moved, detail },
+                    None => LoadProblem::Unreadable { detail },
                 };
                 (Self::default(), Some(problem))
             }
@@ -104,6 +100,35 @@ impl ClipStore {
             self.demos.insert(key(demo), clips);
         }
     }
+}
+
+/// Copy an unusable clips file's `bytes` to a new file beside it, never
+/// replacing one, then remove it. The copy's name, when that worked
+fn keep_aside(path: &Path, bytes: &[u8]) -> Option<PathBuf> {
+    use std::io::Write;
+    let seconds = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs());
+    let (moved, mut file) = (1..100).find_map(|n| {
+        let suffix = match n {
+            1 => format!("json.unreadable-{seconds}"),
+            n => format!("json.unreadable-{seconds}-{n}"),
+        };
+        let candidate = path.with_extension(suffix);
+        let file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&candidate)
+            .ok()?;
+        Some((candidate, file))
+    })?;
+    if file.write_all(bytes).and_then(|_| file.sync_all()).is_err() {
+        drop(file);
+        let _ = std::fs::remove_file(&moved);
+        return None;
+    }
+    std::fs::remove_file(path).ok()?;
+    Some(moved)
 }
 
 /// The first of `name(1)`, `name(2)` and so on that no clip uses yet
@@ -164,6 +189,16 @@ mod tests {
         };
         assert_eq!(std::fs::read(&moved).unwrap(), b"not json");
         assert!(!path.exists());
+
+        // A second one in the same second gets a name of its own
+        std::fs::write(&path, b"still not json").unwrap();
+        let (_, problem) = ClipStore::load(&path);
+        let Some(LoadProblem::Moved { moved: second, .. }) = problem else {
+            panic!("{problem:?}");
+        };
+        assert_ne!(second, moved);
+        assert_eq!(std::fs::read(&moved).unwrap(), b"not json");
+        assert_eq!(std::fs::read(&second).unwrap(), b"still not json");
     }
 
     #[test]

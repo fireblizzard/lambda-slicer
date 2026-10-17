@@ -225,12 +225,13 @@ help-headshot-filter = Démos avec au moins une élimination d’un tir à la t�
 help-accuracy-filter = Démos où la personne qui enregistre a touché au moins cette part de ses tirs.
 
 clips-title = Clips
+clips-new = Nouveau clip
 clips-add-event = Clip { $start } – { $end }
 clips-add-event-none = Clip de l’événement choisi
 clips-select-event = Choisis d’abord un événement dans la liste ou sur la frise.
 clips-other-session = Un clip ne peut pas commencer ici, car une session antérieure de l’enregistrement a les mêmes temps.
 clips-add-window = Clip de ce moment intense
-clips-empty = Aucun clip pour l’instant. Choisis un événement ou l’un des moments les plus intenses, puis ajoute un clip autour. Ce qu’un clip garde avant et après un événement se règle dans les Paramètres.
+clips-empty = Aucun clip pour l’instant. Choisis un événement ou l’un des moments les plus intenses, puis ajoute un clip autour. Ce qu’un clip garde avant et après un événement se règle dans les Paramètres. Nouveau clip en ajoute un dont tu saisis toi-même le début et la fin.
 clip-default-name = Clip { $number }
 clip-name = Nom
 clip-length = Durée { $duration }

@@ -30,7 +30,7 @@ use events::recorded_events;
 use highlights::{ActionWindow, action_windows, link_kills};
 use weapons::{Action, ActivityInterval, PROFILE, Weapon, WeaponOccurrence, derive};
 
-pub const ANALYSIS_SCHEMA: u32 = 8;
+pub const ANALYSIS_SCHEMA: u32 = 9;
 
 /// Length of an action window in seconds, and how many are reported
 pub const ACTION_WINDOW: f32 = 60.;
@@ -226,7 +226,7 @@ pub fn analyze_demo_with(
         if change.kind == crate::state::NameChangeKind::Left {
             score_updates.push(ScoreUpdate {
                 segment: change.player.segment,
-                time: change.location.time(),
+                time: change.location.playback_time(),
                 player: change.player.clone(),
                 team: String::new(),
                 frags: 0,

@@ -42,7 +42,7 @@ keeps, not the display text, so names that are not valid Unicode open too.
   switches small squares. Gauss charges and egon beams are bars from start to end.
 - **Wide zoom.** Marks closer than three pixels are drawn as one per kind, taller for more.
 - **Moving.** The mouse wheel zooms around the pointer, dragging pans, double-click or Fit shows
-  the whole demo. The time axis runs left to right in every language.
+  the whole demo, from the playback entry's start to its last frame. The time axis runs left to right in every language.
 - **Selecting.** Hovering a mark shows its time, player and action at once. Clicking selects it, draws a
   line through the lanes and scrolls the event table to it. Clicking a table row selects its event
   and brings it into view.
@@ -76,8 +76,10 @@ valid is renamed to `clips.json.unreadable-<seconds>` and the clips start empty,
 be read stops saving for the session, so a stored clip is never written over. Both, and a save
 that fails, show as a notice in the status bar until dismissed.
 
-- **Adding.** Selecting an event proposes a range around it, shown as dashed lines on the lanes and
-  named on the button, which adds it. Settings hold how many seconds it keeps before and after the
+- **Adding.** New clip adds ten seconds from the start of the visible timeline, or from the
+  recording's start, to edit by hand, which also serves demos with no events at all. Selecting an
+  event proposes a range around it, shown as dashed lines on the lanes and named on the button,
+  which adds it. Settings hold how many seconds it keeps before and after the
   event, 5 and 3 at first. With one of the most intense moments chosen, a second button clips that
   minute with the same padding. New clips are named Clip 1, Clip 2 and so on.
 - **Editing.** Each clip has its name, start and end. Times are typed as `96`, `1:36` or

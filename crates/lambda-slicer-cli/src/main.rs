@@ -830,8 +830,8 @@ fn decode_cmd(
 
         const SHOWN: usize = 30;
         for c in report.name_history.iter().take(SHOWN) {
-            let t =
-                DemoTime::from_f32(c.location.time()).map_or_else(|| "?".into(), |t| t.to_string());
+            let t = DemoTime::from_f32(c.location.playback_time())
+                .map_or_else(|| "?".into(), |t| t.to_string());
             println!(
                 "  {t} {:?} slot {} #{} user {} {:?}",
                 c.kind, c.player.slot, c.player.incarnation, c.player.user_id, c.player.name
@@ -861,8 +861,8 @@ fn decode_cmd(
     if events {
         let event_t = decoder.schema("event_t");
         for e in &decoder.events {
-            let t =
-                DemoTime::from_f32(e.location.time()).map_or_else(|| "?".into(), |t| t.to_string());
+            let t = DemoTime::from_f32(e.location.playback_time())
+                .map_or_else(|| "?".into(), |t| t.to_string());
             let name = e
                 .resource
                 .as_deref()

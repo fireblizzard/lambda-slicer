@@ -213,9 +213,9 @@ $sp = 'F:\SteamLibrary\steamapps\common\Half-Life\ag\run_92.dem'
 
 | Output | Source and kind | Effective range | Kept snapshots | Output BLAKE3 |
 |---|---|---|---|---|
-| `ls_m7_sp_session2` | `run_92.dem`, singleplayer speedrun, session 2 (`c3a1b`) | 00:00:03.000 to 00:00:10.001 | 1,683 | `2761d913…c3de06f8` |
-| `ls_m7_sp_session3` | session 3 (`c3a2e`) | 00:00:30.003 to 00:00:50.002 | 4,956 | `1554e619…f4443212` |
-| `ls_m7_sp_session5` | session 5 (`c3a2a`) | 00:01:30.001 to 00:01:40.003 | 1,968 | `4d0b9f90…99906913` |
+| `ls_m7_sp_session2` | `run_92.dem`, singleplayer speedrun, session 2 (`c3a1b`) | 00:00:03.000 to 00:00:10.001 | 1,683 | `a449bd51…b1ae2ccc` |
+| `ls_m7_sp_session3` | session 3 (`c3a2e`) | 00:00:30.003 to 00:00:50.002 | 4,956 | `15bcff96…0f5f99aab` |
+| `ls_m7_sp_session5` | session 5 (`c3a2a`) | 00:01:30.001 to 00:01:40.003 | 1,968 | `ed7e2aba…3a40d92880` |
 | `ls_m7_spectator` | `ray_vs_alex_cross.dem`, spectating throughout | 00:00:30.011 to 00:00:50.015 | 1,513 | `b51961a5…c39cb` |
 | `ls_m7_mp_4v4` | `stalkx_5o5_asasasdgwgw.dem`, 5 against 5 AG match on `stalkx`, also what the app's Export writes | 00:01:36.009 to 00:04:48.000 | 17,797 | `43534322…aedbc1e` |
 
@@ -265,3 +265,10 @@ at the start. The setup records are now written as startup records, the syntheti
 test checks their tags, and the singleplayer cuts above were generated again (hashes above).
 All of them then played cleanly in the game, with no issue noticed, which completes the M7 engine
 matrix.
+
+After that test a review found that these cuts kept the source header's map, `c3a1a`, so the
+library listed them under the wrong map. Their header now names the session's map with checksum
+0 (protocol profile, "Later sessions"), and the singleplayer cuts were generated once more with
+the hashes above. Only the header's map name changed, as `run_92.dem` already has checksum 0, and
+the game showed it does not check that name by playing the cuts with the wrong one. A multiplayer
+cut after a map change, whose source header has a real checksum, has not been played yet.

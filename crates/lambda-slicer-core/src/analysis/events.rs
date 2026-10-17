@@ -127,7 +127,7 @@ pub fn recorded_events(d: &Decoder) -> Vec<RecordedEvent> {
                 segment: e.segment,
                 entry: e.location.entry,
                 ordinal: e.location.ordinal,
-                time: e.location.time(),
+                time: e.location.playback_time(),
                 server_time: f32::from_bits(e.server_time_bits),
                 source: e.source,
                 message_ordinal: e.message_ordinal,

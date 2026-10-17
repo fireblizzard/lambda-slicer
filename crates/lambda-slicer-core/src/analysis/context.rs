@@ -510,6 +510,9 @@ pub fn standing_at(
 pub struct Context {
     pub kills: Vec<Kill>,
     pub switches: Vec<WeaponSwitch>,
+    /// The weapon the LOADING entry left in hand, per session, which
+    /// playback starts with rather than switches to
+    loading_weapon: Option<(u32, i8)>,
     pub motion: Motion,
     /// Team names by player entity, from `TeamInfo`
     teams: std::collections::BTreeMap<u8, String>,
@@ -537,7 +540,7 @@ impl Context {
         let (frags, deaths) = self.scores.get(&entity).copied().unwrap_or_default();
         self.score_updates.push(ScoreUpdate {
             segment: d.segment,
-            time: loc.time(),
+            time: loc.playback_time(),
             player,
             team: self.teams.get(&entity).cloned().unwrap_or_default(),
             frags,
@@ -548,7 +551,7 @@ impl Context {
 
     /// Each visible player's position and model angles, once per packet
     fn record_poses(&mut self, loc: &FrameLocation, d: &Decoder) {
-        let now = (d.segment, loc.time());
+        let now = (d.segment, loc.playback_time());
         if self.last_pose == Some(now) {
             return;
         }
@@ -574,7 +577,7 @@ impl Context {
                 .entry((d.segment, e.number))
                 .or_default()
                 .push(Pose {
-                    time: loc.time(),
+                    time: loc.playback_time(),
                     origin: [f("origin[0]"), f("origin[1]"), f("origin[2]")],
                     pitch: f("angles[0]"),
                     yaw: f("angles[1]"),
@@ -588,7 +591,7 @@ impl Context {
         if self.pending_deaths.is_empty() {
             return;
         }
-        let now = loc.time();
+        let now = loc.playback_time();
         let snapshot = d.latest_snapshot();
         let entities = snapshot.and_then(|s| s.entities.as_ref());
         let schema = d.schema("entity_state_player_t");
@@ -627,7 +630,7 @@ impl Context {
         {
             self.blood.push(Blood {
                 segment: d.segment,
-                time: loc.time(),
+                time: loc.playback_time(),
                 origin,
             });
         }
@@ -659,7 +662,7 @@ impl Context {
                     state_at(&self.motion.samples(victim.into()), server_time, gravity(d));
                 self.kills.push(Kill {
                     segment: d.segment,
-                    time: loc.time(),
+                    time: loc.playback_time(),
                     server_time,
                     killer_entity: killer,
                     victim_entity: victim,
@@ -680,7 +683,8 @@ impl Context {
                     cause == KillCause::PlayerWeapon && weapon.is_some_and(hits_body_parts);
                 let index = self.kills.len() - 1;
                 if direct {
-                    self.pending_deaths.push((index, victim, loc.time()));
+                    self.pending_deaths
+                        .push((index, victim, loc.playback_time()));
                 } else if cause == KillCause::PlayerWeapon {
                     self.kills[index].headshot = Some(false);
                 }
@@ -704,7 +708,7 @@ impl Context {
                     let frags = i32::from(i16::from_le_bytes([b[0], b[1]]));
                     self.team_score_updates.push(TeamScoreUpdate {
                         segment: d.segment,
-                        time: loc.time(),
+                        time: loc.playback_time(),
                         team: name.to_lowercase(),
                         frags,
                     });
@@ -737,14 +741,24 @@ impl Context {
                     .switches
                     .last()
                     .filter(|s| s.segment == d.segment)
-                    .map(|s| s.id);
+                    .map(|s| s.id)
+                    .or_else(|| {
+                        self.loading_weapon
+                            .filter(|(segment, _)| *segment == d.segment)
+                            .map(|(_, id)| id)
+                    });
                 if last == Some(id) {
+                    return;
+                }
+                // The weapon held when playback starts is not a switch
+                if loc.entry == 0 {
+                    self.loading_weapon = Some((d.segment, id));
                     return;
                 }
 
                 self.switches.push(WeaponSwitch {
                     segment: d.segment,
-                    time: loc.time(),
+                    time: loc.playback_time(),
                     id,
                     weapon: u8::try_from(id).ok().and_then(Weapon::from_id),
                     clip,

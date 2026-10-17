@@ -23,8 +23,17 @@ pub struct FrameLocation {
 }
 
 impl FrameLocation {
+    /// The record's own time, on whichever clock its entry uses
     pub fn time(&self) -> f32 {
         f32::from_bits(self.time_bits)
+    }
+
+    /// The time on the playback clock. The LOADING entry comes before
+    /// playback and is timed by the recording client's own clock, often
+    /// minutes ahead, so its records count as playback's start, the state
+    /// it begins with
+    pub fn playback_time(&self) -> f32 {
+        if self.entry == 0 { 0. } else { self.time() }
     }
 }
 

@@ -220,12 +220,13 @@ help-headshot-filter = Herhangi bir oyuncunun, kayıtta görülen en az bir kafa
 help-accuracy-filter = Kaydedenin atışlarının en az bu kadarını isabet ettirdiği demolar.
 
 clips-title = Klipler
+clips-new = Yeni klip
 clips-add-event = Klip { $start } – { $end }
 clips-add-event-none = Seçili olayın klibi
 clips-select-event = Önce listeden ya da zaman çizelgesinden bir olay seçin.
 clips-other-session = Burada klip başlayamaz, çünkü kaydın daha önceki bir oturumu aynı zamanlara sahip.
 clips-add-window = Bu yoğun anın klibi
-clips-empty = Henüz klip yok. Bir olay ya da en yoğun anlardan birini seçin, sonra çevresine bir klip ekleyin. Klibin bir olaydan önce ve sonra ne kadar tuttuğu Ayarlar’dan değiştirilir.
+clips-empty = Henüz klip yok. Bir olay ya da en yoğun anlardan birini seçin, sonra çevresine bir klip ekleyin. Klibin bir olaydan önce ve sonra ne kadar tuttuğu Ayarlar’dan değiştirilir. Yeni klip, başlangıcını ve bitişini kendiniz yazdığınız bir klip ekler.
 clip-default-name = Klip { $number }
 clip-name = Ad
 clip-length = Süre { $duration }

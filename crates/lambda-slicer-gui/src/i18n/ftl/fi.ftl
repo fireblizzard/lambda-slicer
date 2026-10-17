@@ -220,12 +220,13 @@ help-headshot-filter = Demot, joissa on vähintään yksi tallennuksessa näkyv�
 help-accuracy-filter = Demot, joissa tallentaja osui vähintään tähän osuuteen laukauksistaan.
 
 clips-title = Klipit
+clips-new = Uusi klippi
 clips-add-event = Klippi { $start } – { $end }
 clips-add-event-none = Klippi valitusta tapahtumasta
 clips-select-event = Valitse ensin tapahtuma luettelosta tai aikajanalta.
 clips-other-session = Klippi ei voi alkaa tästä, koska tallenteen aiemmalla istunnolla on samat ajat.
 clips-add-window = Klippi tästä kiivaasta hetkestä
-clips-empty = Klippejä ei vielä ole. Valitse tapahtuma tai jokin kiivaimmista hetkistä ja lisää sen ympärille klippi. Sen, paljonko klippi ottaa ennen tapahtumaa ja sen jälkeen, voi säätää asetuksissa.
+clips-empty = Klippejä ei vielä ole. Valitse tapahtuma tai jokin kiivaimmista hetkistä ja lisää sen ympärille klippi. Sen, paljonko klippi ottaa ennen tapahtumaa ja sen jälkeen, voi säätää asetuksissa. Uusi klippi lisää klipin, jonka alun ja lopun kirjoitat itse.
 clip-default-name = Klippi { $number }
 clip-name = Nimi
 clip-length = Pituus { $duration }

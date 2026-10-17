@@ -230,12 +230,13 @@ help-headshot-filter = Dema z co najmniej jednym zabójstwem w głowę widocznym
 help-accuracy-filter = Dema, w których nagrywający trafił co najmniej taki odsetek strzałów.
 
 clips-title = Klipy
+clips-new = Nowy klip
 clips-add-event = Klip { $start } – { $end }
 clips-add-event-none = Klip wybranego zdarzenia
 clips-select-event = Najpierw wybierz zdarzenie na liście lub na osi czasu.
 clips-other-session = Klip nie może zacząć się tutaj, bo wcześniejsza sesja nagrania ma te same czasy.
 clips-add-window = Klip tego gorącego momentu
-clips-empty = Nie ma jeszcze klipów. Wybierz zdarzenie lub jeden z najgorętszych momentów i dodaj wokół niego klip. Ile klip obejmuje przed zdarzeniem i po nim, ustawisz w Ustawieniach.
+clips-empty = Nie ma jeszcze klipów. Wybierz zdarzenie lub jeden z najgorętszych momentów i dodaj wokół niego klip. Ile klip obejmuje przed zdarzeniem i po nim, ustawisz w Ustawieniach. Nowy klip dodaje klip, którego początek i koniec wpisujesz sam.
 clip-default-name = Klip { $number }
 clip-name = Nazwa
 clip-length = Długość { $duration }

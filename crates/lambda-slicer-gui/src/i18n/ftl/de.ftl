@@ -220,12 +220,13 @@ help-headshot-filter = Demos mit mindestens einem Kopfschuss-Abschuss, den die A
 help-accuracy-filter = Demos, in denen die aufnehmende Person mindestens diesen Anteil ihrer Schüsse traf.
 
 clips-title = Clips
+clips-new = Neuer Clip
 clips-add-event = Clip { $start } – { $end }
 clips-add-event-none = Clip vom gewählten Ereignis
 clips-select-event = Wähle zuerst ein Ereignis in der Liste oder auf der Zeitleiste.
 clips-other-session = Hier kann kein Clip beginnen, da eine frühere Sitzung der Aufnahme dieselben Zeiten hat.
 clips-add-window = Clip von diesem intensiven Moment
-clips-empty = Noch keine Clips. Wähle ein Ereignis oder einen der intensivsten Momente und lege einen Clip darum an. Wie viel ein Clip vor und nach einem Ereignis enthält, stellst du in den Einstellungen ein.
+clips-empty = Noch keine Clips. Wähle ein Ereignis oder einen der intensivsten Momente und lege einen Clip darum an. Wie viel ein Clip vor und nach einem Ereignis enthält, stellst du in den Einstellungen ein. Neuer Clip fügt einen hinzu, dessen Anfang und Ende du selbst eingibst.
 clip-default-name = Clip { $number }
 clip-name = Name
 clip-length = Länge { $duration }

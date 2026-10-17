@@ -92,6 +92,11 @@ pub const EVENT_RESOURCE: u32 = 5;
 /// Session setup announcing `protocol`, with these resources as (type,
 /// name, resource index)
 pub fn setup_with(protocol: u32, resources: &[(u32, &str, u32)]) -> Vec<u8> {
+    setup_on(protocol, resources, b"maps/test.bsp")
+}
+
+/// [`setup_with`] on a map of its own
+pub fn setup_on(protocol: u32, resources: &[(u32, &str, u32)], map: &[u8]) -> Vec<u8> {
     let mut w = BitWriter::new();
 
     w.u8(svc::SERVERINFO);
@@ -102,7 +107,7 @@ pub fn setup_with(protocol: u32, resources: &[(u32, &str, u32)]) -> Vec<u8> {
     w.u8(2); // max clients
     w.u8(0);
     w.u8(1);
-    for s in [&b"ag"[..], b"host", b"maps/test.bsp", b""] {
+    for s in [&b"ag"[..], b"host", map, b""] {
         w.bytes(s);
         w.bytes(&[0]);
     }

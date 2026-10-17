@@ -361,12 +361,27 @@ impl Model {
             }
         }
 
+        // The playback entry's own extent, its last group or terminal record,
+        // so a quiet tail stays in view and nothing reaches past the end.
+        // Without frame groups, the library's duration or the last event
+        let playback = r
+            .groups
+            .groups
+            .iter()
+            .map(|g| g.time)
+            .chain(r.groups.end)
+            .fold(0f32, f32::max);
         let last = events.last().map_or(0., |e| e.time);
+        let end = if playback > 0. {
+            playback
+        } else {
+            duration.max(last)
+        };
         Model {
             lanes: b.lanes,
             events,
             start: 0.,
-            end: duration.max(last),
+            end,
             coverage_notes: coverage_notes(&r.coverage),
             decode_error: r.decode_error.clone(),
             windows: r

@@ -225,12 +225,13 @@ help-headshot-filter = Demo con almeno un’uccisione con colpo alla testa visib
 help-accuracy-filter = Demo in cui chi registra ha colpito almeno questa quota dei suoi colpi.
 
 clips-title = Clip
+clips-new = Nuova clip
 clips-add-event = Clip { $start } – { $end }
 clips-add-event-none = Clip dell’evento scelto
 clips-select-event = Scegli prima un evento nell’elenco o sulla linea del tempo.
 clips-other-session = Una clip non può iniziare qui, perché una sessione precedente della registrazione ha gli stessi tempi.
 clips-add-window = Clip di questo momento intenso
-clips-empty = Ancora nessuna clip. Scegli un evento o uno dei momenti più intensi, poi aggiungi una clip attorno. Quanto una clip tiene prima e dopo un evento si regola nelle Impostazioni.
+clips-empty = Ancora nessuna clip. Scegli un evento o uno dei momenti più intensi, poi aggiungi una clip attorno. Quanto una clip tiene prima e dopo un evento si regola nelle Impostazioni. Nuova clip ne aggiunge una di cui scrivi tu inizio e fine.
 clip-default-name = Clip { $number }
 clip-name = Nome
 clip-length = Durata { $duration }

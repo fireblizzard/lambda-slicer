@@ -225,12 +225,13 @@ help-headshot-filter = Demos com pelo menos um headshot que a gravação viu, de
 help-accuracy-filter = Demos em que quem gravou acertou pelo menos esta parte dos disparos.
 
 clips-title = Clipes
+clips-new = Novo clipe
 clips-add-event = Criar clipe { $start } – { $end }
 clips-add-event-none = Criar clipe do evento escolhido
 clips-select-event = Primeiro escolha um evento na lista ou na linha do tempo.
 clips-other-session = Um clipe não pode começar aqui, porque uma sessão anterior da gravação tem os mesmos tempos.
 clips-add-window = Criar clipe deste momento intenso
-clips-empty = Ainda não há clipes. Escolha um evento ou um dos momentos mais intensos e crie um clipe em volta dele. Quanto um clipe guarda antes e depois de um evento é ajustado em Configurações.
+clips-empty = Ainda não há clipes. Escolha um evento ou um dos momentos mais intensos e crie um clipe em volta dele. Quanto um clipe guarda antes e depois de um evento é ajustado em Configurações. Novo clipe adiciona um cujo início e fim você mesmo digita.
 clip-default-name = Clipe { $number }
 clip-name = Nome
 clip-length = Duração { $duration }

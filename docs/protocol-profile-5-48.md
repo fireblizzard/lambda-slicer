@@ -285,6 +285,16 @@ Removing an entity that is not in the base is ignored, as the engine does, and c
 - `svc_clientdata`: clientdata deltas from the base snapshot's clientdata; weapon data copies the
   base's 64 slots and applies per-slot deltas. HLTV recordings have an empty body.
 
+## Times of LOADING records
+
+LOADING records carry the recording client's clock, often minutes ahead of playback (176.8 s in
+`run_92.dem`, 1,210.6 s in `naz_crossfire_pb_01.dem`, whose playback ends at 1,192.7 s). Analysis
+takes their messages at playback's start instead (`FrameLocation::playback_time`): score and team
+updates and joins sent during LOADING are the state playback begins with, and the weapon held
+then is no switch. Before this the crossfire match's opening `ScoreInfo` counted only from
+1,210.6 s, after its last kill, and `run_92.dem` showed a weapon switch at 2:56 in a 1:44 demo.
+Analysis schema 9 makes libraries analyse again.
+
 ## Events and actors
 
 `svc_event` `packet_index` is resolved against the **current packet's reconstructed entity
@@ -486,7 +496,13 @@ its times keep running across sessions.
 
 A restart that starts in a later session writes those setup records as the output's LOADING
 entry with a terminal record of its own, and encodes the bootstrap with the schemas and
-baselines they define. Their bodies are unchanged, but their tag becomes 0, a startup record, as
+baselines they define. The header names that session's map, `maps/c3a2e.bsp` becoming `c3a2e`.
+Its checksum is the recording client's own sum of the map file, not the server info's `map_crc`
+(`naz_crossfire_pb_01.dem` has `0x770a1ad9` in its header and `0x265a52d2` in its server info),
+so it cannot be recovered for a later map and is written as 0, as `run_92.dem` itself has it. The
+records from before the new session are forgotten, so a session that numbers its packets again
+never takes a previous session's record for its bootstrap
+(`a_later_session_that_reuses_sequences_bootstraps_from_its_own_records`). Their bodies are unchanged, but their tag becomes 0, a startup record, as
 in every real LOADING entry. **Observed** in the game: as ordinary network records (tag 1) they
 wait for the playback clock to reach their source time, so a setup timed 22.8 s held the cut on
 the console for that long. Messages and effects from before the setup's sign-on belong

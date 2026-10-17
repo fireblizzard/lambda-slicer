@@ -215,12 +215,13 @@ help-headshot-filter = 至少有一次录像中可见的爆头击杀的录像，
 help-accuracy-filter = 录制者命中率至少达到该比例的录像。
 
 clips-title = 片段
+clips-new = 新建片段
 clips-add-event = 片段 { $start } – { $end }
 clips-add-event-none = 为所选事件建片段
 clips-select-event = 请先在列表或时间轴上选择一个事件。
 clips-other-session = 片段不能从这里开始，因为录像中较早的会话有相同的时间。
 clips-add-window = 为这个激烈时刻建片段
-clips-empty = 还没有片段。选择一个事件或一个最激烈的时刻，然后在其周围添加片段。片段在事件前后保留多长时间可在设置中调整。
+clips-empty = 还没有片段。选择一个事件或一个最激烈的时刻，然后在其周围添加片段。片段在事件前后保留多长时间可在设置中调整。“新建片段”会添加一个由你自己输入起点和终点的片段。
 clip-default-name = 片段 { $number }
 clip-name = 名称
 clip-length = 时长 { $duration }

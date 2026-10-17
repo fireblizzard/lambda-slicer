@@ -125,6 +125,8 @@ struct Plan {
     /// later session than the source's LOADING entry describes. They become
     /// the output's LOADING entry
     setup: Option<Vec<Frame>>,
+    /// That session's map, from its server info, for the output's header
+    setup_map: Option<Vec<u8>>,
     /// Persistent messages replayed before the bootstrap updates, and how
     /// many there are
     persistent: Vec<u8>,
@@ -225,6 +227,7 @@ fn plan(
     // full update arrived, so there is a state to start from
     let mut setup: Option<Vec<Frame>> = None;
     let mut session_setup: Option<Vec<Frame>> = None;
+    let mut session_map: Option<Vec<u8>> = None;
     let (mut signed_on, mut full_update) = (true, true);
 
     // Past the end, packets are still decoded until every sound that may
@@ -320,6 +323,7 @@ fn plan(
                 late: carried.messages,
                 notes: carried.notes,
                 bootstrap: Vec::new(),
+                setup_map: start_setup.as_ref().and(session_map.clone()),
                 setup: start_setup,
                 persistent: persistent_kept.engine,
                 persistent_count: persistent_kept.engine_count,
@@ -383,6 +387,7 @@ fn plan(
                 Message::ClientData(c) => froms.extend(c.delta_from),
                 Message::PacketEntities(_) => full_here = true,
                 Message::SignOnNum(_) => signon_here = true,
+                Message::ServerInfo(info) if before => session_map = Some(info.map_name.clone()),
                 _ => {}
             }
         })
@@ -390,6 +395,9 @@ fn plan(
 
         if before {
             if d.segment != segment {
+                // A new session may number its packets again, so a bootstrap
+                // must never take a previous session's record for its own
+                recent.clear();
                 setup = Some(Vec::new());
                 session_setup = None;
                 (signed_on, full_update) = (false, false);
@@ -549,6 +557,23 @@ fn bootstrap_payload(
     Ok(w.finish())
 }
 
+/// The header's form of a server info map, `maps/c3a2e.bsp` becoming
+/// `c3a2e`, zero padded
+fn header_map_name(map: &[u8]) -> [u8; 260] {
+    let name = map
+        .rsplit(|b| *b == b'/' || *b == b'\\')
+        .next()
+        .unwrap_or(map);
+    let name = match name.len().checked_sub(4) {
+        Some(n) if name[n..].eq_ignore_ascii_case(b".bsp") => &name[..n],
+        _ => name,
+    };
+    let mut raw = [0u8; 260];
+    let n = name.len().min(259);
+    raw[..n].copy_from_slice(&name[..n]);
+    raw
+}
+
 /// Outer time of a kept record, measured from the bootstrap group at zero
 fn rebased(p: &Plan, time: f32) -> u32 {
     let t = f64::from(time) - f64::from(p.first_time) + p.lead;
@@ -586,6 +611,13 @@ fn write(path: &Path, out: &mut File, p: &Plan, limits: Limits) -> Result<Writte
         pos: 0,
     };
     header.directory_offset = 0;
+    // A later session's own map names the output. The header's checksum
+    // is the client's own sum of the map file, which the recording does not
+    // hold for that map, so it is 0, as some recordings already have it
+    if let Some(map) = &p.setup_map {
+        *header.map_name_raw = header_map_name(map);
+        header.map_checksum = 0;
+    }
     w.put(&encode_header(&header)).map_err(io_err(dest))?;
 
     let mut buf = Vec::with_capacity(64 * 1024);
