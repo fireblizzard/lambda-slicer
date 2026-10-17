@@ -45,6 +45,9 @@ pub struct Launch {
     pub export: bool,
     /// Pseudo-localise every message, to find text that does not fit
     pub pseudo: bool,
+    /// The game's installation folder, for the backend spike's view
+    pub game: Option<PathBuf>,
+    pub viewer_bench: Option<crate::viewer::Bench>,
 }
 
 pub struct App {
@@ -74,6 +77,10 @@ pub struct App {
     opened: Vec<PathBuf>,
     /// Dropped items that were not demos or folders
     rejected: Vec<String>,
+    game: Option<PathBuf>,
+    viewer_bench: Option<crate::viewer::Bench>,
+    /// The window's GPU device, which the viewer draws with
+    pub render_state: Option<eframe::egui_wgpu::RenderState>,
 }
 
 /// Whether `path` starts with the GoldSrc demo magic
@@ -163,6 +170,9 @@ impl App {
             direct: launch.open.iter().find(|p| p.is_file()).cloned(),
             opened: launch.open,
             rejected: Vec::new(),
+            game: launch.game,
+            viewer_bench: launch.viewer_bench,
+            render_state: None,
         }
     }
 
@@ -774,6 +784,15 @@ impl eframe::App for App {
                 d.export_on_load = std::mem::take(&mut self.export_on_open);
                 d.show_timeline = self.settings.show_timeline;
                 d.clips = self.clips.get(path);
+                if let (Some(game), Some(render_state)) = (&self.game, &self.render_state) {
+                    d.viewer = Some(crate::viewer::Viewer::open(
+                        render_state.clone(),
+                        game.clone(),
+                        path.clone(),
+                        self.viewer_bench.take(),
+                        &ctx,
+                    ));
+                }
                 self.demo = Some(d);
             }
             (None, _) => self.demo = None,

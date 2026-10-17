@@ -223,6 +223,8 @@ pub struct DemoView {
     export: Option<ExportJob>,
     /// How each clip's latest export went, by its requested range
     exports: HashMap<ClipKey, ExportState>,
+    /// The backend spike's view of the demo's map
+    pub viewer: Option<crate::viewer::Viewer>,
 }
 
 impl DemoView {
@@ -253,6 +255,7 @@ impl DemoView {
             export: None,
             exports: HashMap::new(),
             export_on_load: false,
+            viewer: None,
         }
     }
 
@@ -1870,6 +1873,11 @@ impl DemoView {
                 Look::Strong,
             ));
         });
+        if let Some(viewer) = &mut self.viewer {
+            let height = (ui.available_height() * 0.45).min(ui.available_width() * 9. / 16.);
+            viewer.ui(ui, height);
+            ui.separator();
+        }
 
         if self.loader.is_some() {
             layout::row(ui, rtl, |ui| {

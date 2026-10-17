@@ -351,6 +351,24 @@ pub struct Resource {
     pub reserved: Option<[u8; 32]>,
 }
 
+/// The positions in a resource list that its consistency list names, the
+/// files the server asks the client to check. A short entry steps forward
+/// from the previous position and a long one gives it outright, as the
+/// engine writes them (`SV_SendConsistencyList`)
+pub fn consistency_positions(list: &[(bool, u16)]) -> Vec<usize> {
+    let mut at = 0usize;
+    list.iter()
+        .map(|&(short, value)| {
+            at = if short {
+                at + usize::from(value)
+            } else {
+                usize::from(value)
+            };
+            at
+        })
+        .collect()
+}
+
 pub mod resource_type {
     pub const SOUND: u8 = 0;
     pub const SKIN: u8 = 1;

@@ -3,7 +3,8 @@
 //! `lambda-slicer-gui [PATH...] [--locale TAG] [--settings] [--timeline]
 //! [--dates] [--pseudo] [--size WxH] [--cache FILE] [--clips FILE]
 //! [--demo FILE [--window N] [--export DIR]]
-//! [--screenshot OUT.png [--frames N]]`
+//! [--screenshot OUT.png [--frames N]]
+//! [--game DIR [--viewer-bench SECONDS OUT.txt]]`
 //!
 //! Demos and folders given as `PATH` are opened for this session. `--locale`
 //! overrides the saved language, `--cache` the library cache and `--clips`
@@ -14,7 +15,11 @@
 //! `--pseudo` lengthens and accents every message to find text that does
 //! not fit, and `--size` sets the window size. `--screenshot` saves the window to a
 //! PNG `N` frames after any demo has loaded and its exports finished, and
-//! exits, for checking how a language renders
+//! exits, for checking how a language renders. `--game` names the game's
+//! installation folder, the one that holds `valve`, and shows the demo's
+//! map in the M8 backend spike's view. `--viewer-bench` turns vsync off,
+//! times that view's frames for `SECONDS` once its scene is in, writes the
+//! times to `OUT.txt` and exits
 
 // A release build opens no console window beside the app
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
@@ -30,6 +35,7 @@ mod library;
 mod settings;
 mod text;
 mod timeline;
+mod viewer;
 
 use std::path::PathBuf;
 
@@ -55,6 +61,8 @@ fn main() -> eframe::Result {
     let mut dates = false;
     let mut export = None;
     let mut pseudo = false;
+    let mut game = None;
+    let mut viewer_bench = None;
     while let Some(a) = args.next() {
         match a.as_str() {
             "--locale" => locale = args.next().as_deref().and_then(Locale::from_tag),
@@ -81,6 +89,17 @@ fn main() -> eframe::Result {
             "--dates" => dates = true,
             "--pseudo" => pseudo = true,
             "--export" => export = args.next().map(PathBuf::from),
+            "--game" => game = args.next().map(PathBuf::from),
+            "--viewer-bench" => {
+                if let (Some(seconds), Some(out)) =
+                    (args.next().and_then(|s| s.parse().ok()), args.next())
+                {
+                    viewer_bench = Some(viewer::Bench {
+                        seconds,
+                        out: PathBuf::from(out),
+                    });
+                }
+            }
             flag if flag.starts_with("--") => eprintln!("ignoring argument {flag}"),
             path => open.push(PathBuf::from(path)),
         }
@@ -117,13 +136,16 @@ fn main() -> eframe::Result {
         "../../../assets/branding/icons/icon-256.png"
     ))
     .expect("the bundled application icon must be a valid PNG");
-    let options = eframe::NativeOptions {
+    let mut options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size(size)
             .with_app_id("lambda-slicer")
             .with_icon(icon),
         ..Default::default()
     };
+    if viewer_bench.is_some() {
+        options.wgpu_options.surface.present_mode = eframe::wgpu::PresentMode::AutoNoVsync;
+    }
     eframe::run_native(
         "Lambda Slicer",
         options,
@@ -142,8 +164,11 @@ fn main() -> eframe::Result {
                     dates,
                     export: export.is_some(),
                     pseudo,
+                    game,
+                    viewer_bench,
                 },
             );
+            app.render_state = cc.wgpu_render_state.clone();
             app.start_scan(&cc.egui_ctx);
             Ok(Box::new(app))
         }),

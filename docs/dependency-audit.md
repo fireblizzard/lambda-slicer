@@ -69,6 +69,33 @@ then checked by decoding the local corpus (see the scan there).
 
 The planning document called ReHLDS GPL-3.0; its file headers say GPL version 2 or later.
 
+## Viewer references (M8)
+
+The integrated viewer (implementation plan §13) draws on two references, recorded here before any
+of their code is used.
+
+| Reference | Revision | License | Use |
+|---|---|---|---|
+| Xenoxide (`fireblizzard/halflife-xenoxide`, local checkout `C:\Users\naz\source\repos\xenoxide`) | `33eac809dfd73b0907908f9c63cce5d66efdd2e6` | none in the repository. Its owner, who also owns Lambda Slicer, allowed on 2026-10-17 that the modules Lambda Slicer needs be copied under MIT OR Apache-2.0 | WAD3 texture parsing (`xenoxide-assets/src/lib.rs`), the worldspawn WAD list (`xenoxide-map`), and later BSP30 reading, studio models and pose evaluation (`xenoxide-bsp30`, `xenoxide-assets/src/studio`, `xenoxide-game/src/studio_pose.rs`) |
+| webhl (`x8BitRain/webhl`) | `1e174d088f80a276079b0293661e0de6f95da0cd` | none declared. A fork of hlviewer.js (MIT, above), whose own changes carry no license | reading only, for how a browser player loads local assets and orders sounds. No code is copied, and its README lists sound-ordering and map-change bugs |
+
+Copies live in `crates/lambda-slicer-assets/src/xenoxide`, whose `mod.rs` lists every file's source
+and what changed. They keep Xenoxide's own comments and layout, so they can be compared with their
+source and updated from it, and the comment check skips that folder. The only changes so far are
+import paths and `libm` called directly for the pose's sines, cosines and arc cosines. Copies are
+made only of what a milestone uses. Xenoxide's working tree had uncommitted changes in its
+interface crates at that revision, none in the files copied. Its tests came along and pass, the
+six that read the installed game included (`XENOXIDE_GAME_DIRECTORY`), among them the stock
+player pose matching Xenoxide's golden transforms bit for bit.
+
+| Crate | Version | License | Use |
+|---|---|---|---|
+| sha2 | 0.10.9 | MIT OR Apache-2.0 | studio model identities, as Xenoxide computes them |
+| libm | 0.2.16 | MIT OR Apache-2.0 | the same sines, cosines and arc cosines on every platform, for poses |
+| wgpu (`wgsl` only) | 30.0.1 | MIT OR Apache-2.0 | the viewer's drawing, on the device eframe opens, the version egui-wgpu 0.37 uses ([viewer backend](viewer-backend.md)) |
+| bytemuck (`derive`) | 1.25.2 | Zlib OR Apache-2.0 OR MIT | vertex and uniform bytes for the GPU |
+| pollster, wgpu, image (`png`) (dev) | 0.4.0, 30.0.1, 0.25.10 | Apache-2.0 OR MIT, MIT OR Apache-2.0, MIT OR Apache-2.0 | the headless render bench: a device of its own and a saved frame |
+
 ## Project license
 
 Chosen 2026-10-17: MIT OR Apache-2.0 (`LICENSE-MIT`, `LICENSE-APACHE`), like most of the Rust

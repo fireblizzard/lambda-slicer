@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/lambda-slicer-core", "crates/lambda-slicer-cli", "crates/lambda-slicer-gui"]
+members = ["crates/lambda-slicer-core", "crates/lambda-slicer-cli", "crates/lambda-slicer-gui", "crates/lambda-slicer-assets", "crates/lambda-slicer-render"]
 exclude = ["vendor"]
 
 [workspace.package]
@@ -10,7 +10,9 @@ license = "MIT OR Apache-2.0"
 publish = false
 
 [workspace.dependencies]
+lambda-slicer-assets = { path = "crates/lambda-slicer-assets" }
 lambda-slicer-core = { path = "crates/lambda-slicer-core" }
+lambda-slicer-render = { path = "crates/lambda-slicer-render" }
 
 # Lithuanian and Arabic plural rules corrected, see vendor/README.md
 [patch.crates-io]

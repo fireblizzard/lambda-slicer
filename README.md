@@ -17,6 +17,7 @@ them. The full design is in [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md).
 | M5 library and cache | done: scan and query over a SQLite cache ([library](docs/library.md)) |
 | M6 desktop app | done: library, demo timeline and event table, clips, no-clobber export, fourteen languages ([app](docs/gui.md), [languages](docs/i18n.md), [right-to-left text](docs/gui-text.md)); gaps in [deferred](docs/deferred.md) |
 | M7 release | engine matrix passed in game (multiplayer, singleplayer across level changes, spectator), restarts in any session, CI for Windows and Linux, portable Windows zip, MIT OR Apache-2.0; CI passes on GitHub; the GUI smoke test and native translation reviews remain ([release](docs/release.md)) |
+| M8 viewer foundation | in progress: references audited, asset resolution against the installed game (`lambda-slicer-assets`, [viewer profile](docs/viewer-profile.md)); `wgpu` kept after a spike drawing a map and an animated model in the demo view, measured against Xenoxide in game (`lambda-slicer-render`, [viewer backend](docs/viewer-backend.md)); playback controller and checkpoints next |
 
 `cargo run --release -p lambda-slicer-gui` starts the app ([app](docs/gui.md)). Add `-- --locale ar`
 to try a language, and demos or folders to open them for one session. `.\scripts\package.ps1`
