@@ -5,9 +5,13 @@
 //! is never skipped. Its demo is opened before the newest request of its
 //! generation is answered. Replies go back with the stamp of the request
 //! they answer, for [`Controller::accept`](crate::controller::Controller::accept)
-//! to judge
+//! to judge.
+//!
+//! While no request waits, a second playback of the same demo plays ahead
+//! in short slices to add checkpoints, so later seeks start nearby. A new
+//! request waits for one slice at most
 
-use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
 use std::thread::JoinHandle;
 
 use lambda_slicer_core::container::Limits;
@@ -66,10 +70,31 @@ impl Drop for Worker {
     }
 }
 
+/// Groups the indexer plays between looks at the request channel, a few
+/// tens of milliseconds
+const INDEX_SLICE: usize = 1000;
+
 fn run(limits: Limits, requests: Receiver<Request>, replies: Sender<Reply>, notify: impl Fn()) {
     let mut playback: Option<(u64, Playback)> = None;
+    let mut indexer: Option<Playback> = None;
 
-    while let Ok(first) = requests.recv() {
+    loop {
+        let first = match &mut indexer {
+            Some(i) => match requests.try_recv() {
+                Ok(request) => request,
+                Err(TryRecvError::Empty) => {
+                    if i.index(INDEX_SLICE) {
+                        indexer = None;
+                    }
+                    continue;
+                }
+                Err(TryRecvError::Disconnected) => return,
+            },
+            None => match requests.recv() {
+                Ok(request) => request,
+                Err(_) => return,
+            },
+        };
         let mut batch = vec![first];
         batch.extend(requests.try_iter());
         let Some(newest) = batch.pop() else {
@@ -82,8 +107,12 @@ fn run(limits: Limits, requests: Receiver<Request>, replies: Sender<Reply>, noti
             .find_map(|r| r.load.clone());
         if let Some(path) = load {
             playback = None;
+            indexer = None;
             match Playback::open(&path, limits) {
-                Ok(p) => playback = Some((newest.stamp.generation, p)),
+                Ok(p) => {
+                    indexer = Playback::open_with(&path, limits, p.checkpoints().clone()).ok();
+                    playback = Some((newest.stamp.generation, p));
+                }
                 Err(message) => {
                     let _ = replies.send(Reply::Failed {
                         stamp: newest.stamp,

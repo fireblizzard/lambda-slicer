@@ -41,6 +41,14 @@ pub struct Group {
 /// few kilobytes and every group starts with a seek
 const BUFFER: usize = 64 * 1024;
 
+/// Where a source goes on from, saved with a checkpoint
+#[derive(Clone, Debug)]
+pub struct Cursor {
+    at: Option<FramePosition>,
+    ahead: Option<(u32, LocatedFrame)>,
+    next_number: u64,
+}
+
 pub struct Source {
     reader: DemoReader<BufReader<File>>,
     /// Where reading goes on, none once every entry is read
@@ -80,6 +88,21 @@ impl Source {
 
     pub fn header(&self) -> &Header {
         &self.reader.header
+    }
+
+    pub fn cursor(&self) -> Cursor {
+        Cursor {
+            at: self.at,
+            ahead: self.ahead.clone(),
+            next_number: self.next_number,
+        }
+    }
+
+    /// Go on from where `cursor` was taken, in this same demo
+    pub fn restore(&mut self, cursor: &Cursor) {
+        self.at = cursor.at;
+        self.ahead = cursor.ahead.clone();
+        self.next_number = cursor.next_number;
     }
 
     fn entry_start(&mut self, entry: u32) -> Result<Option<FramePosition>, Message> {

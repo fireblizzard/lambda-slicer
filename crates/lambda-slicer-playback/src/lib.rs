@@ -14,6 +14,7 @@
 //! or the installed game
 
 pub mod audio;
+pub mod checkpoint;
 pub mod controller;
 pub mod playback;
 pub mod scene;

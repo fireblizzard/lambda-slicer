@@ -154,6 +154,50 @@ directly and back from the end, comparing position, entities, sounds, camera and
 | `run_92.dem`, singleplayer | 5 | 104 s | 0.37 s | 3 of 3 |
 | `ray_vs_alex_cross.dem`, spectator | 1 | 103 s | 0.10 s | 3 of 3 |
 
-None stopped on a decode error. The decoder alone takes 1.1 s of stalkx's 3.8 s. Going back starts
-again from the first group, so a backward seek to near the end of stalkx costs nearly its whole 3.8 s. Checkpoints
-(8e) are what bring that down.
+None stopped on a decode error. The decoder alone takes 1.1 s of stalkx's 3.8 s.
+
+### Checkpoints
+
+A checkpoint is everything sequential playback holds after one group: the decoder with its
+schemas, baselines and delta history, the scene, the sound state and where the source goes on. A
+seek restores the latest checkpoint that can reach the destination and plays on from there, or
+plays on from where it is when that is nearer. Source times can step back between groups, so each
+checkpoint keeps the latest time of any group up to it, and only one whose latest time is not after
+the destination is used. Tables a session sets up (resources, baselines, user messages) are shared
+between checkpoints.
+
+Playback takes a checkpoint when a session begins and then every 2 s of source time. While no
+request waits, the worker plays a second copy of the demo ahead in slices of 1,000 groups (a few
+tens of milliseconds) to fill the same store. A checkpoint keeps the decoder's last 64 snapshots,
+any of which a later packet may take as its delta base, so in a busy game it weighs 1.5 to 2 MiB.
+When a demo's checkpoints pass 256 MiB by the decoder's estimate, every other one is dropped and the
+spacing doubles. Checkpoints live in memory for the selected demo only. Keeping them on disk
+between runs is left for later.
+
+**Tested** on a synthetic demo with a second session and a group whose time steps back, against
+sequential playback that never uses a checkpoint: forward and backward seeks to 61 moments and on
+past each, 300 random seeks while checkpoints are still being added, group steps both ways, a clip
+looped three times in display-sized steps, and the worker's answers once its index is complete.
+The comparison covers the decoder's counters and latest snapshot, every entity, the camera, the
+viewmodel, light styles, sounds and the scene's and sound state's change counts. Two deliberately
+broken restores (a decoder counter changed, the source's read-ahead record lost) both fail it.
+
+**Measured (2026-10-18)** with `examples/seek_probe.rs`, release build: every checkpoint built as
+the worker builds them, then 60 seeks to random moments in random order, each compared with the
+state one sequential pass has there. Memory is the growth in private bytes while building, which
+keeps what thinning freed, next to the store's own estimate.
+
+| Demo | Playback | Checkpoints | Built in | Memory, measured and estimated | Seek with none, to 3/4 | Indexed seeks p50, p95, max | Differing |
+|---|---|---|---|---|---|---|---|
+| `stalkx_naz_248.dem` | 1,216 s | 76, 16 s apart | 4.1 s | 247 and 163 MiB | 2.5 s | 23, 45, 49 ms | 0 |
+| `20210418_004941_vengeance.dem` | 2,506 s | 79, 32 s apart | 9.9 s | 301 and 248 MiB | 7.0 s | 51, 118, 138 ms | 0 |
+| `naz_crossfire_pb_01.dem` | 1,206 s | 76, 16 s apart | 4.3 s | 233 and 141 MiB | 3.0 s | 23, 48, 50 ms | 0 |
+| `dblcross_salchi_naz.dem` | 1,314 s | 83, 16 s apart | 4.1 s | 277 and 231 MiB | 3.0 s | 18, 40, 49 ms | 0 |
+| `run_92.dem`, singleplayer | 104 s | 54, 2 s apart | 0.4 s | 123 and 112 MiB | 0.37 s | 4, 10, 20 ms | 0 |
+| `ray_vs_alex_cross.dem`, spectator | 103 s | 51, 2 s apart | 0.1 s | 51 and 122 MiB | 0.13 s | 0.3, 3.6, 4.7 ms | 0 |
+
+Without the budget, stalkx keeps 608 checkpoints 2 s apart in 928 MiB and seeks in 2.9 ms at p50
+and 5.1 ms at p95. Every indexed p95 is within the plan's target of 200 ms. The longest demo is
+closest to it, as its spacing doubled twice, and a longer one would double again. A first seek
+before the index reaches the destination replays from the start, at about 3 ms per second of a busy
+demo.

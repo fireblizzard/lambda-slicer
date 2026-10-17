@@ -3,22 +3,25 @@
 //! Groups are applied in file order, each record to the core decoder and
 //! then to the scene and audio state. Reaching a time applies every group
 //! at or before it, so an event at exactly the chosen time has happened.
-//! Going back starts again from the first group, until checkpoints (8e)
-//! give a nearer place to start from. A decode error stops playback where
-//! it happened, and the frames from then on say why
+//! Going back, or far ahead, starts from the nearest
+//! [`checkpoint`](crate::checkpoint) that can reach the destination, or
+//! from the first group when there is none, and plays on from there. A
+//! decode error stops playback where it happened, and the frames from then
+//! on say why
 
 use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::path::Path;
+use std::sync::{Arc, MutexGuard};
 
 use lambda_slicer_core::container::{FrameBody, Limits};
 use lambda_slicer_core::message::{Coded, Message};
 use lambda_slicer_core::state::Decoder;
 
 use crate::audio::{Audio, Channel, SoundLength, SoundName, UNKNOWN_LIMIT};
+use crate::checkpoint::{self, Checkpoint, Checkpoints, State};
 use crate::controller::{CameraMode, Stamp};
 use crate::scene::{Camera, Entity, Scene, Viewmodel};
-use crate::source::{Group, Source};
+use crate::source::{Cursor, Group, Source};
 use crate::time::{Position, ServerTime, SourceTime};
 
 /// Everything a renderer and a mixer need for one moment, and which load
@@ -50,48 +53,70 @@ pub struct PresentedFrame {
     pub end: bool,
     /// Why playback stopped before the end of the demo
     pub stopped: Option<Message>,
+    /// How far checkpoints reach, and whether they cover the whole demo
+    pub indexed: (SourceTime, bool),
 }
 
 type Lengths = Box<dyn Fn(&SoundName) -> SoundLength + Send>;
 
 pub struct Playback {
     path: Arc<Path>,
-    limits: Limits,
     source: Source,
-    decoder: Decoder,
-    scene: Scene,
-    audio: Audio,
-    position: Option<Position>,
+    state: State,
     /// The next group, read but not applied
     next: Option<Group>,
-    /// The source has no group left
-    exhausted: bool,
-    stopped: Option<Message>,
+    /// The state before the first group, to start again from
+    initial: (State, Cursor),
+    checkpoints: checkpoint::Shared,
     lengths: Lengths,
 }
 
 impl Playback {
+    /// Open `path` with a checkpoint store of its own
     pub fn open(path: &Path, limits: Limits) -> Result<Self, Message> {
+        Self::open_with(
+            path,
+            limits,
+            Checkpoints::shared(checkpoint::SPACING, checkpoint::BUDGET),
+        )
+    }
+
+    /// Open `path` with a store other playbacks of the same demo share
+    pub fn open_with(
+        path: &Path,
+        limits: Limits,
+        checkpoints: checkpoint::Shared,
+    ) -> Result<Self, Message> {
         let mut decoder = Decoder::new();
         decoder.collect_events = false;
-
-        Ok(Self {
-            path: Arc::from(path),
-            limits,
-            source: Source::open(path, limits)?,
+        let source = Source::open(path, limits)?;
+        let state = State {
             decoder,
             scene: Scene::default(),
             audio: Audio::default(),
             position: None,
-            next: None,
+            reach: SourceTime::ZERO,
             exhausted: false,
             stopped: None,
+        };
+
+        Ok(Self {
+            path: Arc::from(path),
+            initial: (state.clone(), source.cursor()),
+            source,
+            state,
+            next: None,
+            checkpoints,
             lengths: Box::new(|_| SoundLength::Unknown),
         })
     }
 
     pub fn path(&self) -> &Path {
         &self.path
+    }
+
+    pub fn checkpoints(&self) -> &checkpoint::Shared {
+        &self.checkpoints
     }
 
     /// How long each sample plays, from the sample files. Without it every
@@ -104,43 +129,54 @@ impl Playback {
     }
 
     pub fn position(&self) -> Option<Position> {
-        self.position
+        self.state.position
     }
 
     pub fn scene(&self) -> &Scene {
-        &self.scene
+        &self.state.scene
     }
 
     pub fn audio(&self) -> &Audio {
-        &self.audio
+        &self.state.audio
     }
 
     pub fn decoder(&self) -> &Decoder {
-        &self.decoder
+        &self.state.decoder
     }
 
-    /// Back to before the first group
-    fn restart(&mut self) -> Result<(), Message> {
-        let path = PathBuf::from(&*self.path);
-        let lengths = std::mem::replace(&mut self.lengths, Box::new(|_| SoundLength::Unknown));
-        *self = Self::open(&path, self.limits)?;
-        self.lengths = lengths;
-        Ok(())
+    fn store(&self) -> MutexGuard<'_, Checkpoints> {
+        // A panic while holding the lock leaves the list itself whole
+        self.checkpoints.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// Go on from `checkpoint`, or from the first group when none
+    fn restore(&mut self, checkpoint: Option<&Checkpoint>) {
+        let (state, cursor) = match checkpoint {
+            Some(c) => (&c.state, &c.cursor),
+            None => (&self.initial.0, &self.initial.1),
+        };
+        self.state = state.clone();
+        self.source.restore(cursor);
+        self.next = None;
     }
 
     /// The next group, read now if it was not yet
     fn peek(&mut self) -> Option<&Group> {
-        if self.next.is_none() && !self.exhausted && self.stopped.is_none() {
+        if self.next.is_none() && !self.state.exhausted && self.state.stopped.is_none() {
             match self.source.next_group() {
                 Ok(Some(group)) => self.next = Some(group),
-                Ok(None) => self.exhausted = true,
-                Err(e) => self.stopped = Some(e),
+                Ok(None) => {
+                    self.state.exhausted = true;
+                    self.store().set_complete();
+                }
+                Err(e) => self.state.stopped = Some(e),
             }
         }
         self.next.as_ref()
     }
 
-    /// Apply the next group. False when there is none to apply
+    /// Apply the next group, and keep the state after it when a checkpoint
+    /// is due. False when there is no group to apply
     fn apply_next(&mut self) -> bool {
         if self.peek().is_none() {
             return false;
@@ -151,15 +187,16 @@ impl Playback {
 
         // Sounds finish at the same group times however playback got here,
         // so a stop or change always finds the same sounds
-        self.audio.retire(group.time, &*self.lengths);
+        self.state.audio.retire(group.time, &*self.lengths);
 
         let time = group.time;
-        let Self {
+        let State {
             decoder,
             scene,
             audio,
+            stopped,
             ..
-        } = self;
+        } = &mut self.state;
         for record in &group.records {
             let result = match &record.body {
                 FrameBody::Network(frame) => {
@@ -181,25 +218,49 @@ impl Playback {
                 }
             };
             if let Err(e) = result {
-                self.stopped = Some(e.message());
+                *stopped = Some(e.message());
                 break;
             }
         }
 
-        self.position = Some(Position {
+        let position = Position {
             group: group.number,
-            segment: self.decoder.segment,
+            segment: self.state.decoder.segment,
             time,
-        });
+        };
+        self.state.position = Some(position);
+        self.state.reach = SourceTime(self.state.reach.0.max(time.0));
+
+        if self.store().due(position) {
+            let entities = self.state.scene.entities.len() * size_of::<Entity>();
+            let sounds = size_of_val(self.state.audio.channels());
+            let bytes = self.state.decoder.retained_bytes() + 2 * entities + sounds;
+            let checkpoint = Checkpoint {
+                group: position.group,
+                segment: position.segment,
+                time,
+                reach: self.state.reach,
+                bytes: bytes as u64,
+                state: self.state.clone(),
+                cursor: self.source.cursor(),
+            };
+            self.store().insert(checkpoint);
+        }
         true
     }
 
-    /// Apply every group at or before `time`, starting again when `time` is
-    /// before the current position
+    /// Apply every group at or before `time`. Playback goes on from where it
+    /// is when that can reach `time` and no checkpoint is nearer, and starts
+    /// from the nearest checkpoint that can reach it otherwise
     pub fn advance_to(&mut self, time: SourceTime) -> Result<(), Message> {
         let time = SourceTime(time.0.max(0.));
-        if self.position.is_some_and(|p| time < p.time) {
-            self.restart()?;
+        let live_can = self.state.reach <= time;
+        let live = self.state.position.map(|p| p.group);
+        let nearest = self.store().for_time(time);
+        match &nearest {
+            Some(c) if !live_can || live.is_none_or(|g| c.group > g) => self.restore(Some(c)),
+            None if !live_can => self.restore(None),
+            _ => {}
         }
 
         while self.peek().is_some_and(|g| g.time <= time) {
@@ -210,16 +271,39 @@ impl Playback {
 
     /// Apply groups until `group` is the last applied, or the demo ends
     pub fn seek_group(&mut self, group: u64) -> Result<(), Message> {
-        if self.position.is_some_and(|p| group < p.group) {
-            self.restart()?;
+        let live = self.state.position.map(|p| p.group);
+        let live_can = live.is_none_or(|g| g <= group);
+        let nearest = self.store().for_group(group);
+        match &nearest {
+            Some(c) if !live_can || live.is_none_or(|g| c.group > g) => self.restore(Some(c)),
+            None if !live_can => self.restore(None),
+            _ => {}
         }
 
-        while self.position.is_none_or(|p| p.group < group) {
+        while self.state.position.is_none_or(|p| p.group < group) {
             if !self.apply_next() {
                 break;
             }
         }
         Ok(())
+    }
+
+    /// Play on from the furthest checkpoint for up to `groups` groups,
+    /// adding checkpoints as they fall due. True once the demo is covered
+    pub fn index(&mut self, groups: usize) -> bool {
+        let furthest = self.store().last();
+        if let Some(c) = furthest
+            && self.state.position.is_none_or(|p| c.group > p.group)
+        {
+            self.restore(Some(&c));
+        }
+
+        for _ in 0..groups {
+            if !self.apply_next() {
+                break;
+            }
+        }
+        self.at_end()
     }
 
     /// No group is left, because the demo ended or decoding stopped
@@ -236,11 +320,13 @@ impl Playback {
         audible: bool,
     ) -> PresentedFrame {
         let end = self.at_end();
-        let at = match self.position {
+        let indexed = self.store().indexed();
+        let state = &self.state;
+        let at = match state.position {
             Some(p) if at < p.time => p.time,
             _ => at,
         };
-        let sounds = self
+        let sounds = state
             .audio
             .channels()
             .iter()
@@ -255,21 +341,22 @@ impl Playback {
         PresentedFrame {
             demo: self.path.clone(),
             stamp,
-            position: self.position,
+            position: state.position,
             at,
-            server_time: ServerTime(f32::from_bits(self.decoder.time_bits)),
-            map: self.scene.map.clone(),
-            scene_revision: self.scene.revision,
-            entities: self.scene.entities.clone(),
-            recorder: self.scene.camera,
+            server_time: ServerTime(f32::from_bits(state.decoder.time_bits)),
+            map: state.scene.map.clone(),
+            scene_revision: state.scene.revision,
+            entities: state.scene.entities.clone(),
+            recorder: state.scene.camera,
             camera,
-            viewmodel: self.scene.viewmodel,
-            light_styles: self.scene.light_styles.clone(),
+            viewmodel: state.scene.viewmodel,
+            light_styles: state.scene.light_styles.clone(),
             sounds,
-            audio_revision: self.audio.revision,
+            audio_revision: state.audio.revision,
             audible,
             end,
-            stopped: self.stopped.clone(),
+            stopped: state.stopped.clone(),
+            indexed,
         }
     }
 }

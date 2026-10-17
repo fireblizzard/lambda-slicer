@@ -315,10 +315,14 @@ struct LastDelta {
 /// How many recent frames a count search may try
 const COUNT_SEARCH_DEPTH: usize = 64;
 
+/// A decoder's whole state, so a clone goes on exactly as the original
+/// would. Tables that change only when a session sets them up are shared
+/// between clones until one of them changes
+#[derive(Clone)]
 pub struct Decoder {
     meta: DeltaSchema,
     schemas: HashMap<Vec<u8>, Arc<DeltaSchema>>,
-    user_messages: Box<[Option<UserMessageDef>; 256]>,
+    user_messages: Arc<[Option<UserMessageDef>; 256]>,
     pub max_clients: u8,
     pub player_num: u8,
     pub hltv: bool,
@@ -326,10 +330,10 @@ pub struct Decoder {
     pub view_entity: Option<u16>,
     /// Body of the last `svc_newmovevars`
     pub movevars: Option<Vec<u8>>,
-    baselines: HashMap<u16, Arc<EntityState>>,
-    instanced: Vec<Arc<StructState>>,
-    resources: Vec<Resource>,
-    event_names: HashMap<u16, Vec<u8>>,
+    baselines: Arc<HashMap<u16, Arc<EntityState>>>,
+    instanced: Arc<Vec<Arc<StructState>>>,
+    resources: Arc<Vec<Resource>>,
+    event_names: Arc<HashMap<u16, Vec<u8>>>,
     /// Frame ring size, either 8 or 64
     backup: usize,
     /// Recently stored snapshots, newest last
@@ -410,17 +414,17 @@ impl Decoder {
         Self {
             meta: meta_schema(),
             schemas: HashMap::new(),
-            user_messages: Box::new([const { None }; 256]),
+            user_messages: Arc::new([const { None }; 256]),
             max_clients: 0,
             player_num: 0,
             hltv: false,
             time_bits: 0,
             view_entity: None,
             movevars: None,
-            baselines: HashMap::new(),
-            instanced: Vec::new(),
-            resources: Vec::new(),
-            event_names: HashMap::new(),
+            baselines: Arc::default(),
+            instanced: Arc::default(),
+            resources: Arc::default(),
+            event_names: Arc::default(),
             backup: MULTIPLAYER_BACKUP,
             history: std::collections::VecDeque::new(),
             sequence_offset: 0,
@@ -486,6 +490,44 @@ impl Decoder {
 
     fn server_sequence(&self, recorded: u32) -> u32 {
         recorded.wrapping_sub(self.sequence_offset.into())
+    }
+
+    /// About how many bytes the stored snapshots and the name history hold,
+    /// for budgeting copies of this decoder. A state several snapshots share
+    /// counts once, and the tables a session sets up are left out, as
+    /// copies share them
+    pub fn retained_bytes(&self) -> usize {
+        let mut seen = std::collections::HashSet::new();
+        let mut seen_states = std::collections::HashSet::new();
+        let mut bytes = 0;
+        let mut state = |s: &Arc<StructState>, size: usize| {
+            if seen_states.insert(Arc::as_ptr(s) as usize) {
+                size + s.heap_bytes()
+            } else {
+                0
+            }
+        };
+        for snapshot in &self.history {
+            bytes += size_of::<Snapshot>();
+            if let Some(entities) = &snapshot.entities {
+                bytes += entities.capacity() * size_of::<Arc<EntityState>>();
+                for e in entities.iter() {
+                    if seen.insert(Arc::as_ptr(e) as usize) {
+                        bytes += size_of::<EntityState>() + e.fields.heap_bytes();
+                    }
+                }
+            }
+            if let Some(c) = &snapshot.clientdata {
+                bytes += state(c, size_of::<StructState>());
+            }
+            if let Some(weapons) = &snapshot.weapons {
+                bytes += weapons.capacity() * size_of::<Option<Arc<StructState>>>();
+                for w in weapons.iter().flatten() {
+                    bytes += state(w, size_of::<StructState>());
+                }
+            }
+        }
+        bytes + self.name_history.capacity() * size_of::<NameChange>()
     }
 
     /// The most recently stored snapshot
@@ -778,10 +820,10 @@ impl Decoder {
     fn new_segment(&mut self) {
         self.segment += 1;
         self.stats.segments += 1;
-        self.baselines.clear();
-        self.instanced.clear();
-        self.resources.clear();
-        self.event_names.clear();
+        self.baselines = Arc::default();
+        self.instanced = Arc::default();
+        self.resources = Arc::default();
+        self.event_names = Arc::default();
         self.history.clear();
         self.sequence_offset = 0;
         self.numbering_suspect = false;
@@ -825,18 +867,20 @@ impl Decoder {
                 self.schemas.insert(schema.name.clone(), schema.clone());
             }
             Message::NewUserMessage { id, def } => {
-                self.user_messages[usize::from(*id)] = Some(def.clone());
+                Arc::make_mut(&mut self.user_messages)[usize::from(*id)] = Some(def.clone());
             }
             Message::Hltv(0) => self.hltv = true,
             Message::SetView(e) => self.view_entity = Some(*e),
             Message::NewMoveVars(b) => self.movevars = Some(b.clone()),
             Message::ResourceList { resources, .. } => {
-                self.resources = resources.clone();
-                self.event_names = resources
-                    .iter()
-                    .filter(|r| r.kind == resource_type::EVENT_SCRIPT)
-                    .map(|r| (r.index, r.name.clone()))
-                    .collect();
+                self.resources = Arc::new(resources.clone());
+                self.event_names = Arc::new(
+                    resources
+                        .iter()
+                        .filter(|r| r.kind == resource_type::EVENT_SCRIPT)
+                        .map(|r| (r.index, r.name.clone()))
+                        .collect(),
+                );
             }
             Message::UpdateUserInfo {
                 slot,
@@ -845,10 +889,10 @@ impl Decoder {
                 ..
             } => self.update_player(*slot, *user_id, info, location),
             Message::SpawnBaseline(b) => {
-                self.baselines.clear();
+                let mut baselines = HashMap::new();
                 for e in &b.entities {
                     let fields = StructState::apply(&StructState::default(), &e.schema, &e.delta);
-                    self.baselines.insert(
+                    baselines.insert(
                         e.number,
                         Arc::new(EntityState {
                             number: e.number,
@@ -857,16 +901,17 @@ impl Decoder {
                         }),
                     );
                 }
+                self.baselines = Arc::new(baselines);
 
                 let schema = self.schemas.get(&b"entity_state_t"[..]).cloned();
-                self.instanced = match schema {
+                self.instanced = Arc::new(match schema {
                     Some(s) => b
                         .instanced
                         .iter()
                         .map(|d| Arc::new(StructState::apply(&StructState::default(), &s, d)))
                         .collect(),
                     None => Vec::new(),
-                };
+                });
             }
             Message::ClientData(_) if building.discarded => {}
             Message::ClientData(cd) => match (cd.delta_from, &cd.client) {

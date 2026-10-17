@@ -450,6 +450,19 @@ impl StructState {
         self.entries.len()
     }
 
+    /// Bytes this state holds on the heap, besides the fields it shares
+    pub fn heap_bytes(&self) -> usize {
+        let strings: usize = self
+            .entries
+            .iter()
+            .map(|(_, _, w)| match w {
+                Wire::Str(s) => s.len(),
+                _ => 0,
+            })
+            .sum();
+        self.entries.capacity() * size_of::<(u32, Arc<DeltaField>, Wire)>() + strings
+    }
+
     pub fn is_empty(&self) -> bool {
         self.entries.is_empty()
     }

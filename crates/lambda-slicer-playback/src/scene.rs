@@ -97,7 +97,7 @@ pub struct Scene {
     lives: HashMap<u16, Slot>,
     /// Model names by precache index, and the resource count they were
     /// read from
-    models: HashMap<u16, Arc<str>>,
+    models: Arc<HashMap<u16, Arc<str>>>,
     models_from: usize,
     /// Field positions per schema, and each entity as last converted with
     /// the state it came from, which snapshots share while it is unchanged
@@ -269,7 +269,8 @@ impl Scene {
                         Arc::from(String::from_utf8_lossy(&r.name).as_ref()),
                     )
                 })
-                .collect();
+                .collect::<HashMap<_, _>>()
+                .into();
             self.models_from = resources.len();
         }
         self.models.get(&u16::try_from(index).ok()?).cloned()

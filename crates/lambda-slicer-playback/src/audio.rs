@@ -149,7 +149,7 @@ pub struct Audio {
     pub revision: u64,
     /// Sample names by precache index, and the resource count they were
     /// read from
-    sounds: HashMap<u16, Arc<str>>,
+    sounds: Arc<HashMap<u16, Arc<str>>>,
     sounds_from: usize,
 }
 
@@ -191,7 +191,8 @@ impl Audio {
                         Arc::from(String::from_utf8_lossy(&r.name).as_ref()),
                     )
                 })
-                .collect();
+                .collect::<HashMap<_, _>>()
+                .into();
             self.sounds_from = resources.len();
         }
         match self.sounds.get(&index) {
