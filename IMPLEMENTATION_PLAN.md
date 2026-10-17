@@ -1,6 +1,6 @@
 # Lambda Slicer implementation plan
 
-**Status: engineering handoff, 14 October 2026. No application has been implemented and no generated slice has been tested in the game.**
+**Engineering handoff created 14 October 2026; viewer/audio follow-on added 17 October 2026.** Implementation has progressed since the original handoff. Use `README.md` and the milestone validation documents for current completion status; retain the historical observations below as dated evidence.
 
 Build Lambda Slicer as a Rust desktop application with a native GUI, a shared analysis/export core, and a small diagnostic CLI. It will find recorded weapon activity, identify the actor when the recording provides sufficient evidence, and export selected intervals into new GoldSrc `.dem` files. The difficult part is producing an independently playable slice starting midway through a recording: this requires reconstructing protocol and game state, not copying frames between two timestamps. Prove that operation in the installed Windows game **before building the full GUI**. Analysis can be useful earlier, but an analyzer alone does not complete this project.
 
@@ -10,7 +10,7 @@ This document specifies the implementation, staged acceptance gates, and remaini
 
 The user must be able to open or drag/drop a demo, see a timeline and table of different weapons' recorded actions and actors, select one or more intervals, and export new `.dem` files without altering the input. Recursive folder scanning and cached gauss search are first-class features because the local collection contains tens of thousands of files. A clip requested as `1:36–4:48` means the half-open source interval **[96.000, 288.000)**, approximately 192 seconds after documented snapping to recorded frame boundaries. It must start at the selected scene when played with ordinary `playdemo`, using the installed mod/map resources, with no dependence on the original recording.
 
-The GUI is a timeline and selection tool. In-app 3D playback, video rendering, encoding, and automatic camera editing are not required. Game playback remains the compatibility test and the user's footage source.
+M0–M7 deliver the timeline, analysis and independent demo-export application. After those milestones, M8–M12 add integrated 3D demo playback with synchronized sound, timeline-controlled seeking, rewind and fast-forward, as specified in §13. Video-file encoding and automatic camera editing remain outside the requested scope. Game playback remains the compatibility and fidelity reference.
 
 The required target includes multiplayer POV recordings with two or more players and singleplayer recordings. Singleplayer is a required fixture and release gate, even if none is found in the supplied corpus. Spectator recordings need explicit actor handling. HLTV is a discovery-driven compatibility extension: recognize it and avoid misdecoding it, then certify it with fixtures if present or requested. Do not silently treat HLTV as ordinary POV.
 
@@ -482,7 +482,7 @@ The left library has status, name/path, map, duration, gauss fire count, charge/
 
 The right pane contains metadata/coverage, a zoomable timeline, event table, and clip list. Use painter-backed lanes per player with weapon/action filters; selection, input intent, firing, charging, and kill tracks remain distinguishable. At wide zoom, aggregate markers into bins based on visible pixel width. Time-sorted indices support hit testing and event navigation. Show historical actor names at the event time, plus stable connection identity in details.
 
-Clicking an event centers the timeline and proposes a configurable pre/postroll range. Drag handles or edit start/end fields accepting `96`, `1:36`, and `00:01:36.250`; display `HH:MM:SS.mmm`. Permit multiple named clips. Show the requested interval, effective snapped interval, and duration before export. The example must visibly read requested 01:36–04:48, duration 03:12, plus any adjustment.
+Clicking an event centers the timeline and proposes a configurable pre/postroll range. From M11, it also seeks the integrated viewer through the shared playback controller (§13.4). Drag handles or edit start/end fields accepting `96`, `1:36`, and `00:01:36.250`; display `HH:MM:SS.mmm`. Permit multiple named clips. Show the requested interval, effective snapped interval, and duration before export. The example must visibly read requested 01:36–04:48, duration 03:12, plus any adjustment.
 
 The export pane shows destination, compatibility/profile status, blockers, progress, structural/semantic validation, and final file path. Do not display success until no-clobber publication succeeds. A failed export leaves the original untouched and does not put a broken final `.dem` in the destination. Provide a safe copyable `playdemo` instruction using the final basename and explain any placement requirement; automatic game launching is optional later and must use explicit executable/argument APIs.
 
@@ -526,6 +526,11 @@ Implement in order. Each milestone ends with a committed, reproducible state and
 | M5: library and cache | `library/*`, jobs, scan CLI | M4 | Recursive bounded scan at corpus scale; cache invalidation, cancellation, failure isolation; selected file priority |
 | M6: desktop workflow | GUI modules, settings, locale catalogs | M3–M5 | Open/drop file/folder, filters/timeline/evidence, multiple clips, no-clobber export, responsive UI; all fourteen languages switchable without restart, catalog completeness test, CJK glyphs in names and the Chinese interface, shaped right-to-left Arabic with a mirrored layout and Arabic names shaped in every locale, correct ru/uk/pl/lt/ar plurals for 0, 1, 2, 5, 11, 21, 22 and 25, Turkish search casing, no truncation under the pseudo-locale |
 | M7: compatibility and release | CI, fixture matrix, packaging, docs | M6 | Required Windows multiplayer and singleplayer engine matrix; source hashes unchanged; Linux build/core CI and documented pending live smoke tests |
+| M8: playback foundation | Playback/assets crates, backend spike, viewer profile | M7 | Shared clock, asset resolution, backend decision and checkpoint/seek equivalence (§13) |
+| M9: world and models | Render crate, BSP/studio/sprite adapters | M8 | Embedded world and animated models match recorded camera/state and game references |
+| M10: effects and audio | Effect handlers, audio crate, fidelity fixtures | M9 | Weapon/death effects and synchronized sound survive seeking, including active loops and delayed events |
+| M11: viewer editing workflow | Viewer panel and all timeline integrations | M10 | Event-click seek, scrub, step, reverse, rates and clip loops use one playback controller |
+| M12: viewer qualification | Fidelity matrix, benchmarks, platform validation | M11 | Visual/audio and seek equivalence gates, measured performance and honest Windows/Linux support |
 
 M3 is a feasibility gate, not a vague spike. Its output includes a working CLI slice path, saved trace comparison, selected clock/sequence/bootstrap policy, and game evidence. If the profile still cannot start independently, keep work focused on the failing state class and report the unmet requirement. No parser-only completion claim is acceptable.
 
@@ -603,7 +608,7 @@ Before declaring release-ready, verify originals' full hashes are unchanged; ind
 
 ### Next implementer's start checklist
 
-1. Read this document, inspect repository instructions, and confirm the repository still contains no app implementation requiring preservation.
+1. Read this document, repository instructions, `README.md` and milestone records; inspect the existing implementation and working tree. Preserve completed work and unrelated edits rather than recreating the scaffold. Resume at the first unfinished milestone; M8–M12 follow the current M0–M7 scope.
 2. Choose/lock the Rust toolchain and dependency/license strategy; inspect the exact codec source locally and record its commit.
 3. Create the workspace, CLI, bounded container reader, and optional local fixture manifest. Hash originals without changing them.
 4. Run the three S0 controls in the installed Windows game and save evidence before touching arbitrary-start transformations.
@@ -612,3 +617,144 @@ Before declaring release-ready, verify originals' full hashes are unchanged; ind
 7. Implement remaining detectors, batch/cache services, and the GUI against the same core APIs; complete required singleplayer and weapon fixtures.
 
 The principal unresolved risk is exact restart fidelity for the installed client/mod's private and transient state, followed by clock/sequence behavior and packet representability. The proposed implementation makes those risks testable early. It does not claim that research alone has already solved or verified them.
+
+## 13. Follow-on phase: integrated demo viewer and sound
+
+**Added 17 October 2026. Implement after the current M0–M7 scope.** M8–M12 add an embedded, interactive Half-Life/AG demo viewer with synchronized audio. This phase is required follow-on work, not a replacement for independent demo export. Game playback remains the reference for fidelity and exported-file compatibility. Video-file encoding and automatic camera editing are separate future features.
+
+The viewer must display the recorded world, players, weapons, animations, sprites, textures, effects and HUD, and play the corresponding sounds. A player killing another player is the acceptance example: the visible killer and victim have the correct models, weapon and poses; firing, muzzle flash, impacts/blood, death animation and audio occur in their recorded order. Support multiplayer POV and singleplayer, with separately certified spectator/HLTV behavior. Do not call a textured BSP with moving player markers a complete viewer.
+
+### 13.1 Reuse and backend decision
+
+Keep the existing Lambda Slicer decoder authoritative. Rendering consumes decoded state and ordered raw playback evidence; the compact weapon-analysis event table alone cannot drive a faithful viewer. Do not simulate combat again from attack inputs or synthesize a death animation merely because a kill-feed entry exists.
+
+References and reusable starting points identified for this extension:
+
+| Source | Useful starting point | Integration constraint |
+|---|---|---|
+| [webhl](https://github.com/x8BitRain/webhl), especially `src/hlviewerjs/{ReplayPlayer,SoundSystem}.ts`, `Parsers/`, `Graphics/` and `Replay/` | Local asset loading, demo-player organization, browser playback and audio reference | Its README documents sound-ordering and map-switch playback bugs. Audit the actual implementation and license before adaptation; it is not the fidelity oracle |
+| `C:\Users\naz\source\repos\xenoxide\crates\xenoxide-bsp30` and `xenoxide-map` | Validated BSP30 reading, world geometry, visibility and material preparation | Extract only needed interfaces; Lambda Slicer must build without this developer-specific checkout |
+| Xenoxide `crates/xenoxide-assets/src/studio.rs` and `studio/render.rs` | Studio-model data, textures, mesh and external dependency handling | Keep asset identity and model/mesh compatibility checks |
+| Xenoxide `crates/xenoxide-game/src/studio_pose.rs`, documented in `STUDIO_POSE.md` | Explicit-time skeletal pose evaluation, controllers, blends, transitions and gait inputs | Playback supplies the animation history and movement-derived inputs; the renderer must not advance them independently |
+| Xenoxide `crates/xenoxide-render/src/{viewer,studio,studio_pipeline,vulkan}.rs` | World and model GPU rendering | Current renderer owns window/swapchain/UI integration and uses a different egui version; current studio shading lacks some Half-Life lighting/material behavior |
+
+**Default design:** render into an offscreen GPU texture using `wgpu`, composed into the existing eframe/egui window through the pinned version's texture/callback API. Reuse Xenoxide's asset and pose logic first, then port applicable world/model rendering algorithms. Keep one GPU device and avoid per-frame GPU-to-CPU readback. Backend selection alone does not establish performance.
+
+**M8 gate:** compare a small wgpu integration with the work needed to expose Xenoxide's Vulkan renderer as an offscreen renderer. Use the same map, animated models, viewport sizes and measurement procedure. Record frame time, GPU/CPU memory, resize behavior and Windows/Linux integration cost in `docs/viewer-backend.md`. Retain wgpu unless evidence justifies switching. A Vulkan choice must specify egui version alignment, device/image ownership, synchronization and Linux window integration; do not embed an entire second application or add an unmeasured image-copy bridge.
+
+Record exact source commits, applicable licenses, provenance and imported patches in `docs/dependency-audit.md`. Extract shared code into pinned, independently buildable crates or maintain an explicitly recorded copy. Do not import Xenoxide's gameplay/networking simulation just to evaluate a pose, or make mutable sibling paths production dependencies. Load the user's installed assets; do not bundle game content.
+
+### 13.2 Crates and contracts
+
+Suggested new ownership, adjusted to the existing tree rather than rewriting working modules:
+
+```text
+lambda-slicer-assets/src/       search paths, archives, bsp, wad, studio, sprite, audio assets
+lambda-slicer-playback/src/     controller, clock, decode adapter, checkpoints, scene, effects
+lambda-slicer-render/src/       device integration, world, models, sprites, lighting, effects
+lambda-slicer-audio/src/        mixer, channels, spatialization, resampling, device output
+lambda-slicer-gui/src/viewer.rs viewport, controls and playback-status presentation
+docs/viewer-backend.md          measured backend decision and integration contract
+docs/viewer-profile.md          message/effect coverage, clocks and asset precedence
+docs/viewer-validation.md       fixture hashes, game comparisons and performance results
+```
+
+Playback depends on core and asset data; rendering and audio consume immutable presentation data, not GUI state. Keep core analysis/export usable without a GPU, audio device, installed game or viewer dependency. Extract shared reducers where useful, but preserve export-specific refusal rules: the viewer's ability to show a state does not certify that a sliced demo reproduces it.
+
+Define commands equivalent to `Load`, `Play`, `Pause`, `SeekTo`, `StepGroup`, `SetRate`, `SetLoop` and `SetCamera`. A playback position contains demo identity, session/segment and source time; repeated server times across map changes must not collide. Commands and responses carry a load generation and monotonically increasing seek revision.
+
+Publish `PresentedFrame` with that identity, resolved time, scene revision, camera, renderable entities, effects and HUD; publish matching audio-state changes with the same generation. A stale worker result must never move the playhead, display a frame, or start sounds after a later seek/load. Keep source time, network/server time, presentation time and audio sample time distinct, with explicit mappings.
+
+### 13.3 Asset resolution and scene construction
+
+Use a configurable Half-Life installation and mod root. Resolve recorded resource indices through each session's resource table. Implement and document tested mod/fallback directory, loose-file, PAK and WAD precedence; preserve custom AG models and sounds. Support embedded BSP textures, external WAD textures, studio texture companions/sequence groups, sprite palettes/frames and sky textures. Match Linux asset names deliberately without globally lowercasing filesystem paths; diagnose ambiguous case matches. Reject traversal outside approved asset roots.
+
+Validate lengths, indices, dimensions and decoded-memory budgets before allocating or uploading. Cache assets by content identity and conversion version; changing an asset or profile invalidates affected derived data. Missing or incompatible assets produce an actionable resource/path diagnostic and visibly incomplete playback, not an unnoticed substitute claimed as accurate.
+
+Build world meshes, lightmaps and visibility data once per map. Render moving brush submodels separately from the static world. Implement dynamic light styles/lights, animated and masked textures, translucent/additive/glow modes, sky and water behavior. Use BSP visibility plus frustum culling and measured batching.
+
+For studio models, handle skin/body groups, controllers, sequence/frame/framerate, gait, transitions, attachments, held weapons, viewmodels and material flags. Interpolate between recorded samples according to the validated client rules; do not interpolate through teleports, entity removal/reuse, deaths that reset state or map changes. Entity identity includes its lifecycle, not just an integer slot. Preserve recorder camera, view/FOV and viewmodel animation history. Use the installed model's sequence data, not assumed sequence numbers shared by every model.
+
+### 13.4 One clock and timeline behavior
+
+All controls that change the selected playback time use the controller: timeline background clicks, event/kill selection, time entry, next/previous event, frame stepping, rewind, fast-forward and clip preview. Timeline zoom/pan only changes the visible time range. Editing a clip boundary can preview that boundary while leaving the stored source interval independent of the current playhead.
+
+Clicking an event at **00:05:00** seeks directly to that recorded moment, retaining the prior paused/playing state. A separate “Play event” action seeks to configurable preroll and plays through postroll. Seeking reconstructs the skipped interval internally; the user never waits for five minutes of real-time playback. Discrete changes use a documented before/after-event ordering at identical timestamps so the selected event is not omitted or fired twice.
+
+Provide play/pause, source-time display, single recorded-group stepping, rate presets (initially 0.25×, 0.5×, 1×, 2× and 4×), continuous backward playback, and looping a selected clip. Distinguish a recorded group from a display refresh. Animation/effect simulation advances with playback time, not the number of rendered frames. Pausing freezes scene and audio progression. Use monotonic wall time and audio-device latency measurements to maintain A/V synchronization; UI work must not independently drive either clock.
+
+Recorder POV is the initial fidelity target. Free camera/follow-player views can be exposed with explicit recording-coverage limitations and a chosen audio listener. A POV demo cannot recover unseen entities or events it never received. Do not invent missing activity or promise that another player's full first-person view is available. Recreated visual randomness must be stable across seeks; original unrecorded random choices cannot be promised pixel-identical.
+
+### 13.5 Checkpoints, arbitrary seeking and rewind
+
+Start with a correct sequential playback implementation and use it as the reference. Then add versioned checkpoints indexed by source position and segment. Begin with checkpoints roughly every two seconds and at session boundaries; tune spacing against measured seek cost and memory, not a fixed performance claim.
+
+A checkpoint must contain enough state to continue the decoder and all presentation reducers, including:
+
+- Dynamic schemas, resource/user-message registrations, baselines, sequence/delta history and confidence flags.
+- Entity/client/weapon state and identities, previous interpolation samples, camera/viewmodel, animation transitions, gait accumulators and animation-event cursors.
+- Light styles, HUD values with expiry, decals, active particles/temp entities/beams and their simulation age, plus pending delayed events.
+- Active audio channels with sample identity, position, pitch/volume envelopes and loop state.
+- Effect RNG state or stable event-derived seeds, source cursor and clock mappings.
+
+A current entity snapshot is not a complete checkpoint. In particular, do not reconstruct playback by exporting a temporary slice: export bootstraps and their restrictions are different from restoring the viewer's full state.
+
+For a seek: cancel obsolete work; restore the closest compatible earlier checkpoint; replay every intervening message/group and advance active effects in chronological order; evaluate presentation at the destination; atomically replace visible and audible state. During this work suppress screen presentation and audio output, but still update effect, RNG and mixer state. Do not discard skipped events merely because they are not displayed. Long-lived effects must remain represented even if their creation precedes the checkpoint.
+
+Rewind restores earlier state and simulates forward into a bounded recent-frame cache. Do not integrate particles, physics or animations using a negative time step. Keep assets GPU-resident and upload only changes required by the chosen frame. During dragging, coalesce obsolete seeks and publish only the newest completed revision; release must resolve the exact requested time.
+
+Build checkpoints lazily for the selected demo, with background continuation and progress. A first jump into an unindexed region may require a longer decode; show seeking status and keep cancellation responsive. Store bounded, compressed disk caches keyed by full demo fingerprint, checkpoint schema, decoder/effect/profile versions and relevant asset hashes. Never reuse a checkpoint from another session, changed source or incompatible implementation.
+
+### 13.6 Effects and presentation fidelity
+
+Implement typed handlers for network events, standalone demo events, temp entities, weapon animations and supported client-private demo buffers. Recognizing a message length is not implementing its effect. Inventory actual supported AG and singleplayer behavior in `docs/viewer-profile.md`, with fixtures for each stateful handler.
+
+Cover gauss charging/firing/stopping and its beams; sustained Egon fire/stop; muzzle flashes; shell ejection; projectile models and trails; impacts, blood and decals; explosions, smoke and sprites; death/corpse/gib presentation; and HUD/camera effects. Preserve delayed dispatch times and event ordering. Feed the same stable identity to render and audio effects. Correlate local/network duplicates only when the profile proves they represent one dispatch.
+
+Track creation, update, expiry and explicit stop/removal for every persistent effect. Keep event-triggered and model-animation-triggered effects from firing twice during replay or pose reevaluation. Do not recreate all historical one-shot effects at the destination; advance their ages and retain only those still active. HUD notifications likewise retain their remaining lifetime instead of restarting an expired vote or countdown.
+
+Visual effect randomness uses deterministic per-event seeds or checkpointed state. Collision-dependent effects such as shells use the relevant static/moving collision geometry and a deterministic update policy. Avoid deriving particles and sounds from render FPS. Unknown active behavior is reported as incomplete/unsupported fidelity with context; the basic viewer can remain usable, but that fixture cannot pass the fidelity gate.
+
+### 13.7 Audio playback and seeking
+
+Sound is required, including weapon fire and charging, ongoing weapon loops, footsteps, impacts, ambient/static sounds and game speech. Handle recorded voice streams and sentence-based sounds only through explicitly supported codecs/resolvers; diagnose unsupported ones. Audit audio backend/decoder dependencies for Windows/Linux support and licenses, then pin the selected versions. Backend choice does not implement GoldSrc channel semantics.
+
+Use a software mixer with deterministic, inspectable state, separated from the real-time device callback. The callback consumes bounded preallocated buffers; it must not read files, decode demos, allocate unbounded memory or take locks held by asset-loading workers. Missing devices permit silent preview with a visible status. Device changes must not alter the selected demo time.
+
+Represent channels by validated entity/channel replacement rules and retain resource, source position, start time, playback cursor, loop points, pitch, gain, attenuation and envelopes. Implement start/stop/replace and volume/pitch changes for network sounds, demo sound records, ambient sounds and event-driven sounds. Integrate sample position over pitch/rate history, rather than multiplying total elapsed time by only the latest pitch. Handle spatial panning/attenuation relative to the chosen listener and tested room effects. Use a generation tag to discard queued samples from an old seek.
+
+Seeking into a gauss charge restores the live loop at its correct position and pitch. Seeking into the tail of a one-shot restores only its remaining portion; an already finished gunshot stays silent. Seeking backwards removes sounds/effects that had not happened yet. Pause preserves channel cursors and resume continues them. Default scrub and reverse playback are muted, while logical audio state continues to reconstruct; resuming forward playback starts from the destination state without a burst of skipped sounds. At non-unit forward rates, initially resample with the playback rate so pitch changes accordingly; pitch-preserving time stretch is optional and must be labeled if later added.
+
+At clip loop boundaries, restore the start state and flush queued future audio before replaying. A short output de-click ramp may prevent device discontinuities but must not conceal incorrect sound timing or restart loops from zero. Compare logical mixer events and offline mixed samples independently of live device latency.
+
+### 13.8 GUI integration and responsiveness
+
+Embed the viewport beside the existing timeline/event table and preserve all current clip/export workflows. Add asset-root selection, missing-resource details, playback coverage, mute/master volume, rate, camera mode and renderer diagnostics. Localize every new control/status in the existing locale system; preserve the timeline's time direction in RTL layouts.
+
+Playback decoding, checkpoint construction, asset conversion and audio decoding run outside the UI thread. Use bounded queues and immutable shared scene data. Renderer uploads follow the GPU owner's threading rules; do not spawn a separate device per demo. Reuse geometry/textures and skin model vertices on the GPU where measured to help. Size model/effect capacity for the scene, not a fixed limit of 32 total studio objects.
+
+Only the selected demo needs detailed playback state. Prioritize explicit seeks over background library scans, cap cache and GPU/audio memory, and evict unused assets/checkpoints. Resizing, changing demos, losing an audio device or encountering unsupported content must leave analysis/export usable.
+
+### 13.9 Milestones and acceptance evidence
+
+| Milestone | Required result and gate |
+|---|---|
+| M8 playback foundation | Document backend decision; establish asset resolution, one controller/clock and sequential scene/audio state; checkpoint restore and random-seek equivalence pass before optimized seeking |
+| M9 world and models | Embedded textured/lightmapped BSP, brush entities, animated studio models/attachments/viewmodel and sprites; compare recorder-view frames against the installed game |
+| M10 effects and audio | Implement the weapon/effect lifecycle and sound mixer matrix, including gauss/Egon, blood/death, delayed events and active sound restoration; record A/V comparisons |
+| M11 editing integration | Every time-selection path reaches the same viewer position; play/pause/rates, reverse, stepping, clip loops and cancellable scrubbing work with synchronized audio |
+| M12 fidelity and performance | Pass the fixture matrix, benchmark long demos and random seeks, document exact Windows evidence and Linux build/headless coverage; live Linux claims require an actual Linux test |
+
+Keep deterministic synthetic redistributable assets/streams for unit and headless tests, and use the external manifest for game assets and real recordings. Test both ordinary demos and independently exported slices.
+
+Required equivalence test: reach time T by sequential playback, direct seek, seek backward from later, repeated scrub and clip looping; compare entity/pose inputs, camera, effects, pending events, HUD expiry, RNG and logical audio channels. Compare selected GPU captures and offline audio output where deterministic. Test pauses, changes in playback speed, stale worker responses, entity/slot reuse, resource changes and session boundaries.
+
+For the killer/victim fixture, record a short controlled multiplayer sequence with all relevant actors visible, then compare original game playback and the viewer at shot, impact, death and post-death times. Include camera/viewmodel, muzzle flash, blood, sound timing and victim animation; repeat by direct seek into each moment. Add fixtures for a mid-gauss charge, sustained Egon, delayed event across a seek, reload, moving brush entity, transparent sprite, expiring HUD notification, ambient loop and singleplayer NPC death. Missing received data remains an explicit coverage limitation, not a fabricated visual.
+
+Initial performance targets on a recorded development-machine configuration: sustained 60 FPS at 1080p on representative AG scenes, p95 warm indexed seeks within 200 ms, visible input/cancel feedback within 100 ms, and steady-state measured A/V skew within 40 ms. These are acceptance targets to measure, not achieved claims. Report cold load/index time separately, plus p50/p95 frame/seek times, peak RAM/VRAM and audio underruns. Exercise the 415 MB fixture and dense scenes. If a target is missed, profile and record the cause rather than quietly reducing effect fidelity.
+
+### 13.10 Completion and implementation order
+
+Finish current M0–M7 work first. At the start of M8, inspect the current code and working tree, preserve ongoing edits, pin the reference revisions, and write the backend decision before integrating borrowed rendering code. Implement sequential state and deterministic tests before checkpoint optimization; add fidelity handlers alongside their fixtures; integrate all timeline actions only through the shared controller.
+
+This phase is complete when the user can watch and hear supported demos inside Lambda Slicer, select an event at 05:00 and reach that scene, rewind/fast-forward/jump repeatedly without stale models, missing active effects or stray audio, and preview selected clips without changing their originals. A successful in-app preview does not replace the existing in-game export tests. Release notes must distinguish certified profiles, missing assets, unrecorded activity and unsupported client effects.
