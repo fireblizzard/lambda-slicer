@@ -43,6 +43,8 @@ pub struct Launch {
     pub dates: bool,
     /// Export every clip of the demo shown at start
     pub export: bool,
+    /// Pseudo-localise every message, to find text that does not fit
+    pub pseudo: bool,
 }
 
 pub struct App {
@@ -77,7 +79,8 @@ fn is_demo(path: &Path) -> bool {
 
 impl App {
     pub fn new(settings: Settings, settings_path: Option<PathBuf>, launch: Launch) -> Self {
-        let catalog = Catalog::new(settings.locale());
+        let mut catalog = Catalog::new(settings.locale());
+        catalog.pseudo = launch.pseudo;
         let cache_path = launch
             .cache
             .clone()
@@ -161,7 +164,9 @@ impl App {
 
     fn set_locale(&mut self, locale: Option<Locale>) {
         self.settings.locale = locale;
+        let pseudo = self.catalog.pseudo;
         self.catalog = Catalog::new(self.settings.locale());
+        self.catalog.pseudo = pseudo;
         self.save_settings();
     }
 

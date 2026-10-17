@@ -4,7 +4,8 @@
 line are opened for that session, `--locale TAG` picks a language for the run, `--cache FILE`
 uses another library cache and `--clips FILE` another clips file. `--demo FILE --screenshot OUT.png`
 opens a cached demo, waits for its analysis and saves the window, for checking a screen in any
-language.
+language, and `--pseudo` lengthens every message to find text that does not fit
+([languages](i18n.md)).
 
 ![Library and demo view](images/demo.png)
 

@@ -29,6 +29,10 @@ Toolchain: Rust **1.98.1** (`rust-toolchain.toml`), edition 2024. `Cargo.lock` i
 | chrono (`clock`) | 0.4.45 | MIT OR Apache-2.0 | recording dates in local time |
 | fluent-syntax, intl_pluralrules, fluent-langneg, tempfile (dev) | 0.12.0, 7.0.2, 0.13.1, 3.27.0 | Apache-2.0 OR MIT | catalog and settings tests |
 
+`intl_pluralrules` 7.0.2, which `fluent-bundle` uses for plurals, is replaced through
+`[patch.crates-io]` by a copy in `vendor/intl_pluralrules` with the Lithuanian and Arabic cardinal
+rules corrected to CLDR ([vendor](../vendor/README.md)). Same license, same version number.
+
 Not yet added (later milestones): `tracing`. Discovery uses
 `std::fs` instead of `walkdir`, to control which links are followed.
 

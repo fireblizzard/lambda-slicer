@@ -1,7 +1,7 @@
 //! Lambda Slicer desktop app
 //!
 //! `lambda-slicer-gui [PATH...] [--locale TAG] [--settings] [--timeline]
-//! [--dates] [--size WxH] [--cache FILE] [--clips FILE]
+//! [--dates] [--pseudo] [--size WxH] [--cache FILE] [--clips FILE]
 //! [--demo FILE [--window N] [--export DIR]]
 //! [--screenshot OUT.png [--frames N]]`
 //!
@@ -10,8 +10,9 @@
 //! the clips file for this run. `--demo` shows a cached demo at start, on
 //! its `N`th golden minute candidate with `--window`, and `--export`
 //! exports its clips into `DIR`. `--settings` opens the settings window,
-//! `--timeline` shows demo timelines, `--dates` turns on both date filters
-//! and `--size` sets the window size. `--screenshot` saves the window to a
+//! `--timeline` shows demo timelines, `--dates` turns on both date filters,
+//! `--pseudo` lengthens and accents every message to find text that does
+//! not fit, and `--size` sets the window size. `--screenshot` saves the window to a
 //! PNG `N` frames after any demo has loaded and its exports finished, and
 //! exits, for checking how a language renders
 
@@ -50,6 +51,7 @@ fn main() -> eframe::Result {
     let mut size = [1280., 800.];
     let mut dates = false;
     let mut export = None;
+    let mut pseudo = false;
     while let Some(a) = args.next() {
         match a.as_str() {
             "--locale" => locale = args.next().as_deref().and_then(Locale::from_tag),
@@ -74,6 +76,7 @@ fn main() -> eframe::Result {
                 }
             }
             "--dates" => dates = true,
+            "--pseudo" => pseudo = true,
             "--export" => export = args.next().map(PathBuf::from),
             flag if flag.starts_with("--") => eprintln!("ignoring argument {flag}"),
             path => open.push(PathBuf::from(path)),
@@ -128,6 +131,7 @@ fn main() -> eframe::Result {
                     window,
                     dates,
                     export: export.is_some(),
+                    pseudo,
                 },
             );
             app.start_scan(&cc.egui_ctx);

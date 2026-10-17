@@ -352,6 +352,69 @@ pub struct Catalog {
     pub locale: Locale,
     bundle: FluentBundle<FluentResource>,
     english: FluentBundle<FluentResource>,
+    /// Every message lengthened and accented, to find text that does not
+    /// fit ([`pseudo`])
+    pub pseudo: bool,
+}
+
+/// A pseudo-localised message (implementation plan §8.1). Letters get
+/// accents, the text grows by two fifths like German or Finnish often does,
+/// and brackets mark both ends, so a cut-off message lacks its `]`.
+/// Arguments, which Fluent isolates between U+2068 and U+2069, stay as they
+/// are
+pub fn pseudo(text: &str) -> String {
+    let accent = |c: char| match c {
+        'a' => 'à',
+        'c' => 'ç',
+        'd' => 'ð',
+        'e' => 'é',
+        'g' => 'ĝ',
+        'h' => 'ĥ',
+        'i' => 'î',
+        'j' => 'ĵ',
+        'k' => 'ķ',
+        'l' => 'ļ',
+        'n' => 'ñ',
+        'o' => 'ö',
+        'p' => 'þ',
+        'r' => 'ŕ',
+        's' => 'š',
+        't' => 'ţ',
+        'u' => 'û',
+        'w' => 'ŵ',
+        'y' => 'ý',
+        'z' => 'ž',
+        'A' => 'Å',
+        'C' => 'Ç',
+        'E' => 'É',
+        'I' => 'Î',
+        'N' => 'Ñ',
+        'O' => 'Ö',
+        'S' => 'Š',
+        'U' => 'Û',
+        'Y' => 'Ý',
+        'Z' => 'Ž',
+        c => c,
+    };
+    let mut out = String::from("[");
+    let mut depth = 0;
+    let mut letters = 0;
+    for c in text.chars() {
+        match c {
+            '\u{2068}' => depth += 1,
+            '\u{2069}' => depth -= 1,
+            c if depth == 0 => {
+                letters += usize::from(c.is_alphabetic());
+                out.push(accent(c));
+                continue;
+            }
+            _ => {}
+        }
+        out.push(c);
+    }
+    out.extend(std::iter::repeat_n('~', (letters * 2).div_ceil(5)));
+    out.push(']');
+    out
 }
 
 impl Catalog {
@@ -360,10 +423,12 @@ impl Catalog {
             locale,
             bundle: bundle(locale),
             english: bundle(Locale::En),
+            pseudo: false,
         }
     }
 
     fn format(
+        &self,
         bundle: &FluentBundle<FluentResource>,
         id: &str,
         args: Option<&FluentArgs>,
@@ -371,15 +436,21 @@ impl Catalog {
         let pattern = bundle.get_message(id)?.value()?;
         let mut errors = Vec::new();
         let text = bundle.format_pattern(pattern, args, &mut errors);
-        errors.is_empty().then(|| text.into_owned())
+        errors.is_empty().then(|| {
+            if self.pseudo {
+                pseudo(&text)
+            } else {
+                text.into_owned()
+            }
+        })
     }
 
     /// The message `id` with `args`, from this locale or else English. An id
     /// that English lacks is a bug, shown as the id itself
     pub fn text_with(&self, id: &str, args: &[(&str, FluentValue<'static>)]) -> String {
         let args = (!args.is_empty()).then(|| fluent_args(args));
-        Self::format(&self.bundle, id, args.as_ref())
-            .or_else(|| Self::format(&self.english, id, args.as_ref()))
+        self.format(&self.bundle, id, args.as_ref())
+            .or_else(|| self.format(&self.english, id, args.as_ref()))
             .unwrap_or_else(|| id.to_string())
     }
 
@@ -390,8 +461,8 @@ impl Catalog {
     /// The message `id`, or `fallback` when no catalog has it, for ids built
     /// from data such as a weapon mode
     pub fn text_or(&self, id: &str, fallback: &str) -> String {
-        Self::format(&self.bundle, id, None)
-            .or_else(|| Self::format(&self.english, id, None))
+        self.format(&self.bundle, id, None)
+            .or_else(|| self.format(&self.english, id, None))
             .unwrap_or_else(|| fallback.to_string())
     }
 
@@ -407,8 +478,8 @@ impl Catalog {
             };
             args.set(*name, value);
         }
-        Self::format(&self.bundle, m.code, Some(&args))
-            .or_else(|| Self::format(&self.english, m.code, Some(&args)))
+        self.format(&self.bundle, m.code, Some(&args))
+            .or_else(|| self.format(&self.english, m.code, Some(&args)))
             .unwrap_or_else(|| m.text.clone())
     }
 
@@ -429,8 +500,8 @@ impl Catalog {
                 args.set(name.clone(), value);
             }
         }
-        Self::format(&self.bundle, &m.code, Some(&args))
-            .or_else(|| Self::format(&self.english, &m.code, Some(&args)))
+        self.format(&self.bundle, &m.code, Some(&args))
+            .or_else(|| self.format(&self.english, &m.code, Some(&args)))
             .unwrap_or_else(|| m.text.clone())
     }
 

@@ -12,8 +12,8 @@ them. The full design is in [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md).
 | M2 network state decoder | decodes the whole corpus; delta bases are proven or flagged as inferred ([protocol profile](docs/protocol-profile-5-48.md)) |
 | M3 arbitrary-start slicing | done; S1 restarts passed in game ([engine-validation](docs/engine-validation.md)) |
 | M4 weapon analysis | done: actions, actors, kills, highlights ([analysis profile](docs/analysis-profile.md)) |
-| M5 library and cache | scan and query over a SQLite cache ([library](docs/library.md)) |
-| M6 desktop app | in progress: library, demo timeline and event table, fourteen languages ([app](docs/gui.md), [languages](docs/i18n.md), [right-to-left text](docs/gui-text.md)) |
+| M5 library and cache | done: scan and query over a SQLite cache ([library](docs/library.md)) |
+| M6 desktop app | done: library, demo timeline and event table, clips, no-clobber export, fourteen languages ([app](docs/gui.md), [languages](docs/i18n.md), [right-to-left text](docs/gui-text.md)); gaps in [deferred](docs/deferred.md) |
 | M7 release | not started |
 
 The GUI so far is the library: `cargo run --release -p lambda-slicer-gui`, or add `-- --locale ar` to try a language and demos or folders to open them for one session.

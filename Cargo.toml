@@ -1,6 +1,7 @@
 [workspace]
 resolver = "3"
 members = ["crates/lambda-slicer-core", "crates/lambda-slicer-cli", "crates/lambda-slicer-gui"]
+exclude = ["vendor"]
 
 [workspace.package]
 version = "0.1.0"
@@ -10,3 +11,7 @@ publish = false
 
 [workspace.dependencies]
 lambda-slicer-core = { path = "crates/lambda-slicer-core" }
+
+# Lithuanian and Arabic plural rules corrected, see vendor/README.md
+[patch.crates-io]
+intl_pluralrules = { path = "vendor/intl_pluralrules" }

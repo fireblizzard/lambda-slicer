@@ -55,11 +55,20 @@ Not review findings, but known gaps of the same kind:
 - **A range crossing packets the client dropped as too old.** The client's state is frozen during
   such a run, and the export would have to reproduce that.
 
-## Documentation
+## Desktop app (M6)
 
-### README status table is stale
+Parts of the plan's GUI section (§8) that the M6 gate does not require and that are left for
+later.
 
-`README.md` still lists M3 as "not started", while S1 restarts pass in the game
-(`docs/engine-validation.md`).
-
-**Fix:** update the status table when M3's remaining review findings are fixed.
+- **Settings.** No cache size policy and no diagnostic verbosity. Instead of a game or mod
+  location, the export folder setting and the nearest `liblist.gam` above it decide the
+  `playdemo` command.
+- **Export.** A clip under way cannot be stopped, only the clips after it. The export pane shows
+  refusals, progress, the validation count and the final path, but no separate protocol profile
+  line, since a demo whose profile is unsupported does not analyse.
+- **Clips** can only be made in a recording's first session, as restarts are (above).
+- **Library.** Files from a folder removed in Settings stay listed until the cache is cleared.
+- **Arabic text fields** show their text in logical order while it is edited
+  ([gui-text](gui-text.md)).
+- **Linux fonts.** CJK and Arabic glyphs come from the system fonts eframe finds on Windows.
+  Linux font discovery is checked in M7.

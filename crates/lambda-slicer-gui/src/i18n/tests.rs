@@ -204,6 +204,100 @@ fn plural_forms_follow_each_language() {
     assert_eq!(say(Locale::PtBr, 0), "0 abate");
 }
 
+/// The counts the plan names for the languages with several plural forms
+#[test]
+fn plurals_are_right_for_the_plan_counts() {
+    let say = |l: Locale, n: i64| {
+        plain(Catalog::new(l).text_with("details-kills", &[("count", n.into())]))
+    };
+    let counts = [0, 1, 2, 5, 11, 21, 22, 25];
+    let expected: [(Locale, [&str; 8]); 5] = [
+        (
+            Locale::Ru,
+            [
+                "0 убийств",
+                "1 убийство",
+                "2 убийства",
+                "5 убийств",
+                "11 убийств",
+                "21 убийство",
+                "22 убийства",
+                "25 убийств",
+            ],
+        ),
+        (
+            Locale::Uk,
+            [
+                "0 вбивств",
+                "1 вбивство",
+                "2 вбивства",
+                "5 вбивств",
+                "11 вбивств",
+                "21 вбивство",
+                "22 вбивства",
+                "25 вбивств",
+            ],
+        ),
+        (
+            Locale::Pl,
+            [
+                "0 zabójstw",
+                "1 zabójstwo",
+                "2 zabójstwa",
+                "5 zabójstw",
+                "11 zabójstw",
+                "21 zabójstw",
+                "22 zabójstwa",
+                "25 zabójstw",
+            ],
+        ),
+        (
+            Locale::Lt,
+            [
+                "0 nužudymų",
+                "1 nužudymas",
+                "2 nužudymai",
+                "5 nužudymai",
+                "11 nužudymų",
+                "21 nužudymas",
+                "22 nužudymai",
+                "25 nužudymai",
+            ],
+        ),
+        (
+            Locale::Ar,
+            [
+                "لا توجد عمليات قتل",
+                "عملية قتل واحدة",
+                "عمليتا قتل",
+                "5 عمليات قتل",
+                "11 عملية قتل",
+                "21 عملية قتل",
+                "22 عملية قتل",
+                "25 عملية قتل",
+            ],
+        ),
+    ];
+    for (l, words) in expected {
+        for (n, want) in counts.into_iter().zip(words) {
+            assert_eq!(say(l, n), want, "{} {n}", l.tag());
+        }
+    }
+
+    // Rules on the last digits keep working past 100, which the published
+    // plural rules got wrong for both (vendor/README.md)
+    for (l, n, want) in [
+        (Locale::Lt, 111, "111 nužudymų"),
+        (Locale::Lt, 122, "122 nužudymai"),
+        (Locale::Lt, 101, "101 nužudymas"),
+        (Locale::Ar, 103, "103 عمليات قتل"),
+        (Locale::Ar, 111, "111 عملية قتل"),
+        (Locale::Ar, 100, "100 عملية قتل"),
+    ] {
+        assert_eq!(say(l, n), want, "{} {n}", l.tag());
+    }
+}
+
 #[test]
 fn numbers_use_each_locale_separators() {
     let c = |l| Catalog::new(l).number(1234567.5, 2);
@@ -288,4 +382,14 @@ fn english_has_every_message_the_gui_names() {
     for id in named {
         assert!(english.contains_key(&id), "en.ftl lacks {id}");
     }
+}
+
+#[test]
+fn pseudo_messages_grow_and_keep_their_arguments() {
+    let mut c = Catalog::new(Locale::En);
+    c.pseudo = true;
+    assert_eq!(c.text("demo-close"), "[Çļöšé~~]");
+    let t = plain(c.text_with("demo-loading", &[("name", "stalkx.dem".into())]));
+    assert!(t.starts_with("[Åñàļýšîñĝ stalkx.dem…"), "{t}");
+    assert!(t.ends_with("~~~~]"), "{t}");
 }

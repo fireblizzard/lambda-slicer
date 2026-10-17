@@ -1719,7 +1719,9 @@ impl DemoView {
                 .fold(120f32, f32::max);
             names + numbers + 16. * 4. + 8.
         };
-        let stacked = side_width * sides.len() as f32 > ui.available_width();
+        // The scroll bar takes its share of the width too
+        let room = ui.available_width() - ui.spacing().scroll.allocated_width();
+        let stacked = side_width * sides.len() as f32 > room;
 
         // The longest column, every side in turn, or every player in a
         // ranked list
@@ -1739,6 +1741,7 @@ impl DemoView {
         let height = (ui.text_style_height(&egui::TextStyle::Body) + 4.) * lines;
         egui::ScrollArea::vertical()
             .id_salt("scores")
+            .auto_shrink([false, true])
             .max_height(height.min(200.))
             .show(ui, |ui| {
                 if sides.is_empty() {

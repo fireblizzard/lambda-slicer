@@ -1924,8 +1924,6 @@ dependencies = [
 [[package]]
 name = "intl_pluralrules"
 version = "7.0.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "078ea7b7c29a2b4df841a7f6ac8775ff6074020c6776d48491ce2268e068f972"
 dependencies = [
  "unic-langid",
 ]
