@@ -278,6 +278,11 @@ pub enum Look {
     Plain,
     /// The theme's strong text colour, for headings
     Strong,
+    /// The theme's weak text colour, for hints
+    Weak,
+    /// A colour of its own. Laid-out right-to-left text keeps its colours,
+    /// so colour is chosen here, never by recolouring the widget text
+    Color(Color32),
 }
 
 /// Text for any egui widget. Text with right-to-left letters, or any text in
@@ -294,6 +299,8 @@ pub fn widget_text(
         return match look {
             Look::Plain => WidgetText::from(text),
             Look::Strong => WidgetText::from(RichText::new(text).strong()),
+            Look::Weak => WidgetText::from(RichText::new(text).weak()),
+            Look::Color(c) => WidgetText::from(RichText::new(text).color(c)),
         };
     }
     let style = ctx.global_style();
@@ -301,6 +308,8 @@ pub fn widget_text(
     let color = match look {
         Look::Plain => Color32::PLACEHOLDER,
         Look::Strong => style.visuals.strong_text_color(),
+        Look::Weak => style.visuals.weak_text_color(),
+        Look::Color(c) => c,
     };
     let lines = match wrap {
         Some(width) => {

@@ -22,7 +22,14 @@ pub struct Settings {
     pub hidden_columns: Vec<String>,
     /// Whether a demo shows its timeline, hidden until asked for
     pub show_timeline: bool,
+    /// Seconds a new clip keeps before and after the event it is made
+    /// around
+    pub preroll: f32,
+    pub postroll: f32,
 }
+
+/// The longest padding a clip takes around an event, in seconds
+pub const MAX_PADDING: f32 = 120.;
 
 impl Default for Settings {
     fn default() -> Self {
@@ -33,8 +40,21 @@ impl Default for Settings {
             cache: None,
             hidden_columns: vec!["gauss".into()],
             show_timeline: false,
+            preroll: 5.,
+            postroll: 3.,
         }
     }
+}
+
+/// Write `bytes` to a temporary file beside `path`, then put it in place,
+/// so a crash never leaves half a file
+pub fn write_json(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    let temp = path.with_extension("json.tmp");
+    std::fs::write(&temp, bytes)?;
+    std::fs::rename(&temp, path)
 }
 
 /// `settings.json` in the platform's configuration directory
@@ -60,16 +80,20 @@ impl Settings {
     }
 
     pub fn save_to(&self, path: &std::path::Path) -> std::io::Result<()> {
-        if let Some(dir) = path.parent() {
-            std::fs::create_dir_all(dir)?;
-        }
-        let temp = path.with_extension("json.tmp");
-        std::fs::write(&temp, serde_json::to_vec_pretty(self)?)?;
-        std::fs::rename(&temp, path)
+        write_json(path, &serde_json::to_vec_pretty(self)?)
     }
 
     fn clamped(mut self) -> Self {
         self.workers = self.workers.clamp(1, 4);
+        let padding = |p: f32| {
+            if p.is_finite() {
+                p.clamp(0., MAX_PADDING)
+            } else {
+                0.
+            }
+        };
+        self.preroll = padding(self.preroll);
+        self.postroll = padding(self.postroll);
         self
     }
 
@@ -96,13 +120,20 @@ mod tests {
             cache: None,
             hidden_columns: Vec::new(),
             show_timeline: true,
+            preroll: 2.5,
+            postroll: 0.,
         };
         s.save_to(&path).unwrap();
         assert_eq!(Settings::load_from(&path), s);
 
-        std::fs::write(&path, b"{\"workers\": 9, \"locale\": \"zh-Hans\"}").unwrap();
+        std::fs::write(
+            &path,
+            b"{\"workers\": 9, \"locale\": \"zh-Hans\", \"preroll\": -4, \"postroll\": 1e9}",
+        )
+        .unwrap();
         let loaded = Settings::load_from(&path);
         assert_eq!((loaded.workers, loaded.locale), (4, Some(Locale::ZhHans)));
+        assert_eq!((loaded.preroll, loaded.postroll), (0., MAX_PADDING));
 
         std::fs::write(&path, b"not json").unwrap();
         assert_eq!(Settings::load_from(&path), Settings::default());

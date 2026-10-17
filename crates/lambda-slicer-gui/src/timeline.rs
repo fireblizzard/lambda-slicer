@@ -12,6 +12,7 @@ use lambda_slicer_core::analysis::accuracy::ShotOutcome;
 use lambda_slicer_core::analysis::context::{Coverage, KillCause, ScoreUpdate, TeamScoreUpdate};
 use lambda_slicer_core::analysis::weapons::{Action, Actor, IntervalEnd, Weapon};
 use lambda_slicer_core::message::Message;
+use lambda_slicer_core::slice::range::GroupIndex;
 use lambda_slicer_core::state::PlayerIdentity;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -116,6 +117,7 @@ pub struct Event {
 /// A stretch of play by action score, best first in the model
 #[derive(Clone, Debug, PartialEq)]
 pub struct Window {
+    pub segment: u32,
     pub start: f32,
     pub end: f32,
     pub score: f64,
@@ -141,6 +143,8 @@ pub struct Model {
     pub shots: Vec<ShotOutcome>,
     /// The recording player's slot and incarnation
     pub recorder: Option<(u8, u32)>,
+    /// Frame groups, for the range a clip's export would cut
+    pub groups: GroupIndex,
 }
 
 fn key_of(p: &PlayerIdentity) -> LaneKey {
@@ -369,6 +373,7 @@ impl Model {
                 .action_windows
                 .iter()
                 .map(|w| Window {
+                    segment: w.segment,
                     start: w.start,
                     end: w.end,
                     score: w.score,
@@ -379,6 +384,7 @@ impl Model {
             team_score_updates: r.team_score_updates.clone(),
             shots: r.shot_outcomes.clone(),
             recorder: r.recorder.as_ref().map(|p| (p.slot, p.incarnation)),
+            groups: r.groups.clone(),
         }
     }
 }

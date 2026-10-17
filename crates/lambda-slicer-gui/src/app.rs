@@ -10,12 +10,13 @@ use lambda_slicer_core::container::Limits;
 use lambda_slicer_core::library::cache::default_path;
 use lambda_slicer_core::library::scan::ScanOptions;
 
+use crate::clips::ClipStore;
 use crate::demo::DemoView;
 use crate::i18n::{Catalog, Locale};
 use crate::jobs::{Problem, ScanJob};
 use crate::layout;
-use crate::library::LibraryView;
-use crate::settings::Settings;
+use crate::library::{LibraryView, parse_number};
+use crate::settings::{MAX_PADDING, Settings};
 use crate::text::{self, Look};
 
 /// Save a screenshot after this many frames and close, for checking how a
@@ -31,6 +32,8 @@ pub struct Launch {
     pub screenshot: Option<Screenshot>,
     /// A cache used instead of the configured one, without saving it
     pub cache: Option<PathBuf>,
+    /// The clips file, saved to unless the settings are not
+    pub clips: Option<PathBuf>,
     /// Demos and folders opened for this session
     pub open: Vec<PathBuf>,
     /// A cached demo to show at start, and an action window to open it on
@@ -49,6 +52,8 @@ pub struct App {
     show_problems: bool,
     screenshot: Option<Screenshot>,
     cache_path: Option<PathBuf>,
+    clips: ClipStore,
+    clips_path: Option<PathBuf>,
     library: Option<LibraryView>,
     scan: Option<ScanJob>,
     demo: Option<DemoView>,
@@ -92,9 +97,17 @@ impl App {
             l.filters.from = Some(day);
             l.filters.to = Some(day);
         }
+        let clips = launch
+            .clips
+            .as_deref()
+            .map(ClipStore::load_from)
+            .unwrap_or_default();
+        let clips_path = settings_path.as_ref().and(launch.clips);
         Self {
             settings,
             settings_path,
+            clips,
+            clips_path,
             catalog,
             title: None,
             show_settings: launch.show_settings,
@@ -129,6 +142,16 @@ impl App {
             && let Err(e) = self.settings.save_to(p)
         {
             eprintln!("cannot save settings to {}: {e}", p.display());
+        }
+    }
+
+    /// Keep a demo's clips and write them out
+    fn save_clips(&mut self, demo: &Path, clips: Vec<crate::clips::Clip>) {
+        self.clips.set(demo, clips);
+        if let Some(p) = &self.clips_path
+            && let Err(e) = self.clips.save_to(p)
+        {
+            eprintln!("cannot save clips to {}: {e}", p.display());
         }
     }
 
@@ -469,6 +492,41 @@ impl App {
                     }
                     text::label(ui, &self.catalog.text("settings-workers-hint"), rtl);
 
+                    // How much a clip made around an event keeps on each side
+                    ui.add_space(8.);
+                    ui.label(self.strong(ui.ctx(), "settings-clip-padding"));
+                    let catalog = &self.catalog;
+                    let mut padding = [self.settings.preroll, self.settings.postroll];
+                    let mut changed = false;
+                    for (id, value) in ["settings-preroll", "settings-postroll"]
+                        .into_iter()
+                        .zip(&mut padding)
+                    {
+                        layout::row(ui, rtl, |ui| {
+                            let label = text::widget_text(
+                                ui.ctx(),
+                                &catalog.text(id),
+                                rtl,
+                                None,
+                                Look::Plain,
+                            );
+                            ui.label(label);
+                            changed |= ui
+                                .add(
+                                    egui::DragValue::new(value)
+                                        .range(0.0..=MAX_PADDING)
+                                        .speed(0.1)
+                                        .custom_formatter(|v, _| catalog.number(v, 1))
+                                        .custom_parser(parse_number),
+                                )
+                                .changed();
+                        });
+                    }
+                    if changed {
+                        [self.settings.preroll, self.settings.postroll] = padding;
+                        self.save_settings();
+                    }
+
                     ui.add_space(8.);
                     ui.label(self.strong(ui.ctx(), "settings-folders"));
                     if self.settings.folders.is_empty() {
@@ -588,6 +646,7 @@ impl eframe::App for App {
                 let mut d = DemoView::open(path.clone(), *duration, &ctx);
                 d.open_window = self.open_window.take();
                 d.show_timeline = self.settings.show_timeline;
+                d.clips = self.clips.get(path);
                 self.demo = Some(d);
             }
             (None, _) => self.demo = None,
@@ -621,9 +680,17 @@ impl eframe::App for App {
             let mut close = false;
             egui::CentralPanel::default().show(ui, |ui| {
                 if let Some(d) = &mut self.demo {
+                    d.padding = (self.settings.preroll, self.settings.postroll);
                     close = d.ui(ui, &self.catalog, rtl);
                 }
             });
+            if let Some(d) = &mut self.demo
+                && d.clips_changed
+            {
+                d.clips_changed = false;
+                let (path, clips) = (d.path.clone(), d.clips.clone());
+                self.save_clips(&path, clips);
+            }
             // The timeline choice carries over to the next demo and the next run
             if let Some(d) = &self.demo
                 && d.show_timeline != self.settings.show_timeline

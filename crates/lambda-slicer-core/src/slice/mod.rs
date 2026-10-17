@@ -6,6 +6,7 @@ pub mod controls;
 pub mod ongoing;
 pub mod output;
 pub mod persistent;
+pub mod range;
 pub mod restart;
 
 use std::path::PathBuf;
@@ -56,6 +57,10 @@ pub enum ExportError {
     ClientDroppedPackets(String),
     #[error("a new session starts at {0} inside the range")]
     CrossSegmentRange(String),
+    #[error("the start is in a later session than the LOADING entry describes")]
+    StartInLaterSession,
+    #[error("the start is at the first frame group, which an exact copy covers")]
+    StartAtFirstGroup,
     #[error("delta base {0} before the start is not in the recording")]
     MissingDeltaBase(u32),
     #[error("{0} before the start sets state a restart cannot carry over yet")]
@@ -85,6 +90,8 @@ impl Coded for ExportError {
             ExportError::UnprovenState(_) => "export-unproven-state",
             ExportError::ClientDroppedPackets(_) => "export-client-dropped-packets",
             ExportError::CrossSegmentRange(_) => "export-cross-segment",
+            ExportError::StartInLaterSession => "export-start-later-session",
+            ExportError::StartAtFirstGroup => "export-start-first-group",
             ExportError::MissingDeltaBase(_) => "export-missing-delta-base",
             ExportError::UnknownPersistentMessage(_) => "export-unknown-persistent-message",
             ExportError::ActiveEffect(_) => "export-active-effect",
@@ -118,7 +125,10 @@ impl Coded for ExportError {
             ExportError::MissingDeltaBase(sequence) => vec![("sequence", (*sequence).into())],
             ExportError::UnknownPersistentMessage(name) => vec![("name", name.clone().into())],
             ExportError::ActiveEffect(effect) => vec![("effect", effect.clone().into())],
-            ExportError::EmptyRange | ExportError::SourceFailedCrossCheck => Vec::new(),
+            ExportError::EmptyRange
+            | ExportError::SourceFailedCrossCheck
+            | ExportError::StartInLaterSession
+            | ExportError::StartAtFirstGroup => Vec::new(),
         }
     }
 }

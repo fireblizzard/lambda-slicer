@@ -105,7 +105,7 @@ fn date_fields(
 }
 
 /// A number typed with either a point or a comma before the decimals
-fn parse_number(text: &str) -> Option<f64> {
+pub fn parse_number(text: &str) -> Option<f64> {
     let cleaned: String = text
         .trim()
         .chars()

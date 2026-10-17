@@ -1,12 +1,12 @@
 //! Lambda Slicer desktop app
 //!
 //! `lambda-slicer-gui [PATH...] [--locale TAG] [--settings] [--timeline]
-//! [--dates] [--size WxH] [--cache FILE] [--demo FILE [--window N]]
-//! [--screenshot OUT.png [--frames N]]`
+//! [--dates] [--size WxH] [--cache FILE] [--clips FILE]
+//! [--demo FILE [--window N]] [--screenshot OUT.png [--frames N]]`
 //!
 //! Demos and folders given as `PATH` are opened for this session. `--locale`
-//! overrides the saved language and `--cache` the library cache for this
-//! run. `--demo` shows a cached demo at start, on its `N`th golden minute
+//! overrides the saved language, `--cache` the library cache and `--clips`
+//! the clips file for this run. `--demo` shows a cached demo at start, on its `N`th golden minute
 //! candidate with `--window`. `--settings` opens the settings window,
 //! `--timeline` shows demo timelines, `--dates` turns on both date filters
 //! and `--size` sets the window size. `--screenshot` saves the window to a
@@ -14,6 +14,7 @@
 //! language renders
 
 mod app;
+mod clips;
 mod demo;
 mod i18n;
 mod jobs;
@@ -39,6 +40,7 @@ fn main() -> eframe::Result {
     let mut screenshot = None;
     let mut frames = 5;
     let mut cache = None;
+    let mut clips = None;
     let mut open = Vec::new();
     let mut demo = None;
     let mut window = None;
@@ -52,6 +54,7 @@ fn main() -> eframe::Result {
             "--screenshot" => screenshot = args.next().map(PathBuf::from),
             "--frames" => frames = args.next().and_then(|n| n.parse().ok()).unwrap_or(frames),
             "--cache" => cache = args.next().map(PathBuf::from),
+            "--clips" => clips = args.next().map(PathBuf::from),
             "--demo" => demo = args.next().map(PathBuf::from),
             "--window" => {
                 window = args
@@ -78,6 +81,11 @@ fn main() -> eframe::Result {
         .map(Settings::load_from)
         .unwrap_or_default();
     let screenshot = screenshot.map(|path| Screenshot { path, frames });
+    let clips = clips.or_else(|| {
+        settings_path
+            .as_ref()
+            .map(|p| p.with_file_name("clips.json"))
+    });
     // A screenshot run must not change the saved settings
     let save_to = if screenshot.is_some() {
         None
@@ -106,6 +114,7 @@ fn main() -> eframe::Result {
                     show_settings,
                     screenshot,
                     cache,
+                    clips,
                     open,
                     demo,
                     window,

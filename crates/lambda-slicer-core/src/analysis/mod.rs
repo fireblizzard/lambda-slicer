@@ -19,6 +19,7 @@ use serde::Serialize;
 
 use crate::container::Limits;
 use crate::message::Message;
+use crate::slice::range::GroupIndex;
 use crate::state::{DecodeOptions, DecodeStatus, PlayerIdentity, decode_demo};
 use accuracy::{PlayerAccuracy, ShotOutcome};
 use context::{
@@ -101,6 +102,9 @@ pub struct AnalysisReport {
     /// The recording player's headshot kills. Other players' are often out
     /// of view and so incomplete
     pub recorder_headshots: Option<u32>,
+    /// The playback entry's frame groups, for snapping a clip's range
+    #[serde(skip)]
+    pub groups: GroupIndex,
 }
 
 fn summary_of(weapons: &mut Vec<WeaponSummary>, weapon: Weapon) -> &mut WeaponSummary {
@@ -282,5 +286,6 @@ pub fn analyze_demo_with(
         accuracy,
         recorder_accuracy,
         recorder_headshots,
+        groups: report.groups,
     }
 }

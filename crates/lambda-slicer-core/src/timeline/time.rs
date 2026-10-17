@@ -3,9 +3,9 @@
 use std::fmt;
 use std::str::FromStr;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct DemoTime(pub i64);
 
 impl DemoTime {

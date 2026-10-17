@@ -14,6 +14,7 @@ use crate::container::{DemoReader, FrameBody, Limits};
 use crate::message::{Coded, Message, io_message};
 use crate::protocol::messages::ParsedMessage;
 use crate::protocol::profile;
+use crate::slice::range::{GroupIndex, GroupStart};
 
 pub const DECODE_REPORT_SCHEMA: u32 = 1;
 
@@ -59,6 +60,9 @@ pub struct DecodeReport {
     pub players: Vec<PlayerInfo>,
     /// Joins, renames and departures, so earlier events keep their names
     pub name_history: Vec<NameChange>,
+    /// The playback entry's frame groups, for snapping an export's range
+    #[serde(skip)]
+    pub groups: GroupIndex,
     /// Playback time covered by network records, and the part of it the
     /// recording client spent as a spectator, either a spectator client
     /// (demo info `spectator`) or a player in observer mode (client data
@@ -124,6 +128,7 @@ pub fn decode_demo(
         delta_schemas: Vec::new(),
         players: Vec::new(),
         name_history: Vec::new(),
+        groups: GroupIndex::default(),
         playback_seconds: 0.,
         spectator_seconds: 0.,
     };
@@ -147,7 +152,12 @@ pub fn decode_demo(
     }
 
     report.status = DecodeStatus::Complete;
+    report.groups.directory_types = reader.directory.iter().map(|d| d.entry_type).collect();
+    let mut group_number: Option<i32> = None;
     'entries: for entry in 0..reader.directory.len() as u32 {
+        if entry == 1 {
+            report.groups.loading_segment = Some(decoder.segment);
+        }
         let frames = match reader.frames(entry) {
             Ok(f) => f,
             Err(e) => {
@@ -182,6 +192,21 @@ pub fn decode_demo(
                 time_bits: lf.frame.time_bits,
                 frame_number: lf.frame.frame_number,
             };
+            // Frame groups of the playback entry, up to its terminal record,
+            // as a restart counts them
+            if entry == 1 && report.groups.end.is_none() {
+                if matches!(lf.frame.body, FrameBody::NextSection) {
+                    report.groups.end = Some(lf.frame.time());
+                } else if group_number != Some(lf.frame.frame_number) {
+                    report.groups.groups.push(GroupStart {
+                        time: lf.frame.time(),
+                        segment: decoder.segment,
+                        demo_start: matches!(lf.frame.body, FrameBody::DemoStart),
+                    });
+                }
+                group_number = Some(lf.frame.frame_number);
+            }
+            let segment = decoder.segment;
             match &lf.frame.body {
                 FrameBody::Network(n) => {
                     if let Err(e) =
@@ -190,6 +215,10 @@ pub fn decode_demo(
                         report.error = Some(e.message());
                         report.status = DecodeStatus::Partial;
                         break 'entries;
+                    }
+                    if entry == 1 && decoder.segment != segment && report.groups.end.is_none() {
+                        let group = report.groups.groups.len().saturating_sub(1);
+                        report.groups.session_changes.push(group);
                     }
 
                     if entry > 0 {

@@ -1,0 +1,139 @@
+//! Clips marked in demos, kept between runs as JSON beside the settings
+//! (implementation plan §8)
+//!
+//! A clip is a named, requested range `[start, end)` in a demo's first
+//! session, the one an export can start in. The range an export really cuts
+//! snaps to the recording's frames and is worked out when shown, never
+//! stored. Clips are keyed by the demo's path as the library shows it
+
+use std::collections::BTreeMap;
+use std::path::Path;
+
+use lambda_slicer_core::timeline::time::DemoTime;
+use serde::{Deserialize, Serialize};
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Clip {
+    pub name: String,
+    pub start: DemoTime,
+    pub end: DemoTime,
+}
+
+impl Clip {
+    /// The requested length, zero when the end is not after the start
+    pub fn length(&self) -> DemoTime {
+        DemoTime::from_micros((self.end.micros() - self.start.micros()).max(0))
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ClipStore {
+    pub demos: BTreeMap<String, Vec<Clip>>,
+}
+
+fn key(demo: &Path) -> String {
+    demo.to_string_lossy().into_owned()
+}
+
+impl ClipStore {
+    /// The store at `path`, empty when it is missing or unreadable
+    pub fn load_from(path: &Path) -> Self {
+        std::fs::read(path)
+            .ok()
+            .and_then(|b| serde_json::from_slice(&b).ok())
+            .unwrap_or_default()
+    }
+
+    pub fn save_to(&self, path: &Path) -> std::io::Result<()> {
+        crate::settings::write_json(path, &serde_json::to_vec_pretty(self)?)
+    }
+
+    pub fn get(&self, demo: &Path) -> Vec<Clip> {
+        self.demos.get(&key(demo)).cloned().unwrap_or_default()
+    }
+
+    /// Replace a demo's clips, forgetting the demo when it has none
+    pub fn set(&mut self, demo: &Path, clips: Vec<Clip>) {
+        if clips.is_empty() {
+            self.demos.remove(&key(demo));
+        } else {
+            self.demos.insert(key(demo), clips);
+        }
+    }
+}
+
+/// The first of `name(1)`, `name(2)` and so on that no clip uses yet
+pub fn next_name(clips: &[Clip], name: impl Fn(i64) -> String) -> String {
+    (1..)
+        .map(name)
+        .find(|n| clips.iter().all(|c| &c.name != n))
+        .expect("an unused name")
+}
+
+/// A time typed as seconds, minutes and seconds or `HH:MM:SS.mmm`, with a
+/// point, a comma or the Arabic decimal separator before the fraction
+pub fn parse_time(text: &str) -> Option<DemoTime> {
+    let cleaned: String = text
+        .trim()
+        .chars()
+        .map(|c| if c == ',' || c == '\u{66b}' { '.' } else { c })
+        .collect();
+    cleaned.parse().ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn clip(name: &str, start: &str, end: &str) -> Clip {
+        Clip {
+            name: name.into(),
+            start: start.parse().unwrap(),
+            end: end.parse().unwrap(),
+        }
+    }
+
+    #[test]
+    fn clips_round_trip_per_demo() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("sub").join("clips.json");
+        assert_eq!(ClipStore::load_from(&path), ClipStore::default());
+
+        let demo = Path::new("F:/demos/a.dem");
+        let mut store = ClipStore::default();
+        store.set(demo, vec![clip("Clip 1", "1:36", "4:48")]);
+        store.save_to(&path).unwrap();
+        let loaded = ClipStore::load_from(&path);
+        assert_eq!(loaded.get(demo), store.get(demo));
+        assert_eq!(loaded.get(Path::new("F:/demos/b.dem")), Vec::new());
+
+        store.set(demo, Vec::new());
+        assert!(store.demos.is_empty());
+
+        std::fs::write(&path, b"not json").unwrap();
+        assert_eq!(ClipStore::load_from(&path), ClipStore::default());
+    }
+
+    #[test]
+    fn names_and_lengths() {
+        let clips = [clip("Clip 1", "0", "1"), clip("Clip 3", "0", "1")];
+        assert_eq!(next_name(&clips, |n| format!("Clip {n}")), "Clip 2");
+        assert_eq!(
+            clip("x", "1:36", "4:48").length().to_string(),
+            "00:03:12.000"
+        );
+        assert_eq!(clip("x", "10", "5").length(), DemoTime::ZERO);
+    }
+
+    #[test]
+    fn times_take_any_decimal_separator() {
+        let t = |s: &str| parse_time(s).map(|t| t.to_string());
+        assert_eq!(t("96").as_deref(), Some("00:01:36.000"));
+        assert_eq!(t(" 1:36 ").as_deref(), Some("00:01:36.000"));
+        assert_eq!(t("00:01:36,250").as_deref(), Some("00:01:36.250"));
+        assert_eq!(t("96\u{66b}5").as_deref(), Some("00:01:36.500"));
+        assert_eq!(t("1:60"), None);
+        assert_eq!(t(""), None);
+    }
+}

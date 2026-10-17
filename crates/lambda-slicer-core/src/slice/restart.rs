@@ -254,18 +254,14 @@ fn plan(
 
         if new_group && kept.is_none() && t >= start && !matches!(f.body, FrameBody::DemoStart) {
             if d.segment != loading_session {
-                return Err(ExportError::Unsupported(
-                    "the start is in a later session than the LOADING entry describes".into(),
-                ));
+                return Err(ExportError::StartInLaterSession);
             }
             if let Some(b) = persistent.blocker.take() {
                 return Err(ExportError::UnknownPersistentMessage(b));
             }
             let persistent_kept = persistent.split(f.time());
             let Some((_, previous_time)) = previous else {
-                return Err(ExportError::Unsupported(
-                    "the start is at the first frame group, which an exact copy covers".into(),
-                ));
+                return Err(ExportError::StartAtFirstGroup);
             };
 
             // Bootstrap candidates are the stored frames just before the start

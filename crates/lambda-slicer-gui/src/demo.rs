@@ -1,10 +1,11 @@
-//! One demo's view, a timeline of lanes per player and its event table
-//! (implementation plan §8)
+//! One demo's view, a timeline of lanes per player, its clips and its event
+//! table (implementation plan §8)
 //!
 //! Selecting a demo analyses it again on a thread of its own, since weapon
 //! occurrences are not kept in the cache. Only the compact timeline model
 //! crosses back to the window. Choosing another demo cancels the analysis
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -17,9 +18,12 @@ use fluent_bundle::FluentValue;
 use lambda_slicer_core::analysis::analyze_demo_with;
 use lambda_slicer_core::analysis::weapons::{Action, Weapon};
 use lambda_slicer_core::container::Limits;
+use lambda_slicer_core::message::{Coded, Message};
+use lambda_slicer_core::slice::range::Snapped;
 use lambda_slicer_core::state::DecodeStatus;
 use lambda_slicer_core::timeline::time::DemoTime;
 
+use crate::clips::{Clip, next_name, parse_time};
 use crate::i18n::Catalog;
 use crate::layout;
 use crate::library::WEAPONS;
@@ -58,6 +62,18 @@ const KILL_COLOR: Color32 = Color32::from_rgb(240, 70, 70);
 
 /// The tint of a chosen action window, on the timeline and its table rows
 const WINDOW_TINT: Color32 = Color32::from_rgba_premultiplied(40, 32, 10, 40);
+
+/// Clips on the timeline, the chosen one stronger
+const CLIP_TINT: Color32 = Color32::from_rgba_premultiplied(14, 27, 40, 40);
+const CLIP_CHOSEN_TINT: Color32 = Color32::from_rgba_premultiplied(25, 47, 70, 70);
+const CLIP_EDGE: Color32 = Color32::from_rgb(140, 220, 255);
+
+/// A clip's start or end
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Edge {
+    Start,
+    End,
+}
 
 enum Loaded {
     Model(Arc<Model>),
@@ -169,6 +185,18 @@ pub struct DemoView {
     pub open_window: Option<usize>,
     /// The timeline is hidden until asked for, as it takes some reading
     pub show_timeline: bool,
+    /// This demo's clips. The app saves them when `clips_changed` is set
+    pub clips: Vec<Clip>,
+    pub clips_changed: bool,
+    chosen_clip: Option<usize>,
+    /// A clip's start or end while it is being typed
+    typing: Option<(usize, Edge, String)>,
+    /// The clip edge being dragged on the timeline
+    dragging: Option<(usize, Edge)>,
+    /// Seconds a new clip keeps before and after its event
+    pub padding: (f32, f32),
+    /// What an export of each requested range would cut, worked out once
+    snapped: HashMap<(DemoTime, DemoTime), Result<Snapped, Message>>,
 }
 
 impl DemoView {
@@ -188,6 +216,13 @@ impl DemoView {
             window: None,
             open_window: None,
             show_timeline: false,
+            clips: Vec::new(),
+            clips_changed: false,
+            chosen_clip: None,
+            typing: None,
+            dragging: None,
+            padding: (0., 0.),
+            snapped: HashMap::new(),
         }
     }
 
@@ -260,6 +295,64 @@ impl DemoView {
                 self.view = (t - half, t + half);
             }
         }
+    }
+
+    /// The range clipping the selected event would take, when the event is
+    /// in the session an export can start in
+    fn proposal(&self) -> Option<(f32, f32)> {
+        let m = self.model.as_ref()?;
+        let e = m.events.get(self.selected?)?;
+        (Some(e.segment) == m.groups.loading_segment)
+            .then(|| self.clamped(e.time - self.padding.0, e.time + self.padding.1))
+    }
+
+    /// A range kept within the recording
+    fn clamped(&self, from: f32, to: f32) -> (f32, f32) {
+        let last = self
+            .model
+            .as_ref()
+            .map_or(f32::INFINITY, |m| m.groups.end.unwrap_or(m.end));
+        let from = from.clamp(0., last);
+        (from, to.clamp(from, last))
+    }
+
+    /// Add a clip, named after the next free number, and choose it
+    fn add_clip(&mut self, catalog: &Catalog, (from, to): (f32, f32)) {
+        let (Some(start), Some(end)) = (DemoTime::from_f32(from), DemoTime::from_f32(to)) else {
+            return;
+        };
+        let name = next_name(&self.clips, |n| {
+            catalog.text_with("clip-default-name", &[("number", n.into())])
+        });
+        self.clips.push(Clip { name, start, end });
+        self.chosen_clip = Some(self.clips.len() - 1);
+        self.clips_changed = true;
+    }
+
+    /// What an export of a clip would cut, or why it would refuse
+    fn snap(&mut self, clip: &Clip) -> Result<Snapped, Message> {
+        let Some(m) = &self.model else {
+            return Err(Message::new("export-empty-range", String::new()));
+        };
+        self.snapped
+            .entry((clip.start, clip.end))
+            .or_insert_with(|| {
+                m.groups
+                    .snap(clip.start, Some(clip.end))
+                    .map_err(|e| e.message())
+            })
+            .clone()
+    }
+
+    /// Bring a clip into view with a little room on both sides
+    fn show_clip(&mut self, i: usize) {
+        let Some(c) = self.clips.get(i) else {
+            return;
+        };
+        let (s, e) = (c.start.secs_f64() as f32, c.end.secs_f64() as f32);
+        let pad = ((e - s) * 0.1).max(2.);
+        self.view = (s - pad, e + pad);
+        self.chosen_clip = Some(i);
     }
 
     fn controls(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool) {
@@ -446,6 +539,51 @@ impl DemoView {
         let (mut a, mut b) = self.view;
         let span = (b - a).max(MIN_SPAN);
         let per_px = span / plot.width().max(1.);
+
+        // Dragging a clip's edge moves the edge instead of the view
+        let at_pointer = |p: Pos2| a + (p.x - plot.min.x) * per_px;
+        let edge_at = |p: Pos2, clips: &[Clip]| -> Option<(usize, Edge)> {
+            if !plot.contains(p) {
+                return None;
+            }
+            let t = at_pointer(p);
+            clips
+                .iter()
+                .enumerate()
+                .flat_map(|(i, c)| [(i, Edge::Start, c.start), (i, Edge::End, c.end)])
+                .map(|(i, edge, time)| (i, edge, ((time.secs_f64() as f32 - t) / per_px).abs()))
+                .filter(|(.., px)| *px <= HIT_PIXELS)
+                .min_by(|x, y| x.2.total_cmp(&y.2))
+                .map(|(i, edge, _)| (i, edge))
+        };
+        let pointer = ui.input(|i| i.pointer.hover_pos());
+        if response.drag_started() {
+            let origin = ui.input(|i| i.pointer.press_origin());
+            self.dragging = origin.and_then(|p| edge_at(p, &self.clips));
+            if let Some((i, _)) = self.dragging {
+                self.chosen_clip = Some(i);
+                self.typing = None;
+            }
+        }
+        if self.dragging.is_some() || pointer.and_then(|p| edge_at(p, &self.clips)).is_some() {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
+        }
+        if let Some((i, edge)) = self.dragging
+            && response.dragged()
+            && let Some(p) = pointer
+            && let Some(c) = self.clips.get_mut(i)
+        {
+            // Whole milliseconds, as the fields show them
+            let ms = (f64::from(at_pointer(p).max(0.)) * 1000.).round() as i64;
+            let t = DemoTime::from_micros(ms * 1000);
+            match edge {
+                Edge::Start => c.start = t.min(c.end),
+                Edge::End => c.end = t.max(c.start),
+            }
+        }
+        if response.drag_stopped() && self.dragging.take().is_some() {
+            self.clips_changed = true;
+        }
         if response.hovered() {
             let scroll = ui.input(|i| i.smooth_scroll_delta.y + i.smooth_scroll_delta.x);
             if scroll != 0. {
@@ -459,7 +597,7 @@ impl DemoView {
                 b = a + new_span;
             }
         }
-        if response.dragged() {
+        if response.dragged() && self.dragging.is_none() {
             let dx = response.drag_delta().x * per_px;
             a -= dx;
             b -= dx;
@@ -483,6 +621,54 @@ impl DemoView {
             );
             if shade.width() > 0. {
                 painter.rect_filled(shade, 0., WINDOW_TINT);
+            }
+        }
+
+        // Clips as bands with their edges and names, and the range clipping
+        // the selected event would take as dashed edges
+        for (i, c) in self.clips.iter().enumerate() {
+            let (s, e) = (c.start.secs_f64() as f32, c.end.secs_f64() as f32);
+            if e < a || s > b {
+                continue;
+            }
+            let chosen = self.chosen_clip == Some(i);
+            let band = Rect::from_min_max(
+                Pos2::new(x(s).max(plot.min.x), plot.min.y),
+                Pos2::new(x(e).min(plot.max.x), plot.max.y),
+            );
+            painter.rect_filled(band, 0., if chosen { CLIP_CHOSEN_TINT } else { CLIP_TINT });
+            for t in [s, e].into_iter().filter(|t| (a..=b).contains(t)) {
+                painter.line_segment(
+                    [Pos2::new(x(t), plot.min.y), Pos2::new(x(t), plot.max.y)],
+                    Stroke::new(if chosen { 2.5 } else { 1.5 }, CLIP_EDGE),
+                );
+            }
+            if band.width() > 30. {
+                let galley = text::widget_text(
+                    ui.ctx(),
+                    &c.name,
+                    text::starts_rtl(&c.name),
+                    None,
+                    Look::Plain,
+                )
+                .into_galley(
+                    ui,
+                    Some(egui::TextWrapMode::Truncate),
+                    band.width() - 6.,
+                    egui::TextStyle::Small,
+                );
+                let at = Pos2::new(band.min.x + 3., plot.max.y - galley.size().y - 2.);
+                painter.galley(at, galley, CLIP_EDGE);
+            }
+        }
+        if let Some((s, e)) = self.proposal() {
+            for t in [s, e].into_iter().filter(|t| (a..=b).contains(t)) {
+                painter.extend(egui::Shape::dashed_line(
+                    &[Pos2::new(x(t), plot.min.y), Pos2::new(x(t), plot.max.y)],
+                    Stroke::new(1.5, CLIP_EDGE),
+                    6.,
+                    4.,
+                ));
             }
         }
 
@@ -518,7 +704,6 @@ impl DemoView {
 
         let bin_width = BIN_PIXELS * per_px;
         let mut hover: Option<(usize, f32)> = None;
-        let pointer = ui.input(|i| i.pointer.hover_pos());
         for (i, lane) in model.lanes.iter().enumerate() {
             let top = plot.min.y + AXIS_HEIGHT + LANE_HEIGHT * i as f32;
             let mid = top + LANE_HEIGHT / 2.;
@@ -676,6 +861,239 @@ impl DemoView {
             if response.clicked() {
                 self.select(event, false);
             }
+        } else if response.clicked()
+            && let Some(p) = pointer
+        {
+            let t = DemoTime::from_f32(a + (p.x - plot.min.x) * per_px);
+            if let Some(i) = self
+                .clips
+                .iter()
+                .rposition(|c| t.is_some_and(|t| t >= c.start && t < c.end))
+            {
+                self.chosen_clip = Some(i);
+            }
+        }
+    }
+
+    /// The clips, with buttons to add one around the selected event or the
+    /// chosen intense moment
+    fn clips_ui(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool) {
+        let Some(model) = self.model.clone() else {
+            return;
+        };
+        let ctx = ui.ctx().clone();
+        let t = |id: &str| text::widget_text(&ctx, &catalog.text(id), rtl, None, Look::Plain);
+        let clock = |t: f32| {
+            FluentValue::from(
+                DemoTime::from_f32(t)
+                    .map(|d| d.to_string())
+                    .unwrap_or_default(),
+            )
+        };
+        let export_segment = model.groups.loading_segment;
+        layout::wrapping_row(ui, rtl, |ui| {
+            ui.label(text::widget_text(
+                &ctx,
+                &catalog.text("clips-title"),
+                rtl,
+                None,
+                Look::Strong,
+            ));
+
+            // Around the selected event, the button naming the range
+            let event = self.selected.and_then(|i| model.events.get(i));
+            let proposal = self.proposal();
+            let label = match proposal {
+                Some((s, e)) => {
+                    catalog.text_with("clips-add-event", &[("start", clock(s)), ("end", clock(e))])
+                }
+                None => catalog.text("clips-add-event-none"),
+            };
+            let label = text::widget_text(&ctx, &label, rtl, None, Look::Plain);
+            let r = ui.add_enabled(proposal.is_some(), egui::Button::new(label));
+            let r = match (event, proposal) {
+                (None, _) => r.on_disabled_hover_text(t("clips-select-event")),
+                (Some(_), None) => r.on_disabled_hover_text(t("clips-other-session")),
+                _ => r,
+            };
+            if r.clicked()
+                && let Some(range) = proposal
+            {
+                self.add_clip(catalog, range);
+            }
+
+            // Around the chosen intense moment
+            if let Some(w) = self.window.and_then(|i| model.windows.get(i)) {
+                let allowed = Some(w.segment) == export_segment;
+                let r = ui.add_enabled(allowed, egui::Button::new(t("clips-add-window")));
+                let r = r.on_disabled_hover_text(t("clips-other-session"));
+                if r.clicked() {
+                    let range = self.clamped(w.start - self.padding.0, w.end + self.padding.1);
+                    self.add_clip(catalog, range);
+                }
+            }
+        });
+
+        if self.clips.is_empty() {
+            layout::column(ui, rtl, |ui| {
+                text::label(ui, &catalog.text("clips-empty"), rtl);
+            });
+            return;
+        }
+        let row_height = ui.text_style_height(&egui::TextStyle::Body) + 8.;
+        let mut remove = None;
+        egui::ScrollArea::vertical()
+            .id_salt("clips")
+            .max_height(row_height * 2. * 3.5)
+            .show(ui, |ui| {
+                for i in 0..self.clips.len() {
+                    if self.clip_row(ui, catalog, rtl, i) {
+                        remove = Some(i);
+                    }
+                }
+            });
+        if let Some(i) = remove {
+            self.clips.remove(i);
+            self.chosen_clip = match self.chosen_clip {
+                Some(c) if c == i => None,
+                Some(c) if c > i => Some(c - 1),
+                c => c,
+            };
+            self.typing = None;
+            self.dragging = None;
+            self.clips_changed = true;
+        }
+    }
+
+    /// One clip's name, requested range and length, and below them what an
+    /// export would cut. Returns true when the clip should be removed
+    fn clip_row(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool, i: usize) -> bool {
+        let ctx = ui.ctx().clone();
+        let t = |id: &str| text::widget_text(&ctx, &catalog.text(id), rtl, None, Look::Plain);
+        let chosen = self.chosen_clip == Some(i);
+        let fill = if chosen {
+            ui.visuals().selection.bg_fill.gamma_multiply(0.35)
+        } else {
+            Color32::TRANSPARENT
+        };
+        let (mut remove, mut show) = (false, false);
+        egui::Frame::new()
+            .inner_margin(4.)
+            .corner_radius(3.)
+            .fill(fill)
+            .show(ui, |ui| {
+                ui.set_width(ui.available_width());
+                layout::wrapping_row(ui, rtl, |ui| {
+                    let r = ui.add(
+                        egui::TextEdit::singleline(&mut self.clips[i].name)
+                            .desired_width(140.)
+                            .hint_text(catalog.text("clip-name")),
+                    );
+                    if r.changed() {
+                        self.clips_changed = true;
+                    }
+                    if r.gained_focus() {
+                        self.chosen_clip = Some(i);
+                    }
+                    // A range reads start to end in the interface's direction
+                    self.time_field(ui, catalog, i, Edge::Start);
+                    ui.label("–");
+                    self.time_field(ui, catalog, i, Edge::End);
+                    show = ui.small_button(t("clip-show")).clicked();
+                    remove = ui.small_button(t("clip-remove")).clicked();
+                });
+
+                let clip = self.clips[i].clone();
+                let (line, warn) = match self.snap(&clip) {
+                    Ok(s) if s.start == clip.start && s.end == clip.end => {
+                        (catalog.text("clip-exact"), false)
+                    }
+                    Ok(s) => {
+                        let length =
+                            DemoTime::from_micros((s.end.micros() - s.start.micros()).max(0));
+                        let text = catalog.text_with(
+                            "clip-effective",
+                            &[
+                                ("start", FluentValue::from(s.start.to_string())),
+                                ("end", FluentValue::from(s.end.to_string())),
+                                ("duration", FluentValue::from(length.to_string())),
+                            ],
+                        );
+                        (text, false)
+                    }
+                    Err(m) => (catalog.message(&m), true),
+                };
+                // The requested length, then the cut or the reason there is none
+                let length = catalog.text_with(
+                    "clip-length",
+                    &[("duration", FluentValue::from(clip.length().to_string()))],
+                );
+                layout::column(ui, rtl, |ui| {
+                    let width = Some(ui.available_width());
+                    let lines = if warn {
+                        let warning = Look::Color(ui.visuals().warn_fg_color);
+                        vec![(length, Look::Weak), (line, warning)]
+                    } else {
+                        vec![(format!("{length} · {line}"), Look::Weak)]
+                    };
+                    for (line, look) in lines {
+                        ui.label(text::widget_text(&ctx, &line, rtl, width, look));
+                    }
+                });
+            });
+        if show {
+            self.show_clip(i);
+        }
+        remove
+    }
+
+    /// A clip's start or end as text, read back when typing ends. Text that
+    /// is not a time is outlined and left as it was
+    fn time_field(&mut self, ui: &mut Ui, catalog: &Catalog, i: usize, edge: Edge) {
+        let current = match edge {
+            Edge::Start => self.clips[i].start,
+            Edge::End => self.clips[i].end,
+        };
+        let mut text = match &self.typing {
+            Some((c, e, t)) if *c == i && *e == edge => t.clone(),
+            _ => current.to_string(),
+        };
+        // Wide enough for HH:MM:SS.mmm, and wider for longer text
+        let font = egui::TextStyle::Monospace.resolve(ui.style());
+        let width = ui.fonts_mut(|f| f.glyph_width(&font, '0')) * 13.;
+        let r = ui.add(
+            egui::TextEdit::singleline(&mut text)
+                .desired_width(width)
+                .clip_text(false)
+                .font(egui::TextStyle::Monospace),
+        );
+        if r.changed() {
+            self.typing = Some((i, edge, text.clone()));
+        }
+        if r.gained_focus() {
+            self.chosen_clip = Some(i);
+        }
+        let parsed = parse_time(&text);
+        if parsed.is_none() {
+            ui.painter().rect_stroke(
+                r.rect,
+                2.,
+                Stroke::new(1.5, ui.visuals().error_fg_color),
+                egui::StrokeKind::Outside,
+            );
+        }
+        let r = r.on_hover_text(catalog.text("clip-time-help"));
+        if r.lost_focus() {
+            if let Some(t) = parsed
+                && t != current
+            {
+                match edge {
+                    Edge::Start => self.clips[i].start = t,
+                    Edge::End => self.clips[i].end = t,
+                }
+                self.clips_changed = true;
+            }
+            self.typing = None;
         }
     }
 
@@ -787,14 +1205,12 @@ impl DemoView {
                                 ),
                                 _ => (Self::describe(catalog, &e.kind), rtl),
                             };
-                            let w = text::widget_text(&ctx, &s, own, None, Look::Plain);
-                            let w = match (&e.kind, *c) {
-                                (EventKind::Kill { .. }, "column-event") => {
-                                    egui::Label::new(w.color(KILL_COLOR))
-                                }
-                                _ => egui::Label::new(w),
+                            let look = match (&e.kind, *c) {
+                                (EventKind::Kill { .. }, "column-event") => Look::Color(KILL_COLOR),
+                                _ => Look::Plain,
                             };
-                            ui.add(w.selectable(false).truncate());
+                            let w = text::widget_text(&ctx, &s, own, None, look);
+                            ui.add(egui::Label::new(w).selectable(false).truncate());
                         });
                     }
                     if row.response().clicked() {
@@ -871,7 +1287,11 @@ impl DemoView {
         });
         layout::column(ui, rtl, |ui| {
             let help = catalog.text("timeline-help");
-            ui.label(text::widget_text(&ctx, &help, rtl, None, Look::Plain).weak());
+            ui.label(text::widget_text(&ctx, &help, rtl, None, Look::Weak));
+            if !self.clips.is_empty() {
+                let help = catalog.text("timeline-clip-help");
+                ui.label(text::widget_text(&ctx, &help, rtl, None, Look::Weak));
+            }
         });
     }
 
@@ -1014,12 +1434,14 @@ impl DemoView {
                     _ => None,
                 };
                 let line = format!("{name}  {}", side.frags);
-                let w = text::widget_text(&ctx, &line, text::starts_rtl(&name), None, Look::Strong);
-                let w = match color {
-                    Some(c) => w.color(c),
-                    None => w,
-                };
-                ui.label(w);
+                let look = color.map_or(Look::Strong, Look::Color);
+                ui.label(text::widget_text(
+                    &ctx,
+                    &line,
+                    text::starts_rtl(&name),
+                    None,
+                    look,
+                ));
             }
             // Name, frags and deaths as on the game's scoreboard, the other
             // way round in a right-to-left interface
@@ -1109,18 +1531,47 @@ impl DemoView {
                 });
         };
 
-        // The longest column, or every player in a ranked list
-        let max_rows = if sides.is_empty() {
-            standing.sides.len()
+        // Sides stand next to each other when their grids fit, otherwise one
+        // above the other, so a narrow pane never spills over
+        let side_width = {
+            let font = egui::TextStyle::Body.resolve(ui.style());
+            let measure = |s: &str| {
+                ui.fonts_mut(|f| {
+                    f.layout_no_wrap(s.to_string(), font.clone(), Color32::PLACEHOLDER)
+                })
+                .size()
+                .x
+            };
+            let numbers: f32 = [&frags, &deaths, &heads_title, &accuracy_title]
+                .into_iter()
+                .map(|h| measure(h).max(measure("000")))
+                .sum();
+            let names = standing
+                .sides
+                .iter()
+                .flat_map(|s| &s.players)
+                .map(|p| measure(&text::player_name(&p.name)))
+                .fold(120f32, f32::max);
+            names + numbers + 16. * 4. + 8.
+        };
+        let stacked = side_width * sides.len() as f32 > ui.available_width();
+
+        // The longest column, every side in turn, or every player in a
+        // ranked list
+        let lines = if sides.is_empty() {
+            standing.sides.len() as f32 + 2.5
+        } else if stacked {
+            sides.iter().map(|s| s.players.len() as f32 + 2.5).sum()
         } else {
             standing
                 .sides
                 .iter()
                 .map(|s| s.players.len())
                 .max()
-                .unwrap_or(0)
+                .unwrap_or(0) as f32
+                + 2.5
         };
-        let height = (ui.text_style_height(&egui::TextStyle::Body) + 4.) * (max_rows as f32 + 2.5);
+        let height = (ui.text_style_height(&egui::TextStyle::Body) + 4.) * lines;
         egui::ScrollArea::vertical()
             .id_salt("scores")
             .max_height(height.min(200.))
@@ -1138,6 +1589,15 @@ impl DemoView {
                             .collect(),
                     };
                     side_ui(ui, &all, false);
+                } else if stacked {
+                    // Top to bottom in the scoreboard's own order
+                    let mut sides = sides.clone();
+                    if rtl {
+                        sides.reverse();
+                    }
+                    for side in sides {
+                        side_ui(ui, side, true);
+                    }
                 } else {
                     ui.columns(sides.len(), |cols| {
                         for (col, side) in cols.iter_mut().zip(&sides) {
@@ -1212,6 +1672,8 @@ impl DemoView {
         self.controls(ui, catalog, rtl);
         ui.add_space(4.);
         self.scores(ui, catalog, rtl);
+        ui.separator();
+        self.clips_ui(ui, catalog, rtl);
         ui.separator();
         let ctx = ui.ctx().clone();
         layout::row(ui, rtl, |ui| {

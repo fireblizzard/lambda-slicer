@@ -640,3 +640,32 @@ fn an_old_animtime_is_clamped_reported_and_explained() {
     assert_eq!(r.validation.approximated_differences, 2 * 30);
     assert_eq!(r.validation.other_differences, 0);
 }
+
+#[test]
+fn the_group_index_snaps_ranges_as_the_restart_does() {
+    let rec = Recording::steady(60, 1);
+    let dir = tempfile::tempdir().unwrap();
+    let src = write(dir.path(), "src.dem", &rec.bytes());
+    let (report, _) = decode_demo(&src, &DecodeOptions::default(), |_, _, _| {});
+
+    // Between groups, on a group, and to the end of the recording
+    let half = |g: f32| DemoTime::from_f32(g * STEP).unwrap();
+    let ranges = [
+        (half(30.5), Some(half(49.5))),
+        (at(30), Some(at(50))),
+        (half(12.2), None),
+        // The DemoStart group is never a start, so this starts at group 1
+        (at(0), Some(at(5))),
+    ];
+    for (k, (start, end)) in ranges.into_iter().enumerate() {
+        let snapped = report.groups.snap(start, end).unwrap();
+        let out = dir.path().join(format!("out{k}.dem"));
+        let r = run_restart(&src, &out, start, end, Limits::default()).unwrap();
+        assert_eq!(snapped.start.to_string(), r.effective_start, "{start}");
+        assert_eq!(snapped.end.to_string(), r.effective_end, "{start}");
+    }
+
+    // The same refusals
+    let err = report.groups.snap(at(25), Some(at(80))).unwrap_err();
+    assert!(matches!(err, ExportError::RangeBeyondEnd { .. }), "{err}");
+}

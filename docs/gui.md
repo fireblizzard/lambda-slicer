@@ -1,9 +1,10 @@
 # Desktop app
 
 `cargo run --release -p lambda-slicer-gui` starts the app. Demos and folders given on the command
-line are opened for that session, `--locale TAG` picks a language for the run, and `--cache FILE`
-uses another library cache. `--demo FILE --screenshot OUT.png` opens a cached demo, waits for its
-analysis and saves the window, for checking a screen in any language.
+line are opened for that session, `--locale TAG` picks a language for the run, `--cache FILE`
+uses another library cache and `--clips FILE` another clips file. `--demo FILE --screenshot OUT.png`
+opens a cached demo, waits for its analysis and saves the window, for checking a screen in any
+language.
 
 ![Library and demo view](images/demo.png)
 
@@ -57,9 +58,36 @@ opens it beside a narrower library. Choosing another demo cancels that analysis.
   ([analysis profile](analysis-profile.md)). Hovering HS or Acc. here, the library's Headshots and
   Accuracy headings, or their filters explains how each is worked out. Show final
   scores goes back. The last kill decides the result because players often leave between the end
-  of a game and the end of the recording.
+  of a game and the end of the recording. When the teams' columns do not fit side by side, they
+  stand one above the other.
 - **Event table.** Every event in time order with its time, the player's name at that moment, the
   weapon (the death notice's weapon string for kills) and what happened.
+
+## Clips
+
+A clip is a named range of a demo to export (implementation plan §8). Clips sit between the scores
+and the lanes and are kept per demo in `clips.json` beside the settings.
+
+- **Adding.** Selecting an event proposes a range around it, shown as dashed lines on the lanes and
+  named on the button, which adds it. Settings hold how many seconds it keeps before and after the
+  event, 5 and 3 at first. With one of the most intense moments chosen, a second button clips that
+  minute with the same padding. New clips are named Clip 1, Clip 2 and so on.
+- **Editing.** Each clip has its name, start and end. Times are typed as `96`, `1:36` or
+  `00:01:36.250`, with a point or a comma before the fraction, and show as `HH:MM:SS.mmm`. Text that
+  is not a time is outlined in red and the clip keeps its old time. On the lanes a clip is a light
+  blue band with its name, and dragging either edge moves it to whole milliseconds. Show brings a
+  clip into view and Remove deletes it.
+- **What the export cuts.** Below each clip are its length and the range an export would really
+  cut. An export starts at the first frame group at or after the start and ends before the first
+  at or after the end, so the requested 01:36 to 04:48 of `stalkx_5o5_asasasdgwgw.dem`, 03:12 long,
+  cuts 00:01:36.009 to 00:04:48.000. The range comes from the frame groups the analysis records
+  (`slice::range`), which follow the slicer's own rules and match its effective range on the
+  synthetic restart tests and on that demo. Ranges an export would refuse without decoding say why
+  in orange: an end past the recording, a range with nothing in it, a start on the very first
+  frame, in a later session or with a new session inside it. Refusals that need the decoded state
+  come from the export itself.
+- **Sessions.** Times restart with each session of a recording and an export can only start in
+  the first, so events and intense moments from later sessions cannot be clipped yet.
 
 In Arabic the library moves to the right, lane labels sit right of the lanes, and the table's
 columns run right to left.

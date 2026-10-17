@@ -95,6 +95,8 @@ pub const CODES: &[&str] = &[
     "export-source-changed",
     "export-source-decode-failed",
     "export-source-failed-crosscheck",
+    "export-start-first-group",
+    "export-start-later-session",
     "export-unknown-persistent-message",
     "export-unproven-state",
     "export-unrepresentable-time-field",
