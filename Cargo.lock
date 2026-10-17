@@ -2092,6 +2092,7 @@ dependencies = [
  "chrono",
  "eframe",
  "egui_extras",
+ "find-msvc-tools",
  "fluent-bundle",
  "fluent-langneg",
  "fluent-syntax",

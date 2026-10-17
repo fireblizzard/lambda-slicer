@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Lambda Slicer
+Comment=Analyze and slice Half-Life demos
+Exec=lambda-slicer-gui %F
+Icon=lambda-slicer
+Terminal=false
+Categories=AudioVideo;Video;
+StartupNotify=true
+StartupWMClass=lambda-slicer

@@ -113,8 +113,15 @@ fn main() -> eframe::Result {
         settings.export_folder = export.clone();
     }
 
+    let icon = eframe::icon_data::from_png_bytes(include_bytes!(
+        "../../../assets/branding/icons/icon-256.png"
+    ))
+    .expect("the bundled application icon must be a valid PNG");
     let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default().with_inner_size(size),
+        viewport: egui::ViewportBuilder::default()
+            .with_inner_size(size)
+            .with_app_id("lambda-slicer")
+            .with_icon(icon),
         ..Default::default()
     };
     eframe::run_native(

@@ -1,3 +1,5 @@
+![Lambda Slicer — Half-Life demo analysis and slicing](assets/branding/banner.png)
+
 # Lambda Slicer
 
 Desktop tool for slicing Half-Life: Adrenaline Gamer (GoldSrc) demos and finding weapon use in

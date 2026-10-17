@@ -38,6 +38,29 @@ Lambda Slicer is licensed under MIT OR Apache-2.0. All shipped dependencies are 
 compatible with that, and the corrected plural rules in `vendor` keep their own MIT OR
 Apache-2.0 license ([dependency audit](dependency-audit.md)).
 
+## Application icons and desktop launcher
+
+The app's window icon is embedded on Windows and Linux. Windows builds also embed the
+multi-resolution executable icon from `assets/branding/app.ico`. The MSVC build uses the
+Windows SDK resource compiler, discovered automatically; `RC` can override its executable
+path. GNU Windows builds use `windres`, overridable with `WINDRES` (use the target-specific
+compiler when cross-compiling). Native Linux builds do not invoke either compiler.
+
+For a Linux desktop launcher, after building the release binary, install it and the
+matching desktop entry and icons from the repository root:
+
+```sh
+install -Dm755 target/release/lambda-slicer-gui "$HOME/.local/bin/lambda-slicer-gui"
+install -Dm644 packaging/lambda-slicer.desktop "$HOME/.local/share/applications/lambda-slicer.desktop"
+for size in 16 24 32 48 64 128 256 512 1024; do
+  install -Dm644 "assets/branding/icons/icon-$size.png" "$HOME/.local/share/icons/hicolor/${size}x${size}/apps/lambda-slicer.png"
+done
+```
+
+Ensure `$HOME/.local/bin` is on the desktop session's `PATH`. The desktop filename matches
+the Wayland app ID, allowing the compositor to find the launcher icon. Some desktops may
+need a new login to refresh their icon cache. Linux desktop appearance remains untested.
+
 ## Linux
 
 The workspace builds and every test passes on Linux x86_64 (Ubuntu in WSL, 2026-10-17), and CI
