@@ -25,7 +25,11 @@ file failed.
 ## Demo view
 
 Selecting a demo analyses it again on its own thread, since shots are not kept in the cache, and
-opens it beside a narrower library. Choosing another demo cancels that analysis.
+opens it beside a narrower library. Choosing another demo cancels that analysis. A demo opened with
+Open demo, dropped on the window or named on the command line shows at once in the same way, and
+joins the library when the scan stores it, so a missing or broken cache never stops a single demo
+from opening (implementation plan §2.3). Library rows open their file from the path bytes the cache
+keeps, not the display text, so names that are not valid Unicode open too.
 
 - **Timeline.** Hidden at first, as it takes some reading. Show timeline opens it with a legend of
   the marks and a line on how to move around, and the choice is kept for later demos and runs. The
@@ -67,7 +71,10 @@ opens it beside a narrower library. Choosing another demo cancels that analysis.
 ## Clips
 
 A clip is a named range of a demo to export (implementation plan §8). Clips sit between the scores
-and the lanes and are kept per demo in `clips.json` beside the settings.
+and the lanes and are kept per demo in `clips.json` beside the settings. A clips file that is not
+valid is renamed to `clips.json.unreadable-<seconds>` and the clips start empty, and one that cannot
+be read stops saving for the session, so a stored clip is never written over. Both, and a save
+that fails, show as a notice in the status bar until dismissed.
 
 - **Adding.** Selecting an event proposes a range around it, shown as dashed lines on the lanes and
   named on the button, which adds it. Settings hold how many seconds it keeps before and after the

@@ -267,3 +267,8 @@ settings-export-folder = Папка экспорта
 settings-export-choose = Выбрать…
 settings-export-beside = Рядом с каждым демо
 settings-export-hint = В папке мода, где лежит liblist.gam, например Half-Life\ag, клипы запускаются одной командой playdemo.
+
+clips-store-moved = Не удалось прочитать файл клипов { $path }, поэтому он сохранён как { $moved }, а список клипов начат заново. { $detail }
+clips-store-unreadable = Не удалось прочитать файл клипов { $path }: { $detail }. В этой сессии клипы не сохраняются, поэтому его содержимое не потеряется.
+clips-save-failed = Не удалось сохранить клипы в { $path }: { $detail }
+notice-dismiss = Закрыть

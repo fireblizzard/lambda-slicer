@@ -257,3 +257,8 @@ settings-export-folder = Vientikansio
 settings-export-choose = Valitse…
 settings-export-beside = Kunkin demon viereen
 settings-export-hint = Modin kansiossa, jossa on liblist.gam, kuten Half-Life\ag, klipit toistuvat yhdellä playdemo-komennolla.
+
+clips-store-moved = Klippitiedostoa { $path } ei voitu lukea, joten se säilytettiin nimellä { $moved } ja klipit alkavat tyhjästä. { $detail }
+clips-store-unreadable = Klippitiedostoa { $path } ei voitu lukea: { $detail }. Klippejä ei tallenneta tämän istunnon aikana, joten mitään sen sisällöstä ei katoa.
+clips-save-failed = Klippejä ei voitu tallentaa kohteeseen { $path }: { $detail }
+notice-dismiss = Sulje

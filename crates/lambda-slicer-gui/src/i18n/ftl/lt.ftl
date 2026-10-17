@@ -267,3 +267,8 @@ settings-export-folder = Eksporto aplankas
 settings-export-choose = Pasirinkti…
 settings-export-beside = Šalia kiekvieno įrašo
 settings-export-hint = Modo aplanke, kuriame yra liblist.gam, pvz., Half-Life\ag, klipai paleidžiami viena playdemo komanda.
+
+clips-store-moved = Klipų failo { $path } nepavyko perskaityti, todėl jis išsaugotas kaip { $moved }, o klipų sąrašas pradedamas iš naujo. { $detail }
+clips-store-unreadable = Klipų failo { $path } nepavyko perskaityti: { $detail }. Šioje sesijoje klipai neišsaugomi, todėl niekas iš jo nedings.
+clips-save-failed = Klipų nepavyko išsaugoti į { $path }: { $detail }
+notice-dismiss = Uždaryti

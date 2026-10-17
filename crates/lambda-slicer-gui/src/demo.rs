@@ -69,6 +69,20 @@ const CLIP_TINT: Color32 = Color32::from_rgba_premultiplied(14, 27, 40, 40);
 const CLIP_CHOSEN_TINT: Color32 = Color32::from_rgba_premultiplied(25, 47, 70, 70);
 const CLIP_EDGE: Color32 = Color32::from_rgb(140, 220, 255);
 
+/// Clips to export, acted on once every clip row has drawn
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ExportRequest {
+    All,
+    One(usize),
+}
+
+/// What a clip row's buttons asked for
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum RowAction {
+    Remove,
+    Export,
+}
+
 /// A clip's start or end
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Edge {
@@ -819,12 +833,9 @@ impl DemoView {
                 }
             }
 
-            for bin in bins(lane, a, b, bin_width) {
-                if !self.shown.kind(bin.kind)
-                    || !self.shown.weapon(bin.weapon) && bin.weapon.is_some()
-                {
-                    continue;
-                }
+            let shown = self.shown;
+            let visible = |m: &crate::timeline::Mark| shown.kind(m.kind) && shown.weapon(m.weapon);
+            for bin in bins(lane, a, b, bin_width, visible) {
                 let px = x(bin.start + bin_width / 2.);
                 let strength = (bin.count as f32).min(5.) / 5.;
                 match bin.kind {
@@ -875,9 +886,7 @@ impl DemoView {
                 && p.y < top + LANE_HEIGHT
             {
                 let time = a + (p.x - plot.min.x) * per_px;
-                if let Some(m) = nearest(lane, time, HIT_PIXELS * per_px)
-                    .filter(|m| self.shown.kind(m.kind) && self.shown.weapon(m.weapon))
-                {
+                if let Some(m) = nearest(lane, time, HIT_PIXELS * per_px, visible) {
                     hover = Some((m.event, m.time));
                 }
             }
@@ -938,6 +947,7 @@ impl DemoView {
             return;
         };
         let ctx = ui.ctx().clone();
+        let mut request: Option<ExportRequest> = None;
         let t = |id: &str| text::widget_text(&ctx, &catalog.text(id), rtl, None, Look::Plain);
         let clock = |t: f32| {
             FluentValue::from(
@@ -1000,14 +1010,10 @@ impl DemoView {
                 }
                 None => {
                     let clips = self.clips.clone();
-                    let keys: Vec<ClipKey> = clips
-                        .iter()
-                        .filter(|c| self.snap(c).is_ok())
-                        .map(|c| (c.start, c.end))
-                        .collect();
-                    let r = ui.add_enabled(!keys.is_empty(), egui::Button::new(t("export-all")));
+                    let any = clips.iter().any(|c| self.snap(c).is_ok());
+                    let r = ui.add_enabled(any, egui::Button::new(t("export-all")));
                     if r.clicked() {
-                        self.start_export(&ctx, keys);
+                        request = Some(ExportRequest::All);
                     }
                 }
             }
@@ -1037,11 +1043,30 @@ impl DemoView {
             .max_height(row_height * 2. * 3.5)
             .show(ui, |ui| {
                 for i in 0..self.clips.len() {
-                    if self.clip_row(ui, catalog, rtl, i) {
-                        remove = Some(i);
+                    match self.clip_row(ui, catalog, rtl, i) {
+                        Some(RowAction::Remove) => remove = Some(i),
+                        Some(RowAction::Export) => request = Some(ExportRequest::One(i)),
+                        None => {}
                     }
                 }
             });
+
+        // A time typed into a field commits when the field loses focus, which
+        // the same click that presses Export does, while the rows draw. So
+        // exports read the clips only now, never a copy from before the rows
+        if let Some(request) = request {
+            let clips = self.clips.clone();
+            let chosen: Vec<&Clip> = match request {
+                ExportRequest::All => clips.iter().collect(),
+                ExportRequest::One(i) => clips.get(i).into_iter().collect(),
+            };
+            let keys = chosen
+                .into_iter()
+                .filter(|c| self.snap(c).is_ok())
+                .map(|c| (c.start, c.end))
+                .collect();
+            self.start_export(&ctx, keys);
+        }
         if let Some(i) = remove {
             self.clips.remove(i);
             self.chosen_clip = match self.chosen_clip {
@@ -1056,8 +1081,14 @@ impl DemoView {
     }
 
     /// One clip's name, requested range and length, and below them what an
-    /// export would cut. Returns true when the clip should be removed
-    fn clip_row(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool, i: usize) -> bool {
+    /// export would cut. Returns what its buttons asked for
+    fn clip_row(
+        &mut self,
+        ui: &mut Ui,
+        catalog: &Catalog,
+        rtl: bool,
+        i: usize,
+    ) -> Option<RowAction> {
         let ctx = ui.ctx().clone();
         let t = |id: &str| text::widget_text(&ctx, &catalog.text(id), rtl, None, Look::Plain);
         let chosen = self.chosen_clip == Some(i);
@@ -1143,10 +1174,11 @@ impl DemoView {
         if show {
             self.show_clip(i);
         }
-        if export {
-            self.start_export(&ctx, vec![(clip.start, clip.end)]);
+        match (remove, export) {
+            (true, _) => Some(RowAction::Remove),
+            (_, true) => Some(RowAction::Export),
+            _ => None,
         }
-        remove
     }
 
     /// How a clip's export went, and for a saved file how to play it

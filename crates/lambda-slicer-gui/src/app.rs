@@ -10,7 +10,7 @@ use lambda_slicer_core::container::Limits;
 use lambda_slicer_core::library::cache::default_path;
 use lambda_slicer_core::library::scan::ScanOptions;
 
-use crate::clips::ClipStore;
+use crate::clips::{ClipStore, LoadProblem};
 use crate::demo::DemoView;
 use crate::i18n::{Catalog, Locale};
 use crate::jobs::{Problem, ScanJob};
@@ -58,11 +58,18 @@ pub struct App {
     cache_path: Option<PathBuf>,
     clips: ClipStore,
     clips_path: Option<PathBuf>,
+    /// A problem with the clips file, shown until dismissed
+    clips_notice: Option<String>,
     library: Option<LibraryView>,
     scan: Option<ScanJob>,
     demo: Option<DemoView>,
     open_window: Option<usize>,
     export_on_open: bool,
+    /// A scan to start once the stopping one has stopped
+    rescan: bool,
+    /// A demo opened as a file, shown without a library row, so opening
+    /// and analysing one never needs the library cache (plan §2.3)
+    direct: Option<PathBuf>,
     /// Files opened or dropped this session, scanned along with the folders
     opened: Vec<PathBuf>,
     /// Dropped items that were not demos or folders
@@ -103,17 +110,44 @@ impl App {
             l.filters.from = Some(day);
             l.filters.to = Some(day);
         }
-        let clips = launch
+        let (clips, problem) = launch
             .clips
             .as_deref()
-            .map(ClipStore::load_from)
+            .map(ClipStore::load)
             .unwrap_or_default();
-        let clips_path = settings_path.as_ref().and(launch.clips);
+        let mut clips_path = settings_path.as_ref().and(launch.clips.clone());
+        let shown = launch
+            .clips
+            .as_ref()
+            .map(|p| p.display().to_string())
+            .unwrap_or_default();
+        let clips_notice = problem.map(|problem| match problem {
+            LoadProblem::Moved { moved, detail } => catalog.text_with(
+                "clips-store-moved",
+                &[
+                    ("path", FluentValue::from(shown)),
+                    ("moved", FluentValue::from(moved.display().to_string())),
+                    ("detail", FluentValue::from(detail)),
+                ],
+            ),
+            LoadProblem::Unreadable { detail } => {
+                // Never saved over, so nothing in it is lost
+                clips_path = None;
+                catalog.text_with(
+                    "clips-store-unreadable",
+                    &[
+                        ("path", FluentValue::from(shown)),
+                        ("detail", FluentValue::from(detail)),
+                    ],
+                )
+            }
+        });
         Self {
             settings,
             settings_path,
             clips,
             clips_path,
+            clips_notice,
             catalog,
             title: None,
             show_settings: launch.show_settings,
@@ -125,6 +159,8 @@ impl App {
             demo: None,
             open_window: launch.window,
             export_on_open: launch.export,
+            rescan: false,
+            direct: launch.open.iter().find(|p| p.is_file()).cloned(),
             opened: launch.open,
             rejected: Vec::new(),
         }
@@ -158,7 +194,13 @@ impl App {
         if let Some(p) = &self.clips_path
             && let Err(e) = self.clips.save_to(p)
         {
-            eprintln!("cannot save clips to {}: {e}", p.display());
+            self.clips_notice = Some(self.catalog.text_with(
+                "clips-save-failed",
+                &[
+                    ("path", FluentValue::from(p.display().to_string())),
+                    ("detail", FluentValue::from(e.to_string())),
+                ],
+            ));
         }
     }
 
@@ -175,8 +217,18 @@ impl App {
     }
 
     /// Scan the library folders and opened files. A running scan is stopped
-    /// first, keeping what it finished
+    /// first, keeping what it finished. Stopping is not waited for, as the
+    /// window would hang while a worker finishes its current read, so the
+    /// new scan starts once the old one reports it stopped
     pub fn start_scan(&mut self, ctx: &egui::Context) {
+        if let Some(job) = &self.scan
+            && job.running()
+        {
+            job.cancel();
+            self.rescan = true;
+            return;
+        }
+        self.rescan = false;
         let Some(cache) = self.cache_path.clone() else {
             return;
         };
@@ -212,6 +264,14 @@ impl App {
     }
 
     fn open_files(&mut self, ctx: &egui::Context, files: Vec<PathBuf>) {
+        // The first one shows at once, analysed by the demo view itself,
+        // and joins the library as the scan stores it
+        if let Some(first) = files.first() {
+            self.direct = Some(first.clone());
+            if let Some(l) = &mut self.library {
+                l.selected = None;
+            }
+        }
         let new: Vec<PathBuf> = files
             .into_iter()
             .filter(|f| !self.opened.contains(f))
@@ -645,16 +705,37 @@ impl eframe::App for App {
         {
             l.mark_stale();
         }
+        if self.rescan && !self.scanning() {
+            self.start_scan(&ctx);
+        }
 
         egui::Panel::top("toolbar").show(ui, |ui| {
             ui.add_space(4.);
             self.toolbar(ui);
             ui.add_space(4.);
         });
-        if self.scan.is_some() || !self.rejected.is_empty() {
+        if self.scan.is_some() || !self.rejected.is_empty() || self.clips_notice.is_some() {
             egui::Panel::bottom("status").show(ui, |ui| {
                 ui.add_space(2.);
-                self.status_bar(ui);
+                if let Some(notice) = self.clips_notice.clone() {
+                    let rtl = self.rtl();
+                    // The message wraps, with the button under it
+                    layout::column(ui, rtl, |ui| {
+                        let warn = Look::Color(ui.visuals().warn_fg_color);
+                        let width = Some(ui.available_width());
+                        let w = text::widget_text(ui.ctx(), &notice, rtl, width, warn);
+                        ui.add(egui::Label::new(w).wrap());
+                        if ui
+                            .small_button(self.t(ui.ctx(), "notice-dismiss"))
+                            .clicked()
+                        {
+                            self.clips_notice = None;
+                        }
+                    });
+                }
+                if self.scan.is_some() {
+                    self.status_bar(ui);
+                }
                 if !self.rejected.is_empty() {
                     let names = self.rejected.join(", ");
                     let msg = self
@@ -674,12 +755,17 @@ impl eframe::App for App {
         }
         let rtl = self.rtl();
 
-        // A selected demo opens beside the library, replacing an earlier one
+        // A selected demo opens beside the library, replacing an earlier one,
+        // and otherwise a demo opened as a file
         let selected = self
             .library
             .as_ref()
             .and_then(|l| l.selected.as_ref())
-            .map(|f| (PathBuf::from(&f.path), f.duration.unwrap_or(0.)));
+            .map(|f| (f.source(), f.duration.unwrap_or(0.)));
+        if selected.is_some() {
+            self.direct = None;
+        }
+        let selected = selected.or_else(|| self.direct.clone().map(|p| (p, 0.)));
         match (&selected, &self.demo) {
             (Some((path, _)), Some(d)) if *path == d.path => {}
             (Some((path, duration)), _) => {
@@ -742,6 +828,7 @@ impl eframe::App for App {
             }
             if close {
                 self.demo = None;
+                self.direct = None;
                 if let Some(l) = &mut self.library {
                     l.selected = None;
                 }

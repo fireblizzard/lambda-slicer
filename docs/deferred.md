@@ -69,6 +69,9 @@ later.
 - **Timeline lanes** show the same player once per session, the recorder marked only in the
   last.
 - **Library.** Files from a folder removed in Settings stay listed until the cache is cleared.
+  The cache keeps paths unique by their display text, so two Linux names differing only where
+  they are not valid Unicode store only the first. The GUI opens rows and keys clips by the
+  lossless path bytes.
 - **Arabic text fields** show their text in logical order while it is edited
   ([gui-text](gui-text.md)).
 - **Linux fonts.** CJK and Arabic glyphs come from the system fonts eframe finds on Windows.

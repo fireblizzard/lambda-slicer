@@ -252,3 +252,8 @@ settings-export-folder = 导出文件夹
 settings-export-choose = 选择…
 settings-export-beside = 每个录像旁边
 settings-export-hint = 在包含 liblist.gam 的 mod 文件夹中（例如 Half-Life\ag），片段只需一条 playdemo 命令即可播放。
+
+clips-store-moved = 无法读取片段文件 { $path }，因此已将其保留为 { $moved }，片段从空开始。{ $detail }
+clips-store-unreadable = 无法读取片段文件 { $path }：{ $detail }。本次会话不保存片段，因此其中的内容不会丢失。
+clips-save-failed = 无法将片段保存到 { $path }：{ $detail }
+notice-dismiss = 关闭

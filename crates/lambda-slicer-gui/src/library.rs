@@ -369,11 +369,17 @@ impl LibraryView {
     }
 
     /// Count again and drop loaded pages when the filters, the order or the
-    /// stored files changed
-    fn refresh(&mut self) {
+    /// stored files changed. Stored files refresh at most once per
+    /// [`REFRESH`], and a refresh held back is woken for when it is due, as
+    /// nothing else may draw a frame once a scan has finished
+    fn refresh(&mut self, ctx: &egui::Context) {
         let wanted = (self.filters.clone(), self.sort, self.descending);
         let changed = self.applied.as_ref() != Some(&wanted);
-        let due = self.stale && self.last_refresh.elapsed() >= REFRESH;
+        let waited = self.last_refresh.elapsed();
+        let due = self.stale && waited >= REFRESH;
+        if self.stale && !due {
+            ctx.request_repaint_after(REFRESH - waited);
+        }
         if !changed && !due {
             return;
         }
@@ -535,7 +541,7 @@ impl LibraryView {
     /// beside an open demo
     pub fn ui(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool, compact: bool) {
         self.filters_ui(ui, catalog, rtl);
-        self.refresh();
+        self.refresh(ui.ctx());
         ui.add_space(4.);
 
         let ctx = ui.ctx().clone();

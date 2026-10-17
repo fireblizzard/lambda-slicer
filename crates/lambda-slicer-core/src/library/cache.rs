@@ -91,6 +91,26 @@ pub fn native_bytes(path: &Path) -> Vec<u8> {
     }
 }
 
+/// The path [`native_bytes`] gave, `None` for bytes no path on this
+/// platform encodes as, such as an odd length on Windows
+pub fn path_from_native(bytes: &[u8]) -> Option<PathBuf> {
+    #[cfg(windows)]
+    {
+        use std::os::windows::ffi::OsStringExt;
+        let (pairs, rest) = bytes.as_chunks::<2>();
+        if !rest.is_empty() {
+            return None;
+        }
+        let wide: Vec<u16> = pairs.iter().map(|b| u16::from_le_bytes(*b)).collect();
+        Some(PathBuf::from(std::ffi::OsString::from_wide(&wide)))
+    }
+    #[cfg(not(windows))]
+    {
+        use std::os::unix::ffi::OsStrExt;
+        Some(PathBuf::from(std::ffi::OsStr::from_bytes(bytes)))
+    }
+}
+
 const TABLES: &str = "
 CREATE TABLE files(
     id INTEGER PRIMARY KEY,
@@ -412,6 +432,17 @@ pub struct FileRow {
     pub best_window: Option<f64>,
     /// The kills that matched the kill conditions, when there were any
     pub matching_kills: Vec<KillRow>,
+    /// The path's own bytes ([`native_bytes`]), as `path` is display text
+    /// and loses names that are not valid Unicode
+    #[serde(skip)]
+    pub native: Vec<u8>,
+}
+
+impl FileRow {
+    /// The file this row describes, exactly as the scan found it
+    pub fn source(&self) -> PathBuf {
+        path_from_native(&self.native).unwrap_or_else(|| PathBuf::from(&self.path))
+    }
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -822,7 +853,7 @@ impl Cache {
                 f.recorder, f.shots,
                 (SELECT w.shots FROM weapons w WHERE w.file_id = f.id AND w.weapon = 'gauss')
                     AS gauss,
-                f.recorded_at, f.date_source, f.score, f.headshots, f.accuracy
+                f.recorded_at, f.date_source, f.score, f.headshots, f.accuracy, f.path_blob
              FROM files f WHERE {conditions}
              ORDER BY {} {direction} NULLS LAST, f.path
              LIMIT ?{limit} OFFSET ?{offset}",
@@ -844,6 +875,7 @@ impl Cache {
                 score: r.get(17)?,
                 headshots: r.get(18)?,
                 accuracy: r.get(19)?,
+                native: r.get(20)?,
                 spectator_fraction: r.get(6)?,
                 shots: r.get(13)?,
                 gauss: r.get(14)?,

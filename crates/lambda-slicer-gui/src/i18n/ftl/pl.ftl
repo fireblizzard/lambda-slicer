@@ -267,3 +267,8 @@ settings-export-folder = Folder eksportu
 settings-export-choose = Wybierz…
 settings-export-beside = Obok każdego dema
 settings-export-hint = W folderze moda, tym z liblist.gam, na przykład Half-Life\ag, klipy odtwarza jedno polecenie playdemo.
+
+clips-store-moved = Nie udało się odczytać pliku klipów { $path }, więc zachowano go jako { $moved }, a lista klipów zaczyna się od nowa. { $detail }
+clips-store-unreadable = Nie udało się odczytać pliku klipów { $path }: { $detail }. W tej sesji klipy nie są zapisywane, więc nic z niego nie przepadnie.
+clips-save-failed = Nie udało się zapisać klipów w { $path }: { $detail }
+notice-dismiss = Zamknij

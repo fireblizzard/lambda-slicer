@@ -22,7 +22,7 @@ use serde::Serialize;
 
 use super::cache::{Cache, CacheError, Entry, HeaderInfo, analysis_version};
 use super::discover::{self, Found};
-use super::fingerprint::{file_identity, file_metadata, hash_file, quick_fingerprint};
+use super::fingerprint::{file_identity, file_metadata, hash_file_until, quick_fingerprint};
 use crate::analysis::{AnalysisReport, analyze_demo_with};
 use crate::container::{DemoReader, Limits};
 use crate::message::{Coded, Message, io_message};
@@ -327,11 +327,12 @@ impl Worker<'_> {
         };
         let mut bytes = quick.size.min(128 * 1024);
         let full_hash = if self.options.full_hash {
-            match hash_file(path) {
-                Ok(h) => {
+            match hash_file_until(path, &self.control.cancel) {
+                Ok(Some(h)) => {
                     bytes += size;
                     Some(h)
                 }
+                Ok(None) => return (Outcome::Cancelled, None, bytes),
                 Err(e) => return unreadable(e),
             }
         } else {

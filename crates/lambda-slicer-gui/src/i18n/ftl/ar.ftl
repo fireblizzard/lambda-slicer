@@ -277,3 +277,8 @@ settings-export-folder = مجلد التصدير
 settings-export-choose = اختيار…
 settings-export-beside = بجانب كل تسجيل
 settings-export-hint = داخل مجلد التعديل الذي فيه liblist.gam مثل Half-Life\ag، تُشغَّل المقاطع بأمر playdemo واحد.
+
+clips-store-moved = تعذّرت قراءة ملف المقاطع { $path }، لذا حُفظ باسم { $moved } وتبدأ المقاطع فارغة. { $detail }
+clips-store-unreadable = تعذّرت قراءة ملف المقاطع { $path }: { $detail }. لا تُحفظ المقاطع في هذه الجلسة، فلا يضيع شيء مما فيه.
+clips-save-failed = تعذّر حفظ المقاطع في { $path }: { $detail }
+notice-dismiss = إغلاق

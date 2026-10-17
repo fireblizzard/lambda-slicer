@@ -262,3 +262,8 @@ settings-export-folder = Carpeta de exportación
 settings-export-choose = Elegir…
 settings-export-beside = Junto a cada demo
 settings-export-hint = Dentro de la carpeta de tu mod, la que tiene liblist.gam como Half-Life\ag, los clips se reproducen con un solo comando playdemo.
+
+clips-store-moved = No se pudo leer el archivo de clips { $path }, así que se guardó como { $moved } y los clips empiezan vacíos. { $detail }
+clips-store-unreadable = No se pudo leer el archivo de clips { $path }: { $detail }. Los clips no se guardan en esta sesión, así que no se pierde nada de él.
+clips-save-failed = No se pudieron guardar los clips en { $path }: { $detail }
+notice-dismiss = Cerrar

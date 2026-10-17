@@ -257,3 +257,8 @@ settings-export-folder = Dışa aktarma klasörü
 settings-export-choose = Seç…
 settings-export-beside = Her demonun yanında
 settings-export-hint = liblist.gam bulunan mod klasörünüzde, örneğin Half-Life\ag, klipler tek bir playdemo komutuyla oynatılır.
+
+clips-store-moved = { $path } klip dosyası okunamadı, bu yüzden { $moved } olarak saklandı ve klipler boş başlıyor. { $detail }
+clips-store-unreadable = { $path } klip dosyası okunamadı: { $detail }. Bu oturumda klipler kaydedilmiyor, böylece içindekiler kaybolmuyor.
+clips-save-failed = Klipler { $path } konumuna kaydedilemedi: { $detail }
+notice-dismiss = Kapat

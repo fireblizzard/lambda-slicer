@@ -4,6 +4,7 @@
 use std::fs::File;
 use std::io::{self, Read, Seek, SeekFrom};
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::UNIX_EPOCH;
 
 use serde::Serialize;
@@ -78,6 +79,27 @@ pub fn hash_file(path: &Path) -> io::Result<String> {
     Ok(h.finalize().to_hex().to_string())
 }
 
+/// [`hash_file`] that stops between 1 MiB reads once `cancel` is set,
+/// giving `None`, so a large file on slow storage never holds up a stop
+pub fn hash_file_until(path: &Path, cancel: &AtomicBool) -> io::Result<Option<String>> {
+    let mut file = File::open(path)?;
+    let mut h = blake3::Hasher::new();
+    let mut buf = vec![0u8; 1 << 20];
+    loop {
+        if cancel.load(Ordering::Relaxed) {
+            return Ok(None);
+        }
+        let n = match file.read(&mut buf) {
+            Ok(0) => break,
+            Ok(n) => n,
+            Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
+            Err(e) => return Err(e),
+        };
+        h.update(&buf[..n]);
+    }
+    Ok(Some(h.finalize().to_hex().to_string()))
+}
+
 /// Size and modification time, from metadata alone without opening the file
 pub fn file_metadata(path: &Path) -> io::Result<(u64, Option<i128>)> {
     let meta = std::fs::metadata(path)?;
@@ -111,4 +133,23 @@ pub fn file_identity(path: &Path) -> io::Result<String> {
     handle.hash(&mut h);
 
     Ok(h.0.finalize().to_hex()[..16].to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cancellable_hash_matches_and_stops() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("f.bin");
+        std::fs::write(&path, vec![7u8; 3 << 20]).unwrap();
+        let go = AtomicBool::new(false);
+        assert_eq!(
+            hash_file_until(&path, &go).unwrap(),
+            Some(hash_file(&path).unwrap())
+        );
+        let stop = AtomicBool::new(true);
+        assert_eq!(hash_file_until(&path, &stop).unwrap(), None);
+    }
 }

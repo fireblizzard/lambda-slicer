@@ -4,10 +4,14 @@
 //! A clip is a named, requested range `[start, end)` in a demo's first
 //! session, the one an export can start in. The range an export really cuts
 //! snaps to the recording's frames and is worked out when shown, never
-//! stored. Clips are keyed by the demo's path as the library shows it
+//! stored. Clips are keyed by the demo's path as the library shows it.
+//!
+//! A clips file that cannot be used is never written over. One that reads
+//! but is not valid is kept under another name and the clips start empty,
+//! and one that cannot be read at all stops saving for the session
 
 use std::collections::BTreeMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use lambda_slicer_core::timeline::time::DemoTime;
 use serde::{Deserialize, Serialize};
@@ -26,23 +30,62 @@ impl Clip {
     }
 }
 
+/// Why the clips file could not be used
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum LoadProblem {
+    /// Not valid clips. It was renamed to `moved`, so saving starts afresh
+    Moved { moved: PathBuf, detail: String },
+    /// Not readable, and so never saved over this session
+    Unreadable { detail: String },
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ClipStore {
     pub demos: BTreeMap<String, Vec<Clip>>,
 }
 
+/// The demo's path as text, or for a path that is not valid Unicode its own
+/// bytes in hex, so two such paths never share their clips
 fn key(demo: &Path) -> String {
-    demo.to_string_lossy().into_owned()
+    match demo.to_str() {
+        Some(text) => text.to_string(),
+        None => {
+            let bytes = lambda_slicer_core::library::cache::native_bytes(demo);
+            let hex: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
+            format!("native:{hex}")
+        }
+    }
 }
 
 impl ClipStore {
-    /// The store at `path`, empty when it is missing or unreadable
-    pub fn load_from(path: &Path) -> Self {
-        std::fs::read(path)
-            .ok()
-            .and_then(|b| serde_json::from_slice(&b).ok())
-            .unwrap_or_default()
+    /// The store at `path`, empty when it is missing. A file that cannot
+    /// be used gives an empty store and the reason, and is left where it
+    /// is or renamed, never lost
+    pub fn load(path: &Path) -> (Self, Option<LoadProblem>) {
+        let bytes = match std::fs::read(path) {
+            Ok(b) => b,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return (Self::default(), None),
+            Err(e) => {
+                let detail = e.to_string();
+                return (Self::default(), Some(LoadProblem::Unreadable { detail }));
+            }
+        };
+        match serde_json::from_slice(&bytes) {
+            Ok(store) => (store, None),
+            Err(e) => {
+                let detail = e.to_string();
+                let seconds = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map_or(0, |d| d.as_secs());
+                let moved = path.with_extension(format!("json.unreadable-{seconds}"));
+                let problem = match std::fs::rename(path, &moved) {
+                    Ok(()) => LoadProblem::Moved { moved, detail },
+                    Err(_) => LoadProblem::Unreadable { detail },
+                };
+                (Self::default(), Some(problem))
+            }
+        }
     }
 
     pub fn save_to(&self, path: &Path) -> std::io::Result<()> {
@@ -98,21 +141,59 @@ mod tests {
     fn clips_round_trip_per_demo() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("sub").join("clips.json");
-        assert_eq!(ClipStore::load_from(&path), ClipStore::default());
+        assert_eq!(ClipStore::load(&path), (ClipStore::default(), None));
 
         let demo = Path::new("F:/demos/a.dem");
         let mut store = ClipStore::default();
         store.set(demo, vec![clip("Clip 1", "1:36", "4:48")]);
         store.save_to(&path).unwrap();
-        let loaded = ClipStore::load_from(&path);
+        let (loaded, problem) = ClipStore::load(&path);
+        assert_eq!(problem, None);
         assert_eq!(loaded.get(demo), store.get(demo));
         assert_eq!(loaded.get(Path::new("F:/demos/b.dem")), Vec::new());
 
         store.set(demo, Vec::new());
         assert!(store.demos.is_empty());
 
+        // A file that is not clips is kept under another name, never lost
         std::fs::write(&path, b"not json").unwrap();
-        assert_eq!(ClipStore::load_from(&path), ClipStore::default());
+        let (loaded, problem) = ClipStore::load(&path);
+        assert_eq!(loaded, ClipStore::default());
+        let Some(LoadProblem::Moved { moved, .. }) = problem else {
+            panic!("{problem:?}");
+        };
+        assert_eq!(std::fs::read(&moved).unwrap(), b"not json");
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn paths_that_are_not_unicode_keep_their_own_clips() {
+        // Two names differing only where they are not valid Unicode
+        #[cfg(windows)]
+        let (a, b) = {
+            use std::os::windows::ffi::OsStringExt;
+            let name = |unit: u16| std::ffi::OsString::from_wide(&[0x61, unit, 0x2e, 0x64]);
+            (PathBuf::from(name(0xd800)), PathBuf::from(name(0xd801)))
+        };
+        #[cfg(not(windows))]
+        let (a, b) = {
+            use std::os::unix::ffi::OsStrExt;
+            let name = |byte: u8| std::ffi::OsStr::from_bytes(&[b'a', byte, b'.', b'd']).to_owned();
+            (PathBuf::from(name(0xfe)), PathBuf::from(name(0xff)))
+        };
+        assert_eq!(a.to_string_lossy(), b.to_string_lossy());
+        assert_ne!(key(&a), key(&b));
+
+        let mut store = ClipStore::default();
+        store.set(&a, vec![clip("A", "0", "1")]);
+        assert_eq!(store.get(&b), Vec::new());
+        assert_eq!(store.get(&a).len(), 1);
+
+        let native = lambda_slicer_core::library::cache::native_bytes(&a);
+        assert_eq!(
+            lambda_slicer_core::library::cache::path_from_native(&native),
+            Some(a)
+        );
     }
 
     #[test]

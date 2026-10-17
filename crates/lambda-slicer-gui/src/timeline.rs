@@ -406,10 +406,18 @@ pub struct Bin {
 
 /// Marks of `lane` in `[from, to]` grouped into bins `width` seconds wide,
 /// one per kind and bin, in time order
-pub fn bins(lane: &Lane, from: f32, to: f32, width: f32) -> Vec<Bin> {
+pub fn bins(
+    lane: &Lane,
+    from: f32,
+    to: f32,
+    width: f32,
+    visible: impl Fn(&Mark) -> bool,
+) -> Vec<Bin> {
     let width = width.max(f32::EPSILON);
     let mut out: Vec<Bin> = Vec::new();
-    for m in lane.marks_in(from, to) {
+    // Hidden marks are left out first, so a bin never mixes in a weapon the
+    // filters hide
+    for m in lane.marks_in(from, to).iter().filter(|m| visible(m)) {
         let start = from + ((m.time - from) / width).floor() * width;
         match out
             .iter_mut()
@@ -435,10 +443,17 @@ pub fn bins(lane: &Lane, from: f32, to: f32, width: f32) -> Vec<Bin> {
     out
 }
 
-/// The mark nearest `time` in `lane` within `tolerance` seconds
-pub fn nearest(lane: &Lane, time: f32, tolerance: f32) -> Option<&Mark> {
+/// The visible mark nearest `time` in `lane` within `tolerance` seconds,
+/// so a hidden mark never stands in front of a visible one
+pub fn nearest(
+    lane: &Lane,
+    time: f32,
+    tolerance: f32,
+    visible: impl Fn(&Mark) -> bool,
+) -> Option<&Mark> {
     lane.marks_in(time - tolerance, time + tolerance)
         .iter()
+        .filter(|m| visible(m))
         .min_by(|a, b| (a.time - time).abs().total_cmp(&(b.time - time).abs()))
 }
 
@@ -488,8 +503,25 @@ mod tests {
         ]);
         assert_eq!(l.marks_in(1.5, 3.).len(), 2);
         assert_eq!(l.marks_in(10., 20.).len(), 0);
-        assert_eq!(nearest(&l, 2.9, 0.5).unwrap().kind, MarkKind::Kill);
-        assert!(nearest(&l, 6., 0.5).is_none());
+        let all = |_: &Mark| true;
+        assert_eq!(nearest(&l, 2.9, 0.5, all).unwrap().kind, MarkKind::Kill);
+        assert!(nearest(&l, 6., 0.5, all).is_none());
+        // A hidden kill nearer the pointer does not hide the shot behind it
+        let shots = |m: &Mark| m.kind == MarkKind::Shot;
+        assert_eq!(nearest(&l, 2.9, 1., shots).unwrap().time, 2.);
+    }
+
+    #[test]
+    fn filtered_bins_hold_only_visible_weapons() {
+        let mut l = lane(&[(0.1, MarkKind::Shot), (0.2, MarkKind::Shot)]);
+        l.marks[0].weapon = Some(Weapon::Glock);
+        l.marks[1].weapon = Some(Weapon::Mp5);
+        let mixed = bins(&l, 0., 1., 1., |_| true);
+        assert_eq!((mixed[0].count, mixed[0].weapon), (2, None));
+        let gauss = bins(&l, 0., 1., 1., |m| m.weapon == Some(Weapon::Gauss));
+        assert!(gauss.is_empty());
+        let mp5 = bins(&l, 0., 1., 1., |m| m.weapon == Some(Weapon::Mp5));
+        assert_eq!((mp5[0].count, mp5[0].weapon), (1, Some(Weapon::Mp5)));
     }
 
     #[test]
@@ -500,7 +532,7 @@ mod tests {
             (0.3, MarkKind::Kill),
             (1.5, MarkKind::Shot),
         ]);
-        let b = bins(&l, 0., 2., 1.);
+        let b = bins(&l, 0., 2., 1., |_| true);
         assert_eq!(
             b.iter()
                 .map(|b| (b.start, b.kind, b.count))
