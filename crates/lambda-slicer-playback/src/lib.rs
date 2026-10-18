@@ -15,6 +15,7 @@
 
 pub mod animation;
 pub mod audio;
+pub mod bullets;
 pub mod checkpoint;
 pub mod controller;
 pub mod decals;
@@ -39,7 +40,12 @@ pub struct GameFiles {
     pub hulls: MapHulls,
     /// Each sprite's frame count
     pub sprite_frames: SpriteFrames,
+    /// A decal's place in `decals.wad` by its name
+    pub decal_index: DecalIndex,
 }
+
+/// Where playback learns a decal's place in `decals.wad`, by its name
+pub type DecalIndex = std::sync::Arc<dyn Fn(&str) -> Option<u16> + Send + Sync>;
 
 /// Where playback learns how many frames a sprite has, by its path
 pub type SpriteFrames = std::sync::Arc<dyn Fn(&str) -> Option<u32> + Send + Sync>;

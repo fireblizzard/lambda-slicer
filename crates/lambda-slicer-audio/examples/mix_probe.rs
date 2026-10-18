@@ -5,8 +5,8 @@
 //!
 //! Playback moves in blocks of 10 ms, the sounds each block holds mixed at
 //! 48 kHz or at `RATE`. The level, the channels heard, the muzzle flashes,
-//! the temporary entities made and the sounds that could not be read are
-//! reported
+//! the temporary entities and decals made and the sounds that could not be
+//! read are reported
 
 use std::collections::BTreeSet;
 use std::path::Path;
@@ -59,6 +59,8 @@ fn main() {
     let mut flashes = BTreeSet::new();
     let mut temp_seen = std::collections::HashSet::new();
     let mut temps: std::collections::BTreeMap<String, u32> = Default::default();
+    let mut decal_seen = std::collections::HashSet::new();
+    let mut decals: std::collections::BTreeMap<u16, u32> = Default::default();
     let blocks = (seconds * f64::from(rate) / block as f64) as usize;
     for b in 0..blocks {
         let at = SourceTime(start + (b * block) as f64 / f64::from(rate));
@@ -68,6 +70,11 @@ fn main() {
         playback.advance_to(to).expect("playback");
         for f in playback.animations().flashes() {
             flashes.insert((f.time.0.to_bits(), format!("{:?}", f.holder)));
+        }
+        for d in playback.decals().list().iter() {
+            if decal_seen.insert(d.id) {
+                *decals.entry(d.texture).or_insert(0) += 1;
+            }
         }
         for e in playback.tempents().entities() {
             if temp_seen.insert(e.id) {
@@ -115,6 +122,7 @@ fn main() {
         flashes.len()
     );
     println!("temporary entities made: {temps:?}");
+    println!("decals made, by their place in decals.wad: {decals:?}");
     println!(
         "{} without samples: {:?}",
         missing.len(),

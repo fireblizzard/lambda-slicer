@@ -7,7 +7,12 @@
 //! the point hull and only the world). The trace is Quake's
 //! `SV_RecursiveHullCheck`, which keeps a point a thirty-second of a unit
 //! off the plane it meets. Brush entities are not traced, as the client's
-//! world-only trace leaves them out
+//! world-only trace leaves them out.
+//!
+//! A bullet's trace takes brush models too, each through its own nodes, and
+//! the surface it meets is found as the engine finds the texture under a
+//! trace (`R_TraceTexture`). Down the nodes the line crosses, the first
+//! face on a crossed node whose texture extent holds the crossing point
 
 /// `CONTENTS_SOLID`
 pub const SOLID: i32 = -2;
@@ -15,7 +20,7 @@ pub const SOLID: i32 = -2;
 /// How far a trace keeps from the plane it meets (`DIST_EPSILON`)
 const DIST_EPSILON: f32 = 0.03125;
 
-/// The world's point hull
+/// The map's point hull, the world and every brush model
 #[derive(Clone, Debug, PartialEq)]
 pub struct Hull {
     /// Each plane's normal and distance from the origin
@@ -23,7 +28,25 @@ pub struct Hull {
     /// Each node's plane and its children, a node's index, or for a leaf
     /// its contents
     pub nodes: Vec<(usize, [Child; 2])>,
-    pub root: Child,
+    /// Every BSP model's first node, the world's first
+    pub models: Vec<Child>,
+    /// Each node's faces, as a range of `faces`
+    pub node_faces: Vec<std::ops::Range<usize>>,
+    pub faces: Vec<HullFace>,
+}
+
+/// A face as a trace finds it
+#[derive(Clone, Debug, PartialEq)]
+pub struct HullFace {
+    /// The texture axes, a texel per unit along each, and their offsets
+    pub axes: [[f32; 4]; 2],
+    /// Where the face's texture extent begins along each axis, and how far
+    /// it goes, in 16-texel steps as the engine keeps them
+    pub mins: [f32; 2],
+    pub extents: [f32; 2],
+    /// The texture's material from `sound/materials.txt`, `C` for concrete
+    /// when it names none
+    pub material: u8,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -55,7 +78,14 @@ fn lerp(a: [f32; 3], b: [f32; 3], f: f32) -> [f32; 3] {
 impl Hull {
     /// The contents of the leaf holding `point`
     pub fn contents(&self, point: [f32; 3]) -> i32 {
-        self.contents_from(self.root, point)
+        self.contents_from(self.world(), point)
+    }
+
+    fn world(&self) -> Child {
+        self.models
+            .first()
+            .copied()
+            .unwrap_or(Child::Contents(SOLID))
     }
 
     /// The contents of the leaf holding `point`, from `at` down
@@ -81,6 +111,20 @@ impl Hull {
 
     /// Trace the line from `start` to `end`
     pub fn trace(&self, start: [f32; 3], end: [f32; 3]) -> Trace {
+        self.trace_model(0, start, end)
+    }
+
+    /// Trace the line from `start` to `end` through BSP model `model`, in
+    /// its own space. One the map lacks meets nothing
+    pub fn trace_model(&self, model: usize, start: [f32; 3], end: [f32; 3]) -> Trace {
+        let Some(root) = self.models.get(model).copied() else {
+            return Trace {
+                fraction: 1.,
+                end,
+                normal: [0.; 3],
+                start_solid: false,
+            };
+        };
         let mut trace = Trace {
             fraction: 1.,
             end,
@@ -88,14 +132,7 @@ impl Hull {
             start_solid: false,
         };
         let mut all_solid = true;
-        self.check(
-            self.root,
-            (0., 1.),
-            (start, end),
-            &mut trace,
-            &mut all_solid,
-            0,
-        );
+        self.check(root, (0., 1.), (start, end), &mut trace, &mut all_solid, 0);
         if all_solid {
             trace.start_solid = true;
         }
@@ -104,6 +141,54 @@ impl Hull {
             trace.end = start;
         }
         trace
+    }
+
+    /// The material of the face the line from `start` to `end` meets first
+    /// in model `model`, none when it meets none
+    pub fn material(&self, model: usize, start: [f32; 3], end: [f32; 3]) -> Option<u8> {
+        let root = self.models.get(model).copied()?;
+        let face = self.face_along(root, start, end, 0)?;
+        self.faces.get(face).map(|f| f.material)
+    }
+
+    /// The first face along the line from `at` down, as the engine's
+    /// `RecursiveLightPoint` looks for one
+    fn face_along(&self, at: Child, start: [f32; 3], end: [f32; 3], depth: usize) -> Option<usize> {
+        let Child::Node(i) = at else {
+            return None;
+        };
+        if depth > self.nodes.len() {
+            return None;
+        }
+        let (plane, children) = self.nodes.get(i).copied()?;
+        let (normal, dist) = self.planes.get(plane).copied()?;
+        let front = dot(normal, start) - dist;
+        let back = dot(normal, end) - dist;
+        let side = usize::from(front < 0.);
+        if (back < 0.) == (front < 0.) {
+            return self.face_along(children[side], start, end, depth + 1);
+        }
+        let mid = lerp(start, end, front / (front - back));
+        if let Some(face) = self.face_along(children[side], start, mid, depth + 1) {
+            return Some(face);
+        }
+        for f in self.node_faces.get(i).cloned().unwrap_or_default() {
+            let Some(face) = self.faces.get(f) else {
+                continue;
+            };
+            let st = |k: usize| {
+                let a = face.axes[k];
+                a[0] * mid[0] + a[1] * mid[1] + a[2] * mid[2] + a[3]
+            };
+            let inside = (0..2).all(|k| {
+                let d = st(k) - face.mins[k];
+                d >= 0. && d <= face.extents[k]
+            });
+            if inside {
+                return Some(f);
+            }
+        }
+        self.face_along(children[side ^ 1], mid, end, depth + 1)
     }
 
     /// `SV_RecursiveHullCheck`. False once the line has met something
@@ -214,7 +299,16 @@ mod tests {
                 (0, [Child::Node(1), Child::Contents(SOLID)]),
                 (1, [Child::Contents(-1), Child::Contents(SOLID)]),
             ],
-            root: Child::Node(0),
+            models: vec![Child::Node(0)],
+            // The floor's face, a 64 by 64 tile textured along x and y, on
+            // the first node
+            node_faces: vec![0..1, 1..1],
+            faces: vec![HullFace {
+                axes: [[1., 0., 0., 0.], [0., 1., 0., 0.]],
+                mins: [0., 0.],
+                extents: [64., 64.],
+                material: b'T',
+            }],
         }
     }
 
@@ -240,5 +334,19 @@ mod tests {
 
         let inside = hull.trace([0., 0., -10.], [0., 0., 10.]);
         assert!(inside.start_solid);
+    }
+
+    #[test]
+    fn a_line_finds_the_material_of_the_face_it_meets() {
+        let hull = room();
+        assert_eq!(
+            hull.material(0, [10., 10., 10.], [10., 10., -10.]),
+            Some(b'T')
+        );
+        // Off the floor's texture extent there is no face
+        assert_eq!(hull.material(0, [80., 10., 10.], [80., 10., -10.]), None);
+        // Nor along a line that meets nothing, or in a model the map lacks
+        assert_eq!(hull.material(0, [10., 10., 10.], [20., 10., 10.]), None);
+        assert_eq!(hull.material(3, [10., 10., 10.], [10., 10., -10.]), None);
     }
 }

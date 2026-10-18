@@ -495,7 +495,29 @@ seek far into the 32-player `20230909_224143_stalkyard.dem` the full 4096 are la
 and one new decal takes about 60 microseconds. The window sends all decals' triangles to the GPU
 again whenever one is made (55,000 vertices for 4096 decals).
 
-Not yet: the decals and impacts of bullets the clients' own weapon events fire, which trace through
-players and read the surface's material (next), player sprays (`TE_PLAYERDECAL`), beams and tracers,
-the gibs of `TE_BREAKMODEL`, particles (the sparks' streaks, the explosions' flicker and the dust of
-a gunshot), and dynamic lights.
+### Bullet impacts
+
+The server leaves the impacts of the glock's, MP5's, shotgun's and python's bullets to the clients,
+whose event handlers trace them (`EV_HLDM_FireBullets`). Playback traces them as it runs the
+handlers of 10c.
+
+**Implemented**, from the SDK's `ev_hldm.cpp`, not yet compared with the game:
+
+| Part | How |
+|---|---|
+| Aim | from the eye, 28 units over the event's origin or 12 for a ducking player, along the event's angles. The glock, MP5 and python take the event's spread as it is (the server's shared random spread), and buckshot spreads over a disc of the weapon's cone: 4 pellets of the shotgun's single shot and 8 of its double in multiplayer, 6 and 12 in singleplayer |
+| Trace | through the world and each solid brush entity's model (`SOLID_BSP`), unturned, and through each other living player's standing box where the latest snapshot has it |
+| Material | of the face met in the world, the first along the line whose texture extent holds the crossing point (`R_TraceTexture`), named in `sound/materials.txt` by its first 12 letters, a `-0`, `+0`, `{`, `!` or `~` before the name left out. Concrete when the file names none or the bullet met a brush entity |
+| Sound | the material's own (`player/pl_metal1.wav` and the rest, `debris/wood`, `debris/glass`) at its volume, `weapons/bullet_hit1.wav` or `2` for a player, at pitch 96 to 111. Buckshot makes none |
+| Decal | on the world or a brush entity, one of `{shot1` to `{shot5`, or `{bproof1` on a brush drawn other than normally, with one of the five ricochets half the time |
+| Tracers | the MP5's first bullet of every two is a tracer and leaves no impact, counted for each shooter |
+
+**Measured (2026-10-18):** in the first 300 s of `naz_crossfire_pb_01.dem`, the 28 glock bullets
+leave 23 shot decals (`{SHOT1` to `{SHOT5`, 179 to 183 in `decals.wad`) and play `bullet_hit` for the
+5 that meet a player. The 300 s mix in 4.1 s, against 3.7 s before.
+
+Not yet: hitboxes, as the game traces players through their models' hitboxes where its prediction
+has them, so a shot past a model but inside its box meets the box here; brush entities turned by
+their angles; the crossbow's bolts; player sprays (`TE_PLAYERDECAL`); beams and tracers; the gibs of
+`TE_BREAKMODEL`; particles (the sparks' streaks, the explosions' flicker and an impact's dust); and
+dynamic lights.

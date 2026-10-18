@@ -769,7 +769,9 @@ mod tests {
         Hull {
             planes: vec![([0., 0., 1.], 0.)],
             nodes: vec![(0, [Child::Contents(-1), Child::Contents(SOLID)])],
-            root: Child::Node(0),
+            models: vec![Child::Node(0)],
+            node_faces: Vec::new(),
+            faces: Vec::new(),
         }
     }
 

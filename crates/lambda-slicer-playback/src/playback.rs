@@ -23,6 +23,7 @@ use lambda_slicer_core::state::Decoder;
 use crate::GameFiles;
 use crate::animation::{Animations, Fired, Flash, IN_EYE, Sequence};
 use crate::audio::{Audio, CHAN_AUTO, Channel, SoundLength, SoundName, UNKNOWN_LIMIT, view_entity};
+use crate::bullets;
 use crate::checkpoint::{self, Checkpoint, Checkpoints, State};
 use crate::controller::{CameraMode, Stamp};
 use crate::decals::{Decal, Decals};
@@ -86,6 +87,7 @@ type Lengths = Box<dyn Fn(&SoundName) -> SoundLength + Send>;
 type Sequences = Box<dyn Fn(&str) -> Option<Arc<[Sequence]>> + Send>;
 type Hulls = Box<dyn Fn(&str) -> Option<Arc<Hull>> + Send>;
 type SpriteFrames = Box<dyn Fn(&str) -> Option<u32> + Send>;
+type DecalIndex = Box<dyn Fn(&str) -> Option<u16> + Send>;
 
 pub struct Playback {
     path: Arc<Path>,
@@ -100,6 +102,7 @@ pub struct Playback {
     sequences: Sequences,
     hulls: Hulls,
     sprite_frames: SpriteFrames,
+    decal_index: DecalIndex,
     /// The map traced through and its world, once read
     hull: Option<(String, Option<Arc<Hull>>)>,
 }
@@ -149,6 +152,7 @@ impl Playback {
             sequences: Box::new(|_| None),
             hulls: Box::new(|_| None),
             sprite_frames: Box::new(|_| None),
+            decal_index: Box::new(|_| None),
             hull: None,
         })
     }
@@ -189,6 +193,8 @@ impl Playback {
         self.hulls = Box::new(move |map| hulls(map));
         let frames = files.sprite_frames.clone();
         self.sprite_frames = Box::new(move |sprite| frames(sprite));
+        let decal_index = files.decal_index.clone();
+        self.decal_index = Box::new(move |name| decal_index(name));
         self.hull = None;
     }
 
@@ -210,6 +216,10 @@ impl Playback {
 
     pub fn tempents(&self) -> &TempEntities {
         &self.state.tempents
+    }
+
+    pub fn decals(&self) -> &Decals {
+        &self.state.decals
     }
 
     pub fn decoder(&self) -> &Decoder {
@@ -270,9 +280,13 @@ impl Playback {
         // so a stop or change always finds the same sounds
         self.state.audio.retire(group.time, &*self.lengths);
 
+        // The map before this group's records, which bullets are traced
+        // through
+        let world = self.world();
         let time = group.time;
         let lengths: &dyn Fn(&SoundName) -> SoundLength = &*self.lengths;
         let frames: &dyn Fn(&str) -> Option<u32> = &*self.sprite_frames;
+        let decal_index: &dyn Fn(&str) -> Option<u16> = &*self.decal_index;
         let State {
             decoder,
             scene,
@@ -287,7 +301,10 @@ impl Playback {
             audio,
             events,
             tempents,
+            decals,
             lengths,
+            world: world.as_deref(),
+            decal_index,
         };
         for event in effects.events.due(time) {
             dispatch(&event, decoder, scene, &mut effects);
@@ -297,7 +314,7 @@ impl Playback {
                 FrameBody::Network(frame) => {
                     let audio = &mut *effects.audio;
                     let tempents = &mut *effects.tempents;
-                    let decals = &mut *decals;
+                    let decals = &mut *effects.decals;
                     let applied = decoder.network_frame(record.location, frame, |d, m| {
                         scene.on_message(d, m, time);
                         audio.on_message(d, m, time, lengths);
@@ -549,7 +566,12 @@ struct Effects<'a> {
     audio: &'a mut Audio,
     events: &'a mut Events,
     tempents: &'a mut TempEntities,
+    decals: &'a mut Decals,
     lengths: &'a dyn Fn(&SoundName) -> SoundLength,
+    /// The map to trace bullets through
+    world: Option<&'a Hull>,
+    /// A decal's place in `decals.wad` by its name
+    decal_index: &'a dyn Fn(&str) -> Option<u16>,
 }
 
 /// Run the client's handler for `event`. An event that gives no origin
@@ -559,7 +581,10 @@ fn dispatch(event: &ClientEvent, decoder: &Decoder, scene: &mut Scene, effects: 
         audio,
         events,
         tempents,
+        decals,
         lengths,
+        world,
+        decal_index,
     } = effects;
     let mut event = event.clone();
     if event.args.origin == [0.; 3]
@@ -582,6 +607,19 @@ fn dispatch(event: &ClientEvent, decoder: &Decoder, scene: &mut Scene, effects: 
                 scene.animate_viewmodel(sequence, body, event.time)
             }
             Action::Shell(throw) => tempents.shell(&throw, event.time),
+            Action::Bullets(volley) => {
+                let tracers = events.tracers(event.entity);
+                let max = decoder.max_clients;
+                let impacts = bullets::fire(&volley, event.entity, max, tracers, scene, *world);
+                for call in impacts.sounds {
+                    audio.play(&call, event.time, view, lengths);
+                }
+                for (name, entity, at) in impacts.decals {
+                    if let Some(texture) = decal_index(name) {
+                        decals.shoot(texture, entity, at, None, scene);
+                    }
+                }
+            }
         }
     }
 }

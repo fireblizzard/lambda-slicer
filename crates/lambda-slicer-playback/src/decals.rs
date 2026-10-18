@@ -99,6 +99,19 @@ impl Decals {
             _ => return,
         };
         let entity = u16::try_from(entity).unwrap_or(0);
+        self.shoot(texture, entity, origin, named, scene);
+    }
+
+    /// A decal of texture `texture` aimed at `origin` on entity `entity`,
+    /// the world when 0, its brush named by `named` or by the entity
+    pub(crate) fn shoot(
+        &mut self,
+        texture: u16,
+        entity: u16,
+        origin: [f32; 3],
+        named: Option<Arc<str>>,
+        scene: &Scene,
+    ) {
         let (model, origin) = if entity == 0 {
             (None, origin)
         } else {

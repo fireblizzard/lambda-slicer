@@ -5,10 +5,10 @@
 //! client turns each into sounds and effects in its event handlers. The
 //! handlers here make the same sounds, with the same samples, channels,
 //! volumes and pitches as the SDK's (`ev_hldm.cpp`), and start the same
-//! weapon animation when the event is the local player's, and throw out the
-//! same shells, not yet compared with the game (docs/viewer-profile.md,
-//! "Client events"). The impacts of bullets and bolts and the beams come
-//! later.
+//! weapon animation when the event is the local player's, throw out the
+//! same shells and fire the same bullets (`crate::bullets`), not yet
+//! compared with the game (docs/viewer-profile.md, "Client events"). The
+//! crossbow's bolts and the beams come later.
 //!
 //! An event with a delay waits in a queue until its time, and a handler can
 //! take queued events back, as the gauss's stop takes back its spin. The
@@ -16,11 +16,13 @@
 //! recording keeps, so each event seeds its own from where it was recorded.
 //! A seek then hears the same choices every time
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use lambda_slicer_core::analysis::events::{EventArgs, RecordedEvent};
 use lambda_slicer_core::state::{ActorResolution, EventSource};
 
+use crate::bullets::{Bullet, Volley};
 use crate::tempents::{Bounce, Throw};
 use crate::time::SourceTime;
 
@@ -109,6 +111,8 @@ pub enum Action {
     },
     /// Throw out a shell (`EV_EjectBrass`)
     Shell(Throw),
+    /// Fire bullets (`EV_HLDM_FireBullets`)
+    Bullets(Volley),
 }
 
 /// Events waiting for their time
@@ -118,6 +122,9 @@ pub struct Events {
     /// The crowbar's swings so far, which choose its next animation
     /// (`g_iSwing`)
     swings: u32,
+    /// Each shooter's bullets so far, which say which are tracers
+    /// (`tracerCount`)
+    tracers: HashMap<u16, u32>,
 }
 
 impl Events {
@@ -158,6 +165,11 @@ impl Events {
     /// The crowbar's count of swings, for its handler
     pub fn swings(&mut self) -> &mut u32 {
         &mut self.swings
+    }
+
+    /// `shooter`'s count of bullets
+    pub fn tracers(&mut self, shooter: u16) -> &mut u32 {
+        self.tracers.entry(shooter).or_insert(0)
     }
 }
 
@@ -246,9 +258,11 @@ fn handle_sounds(
         let brass = shell(event, &mut random, SHELL, Bounce::Shell, [20., -12., 4.]);
         let volume = random.float(0.92, 1.);
         let pitch = 98 + random.long(0, 3);
+        let spread = [args.fparam1, args.fparam2];
         vec![
             brass,
             sound(CHAN_WEAPON, "weapons/pl_gun3.wav", volume, pitch),
+            volley(event, &mut random, Bullet::Nine, 1, 8192., spread, 0),
         ]
     } else if is("events/shotgun1.sc") {
         // SHOTGUN_FIRE
@@ -262,9 +276,23 @@ fn handle_sounds(
         );
         let volume = random.float(0.95, 1.);
         let pitch = 93 + random.long(0, 0x1f);
+        // Four pellets in a wide cone in multiplayer, six in a round one
+        let (shots, spread) = match event.max_clients > 1 {
+            true => (4, [0.08716, 0.04362]),
+            false => (6, [0.08716, 0.08716]),
+        };
         vec![
             brass,
             sound(CHAN_WEAPON, "weapons/sbarrel1.wav", volume, pitch),
+            volley(
+                event,
+                &mut random,
+                Bullet::Buckshot,
+                shots,
+                2048.,
+                spread,
+                0,
+            ),
         ]
     } else if is("events/shotgun2.sc") {
         // SHOTGUN_FIRE2, and a shell from each barrel
@@ -283,6 +311,20 @@ fn handle_sounds(
         let volume = random.float(0.98, 1.);
         let pitch = 85 + random.long(0, 0x1f);
         actions.push(sound(CHAN_WEAPON, "weapons/dbarrel1.wav", volume, pitch));
+        // Eight pellets in a wider cone in multiplayer, twelve in a round one
+        let (shots, spread) = match event.max_clients > 1 {
+            true => (8, [0.17365, 0.04362]),
+            false => (12, [0.08716, 0.08716]),
+        };
+        actions.push(volley(
+            event,
+            &mut random,
+            Bullet::Buckshot,
+            shots,
+            2048.,
+            spread,
+            0,
+        ));
         actions
     } else if is("events/mp5.sc") {
         // MP5_FIRE1 to MP5_FIRE3
@@ -292,9 +334,11 @@ fn handle_sounds(
             0 => "weapons/hks1.wav",
             _ => "weapons/hks2.wav",
         };
+        let spread = [args.fparam1, args.fparam2];
         vec![
             brass,
             sound(CHAN_WEAPON, sample, 1., 94 + random.long(0, 0xf)),
+            volley(event, &mut random, Bullet::Mp5, 1, 8192., spread, 2),
         ]
     } else if is("events/mp52.sc") {
         // MP5_LAUNCH
@@ -312,7 +356,12 @@ fn handle_sounds(
             0 => "weapons/357_shot1.wav",
             _ => "weapons/357_shot2.wav",
         };
-        vec![sound(CHAN_WEAPON, sample, random.float(0.8, 0.9), norm)]
+        let volume = random.float(0.8, 0.9);
+        let spread = [args.fparam1, args.fparam2];
+        vec![
+            sound(CHAN_WEAPON, sample, volume, norm),
+            volley(event, &mut random, Bullet::Magnum, 1, 8192., spread, 0),
+        ]
     } else if is("events/crowbar.sc") {
         // CROWBAR_ATTACK1MISS, then the swing's own miss
         animate(4, 1);
@@ -435,6 +484,42 @@ fn angle_vectors(angles: [f32; 3]) -> [[f32; 3]; 3] {
     ]
 }
 
+/// Where the shooter's eye is, over the event's origin by the standing or
+/// ducking view height (`EV_GetGunPosition`)
+fn eye(event: &ClientEvent) -> [f32; 3] {
+    let args = &event.args;
+    let player = (1..=u16::from(event.max_clients)).contains(&event.entity);
+    // VEC_DUCK_VIEW or DEFAULT_VIEWHEIGHT
+    let height = if player && args.ducking == 1 {
+        12.
+    } else {
+        28.
+    };
+    [args.origin[0], args.origin[1], args.origin[2] + height]
+}
+
+/// Bullets fired from the eye along the event's angles
+fn volley(
+    event: &ClientEvent,
+    random: &mut Random,
+    kind: Bullet,
+    shots: u32,
+    distance: f32,
+    spread: [f32; 2],
+    tracer_every: u32,
+) -> Action {
+    Action::Bullets(Volley {
+        kind,
+        shots,
+        distance,
+        spread,
+        tracer_every,
+        source: eye(event),
+        axes: angle_vectors(event.args.angles),
+        seed: random.next(),
+    })
+}
+
 /// A shell thrown out of the gun, forward, up and right of the eye by
 /// `scales`, flying right and up from the player's own velocity
 /// (`EV_GetDefaultShellInfo` and `EV_EjectBrass`)
@@ -447,25 +532,14 @@ fn shell(
 ) -> Action {
     let args = &event.args;
     let [forward, right, up] = angle_vectors(args.angles);
-    let player = (1..=u16::from(event.max_clients)).contains(&event.entity);
-    // VEC_DUCK_VIEW or DEFAULT_VIEWHEIGHT
-    let eye = if player && args.ducking == 1 {
-        12.
-    } else {
-        28.
-    };
+    let eye = eye(event);
     let across = random.float(50., 70.);
     let lift = random.float(100., 150.);
     let velocity = args.velocity.unwrap_or([0.; 3]);
     Action::Shell(Throw {
         model,
         origin: [0, 1, 2].map(|k| {
-            let view = if k == 2 { eye } else { 0. };
-            args.origin[k]
-                + view
-                + up[k] * up_scale
-                + forward[k] * forward_scale
-                + right[k] * right_scale
+            eye[k] + up[k] * up_scale + forward[k] * forward_scale + right[k] * right_scale
         }),
         velocity: [0, 1, 2]
             .map(|k| velocity[k] + right[k] * across + up[k] * lift + forward[k] * 25.),
@@ -550,11 +624,18 @@ mod tests {
         handle(event, false, &mut 0)
     }
 
+    fn sound_of(actions: &[Action]) -> Option<&SoundCall> {
+        actions.iter().find_map(|a| match a {
+            Action::Sound(c) => Some(c),
+            _ => None,
+        })
+    }
+
     #[test]
     fn handlers_choose_the_same_way_for_the_same_event() {
         let first = sounds(&event("events/mp5.sc", 7));
         assert_eq!(first, sounds(&event("events/mp5.sc", 7)));
-        let Some(Action::Sound(call)) = first.last() else {
+        let Some(call) = sound_of(&first) else {
             panic!("{first:?}");
         };
         assert!(call.sample.starts_with("weapons/hks"));
@@ -566,9 +647,9 @@ mod tests {
 
         // Over many events every choice comes up
         let samples: std::collections::BTreeSet<_> = (0..64)
-            .map(|seed| match sounds(&event("events/mp5.sc", seed)).last() {
-                Some(Action::Sound(c)) => c.sample.clone(),
-                other => panic!("{other:?}"),
+            .map(|seed| {
+                let actions = sounds(&event("events/mp5.sc", seed));
+                sound_of(&actions).map(|c| c.sample.clone())
             })
             .collect();
         assert_eq!(samples.len(), 2);
