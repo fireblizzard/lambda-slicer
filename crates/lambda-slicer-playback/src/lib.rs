@@ -15,6 +15,7 @@
 
 pub mod animation;
 pub mod audio;
+pub mod beams;
 pub mod bullets;
 pub mod checkpoint;
 pub mod controller;

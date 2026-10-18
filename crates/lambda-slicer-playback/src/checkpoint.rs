@@ -27,6 +27,7 @@ use lambda_slicer_core::state::Decoder;
 
 use crate::animation::Animations;
 use crate::audio::Audio;
+use crate::beams::Beams;
 use crate::decals::Decals;
 use crate::events::Events;
 use crate::scene::Scene;
@@ -51,6 +52,7 @@ pub(crate) struct State {
     pub animations: Animations,
     pub tempents: TempEntities,
     pub decals: Decals,
+    pub beams: Beams,
     pub position: Option<Position>,
     /// The latest source time of any group applied
     pub reach: SourceTime,

@@ -63,6 +63,8 @@ pub(crate) struct Impacts {
     pub sounds: Vec<SoundCall>,
     /// A decal by its name in `decals.wad`, the entity it is on and where
     pub decals: Vec<(&'static str, u16, [f32; 3])>,
+    /// A tracer's start and end, and its seed
+    pub tracers: Vec<([f32; 3], [f32; 3], u64)>,
 }
 
 /// What a bullet hit
@@ -252,16 +254,30 @@ pub(crate) fn fire(
         let end = [0, 1, 2].map(|k| volley.source[k] + volley.distance * direction[k]);
 
         // `EV_HLDM_CheckTracer`, every so many a tracer that leaves nothing
-        let tracer = if volley.tracer_every != 0 {
+        let drawn = volley.tracer_every != 0 && {
             let due = tracers.is_multiple_of(volley.tracer_every);
             *tracers = tracers.wrapping_add(1);
-            due && volley.tracer_every != 1
-        } else {
-            false
+            due
         };
+        // A gun that draws every bullet's tracer still leaves its impacts
+        let tracer = drawn && volley.tracer_every != 1;
 
-        let Some((_, at, hit)) = trace(volley.source, end, shooter, max_clients, scene, world)
-        else {
+        let met = trace(volley.source, end, shooter, max_clients, scene, world);
+        if drawn {
+            // A player's tracer starts a little below, right of and ahead of
+            // the eye
+            let player = (1..=u16::from(max_clients)).contains(&shooter);
+            let start = match player {
+                true => [0, 1, 2].map(|k| {
+                    let below = if k == 2 { -4. } else { 0. };
+                    volley.source[k] + below + right[k] * 2. + forward[k] * 16.
+                }),
+                false => volley.source,
+            };
+            let reached = met.map_or(end, |(_, at, _)| at);
+            impacts.tracers.push((start, reached, random.next()));
+        }
+        let Some((_, at, hit)) = met else {
             continue;
         };
         let material = match (volley.kind, tracer) {

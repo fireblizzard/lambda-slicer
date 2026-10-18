@@ -397,7 +397,7 @@ Xash3D restates it, not yet compared with the game:
 | Events | event records, `svc_event` and `svc_event_reliable`, each run through its handler when it arrives, or queued until its delay has passed. The gauss's stop takes back the spin events queued for its player (`EV_KillEvents`) |
 | Sounds | the glock, shotgun, MP5 and its grenade, python, crowbar, crossbow, RPG, hornet gun, gauss shot and charge, Egon start, run and stop, and the train, with the handlers' samples, channels, volumes and pitches. The gauss's charge changes its pitch as each spin event comes, and its stop silences it |
 | Random choices | each event draws its own from a seed made of where it was recorded, the record, the message and the event's index, as the client's generator is not recorded. A seek makes the same choices |
-| Place | the event's origin, or where its entity is when the event gives none |
+| Place | the event's origin and angles. An event that gives none, as the server's events from an entity in the same packet do, takes its entity's origin and angles, a player's pitch turned back from the model's third of it to the view's. The recorder's own take its view, as a singleplayer recording can leave the player's entity where it spawned (`run_92.dem` holds it 2788 units away) |
 | Viewmodel | for the local player's events, the recorder or the player watched through the eyes of (`EV_IsLocal`), the handler's weapon animation, the crowbar's swings counted through its three misses |
 | Animation events | a model's client events (5000 on) fire when its frame passes them between one group and the next, from before the first frame when an animation that does not loop has begun. An entity's begins when its sequence changes or its frame goes back with a new animation time, the viewmodel's with each weapon animation. Each frame fires once in one animation. Models the game does not draw fire none |
 | Muzzle flashes | events 5001, 5011, 5021 and 5031 at attachments 0 to 3. The option's last digit picks `sprites/muzzleflash1.spr` to `muzzleflash3.spr`, its tens the scale in tenths (0.5 for none). Added to the view, at a random frame, rolled 0 to 20 degrees for the first sprite and anywhere for the others, for 0.01 s and drawn at least once (`R_MuzzleFlash`) |
@@ -518,6 +518,26 @@ leave 23 shot decals (`{SHOT1` to `{SHOT5`, 179 to 183 in `decals.wad`) and play
 
 Not yet: hitboxes, as the game traces players through their models' hitboxes where its prediction
 has them, so a shot past a model but inside its box meets the box here; brush entities turned by
-their angles; the crossbow's bolts; player sprays (`TE_PLAYERDECAL`); beams and tracers; the gibs of
-`TE_BREAKMODEL`; particles (the sparks' streaks, the explosions' flicker and an impact's dust); and
-dynamic lights.
+their angles; the crossbow's bolts; player sprays (`TE_PLAYERDECAL`); the gibs of `TE_BREAKMODEL`;
+particles (the sparks' streaks, the explosions' flicker and an impact's dust); and dynamic lights.
+
+### Beams and tracers
+
+**Implemented**, from the engine as Xash3D restates it (`R_BeamFollow`, `R_BeamPoints`,
+`R_TracerEffect`, `CL_DrawTracers`), not yet compared with the game:
+
+| Kind | How |
+|---|---|
+| Trail (`TE_BEAMFOLLOW`) | follows its entity, leaving a point behind each time the entity has moved 32 units. A strip from the entity back through its points, its sprite repeating once a point, in the message's colour by its brightness, fading with each point's age over the trail's life and gone at the oldest. When the entity is gone the trail stops growing and ends with its last point. Its width is the message's, in units either side |
+| Beam (`TE_BEAMPOINTS`) | a straight strip between two points for its life, its sprite at the message's frame and frame rate, its texture once each 100 units sliding at its scroll speed, a tenth of the message's width either side. The engine's noise, which bends a beam into a bolt, is not drawn |
+| Tracer (`TE_TRACER`, and the MP5's every other bullet) | starts 20 to 39 units past where it was fired and flies towards where it ends at 6000 units a second (`tracerspeed`, `traceroffset`). Drawn as long as a tenth of its flight at most, by 0.8 (`tracerlength`), 1.5 units either side, a soft line in the default tracer colour (`tracerred`, `tracergreen`, `tracerblue` 0.8, 0.8, 0.4, by `traceralpha` 0.5). A player's MP5 tracer starts 4 units under, 2 right of and 16 ahead of the eye |
+| Removal | `TE_KILLBEAM` ends an entity's trails, and a new session ends everything |
+| Drawing | strips turned to face the eye, added after the other translucent things |
+
+**Observed:** in `run_92.dem` the alien grunts' hornets fly with red and orange trails
+(`sprites/laserbeam.spr` in 179, 39, 14 and 255, 128, 0 at half brightness, the SDK's hornet
+colours), and at 13.7 s two beams of `sprites/lgtning.spr` cross the room.
+
+Not yet: beams between entities (`TE_BEAMENTS`, `TE_BEAMENTPOINT`), rings, disks and cylinders, beam
+noise, and beams drawn by entities, such as a tripmine's laser.
+

@@ -44,7 +44,7 @@ use lambda_slicer_render::Rgba;
 use lambda_slicer_render::camera::{Camera, Matrix};
 use lambda_slicer_render::gpu::{
     Blit, Brush, DrawList, Instance, ModelHandle, RenderMode, Scene, SpriteHandle, SpriteInstance,
-    View,
+    Streak, StreakPoint, View,
 };
 use lambda_slicer_render::light::{LightTree, ModelLight};
 use lambda_slicer_render::load::{self, EntityPose, GaitPose, LoadError, LoadedModel};
@@ -473,7 +473,19 @@ impl Viewer {
             .temp_entities
             .iter()
             .filter_map(|e| e.model.as_deref().map(|m| ModelRef::File(m.to_owned())));
-        for model in drawn.chain(viewmodel).chain(flashes).chain(temp) {
+        let beams = &frame.beams;
+        let beam_sprites = beams
+            .trails
+            .iter()
+            .map(|t| &t.sprite)
+            .chain(beams.beams.iter().map(|b| &b.sprite))
+            .map(|s| ModelRef::File(s.to_string()));
+        for model in drawn
+            .chain(viewmodel)
+            .chain(flashes)
+            .chain(temp)
+            .chain(beam_sprites)
+        {
             if let Entry::Vacant(slot) = self.models.entry(model) {
                 let _ = loader.requests.send(Asset::Model(slot.key().clone()));
                 slot.insert(Slot::Loading);
@@ -631,7 +643,95 @@ impl Viewer {
             sprites,
             viewmodel,
             decals: self.decals.mesh(),
+            streaks: self.streaks(frame),
         }
+    }
+
+    /// The frame's beams, trails and tracers as strips to draw
+    fn streaks(&self, frame: &PresentedFrame) -> Vec<Streak> {
+        let at = frame.at;
+        let sprite =
+            |path: &str, frame: usize| match self.models.get(&ModelRef::File(path.to_owned())) {
+                Some(Slot::Sprite(handle)) => Some((*handle, frame)),
+                _ => None,
+            };
+        let mut out = Vec::new();
+        for trail in &frame.beams.trails {
+            let Some(sprite) = sprite(&trail.sprite, 0) else {
+                continue;
+            };
+            // From the entity back through each point, fading as the points
+            // age and gone at the oldest
+            let mut points: Vec<StreakPoint> = trail
+                .head
+                .map(|position| StreakPoint {
+                    position,
+                    v: 0.,
+                    color: trail.color,
+                })
+                .into_iter()
+                .collect();
+            let last = trail.points.len().saturating_sub(1);
+            for (i, (position, die)) in trail.points.iter().enumerate() {
+                let fraction = if i == last {
+                    0.
+                } else {
+                    ((die.0 - at.0) as f32 / trail.life.max(1e-3)).clamp(0., 1.)
+                };
+                points.push(StreakPoint {
+                    position: *position,
+                    v: points.len() as f32,
+                    color: trail.color.map(|c| c * fraction),
+                });
+            }
+            out.push(Streak {
+                sprite: Some(sprite),
+                points,
+                width: trail.width,
+            });
+        }
+        for beam in &frame.beams.beams {
+            let elapsed = (at.0 - beam.born.0).max(0.) as f32;
+            let Some(sprite) = sprite(
+                &beam.sprite,
+                (beam.start_frame + beam.framerate * elapsed) as usize,
+            ) else {
+                continue;
+            };
+            let d = [0, 1, 2].map(|k| beam.end[k] - beam.start[k]);
+            let length = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt();
+            let v = (elapsed * beam.scroll).fract();
+            out.push(Streak {
+                sprite: Some(sprite),
+                points: vec![
+                    StreakPoint {
+                        position: beam.start,
+                        v,
+                        color: beam.color,
+                    },
+                    StreakPoint {
+                        position: beam.end,
+                        v: v + length * 0.01,
+                        color: beam.color,
+                    },
+                ],
+                width: beam.width,
+            });
+        }
+        for tracer in &frame.beams.tracers {
+            let (tail, head) = tracer.streak(at);
+            let point = |position, v| StreakPoint {
+                position,
+                v,
+                color: TRACER_COLOR,
+            };
+            out.push(Streak {
+                sprite: None,
+                points: vec![point(tail, 0.), point(head, 1.)],
+                width: TRACER_WIDTH,
+            });
+        }
+        out
     }
 
     /// A temporary sprite's colour, black for its own
@@ -1025,6 +1125,11 @@ fn drawn(frame: &PresentedFrame) -> Vec<Drawn> {
     }
     out
 }
+
+/// A tracer's colour, `tracerred`, `tracergreen` and `tracerblue` at their
+/// defaults by `traceralpha`'s, and its width either side of its line
+const TRACER_COLOR: [f32; 3] = [0.8 * 0.5, 0.8 * 0.5, 0.4 * 0.5];
+const TRACER_WIDTH: f32 = 1.5;
 
 /// How long a muzzle flash lasts, as the game's temporary entity does
 /// (`R_MuzzleFlash`), though it is drawn at least once

@@ -470,6 +470,80 @@ pub struct DrawList {
     /// The decals on the world and brush entities, uploaded again when
     /// their revision changes
     pub decals: Option<Arc<DecalMesh>>,
+    /// Beams, trails and tracers, added over everything else translucent
+    pub streaks: Vec<Streak>,
+}
+
+/// A beam, trail or tracer drawn this frame, a strip along its points
+/// turned to face the view
+#[derive(Clone, Debug, PartialEq)]
+pub struct Streak {
+    /// The sprite and frame it is textured with, none for a tracer's soft
+    /// line
+    pub sprite: Option<(SpriteHandle, usize)>,
+    pub points: Vec<StreakPoint>,
+    /// Units either side of the line
+    pub width: f32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct StreakPoint {
+    pub position: [f32; 3],
+    /// How far along the texture, a whole texture each 1
+    pub v: f32,
+    /// Added, 0 to 1
+    pub color: [f32; 3],
+}
+
+/// The quads of `streak` facing the eye at `eye`, two triangles each
+fn streak_quads(streak: &Streak, eye: [f32; 3]) -> Vec<SpriteVertex> {
+    let mut out = Vec::new();
+    for pair in streak.points.windows(2) {
+        let (a, b) = (pair[0], pair[1]);
+        let along = [0, 1, 2].map(|k| b.position[k] - a.position[k]);
+        let to_eye = [0, 1, 2].map(|k| eye[k] - a.position[k]);
+        let side = [
+            along[1] * to_eye[2] - along[2] * to_eye[1],
+            along[2] * to_eye[0] - along[0] * to_eye[2],
+            along[0] * to_eye[1] - along[1] * to_eye[0],
+        ];
+        let length = (side[0] * side[0] + side[1] * side[1] + side[2] * side[2]).sqrt();
+        if length < 1e-6 {
+            continue;
+        }
+        let side = side.map(|v| v / length * streak.width);
+        let corner = |p: StreakPoint, sign: f32, u: f32| SpriteVertex {
+            position: [0, 1, 2].map(|k| p.position[k] + side[k] * sign),
+            uv: [u, p.v],
+            color: [p.color[0], p.color[1], p.color[2], 1.],
+        };
+        let (a0, a1, b1, b0) = (
+            corner(a, 1., 0.),
+            corner(a, -1., 1.),
+            corner(b, -1., 1.),
+            corner(b, 1., 0.),
+        );
+        out.extend([a0, a1, b1, a0, b1, b0]);
+    }
+    out
+}
+
+/// A soft white dot, clear at its edges, for tracers
+fn dot() -> Rgba {
+    const SIZE: u32 = 8;
+    let mut pixels = Vec::with_capacity((SIZE * SIZE * 4) as usize);
+    for y in 0..SIZE {
+        for x in 0..SIZE {
+            let d = |c: u32| (c as f32 + 0.5) / SIZE as f32 * 2. - 1.;
+            let r = (d(x) * d(x) + d(y) * d(y)).sqrt();
+            pixels.extend([255, 255, 255, ((1. - r).clamp(0., 1.) * 255.) as u8]);
+        }
+    }
+    Rgba {
+        width: SIZE,
+        height: SIZE,
+        pixels,
+    }
 }
 
 #[repr(C)]
@@ -611,6 +685,8 @@ pub struct Scene {
     decals: Option<DecalGpu>,
     /// Decal textures by their place in `decals.wad`
     decal_textures: HashMap<u16, wgpu::BindGroup>,
+    /// The tracers' soft line, made on the first frame that has one
+    dot: Option<wgpu::BindGroup>,
     sky: Option<SkyGpu>,
     sky_bytes: u64,
     models: Vec<ModelGpu>,
@@ -945,6 +1021,7 @@ impl Scene {
             world_bytes: 0,
             decals: None,
             decal_textures: HashMap::new(),
+            dot: None,
             sky: None,
             sky_bytes: 0,
             models: Vec::new(),
@@ -1162,13 +1239,17 @@ impl Scene {
 
     /// Every sprite's corners in one buffer, each sprite's pipeline and
     /// place in it, the furthest first
+    /// Every sprite's quad from the furthest in, then every streak's, and
+    /// where each begins in the buffer
+    #[allow(clippy::type_complexity)]
     fn upload_sprites(
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         view: &View,
         sprites: &[SpriteInstance],
-    ) -> Vec<(usize, SpritePass, u32)> {
+        streaks: &[Streak],
+    ) -> (Vec<(usize, SpritePass, u32)>, Vec<(usize, u32, u32)>) {
         let mut quads: Vec<(f32, usize, SpritePass, [SpriteVertex; 6])> = sprites
             .iter()
             .enumerate()
@@ -1188,8 +1269,19 @@ impl Scene {
             bytes.extend_from_slice(bytemuck::cast_slice(quad));
             order.push((*i, *pass, k as u32 * 6));
         }
+        let mut strips = Vec::with_capacity(streaks.len());
+        let mut first = quads.len() as u32 * 6;
+        for (i, streak) in streaks.iter().enumerate() {
+            let vertices = streak_quads(streak, view.eye);
+            if vertices.is_empty() {
+                continue;
+            }
+            bytes.extend_from_slice(bytemuck::cast_slice(&vertices));
+            strips.push((i, first, vertices.len() as u32));
+            first += vertices.len() as u32;
+        }
         if bytes.is_empty() {
-            return order;
+            return (order, strips);
         }
         if bytes.len() as u64 > self.sprite_capacity {
             let capacity = (bytes.len() as u64).next_power_of_two();
@@ -1205,7 +1297,7 @@ impl Scene {
         if let Some(buffer) = &self.sprite_vertices {
             queue.write_buffer(buffer, 0, &bytes);
         }
-        order
+        (order, strips)
     }
 
     /// The last frame drawn, read back from the GPU, waiting for it. For
@@ -1457,7 +1549,11 @@ impl Scene {
         let starts = self.upload_instances(device, queue, &models);
         let (starts, viewmodel_starts) = starts.split_at(draw.instances.len());
         let instances = &draw.instances;
-        let sprites = self.upload_sprites(device, queue, view, &draw.sprites);
+        if self.dot.is_none() && draw.streaks.iter().any(|s| s.sprite.is_none()) {
+            self.dot = Some(self.texture(device, queue, &dot(), false));
+        }
+        let (sprites, streaks) =
+            self.upload_sprites(device, queue, view, &draw.sprites, &draw.streaks);
         self.upload_objects(device, queue, brushes);
         self.upload_decals(device, queue, draw.decals.as_deref());
 
@@ -1615,6 +1711,26 @@ impl Scene {
                     pass.draw(first..first + 6, 0..1);
                 }
             }
+            if let Some(buffer) = &self.sprite_vertices
+                && !streaks.is_empty()
+            {
+                pass.set_vertex_buffer(0, buffer.slice(..));
+                pass.set_pipeline(&self.pipelines.sprite_add);
+                for &(i, first, count) in &streaks {
+                    let texture = match draw.streaks[i].sprite {
+                        Some((sprite, frame)) => self
+                            .sprites
+                            .get(sprite.0)
+                            .and_then(|gpu| gpu.frames.get(frame % gpu.frames.len().max(1)))
+                            .map(|f| &f.texture),
+                        None => self.dot.as_ref(),
+                    };
+                    if let Some(texture) = texture {
+                        pass.set_bind_group(1, texture, &[]);
+                        pass.draw(first..first + count, 0..1);
+                    }
+                }
+            }
         }
 
         // The viewmodel over everything, against a cleared depth
@@ -1765,6 +1881,34 @@ mod tests {
             color: [0.; 3],
             steady: false,
         }
+    }
+
+    #[test]
+    fn a_streak_is_a_strip_across_the_view() {
+        // Along x, seen from above, so its width runs along y
+        let point = |x: f32, v: f32| StreakPoint {
+            position: [x, 0., 0.],
+            v,
+            color: [1., 0.5, 0.],
+        };
+        let streak = Streak {
+            sprite: None,
+            points: vec![point(0., 0.), point(10., 1.), point(30., 2.)],
+            width: 2.,
+        };
+        let quads = streak_quads(&streak, [5., 0., 100.]);
+        assert_eq!(quads.len(), 12);
+        for v in &quads {
+            assert!((v.position[1].abs() - 2.).abs() < 1e-5);
+            assert_eq!(v.position[2], 0.);
+        }
+        // Its texture runs along it by each point's v, across it from 0 to 1
+        assert_eq!(quads[0].uv, [0., 0.]);
+        assert_eq!(quads[2].uv, [1., 1.]);
+        assert_eq!(quads[11].uv, [0., 2.]);
+        // A streak pointing at the eye has no width to draw
+        let end_on = streak_quads(&streak, [100., 0., 0.]);
+        assert!(end_on.is_empty());
     }
 
     #[test]

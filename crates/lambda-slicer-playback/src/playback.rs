@@ -23,6 +23,7 @@ use lambda_slicer_core::state::Decoder;
 use crate::GameFiles;
 use crate::animation::{Animations, Fired, Flash, IN_EYE, Sequence};
 use crate::audio::{Audio, CHAN_AUTO, Channel, SoundLength, SoundName, UNKNOWN_LIMIT, view_entity};
+use crate::beams::Beams;
 use crate::bullets;
 use crate::checkpoint::{self, Checkpoint, Checkpoints, State};
 use crate::controller::{CameraMode, Stamp};
@@ -81,6 +82,8 @@ pub struct PresentedFrame {
     pub decals: Arc<VecDeque<Decal>>,
     /// Grows whenever a decal is made or they are cleared
     pub decal_revision: u64,
+    /// Beams, trails and tracers
+    pub beams: Beams,
 }
 
 type Lengths = Box<dyn Fn(&SoundName) -> SoundLength + Send>;
@@ -135,6 +138,7 @@ impl Playback {
             animations: Animations::default(),
             tempents: TempEntities::default(),
             decals: Decals::default(),
+            beams: Beams::default(),
             position: None,
             reach: SourceTime::ZERO,
             exhausted: false,
@@ -294,6 +298,7 @@ impl Playback {
             events,
             tempents,
             decals,
+            beams,
             stopped,
             ..
         } = &mut self.state;
@@ -302,6 +307,7 @@ impl Playback {
             events,
             tempents,
             decals,
+            beams,
             lengths,
             world: world.as_deref(),
             decal_index,
@@ -315,6 +321,7 @@ impl Playback {
                     let audio = &mut *effects.audio;
                     let tempents = &mut *effects.tempents;
                     let decals = &mut *effects.decals;
+                    let beams = &mut *effects.beams;
                     let applied = decoder.network_frame(record.location, frame, |d, m| {
                         scene.on_message(d, m, time);
                         audio.on_message(d, m, time, lengths);
@@ -322,10 +329,12 @@ impl Playback {
                             protocol::Message::ServerInfo(_) => {
                                 tempents.clear();
                                 decals.clear();
+                                beams.clear();
                             }
                             protocol::Message::TempEntity { kind, body } => {
                                 let model = |index: i16| precached_model(d, index);
                                 decals.message(*kind, body, scene, &model);
+                                beams.message(*kind, body, time, scene, &model);
                                 let lookup = Lookup {
                                     model: &model,
                                     frames,
@@ -392,6 +401,7 @@ impl Playback {
                 self.state.audio.play(&call, time, view, &*self.lengths);
             }
         }
+        self.state.beams.step(time, &self.state.scene);
         let world = self.world();
         let gravity = motion::gravity(&self.state.decoder);
         let bounces = self.state.tempents.step(time, world.as_deref(), gravity);
@@ -540,6 +550,7 @@ impl Playback {
                 .collect(),
             decals: state.decals.list().clone(),
             decal_revision: state.decals.revision,
+            beams: state.beams.clone(),
             temp_entities: state
                 .tempents
                 .entities()
@@ -567,11 +578,40 @@ struct Effects<'a> {
     events: &'a mut Events,
     tempents: &'a mut TempEntities,
     decals: &'a mut Decals,
+    beams: &'a mut Beams,
     lengths: &'a dyn Fn(&SoundName) -> SoundLength,
     /// The map to trace bullets through
     world: Option<&'a Hull>,
     /// A decal's place in `decals.wad` by its name
     decal_index: &'a dyn Fn(&str) -> Option<u16>,
+}
+
+/// Where an event that gives no origin or angles happens, as the client
+/// takes them from the event's entity, a player's pitch turned back from
+/// the model's third of it to the view's. The recorder's own come from its
+/// view, as a singleplayer recording can leave the player's entity behind
+/// where it spawned
+fn fill_place(event: &mut ClientEvent, decoder: &Decoder, scene: &Scene) {
+    let args = &mut event.args;
+    let (origin, angles) = if event.entity == view_entity(decoder) {
+        let eye = scene.camera.origin;
+        // The eye, less the view height the handlers add back
+        ([eye[0], eye[1], eye[2] - 28.], scene.camera.angles)
+    } else if let Some(e) = scene.entities.iter().find(|e| e.id.number == event.entity) {
+        let mut angles = e.angles;
+        if (1..=u16::from(decoder.max_clients)).contains(&e.id.number) {
+            angles[0] *= -3.;
+        }
+        (e.origin, angles)
+    } else {
+        return;
+    };
+    if args.origin == [0.; 3] {
+        args.origin = origin;
+    }
+    if args.angles == [0.; 3] {
+        args.angles = angles;
+    }
 }
 
 /// Run the client's handler for `event`. An event that gives no origin
@@ -582,16 +622,13 @@ fn dispatch(event: &ClientEvent, decoder: &Decoder, scene: &mut Scene, effects: 
         events,
         tempents,
         decals,
+        beams,
         lengths,
         world,
         decal_index,
     } = effects;
     let mut event = event.clone();
-    if event.args.origin == [0.; 3]
-        && let Some(e) = scene.entities.iter().find(|e| e.id.number == event.entity)
-    {
-        event.args.origin = e.origin;
-    }
+    fill_place(&mut event, decoder, scene);
     let view = view_entity(decoder);
     let camera = &scene.camera;
     let local = if camera.observer_mode == IN_EYE {
@@ -618,6 +655,9 @@ fn dispatch(event: &ClientEvent, decoder: &Decoder, scene: &mut Scene, effects: 
                     if let Some(texture) = decal_index(name) {
                         decals.shoot(texture, entity, at, None, scene);
                     }
+                }
+                for (start, end, seed) in impacts.tracers {
+                    beams.tracer(start, end, event.time, seed);
                 }
             }
         }
