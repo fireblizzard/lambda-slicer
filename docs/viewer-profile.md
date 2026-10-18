@@ -402,10 +402,18 @@ Xash3D restates it, not yet compared with the game:
 | Animation events | a model's client events (5000 on) fire when its frame passes them between one group and the next, from before the first frame when an animation that does not loop has begun. An entity's begins when its sequence changes or its frame goes back with a new animation time, the viewmodel's with each weapon animation. Each frame fires once in one animation. Models the game does not draw fire none |
 | Muzzle flashes | events 5001, 5011, 5021 and 5031 at attachments 0 to 3. The option's last digit picks `sprites/muzzleflash1.spr` to `muzzleflash3.spr`, its tens the scale in tenths (0.5 for none). Added to the view, at a random frame, rolled 0 to 20 degrees for the first sprite and anywhere for the others, for 0.01 s and drawn at least once (`R_MuzzleFlash`) |
 | Model sounds | event 5004's sample, heard as the listener's own at full volume (`pfnPlaySoundByNameAtLocation`) |
+| Shells | the glock and MP5 throw out `models/shell.mdl`, the shotgun one `models/shotgunshell.mdl` a barrel, from 28 units over the event's origin (12 for a ducking player), forward, down and right by each weapon's amounts, flying 50 to 70 units a second right, 100 to 150 up and 25 forward on top of the event's velocity (`EV_GetDefaultShellInfo`, `EV_EjectBrass`). Turned to the shooter's yaw, spinning up to 255 degrees a second about each axis, for 2.5 s (`R_TempModel`) |
+| Shell movement | each group, on along the velocity and turned by the spin, then traced from where it was through the world's point hull. Where the line meets something the shell stops there, its velocity reflected about the plane and halved, its yaw turned the other way and its angles cut by a tenth. Landing on a floor (normal over 0.9) falling slower than three groups of gravity stops it flat for good. Then the server's gravity pulls on it (`HUD_TempEntUpdate`) |
+| World trace | Quake's `SV_RecursiveHullCheck` through the BSP's node tree from the world's first head node, a thirty-second of a unit short of the plane met, brush entities left out as the client's world-only trace leaves them |
+| Bounce sounds | `player/pl_shell1.wav` to `3` or `weapons/sshell1.wav` to `3`, always for a bounce falling at 200 units a second or more, one in four otherwise, as loud as the fall over 350 and none for the landing that stops it (`CL_TempEntPlaySound`) |
 
 `examples/sound_starts.rs` counts the sounds playback starts by where they come from, and
 `examples/studio_events.rs` lists the client events in a folder's models. `mix_probe` also counts
 muzzle flashes.
+
+**Observed:** a shell landing on a slope steeper than about 25 degrees, such as the ramps of
+`crossfire` (normal 0.894 up), never meets the floor test and hops on quietly until its life is
+over, as the client's own code would have it. AG's `shell.mdl` is red.
 
 **Measured (2026-10-18):**
 
@@ -419,6 +427,9 @@ Played on the device from 18 s of `stalkx_naz_248.dem` through the gauss's charg
 matches `mix_probe`: 150 windows of 50 ms with sound, ratio 0.714 at the median, 2 windows at about
 0.82 where a sound ends or is replaced within a block and the two mixes' blocks fall at other times.
 
-Not yet: shells, which come next with a trace through the map, impacts, ricochets and decals
-(10d), the gauss's and Egon's beams (10e), the tripmine's and snark's handlers, which trace first,
-the view's punch, sparks (event 5002), and the lights of muzzle flashes and `EF_MUZZLEFLASH`.
+With shells, the first 300 s of `naz_crossfire_pb_01.dem` throw out 28, one for each glock shot,
+the recorder's and the opponent's. None falls more than 200 units, and the 300 s still mix in 3.2 s.
+
+Not yet: impacts, ricochets and decals (10d), the gauss's and Egon's beams (10e), the tripmine's
+and snark's handlers, which trace first, the view's punch, sparks (event 5002), and the lights of
+muzzle flashes and `EF_MUZZLEFLASH`.

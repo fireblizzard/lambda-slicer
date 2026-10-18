@@ -1,12 +1,13 @@
-//! The game's sounds and its models' sequences, read once each through its
-//! search path
+//! The game's sounds, its models' sequences and its maps' worlds, read once
+//! each through its search path
 //!
 //! A sample named `weapons/gauss2.wav` is `sound/weapons/gauss2.wav`. A
 //! leading `*`, which marks a sound the game streams, is dropped. Sentences
 //! (`!` names and sentence numbers) are not resolved to their words yet, so
 //! they have no samples. A sound or model that cannot be read is remembered
 //! as missing, so it is not read again. Of a model only its main file is
-//! read, which describes every sequence and its events
+//! read, which describes every sequence and its events. Of a map only the
+//! world's node tree is kept, for tracing through
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -14,10 +15,12 @@ use std::sync::{Arc, Mutex};
 use lambda_slicer_assets::Limits;
 use lambda_slicer_assets::search::SearchPath;
 use lambda_slicer_assets::wav::{self, Sound};
+use lambda_slicer_assets::xenoxide::bsp30::BspDocument;
 use lambda_slicer_assets::xenoxide::studio::StudioModel;
 use lambda_slicer_playback::GameFiles;
 use lambda_slicer_playback::animation::{Sequence, StudioEvent};
 use lambda_slicer_playback::audio::{SoundLength, SoundLengths, SoundName};
+use lambda_slicer_playback::trace::{Child, Hull, SOLID};
 
 /// `STUDIO_LOOPING`
 const STUDIO_LOOPING: i32 = 1;
@@ -27,6 +30,7 @@ pub struct Library {
     limits: Limits,
     sounds: Mutex<HashMap<Arc<str>, Option<Arc<Sound>>>>,
     sequences: Mutex<HashMap<String, Option<Arc<[Sequence]>>>>,
+    hulls: Mutex<HashMap<String, Option<Arc<Hull>>>>,
 }
 
 impl Library {
@@ -36,6 +40,7 @@ impl Library {
             limits,
             sounds: Mutex::new(HashMap::new()),
             sequences: Mutex::new(HashMap::new()),
+            hulls: Mutex::new(HashMap::new()),
         }
     }
 
@@ -117,12 +122,60 @@ impl Library {
         sequences
     }
 
-    /// The sound lengths and model sequences playback reads
+    /// The world's point hull of the map at `path`, such as
+    /// `maps/crossfire.bsp`, none when it cannot be read
+    pub fn hull(&self, path: &str) -> Option<Arc<Hull>> {
+        let mut known = self.hulls.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(hull) = known.get(path) {
+            return hull.clone();
+        }
+        let hull = self
+            .search
+            .find(path)
+            .and_then(|found| self.search.read(&found))
+            .ok()
+            .and_then(|bytes| world_hull(&bytes))
+            .map(Arc::new);
+        known.insert(path.to_owned(), hull.clone());
+        hull
+    }
+
+    /// The sound lengths, model sequences and map worlds playback reads
     pub fn game_files(self: &Arc<Self>) -> GameFiles {
-        let library = self.clone();
+        let (models, maps) = (self.clone(), self.clone());
         GameFiles {
             lengths: self.lengths(),
-            sequences: Arc::new(move |path| library.sequences(path)),
+            sequences: Arc::new(move |path| models.sequences(path)),
+            hulls: Arc::new(move |path| maps.hull(path)),
         }
     }
+}
+
+/// The world's node tree, its leaves by their contents, from its first
+/// head node
+fn world_hull(bytes: &[u8]) -> Option<Hull> {
+    let bsp = BspDocument::parse(bytes).ok()?;
+    let contents: Vec<i32> = bsp.leaves().map(|l| l.contents).collect();
+    let child = |c: i16| {
+        if c >= 0 {
+            Child::Node(c as usize)
+        } else {
+            let leaf = (-1 - i32::from(c)) as usize;
+            Child::Contents(contents.get(leaf).copied().unwrap_or(SOLID))
+        }
+    };
+    let planes = bsp
+        .planes()
+        .map(|p| (p.normal.map(|f| f.value), p.distance.value))
+        .collect();
+    let nodes = bsp
+        .nodes()
+        .map(|n| (n.plane.max(0) as usize, n.children.map(child)))
+        .collect();
+    let root = bsp.models().next()?.head_nodes[0];
+    Some(Hull {
+        planes,
+        nodes,
+        root: child(i16::try_from(root).ok()?),
+    })
 }

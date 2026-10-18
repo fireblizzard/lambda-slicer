@@ -455,7 +455,11 @@ impl Viewer {
             .into_iter()
             .flat_map(|d| std::iter::once(d.model).chain(d.weapon));
         let flashes = frame.flashes.iter().map(|f| flash_sprite(f.sprite));
-        for model in drawn.chain(viewmodel).chain(flashes) {
+        let temp = frame
+            .temp_models
+            .iter()
+            .map(|m| ModelRef::File(m.model.to_string()));
+        for model in drawn.chain(viewmodel).chain(flashes).chain(temp) {
             if let Entry::Vacant(slot) = self.models.entry(model) {
                 let _ = loader.requests.send(Asset::Model(slot.key().clone()));
                 slot.insert(Slot::Loading);
@@ -530,6 +534,33 @@ impl Viewer {
                 instances.push(Instance {
                     model: *weapon_handle,
                     vertices: weapon.mesh.skin(&weapon_bones, &light),
+                });
+            }
+        }
+
+        // The client's own models, such as shells, in their first frame
+        for m in &frame.temp_models {
+            let Some(Slot::Ready(model, handle)) =
+                self.models.get(&ModelRef::File(m.model.to_string()))
+            else {
+                continue;
+            };
+            let pose = EntityPose {
+                sequence: 0,
+                cycle: 0.,
+                elapsed: 0.,
+                framerate: 0.,
+                controllers: [127.; 4],
+                blending: [0.; 2],
+                origin: m.origin,
+                angles: m.angles,
+                player: false,
+                gait: None,
+            };
+            if let Some(bones) = model.pose(&pose) {
+                instances.push(Instance {
+                    model: *handle,
+                    vertices: model.mesh.skin(&bones, &light_at(m.origin)),
                 });
             }
         }

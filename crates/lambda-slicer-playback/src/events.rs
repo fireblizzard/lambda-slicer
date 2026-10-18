@@ -5,9 +5,10 @@
 //! client turns each into sounds and effects in its event handlers. The
 //! handlers here make the same sounds, with the same samples, channels,
 //! volumes and pitches as the SDK's (`ev_hldm.cpp`), and start the same
-//! weapon animation when the event is the local player's, not yet compared
-//! with the game (docs/viewer-profile.md, "Client events"). The impacts of
-//! bullets and bolts, beams and the shells weapons throw out come later.
+//! weapon animation when the event is the local player's, and throw out the
+//! same shells, not yet compared with the game (docs/viewer-profile.md,
+//! "Client events"). The impacts of bullets and bolts and the beams come
+//! later.
 //!
 //! An event with a delay waits in a queue until its time, and a handler can
 //! take queued events back, as the gauss's stop takes back its spin. The
@@ -20,6 +21,7 @@ use std::sync::Arc;
 use lambda_slicer_core::analysis::events::{EventArgs, RecordedEvent};
 use lambda_slicer_core::state::{ActorResolution, EventSource};
 
+use crate::tempents::{Bounce, Throw};
 use crate::time::SourceTime;
 
 /// `ATTN_NORM`
@@ -41,15 +43,14 @@ pub struct ClientEvent {
     pub entity: u16,
     pub args: EventArgs,
     pub seed: u64,
-    /// The game has more than one player slot, which the python's body
-    /// depends on
-    pub multiplayer: bool,
+    /// The game's player slots
+    pub max_clients: u8,
 }
 
 impl ClientEvent {
     /// `event` as it arrived at `time`, with its actor resolved as the
     /// client resolves it
-    pub fn new(event: &RecordedEvent, time: SourceTime, multiplayer: bool) -> Option<Self> {
+    pub fn new(event: &RecordedEvent, time: SourceTime, max_clients: u8) -> Option<Self> {
         let script = event.resource.as_deref()?;
         let entity = match event.actor {
             ActorResolution::PacketEntity { entity, .. } => i32::from(entity),
@@ -71,7 +72,7 @@ impl ClientEvent {
             entity: u16::try_from(entity).unwrap_or(0),
             args: event.args.clone(),
             seed,
-            multiplayer,
+            max_clients,
         })
     }
 }
@@ -106,6 +107,8 @@ pub enum Action {
         sequence: i32,
         body: i32,
     },
+    /// Throw out a shell (`EV_EjectBrass`)
+    Shell(Throw),
 }
 
 /// Events waiting for their time
@@ -176,22 +179,22 @@ pub(crate) fn mix(a: u64, b: u64) -> u64 {
 }
 
 /// The random choices of one event, in the order its handler makes them
-struct Random(u64);
+pub(crate) struct Random(pub(crate) u64);
 
 impl Random {
-    fn next(&mut self) -> u64 {
+    pub(crate) fn next(&mut self) -> u64 {
         self.0 = self.0.wrapping_add(0x9e37_79b9_7f4a_7c15);
         mix(self.0, 0)
     }
 
     /// `gEngfuncs.pfnRandomLong`, both ends included
-    fn long(&mut self, low: i32, high: i32) -> i32 {
+    pub(crate) fn long(&mut self, low: i32, high: i32) -> i32 {
         let span = (i64::from(high) - i64::from(low) + 1).max(1) as u64;
         (i64::from(low) + (self.next() % span) as i64) as i32
     }
 
     /// `gEngfuncs.pfnRandomFloat`
-    fn float(&mut self, low: f32, high: f32) -> f32 {
+    pub(crate) fn float(&mut self, low: f32, high: f32) -> f32 {
         let unit = (self.next() >> 40) as f32 / (1u64 << 24) as f32;
         low + (high - low) * unit
     }
@@ -240,29 +243,59 @@ fn handle_sounds(
     if is("events/glock1.sc") || is("events/glock2.sc") {
         // GLOCK_SHOOT_EMPTY or GLOCK_SHOOT
         animate(if args.bparam1 != 0 { 4 } else { 3 }, 2);
+        let brass = shell(event, &mut random, SHELL, Bounce::Shell, [20., -12., 4.]);
         let volume = random.float(0.92, 1.);
         let pitch = 98 + random.long(0, 3);
-        vec![sound(CHAN_WEAPON, "weapons/pl_gun3.wav", volume, pitch)]
+        vec![
+            brass,
+            sound(CHAN_WEAPON, "weapons/pl_gun3.wav", volume, pitch),
+        ]
     } else if is("events/shotgun1.sc") {
         // SHOTGUN_FIRE
         animate(1, 2);
+        let brass = shell(
+            event,
+            &mut random,
+            SHOTSHELL,
+            Bounce::ShotShell,
+            [32., -12., 6.],
+        );
         let volume = random.float(0.95, 1.);
         let pitch = 93 + random.long(0, 0x1f);
-        vec![sound(CHAN_WEAPON, "weapons/sbarrel1.wav", volume, pitch)]
+        vec![
+            brass,
+            sound(CHAN_WEAPON, "weapons/sbarrel1.wav", volume, pitch),
+        ]
     } else if is("events/shotgun2.sc") {
-        // SHOTGUN_FIRE2
+        // SHOTGUN_FIRE2, and a shell from each barrel
         animate(2, 2);
+        let mut actions: Vec<Action> = (0..2)
+            .map(|_| {
+                shell(
+                    event,
+                    &mut random,
+                    SHOTSHELL,
+                    Bounce::ShotShell,
+                    [32., -12., 6.],
+                )
+            })
+            .collect();
         let volume = random.float(0.98, 1.);
         let pitch = 85 + random.long(0, 0x1f);
-        vec![sound(CHAN_WEAPON, "weapons/dbarrel1.wav", volume, pitch)]
+        actions.push(sound(CHAN_WEAPON, "weapons/dbarrel1.wav", volume, pitch));
+        actions
     } else if is("events/mp5.sc") {
         // MP5_FIRE1 to MP5_FIRE3
         animate(5 + random.long(0, 2), 2);
+        let brass = shell(event, &mut random, SHELL, Bounce::Shell, [20., -12., 4.]);
         let sample = match random.long(0, 1) {
             0 => "weapons/hks1.wav",
             _ => "weapons/hks2.wav",
         };
-        vec![sound(CHAN_WEAPON, sample, 1., 94 + random.long(0, 0xf))]
+        vec![
+            brass,
+            sound(CHAN_WEAPON, sample, 1., 94 + random.long(0, 0xf)),
+        ]
     } else if is("events/mp52.sc") {
         // MP5_LAUNCH
         animate(2, 2);
@@ -274,7 +307,7 @@ fn handle_sounds(
     } else if is("events/python.sc") {
         // PYTHON_FIRE1, with the multiplayer body when the game has more
         // than one player slot
-        animate(2, i32::from(event.multiplayer));
+        animate(2, i32::from(event.max_clients > 1));
         let sample = match random.long(0, 1) {
             0 => "weapons/357_shot1.wav",
             _ => "weapons/357_shot2.wav",
@@ -386,6 +419,62 @@ fn handle_sounds(
     }
 }
 
+const SHELL: &str = "models/shell.mdl";
+const SHOTSHELL: &str = "models/shotgunshell.mdl";
+
+/// The game's view vectors for angles in degrees (`AngleVectors`)
+fn angle_vectors(angles: [f32; 3]) -> [[f32; 3]; 3] {
+    let [p, y, r] = angles.map(f32::to_radians);
+    let (sp, cp) = p.sin_cos();
+    let (sy, cy) = y.sin_cos();
+    let (sr, cr) = r.sin_cos();
+    [
+        [cp * cy, cp * sy, -sp],
+        [-sr * sp * cy + cr * sy, -sr * sp * sy - cr * cy, -sr * cp],
+        [cr * sp * cy + sr * sy, cr * sp * sy - sr * cy, cr * cp],
+    ]
+}
+
+/// A shell thrown out of the gun, forward, up and right of the eye by
+/// `scales`, flying right and up from the player's own velocity
+/// (`EV_GetDefaultShellInfo` and `EV_EjectBrass`)
+fn shell(
+    event: &ClientEvent,
+    random: &mut Random,
+    model: &'static str,
+    bounce: Bounce,
+    [forward_scale, up_scale, right_scale]: [f32; 3],
+) -> Action {
+    let args = &event.args;
+    let [forward, right, up] = angle_vectors(args.angles);
+    let player = (1..=u16::from(event.max_clients)).contains(&event.entity);
+    // VEC_DUCK_VIEW or DEFAULT_VIEWHEIGHT
+    let eye = if player && args.ducking == 1 {
+        12.
+    } else {
+        28.
+    };
+    let across = random.float(50., 70.);
+    let lift = random.float(100., 150.);
+    let velocity = args.velocity.unwrap_or([0.; 3]);
+    Action::Shell(Throw {
+        model,
+        origin: [0, 1, 2].map(|k| {
+            let view = if k == 2 { eye } else { 0. };
+            args.origin[k]
+                + view
+                + up[k] * up_scale
+                + forward[k] * forward_scale
+                + right[k] * right_scale
+        }),
+        velocity: [0, 1, 2]
+            .map(|k| velocity[k] + right[k] * across + up[k] * lift + forward[k] * 25.),
+        yaw: args.angles[1],
+        bounce,
+        seed: random.next(),
+    })
+}
+
 fn sound_call(
     entity: u16,
     channel: u8,
@@ -453,7 +542,7 @@ mod tests {
                 ..EventArgs::default()
             },
             seed,
-            multiplayer: true,
+            max_clients: 32,
         }
     }
 
@@ -465,7 +554,7 @@ mod tests {
     fn handlers_choose_the_same_way_for_the_same_event() {
         let first = sounds(&event("events/mp5.sc", 7));
         assert_eq!(first, sounds(&event("events/mp5.sc", 7)));
-        let Action::Sound(call) = &first[0] else {
+        let Some(Action::Sound(call)) = first.last() else {
             panic!("{first:?}");
         };
         assert!(call.sample.starts_with("weapons/hks"));
@@ -477,8 +566,8 @@ mod tests {
 
         // Over many events every choice comes up
         let samples: std::collections::BTreeSet<_> = (0..64)
-            .map(|seed| match &sounds(&event("events/mp5.sc", seed))[0] {
-                Action::Sound(c) => c.sample.clone(),
+            .map(|seed| match sounds(&event("events/mp5.sc", seed)).last() {
+                Some(Action::Sound(c)) => c.sample.clone(),
                 other => panic!("{other:?}"),
             })
             .collect();
@@ -536,6 +625,35 @@ mod tests {
             })
             .collect();
         assert_eq!(misses, [4, 5, 7, 4]);
+    }
+
+    #[test]
+    fn a_double_shot_throws_out_two_shells_to_the_right() {
+        let mut shot = event("events/shotgun2.sc", 5);
+        shot.args.angles = [0., 90., 0.];
+        let shells: Vec<_> = sounds(&shot)
+            .into_iter()
+            .filter_map(|a| match a {
+                Action::Shell(Throw {
+                    model,
+                    origin,
+                    velocity,
+                    yaw,
+                    ..
+                }) => Some((model, origin, velocity, yaw)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(shells.len(), 2);
+        let (model, origin, velocity, yaw) = shells[0];
+        assert_eq!((model, yaw), ("models/shotgunshell.mdl", 90.));
+        // Facing +y, right is +x, so 32 forward, 6 right and 12 under the
+        // eye
+        assert!((origin[0] - 7.).abs() < 1e-4 && (origin[1] - 34.).abs() < 1e-4);
+        assert!((origin[2] - 19.).abs() < 1e-4);
+        assert!((50. ..=70.).contains(&velocity[0]) && (100. ..=150.).contains(&velocity[2]));
+        assert!((velocity[1] - 25.).abs() < 1e-4);
+        assert_ne!(shells[0], shells[1]);
     }
 
     #[test]

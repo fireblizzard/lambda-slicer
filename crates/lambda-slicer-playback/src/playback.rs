@@ -14,6 +14,7 @@ use std::path::Path;
 use std::sync::{Arc, MutexGuard};
 
 use lambda_slicer_core::analysis::events::recorded_event;
+use lambda_slicer_core::analysis::motion;
 use lambda_slicer_core::container::{FrameBody, Limits};
 use lambda_slicer_core::message::{Coded, Message};
 use lambda_slicer_core::state::Decoder;
@@ -26,7 +27,9 @@ use crate::controller::{CameraMode, Stamp};
 use crate::events::{ATTN_NORM, Action, ClientEvent, Events, PITCH_NORM, SoundCall, handle};
 use crate::scene::{self, Camera, Entity, PlayerView, Scene, Viewmodel};
 use crate::source::{Cursor, Group, Source};
+use crate::tempents::{TempEntities, TempModel};
 use crate::time::{Position, ServerTime, SourceTime};
+use crate::trace::Hull;
 
 /// Everything a renderer and a mixer need for one moment, and which load
 /// and seek it answers
@@ -69,10 +72,13 @@ pub struct PresentedFrame {
     pub local_entity: u16,
     /// Muzzle flashes fired lately, at or before `at`
     pub flashes: Vec<Flash>,
+    /// The client's own models, shells among them
+    pub temp_models: Vec<TempModel>,
 }
 
 type Lengths = Box<dyn Fn(&SoundName) -> SoundLength + Send>;
 type Sequences = Box<dyn Fn(&str) -> Option<Arc<[Sequence]>> + Send>;
+type Hulls = Box<dyn Fn(&str) -> Option<Arc<Hull>> + Send>;
 
 pub struct Playback {
     path: Arc<Path>,
@@ -85,6 +91,9 @@ pub struct Playback {
     checkpoints: checkpoint::Shared,
     lengths: Lengths,
     sequences: Sequences,
+    hulls: Hulls,
+    /// The map traced through and its world, once read
+    hull: Option<(String, Option<Arc<Hull>>)>,
 }
 
 impl Playback {
@@ -113,6 +122,7 @@ impl Playback {
             audio: Audio::default(),
             events: Events::default(),
             animations: Animations::default(),
+            tempents: TempEntities::default(),
             position: None,
             reach: SourceTime::ZERO,
             exhausted: false,
@@ -128,6 +138,8 @@ impl Playback {
             checkpoints,
             lengths: Box::new(|_| SoundLength::Unknown),
             sequences: Box::new(|_| None),
+            hulls: Box::new(|_| None),
+            hull: None,
         })
     }
 
@@ -163,6 +175,9 @@ impl Playback {
         self.set_sound_lengths(move |name| lengths(name));
         let sequences = files.sequences.clone();
         self.set_model_sequences(move |model| sequences(model));
+        let hulls = files.hulls.clone();
+        self.hulls = Box::new(move |map| hulls(map));
+        self.hull = None;
     }
 
     pub fn position(&self) -> Option<Position> {
@@ -183,6 +198,15 @@ impl Playback {
 
     pub fn decoder(&self) -> &Decoder {
         &self.state.decoder
+    }
+
+    /// The world of the session's map to trace temporary entities through
+    fn world(&mut self) -> Option<Arc<Hull>> {
+        let map = self.state.scene.map.as_deref()?;
+        if self.hull.as_ref().is_none_or(|(name, _)| name != map) {
+            self.hull = Some((map.to_owned(), (self.hulls)(map)));
+        }
+        self.hull.as_ref()?.1.clone()
     }
 
     fn store(&self) -> MutexGuard<'_, Checkpoints> {
@@ -237,15 +261,23 @@ impl Playback {
             scene,
             audio,
             events,
+            tempents,
             stopped,
             ..
         } = &mut self.state;
-        for event in events.due(time) {
-            dispatch(&event, decoder, scene, audio, events, lengths);
+        let mut effects = Effects {
+            audio,
+            events,
+            tempents,
+            lengths,
+        };
+        for event in effects.events.due(time) {
+            dispatch(&event, decoder, scene, &mut effects);
         }
         for record in &group.records {
             let result = match &record.body {
                 FrameBody::Network(frame) => {
+                    let audio = &mut *effects.audio;
                     let applied = decoder.network_frame(record.location, frame, |d, m| {
                         scene.on_message(d, m, time);
                         audio.on_message(d, m, time, lengths);
@@ -259,17 +291,17 @@ impl Playback {
                 }
                 other => {
                     scene.on_record(other, time);
-                    audio.on_record(decoder, other, time, lengths);
+                    effects.audio.on_record(decoder, other, time, lengths);
                     Ok(())
                 }
             };
             for decoded in std::mem::take(&mut decoder.events) {
                 let recorded = recorded_event(decoder, 0, &decoded);
-                let multiplayer = decoder.max_clients > 1;
-                if let Some(event) = ClientEvent::new(&recorded, time, multiplayer)
-                    .and_then(|event| events.arrive(event, time))
+                let max_clients = decoder.max_clients;
+                if let Some(event) = ClientEvent::new(&recorded, time, max_clients)
+                    .and_then(|event| effects.events.arrive(event, time))
                 {
-                    dispatch(&event, decoder, scene, audio, events, lengths);
+                    dispatch(&event, decoder, scene, &mut effects);
                 }
             }
             if let Err(e) = result {
@@ -303,6 +335,12 @@ impl Playback {
                 };
                 self.state.audio.play(&call, time, view, &*self.lengths);
             }
+        }
+        let world = self.world();
+        let gravity = motion::gravity(&self.state.decoder);
+        let bounces = self.state.tempents.step(time, world.as_deref(), gravity);
+        for call in bounces {
+            self.state.audio.play(&call, time, view, &*self.lengths);
         }
         self.state.position = Some(position);
         self.state.reach = SourceTime(self.state.reach.0.max(time.0));
@@ -444,20 +482,28 @@ impl Playback {
                 .filter(|f| f.time <= at)
                 .copied()
                 .collect(),
+            temp_models: state.tempents.models().to_vec(),
         }
     }
 }
 
+/// What an event's handler changes besides the scene
+struct Effects<'a> {
+    audio: &'a mut Audio,
+    events: &'a mut Events,
+    tempents: &'a mut TempEntities,
+    lengths: &'a dyn Fn(&SoundName) -> SoundLength,
+}
+
 /// Run the client's handler for `event`. An event that gives no origin
 /// sounds where its entity is
-fn dispatch(
-    event: &ClientEvent,
-    decoder: &Decoder,
-    scene: &mut Scene,
-    audio: &mut Audio,
-    events: &mut Events,
-    lengths: &dyn Fn(&SoundName) -> SoundLength,
-) {
+fn dispatch(event: &ClientEvent, decoder: &Decoder, scene: &mut Scene, effects: &mut Effects) {
+    let Effects {
+        audio,
+        events,
+        tempents,
+        lengths,
+    } = effects;
     let mut event = event.clone();
     if event.args.origin == [0.; 3]
         && let Some(e) = scene.entities.iter().find(|e| e.id.number == event.entity)
@@ -478,6 +524,7 @@ fn dispatch(
             Action::WeaponAnimation { sequence, body } => {
                 scene.animate_viewmodel(sequence, body, event.time)
             }
+            Action::Shell(throw) => tempents.shell(&throw, event.time),
         }
     }
 }

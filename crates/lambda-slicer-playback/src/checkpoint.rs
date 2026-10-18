@@ -30,6 +30,7 @@ use crate::audio::Audio;
 use crate::events::Events;
 use crate::scene::Scene;
 use crate::source::Cursor;
+use crate::tempents::TempEntities;
 use crate::time::{Position, SourceTime};
 
 /// Seconds of source time between checkpoints, at first
@@ -47,6 +48,7 @@ pub(crate) struct State {
     /// Events waiting for their time
     pub events: Events,
     pub animations: Animations,
+    pub tempents: TempEntities,
     pub position: Option<Position>,
     /// The latest source time of any group applied
     pub reach: SourceTime,

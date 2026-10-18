@@ -21,16 +21,24 @@ pub mod events;
 pub mod playback;
 pub mod scene;
 pub mod source;
+pub mod tempents;
 pub mod time;
+pub mod trace;
 pub mod worker;
 
 pub use playback::PresentedFrame;
 
-/// What playback reads from the game's files, the length of each sound and
-/// each model's sequences, shared by every playback of a demo so their
-/// checkpoints agree
+/// What playback reads from the game's files, the length of each sound,
+/// each model's sequences and each map's world, shared by every playback of
+/// a demo so their checkpoints agree
 #[derive(Clone)]
 pub struct GameFiles {
     pub lengths: audio::SoundLengths,
     pub sequences: animation::ModelSequences,
+    pub hulls: MapHulls,
 }
+
+/// Where playback learns a map's world, by its path such as
+/// `maps/crossfire.bsp`
+pub type MapHulls =
+    std::sync::Arc<dyn Fn(&str) -> Option<std::sync::Arc<trace::Hull>> + Send + Sync>;
