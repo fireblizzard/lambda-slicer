@@ -49,6 +49,8 @@ mod flag {
     pub const ANIMATE: u16 = 16;
     pub const FADE: u16 = 32;
     pub const SPARKS: u16 = 64;
+    /// Its frames go round at ten a second
+    pub const CYCLE: u16 = 128;
 }
 
 /// What a temporary model sounds like when it hits something
@@ -264,6 +266,86 @@ impl TempEntities {
         Some(e)
     }
 
+    /// A steady glow of `model` at `origin`, fading out after `life`
+    /// seconds, or after its frames at ten a second and one more when none
+    /// (`R_TempSprite` with `kRenderGlow` and `kRenderFxNoDissipation`)
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn glow(
+        &mut self,
+        model: &str,
+        frames: u32,
+        origin: [f32; 3],
+        scale: f32,
+        brightness: f32,
+        life: f32,
+        now: SourceTime,
+    ) {
+        let Some(e) = self.alloc(Some(model), origin, now) else {
+            return;
+        };
+        e.render_mode = render::GLOW;
+        e.steady = true;
+        e.scale = scale;
+        e.render_amount = brightness * 255.;
+        e.base_amount = e.render_amount;
+        e.frame_max = frames.saturating_sub(1) as f32;
+        e.flags = flag::FADE;
+        let life = if life != 0. {
+            life
+        } else {
+            frames as f32 * 0.1 + 1.
+        };
+        e.die = SourceTime(now.0 + f64::from(life));
+    }
+
+    /// `count` steady glows of `model` thrown from along the line from
+    /// `start` towards `towards` at `speed` with some spread, cycling their
+    /// frames, bouncing under half gravity and fading out after `life`
+    /// seconds and up to four more (`R_Sprite_Trail`)
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn sprite_trail(
+        &mut self,
+        model: &str,
+        frames: u32,
+        start: [f32; 3],
+        towards: [f32; 3],
+        count: u32,
+        life: f32,
+        size: f32,
+        spread: f32,
+        brightness: f32,
+        speed: f32,
+        now: SourceTime,
+        seed: u64,
+    ) {
+        let delta = [0, 1, 2].map(|k| towards[k] - start[k]);
+        let length = (delta[0] * delta[0] + delta[1] * delta[1] + delta[2] * delta[2]).sqrt();
+        let direction = delta.map(|v| if length > 0. { v / length } else { 0. });
+        let spread = spread / 256.;
+        let mut random = Random(seed);
+        for i in 0..count {
+            let along = if i == 0 {
+                0.
+            } else {
+                i as f32 / (count as f32 - 1.)
+            };
+            let origin = [0, 1, 2].map(|k| start[k] + delta[k] * along);
+            let Some(e) = self.alloc(Some(model), origin, now) else {
+                return;
+            };
+            e.flags = flag::COLLIDE | flag::CYCLE | flag::FADE | flag::SLOW_GRAVITY;
+            e.velocity = direction.map(|d| d * speed + random.float(-127., 128.) * spread);
+            e.scale = size;
+            e.render_mode = render::GLOW;
+            e.steady = true;
+            e.render_amount = brightness;
+            e.base_amount = brightness;
+            e.frame = random.long(0, frames as i32 - 1).max(0) as f32;
+            e.frame_max = frames.saturating_sub(1) as f32;
+            e.die = SourceTime(now.0 + f64::from(life + random.float(0., 4.)));
+        }
+    }
+
     /// A ricochet's glint, fading away at once (`R_RicochetSprite`)
     pub(crate) fn ricochet_sprite(&mut self, origin: [f32; 3], scale: f32, now: SourceTime) {
         let Some(e) = self.alloc(Some(RICOCHET), origin, now) else {
@@ -344,6 +426,11 @@ impl TempEntities {
                 if e.frame >= e.frame_max {
                     // Played through once, so it is gone
                     return false;
+                }
+            } else if e.flags & flag::CYCLE != 0 {
+                e.frame += dt * 10.;
+                if e.frame >= e.frame_max {
+                    e.frame = e.frame.fract();
                 }
             }
             if e.flags & flag::ROTATE != 0 {

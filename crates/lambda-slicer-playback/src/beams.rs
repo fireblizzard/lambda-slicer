@@ -23,6 +23,9 @@ use crate::events::{Random, mix};
 use crate::scene::{EntityId, Scene};
 use crate::time::SourceTime;
 
+/// `sprites/xbeam1.spr`, which the Egon's beams are drawn with
+pub const EGON_SPRITE: &str = "sprites/xbeam1.spr";
+
 /// How far an entity moves before its trail leaves a point
 const TRAIL_STEP: f32 = 32.;
 /// A tracer's speed (`tracerspeed`), how far past where it was fired it
@@ -71,6 +74,12 @@ pub struct Beam {
     pub framerate: f32,
     /// How fast its texture slides along it, whole textures a second
     pub scroll: f32,
+    /// The entity whose gun it starts at, the viewmodel's when the entity
+    /// is the one the view is through, `start` when there is no gun to
+    /// find
+    pub from_gun: Option<u16>,
+    /// One of the Egon's, kept alive while it fires
+    egon: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -121,6 +130,87 @@ impl Beams {
         *self = Self::default();
     }
 
+    /// A beam a handler draws for `life` seconds (`R_BeamPoints`,
+    /// `R_BeamEntPoint`)
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn line(
+        &mut self,
+        sprite: &str,
+        start: [f32; 3],
+        from_gun: Option<u16>,
+        end: [f32; 3],
+        width: f32,
+        color: [f32; 3],
+        life: f32,
+        now: SourceTime,
+    ) {
+        self.beams.push(Beam {
+            sprite: Arc::from(sprite),
+            start,
+            end,
+            born: now,
+            die: SourceTime(now.0 + f64::from(life)),
+            width,
+            color,
+            start_frame: 0.,
+            framerate: 0.,
+            scroll: 0.,
+            from_gun,
+            egon: false,
+        });
+    }
+
+    /// The Egon's two beams from `shooter`'s gun, unless they are drawn
+    /// already (`EV_EgonFire`), a thinner one sliding fast and a wider one
+    /// slower, both pale blue
+    pub(crate) fn egon_start(
+        &mut self,
+        shooter: u16,
+        eye: [f32; 3],
+        end: [f32; 3],
+        now: SourceTime,
+    ) {
+        if self.beams.iter().any(|b| b.egon) {
+            return;
+        }
+        for (width, scroll) in [(3.5, 55.), (5., 25.)] {
+            self.beams.push(Beam {
+                sprite: Arc::from(EGON_SPRITE),
+                start: eye,
+                end,
+                born: now,
+                die: SourceTime(now.0 + 0.1),
+                width,
+                color: crate::gauss::beam_colour([0.5, 0.5, 125.], 0.7),
+                start_frame: 0.,
+                framerate: 0.,
+                scroll,
+                from_gun: Some(shooter),
+                egon: true,
+            });
+        }
+    }
+
+    /// Whether the Egon's beams are drawn
+    pub fn egon(&self) -> bool {
+        self.beams.iter().any(|b| b.egon)
+    }
+
+    /// Aim the Egon's beams from `eye` to `end` for the next tenth of a
+    /// second (`EV_UpdateBeams`)
+    pub(crate) fn egon_aim(&mut self, eye: [f32; 3], end: [f32; 3], now: SourceTime) {
+        for b in self.beams.iter_mut().filter(|b| b.egon) {
+            b.start = eye;
+            b.end = end;
+            b.die = SourceTime(now.0 + 0.1);
+        }
+    }
+
+    /// End the Egon's beams (`EV_EgonStop`)
+    pub(crate) fn egon_stop(&mut self) {
+        self.beams.retain(|b| !b.egon);
+    }
+
     /// A tracer from `start` towards `end` at `now`
     pub(crate) fn tracer(&mut self, start: [f32; 3], end: [f32; 3], now: SourceTime, seed: u64) {
         let d = [0, 1, 2].map(|k| end[k] - start[k]);
@@ -168,6 +258,8 @@ impl Beams {
                     start_frame: byte(14),
                     framerate: byte(15),
                     scroll: byte(23) * 0.1,
+                    from_gun: None,
+                    egon: false,
                 });
             }
             kind::TRACER => {

@@ -541,3 +541,53 @@ colours), and at 13.7 s two beams of `sprites/lgtning.spr` cross the room.
 Not yet: beams between entities (`TE_BEAMENTS`, `TE_BEAMENTPOINT`), rings, disks and cylinders, beam
 noise, and beams drawn by entities, such as a tripmine's laser.
 
+### Gauss and Egon (10e)
+
+**Implemented**, from the SDK's `EV_FireGauss`, `EV_EgonFire`, `EV_EgonStop` and `EV_UpdateBeams`,
+not yet compared with the game:
+
+| Part | How |
+|---|---|
+| Gauss shot | traced from the eye along the aim, as a beam of `sprites/smoke.spr` for a tenth of a second, 1 unit either side for a primary shot and 2.5 for a charged one, the first from the gun's first attachment (the viewmodel's when the view is through the shooter) |
+| Gauss reflection | a brush met less than 60 degrees off its plane reflects the shot, which loses that share of its energy, leaving a glow of `sprites/hotglow.spr` and three balls |
+| Gauss impact | a brush met more squarely takes a shot decal, sometimes a ricochet, and a glow. A charged shot then punches through once, when the wall is thinner than its energy, losing that much, with balls, a decal and a glow on the far side. A primary shot stops with a smaller glow and eight balls. The shot goes on through players, and ends when its energy is 10 or less or after ten hits |
+| Glows and balls | steady glows, fading after their life (`R_TempSprite`). Balls fly out at 100 or 200 units a second with spread, cycling their frames at ten a second, bouncing under half gravity, fading after their life and up to four seconds more (`R_Sprite_Trail`) |
+| Egon | for the local player only, as only the local player's are the client's own, two beams of `sprites/xbeam1.spr` from the gun, 3.5 and 5 units either side, their textures sliding at 55 and 25 a second, aimed each group from the eye along the view to 2048 units or what they meet, and ended by the Egon's stop. Other players' Egon beams are the server's beam entities, not drawn yet |
+| Colours | a handler's colour times its brightness, at most full. This draws the gauss's primary beam yellow, its charged beam white and the Egon's pale blue, the only reading under which both handlers' numbers make sense, as one gives colours out of 255 and the other under 1 |
+
+A trace that starts inside a wall now keeps where it goes on to once out, as the client's does,
+which the punch through needs to find the wall's far side.
+
+**Observed:** in `stalkx_naz_248.dem` the recorder's gauss shots draw from the viewmodel's barrel,
+reflect off walls at a glancing angle, and leave glows and balls where they land.
+
+Not yet: the beams' noise, the Egon's for other players, the lights of the gauss and Egon, and the
+view's punch.
+
+## Seeking with effects (10e)
+
+Everything this milestone adds is part of playback's state, so a checkpoint holds it and a seek
+restores it, then plays on to the moment asked for as sequential playback would: the sound channels
+with their pitches and loops, the events still waiting for their time, the animations' frames and
+their muzzle flashes, the temporary entities with their seeds, the decals, the trails, beams and
+tracers, the Egon's beams. The checkpoints' size estimate counts the effects alive.
+
+`examples/effects_seek.rs` builds every checkpoint of a demo with the game's files, as the worker
+does, then seeks to 100 moments at random, in random order, and compares all of that with one
+sequential pass.
+
+**Measured (2026-10-19):**
+
+| Demo | Length | Seeks differing |
+|---|---|---|
+| `stalkx_naz_248.dem` | 1216 s | 0 of 100 |
+| `run_92.dem`, singleplayer | 104 s | 0 of 100 |
+| `naz_crossfire_pb_01.dem` | 1206 s | 0 of 100 |
+| `20230909_224143_stalkyard.dem`, 32 players | 937 s | 0 of 100 |
+| `ray_vs_alex_cross.dem`, spectator | 103 s | 0 of 100 |
+| `dblcross_salchi_naz.dem` | 1314 s | 0 of 100 |
+
+The first run found every seek in `naz_crossfire_pb_01.dem` after 150 s different. The events'
+count of each shooter's bullets was a hash map, whose order differs between two playbacks, so the
+comparison failed although the counts were the same. It is an ordered map now.
+

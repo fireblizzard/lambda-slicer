@@ -69,13 +69,14 @@ pub(crate) struct Impacts {
 
 /// What a bullet hit
 #[derive(Clone, Copy, Debug, PartialEq)]
-enum Hit {
+pub(crate) enum Hit {
     /// The world or a brush entity, by entity number, with the material
-    /// of the face met when one is found
+    /// of the face met when one is found and the normal of its plane
     Brush {
         entity: u16,
         material: Option<u8>,
         render_mode: i64,
+        normal: [f32; 3],
     },
     Player,
 }
@@ -103,7 +104,7 @@ fn enter_box(start: [f32; 3], end: [f32; 3], min: [f32; 3], max: [f32; 3]) -> Op
 }
 
 /// The first thing the line from `start` to `end` meets, past the shooter
-fn trace(
+pub(crate) fn trace(
     start: [f32; 3],
     end: [f32; 3],
     shooter: u16,
@@ -127,6 +128,7 @@ fn trace(
                 entity: 0,
                 material,
                 render_mode: 0,
+                normal: t.normal,
             },
         );
     }
@@ -155,6 +157,7 @@ fn trace(
                 entity: number,
                 material: None,
                 render_mode: e.render_mode,
+                normal: t.normal,
             };
             offer(t.fraction, at, hit);
         }
@@ -211,7 +214,13 @@ fn material_sound(material: u8) -> (&'static [&'static str], f32) {
     }
 }
 
-fn sound(sample: &str, volume: f32, attenuation: f32, pitch: i32, origin: [f32; 3]) -> SoundCall {
+pub(crate) fn sound(
+    sample: &str,
+    volume: f32,
+    attenuation: f32,
+    pitch: i32,
+    origin: [f32; 3],
+) -> SoundCall {
     SoundCall {
         entity: 0,
         channel: CHAN_STATIC,
@@ -222,6 +231,37 @@ fn sound(sample: &str, volume: f32, attenuation: f32, pitch: i32, origin: [f32; 
         pitch: pitch.clamp(0, 255) as u8,
         origin,
     }
+}
+
+/// A shot's decal on a brush and, half the time, a ricochet
+/// (`EV_HLDM_DamageDecal`, `EV_HLDM_GunshotDecalTrace`)
+pub(crate) fn gunshot_decal(
+    entity: u16,
+    render_mode: i64,
+    at: [f32; 3],
+    random: &mut Random,
+    impacts: &mut Impacts,
+) {
+    let decal = if render_mode != 0 {
+        "{bproof1"
+    } else {
+        ["{shot1", "{shot2", "{shot3", "{shot4", "{shot5"][random.long(0, 4) as usize]
+    };
+    let roll = random.long(0, 0x7fff);
+    if roll < 0x7fff / 2 {
+        let samples = [
+            "weapons/ric1.wav",
+            "weapons/ric2.wav",
+            "weapons/ric3.wav",
+            "weapons/ric4.wav",
+            "weapons/ric5.wav",
+        ];
+        let pitch = i32::from(PITCH_NORM);
+        let mut ricochet = sound(samples[(roll % 5) as usize], 1., ATTN_NORM, pitch, at);
+        ricochet.channel = CHAN_AUTO;
+        impacts.sounds.push(ricochet);
+    }
+    impacts.decals.push((decal, entity, at));
 }
 
 /// Fire `volley` for `shooter`, counting its bullets in `tracers`
@@ -315,31 +355,7 @@ pub(crate) fn fire(
         if volley.kind == Bullet::Mp5 && tracer {
             continue;
         }
-        let decal = if render_mode != 0 {
-            "{bproof1"
-        } else {
-            ["{shot1", "{shot2", "{shot3", "{shot4", "{shot5"][random.long(0, 4) as usize]
-        };
-        let roll = random.long(0, 0x7fff);
-        if roll < 0x7fff / 2 {
-            let samples = [
-                "weapons/ric1.wav",
-                "weapons/ric2.wav",
-                "weapons/ric3.wav",
-                "weapons/ric4.wav",
-                "weapons/ric5.wav",
-            ];
-            let mut ricochet = sound(
-                samples[(roll % 5) as usize],
-                1.,
-                ATTN_NORM,
-                i32::from(PITCH_NORM),
-                at,
-            );
-            ricochet.channel = CHAN_AUTO;
-            impacts.sounds.push(ricochet);
-        }
-        impacts.decals.push((decal, entity, at));
+        gunshot_decal(entity, render_mode, at, &mut random, &mut impacts);
     }
     impacts
 }

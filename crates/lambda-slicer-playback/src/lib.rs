@@ -21,6 +21,7 @@ pub mod checkpoint;
 pub mod controller;
 pub mod decals;
 pub mod events;
+pub mod gauss;
 pub mod playback;
 pub mod scene;
 pub mod source;

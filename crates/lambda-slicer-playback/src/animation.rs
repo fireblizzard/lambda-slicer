@@ -82,7 +82,7 @@ pub fn estimate_frame(sequence: &Sequence, cycle: f64, advance: f64) -> f64 {
 }
 
 /// The model that shows a muzzle flash
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Holder {
     Viewmodel,
     Entity(EntityId),

@@ -23,12 +23,14 @@ use lambda_slicer_core::state::Decoder;
 use crate::GameFiles;
 use crate::animation::{Animations, Fired, Flash, IN_EYE, Sequence};
 use crate::audio::{Audio, CHAN_AUTO, Channel, SoundLength, SoundName, UNKNOWN_LIMIT, view_entity};
-use crate::beams::Beams;
+use crate::beams::{Beams, Trail};
 use crate::bullets;
 use crate::checkpoint::{self, Checkpoint, Checkpoints, State};
 use crate::controller::{CameraMode, Stamp};
 use crate::decals::{Decal, Decals};
+use crate::events::angle_vectors;
 use crate::events::{ATTN_NORM, Action, ClientEvent, Events, PITCH_NORM, SoundCall, handle};
+use crate::gauss;
 use crate::scene::{self, Camera, Entity, PlayerView, Scene, Viewmodel};
 use crate::source::{Cursor, Group, Source};
 use crate::tempents::{Lookup, TempEntities, TempEntity};
@@ -226,6 +228,10 @@ impl Playback {
         &self.state.decals
     }
 
+    pub fn events(&self) -> &Events {
+        &self.state.events
+    }
+
     pub fn decoder(&self) -> &Decoder {
         &self.state.decoder
     }
@@ -308,6 +314,7 @@ impl Playback {
             tempents,
             decals,
             beams,
+            frames,
             lengths,
             world: world.as_deref(),
             decal_index,
@@ -403,6 +410,11 @@ impl Playback {
         }
         self.state.beams.step(time, &self.state.scene);
         let world = self.world();
+        if self.state.beams.egon() {
+            let end = egon_end(&self.state.scene, &self.state.decoder, world.as_deref());
+            let eye = self.state.scene.camera.origin;
+            self.state.beams.egon_aim(eye, end, time);
+        }
         let gravity = motion::gravity(&self.state.decoder);
         let bounces = self.state.tempents.step(time, world.as_deref(), gravity);
         for call in bounces {
@@ -414,7 +426,20 @@ impl Playback {
         if self.store().due(position) {
             let entities = self.state.scene.entities.len() * size_of::<Entity>();
             let sounds = size_of_val(self.state.audio.channels());
-            let bytes = self.state.decoder.retained_bytes() + 2 * entities + sounds;
+            // The effects alive, the decals shared with the checkpoint
+            // before until one is made
+            let beams = &self.state.beams;
+            let effects = size_of_val(self.state.tempents.entities())
+                + size_of_val(beams.beams.as_slice())
+                + size_of_val(beams.tracers.as_slice())
+                + beams
+                    .trails
+                    .iter()
+                    .map(|t| {
+                        size_of::<Trail>() + t.points.len() * size_of::<([f32; 3], SourceTime)>()
+                    })
+                    .sum::<usize>();
+            let bytes = self.state.decoder.retained_bytes() + 2 * entities + sounds + effects;
             let checkpoint = Checkpoint {
                 group: position.group,
                 segment: position.segment,
@@ -562,6 +587,17 @@ impl Playback {
     }
 }
 
+/// Where the Egon's beams end, 2048 units along the recorder's view or at
+/// what they meet first
+fn egon_end(scene: &Scene, decoder: &Decoder, world: Option<&Hull>) -> [f32; 3] {
+    let eye = scene.camera.origin;
+    let [forward, ..] = angle_vectors(scene.camera.angles);
+    let end = [0, 1, 2].map(|k| eye[k] + forward[k] * 2048.);
+    let shooter = view_entity(decoder);
+    bullets::trace(eye, end, shooter, decoder.max_clients, scene, world)
+        .map_or(end, |(_, at, _)| at)
+}
+
 /// The model precached at `index`, a sprite or studio model's path
 fn precached_model(decoder: &Decoder, index: i16) -> Option<Arc<str>> {
     let index = u16::try_from(index).ok()?;
@@ -579,6 +615,8 @@ struct Effects<'a> {
     tempents: &'a mut TempEntities,
     decals: &'a mut Decals,
     beams: &'a mut Beams,
+    /// A sprite's frame count by its path
+    frames: &'a dyn Fn(&str) -> Option<u32>,
     lengths: &'a dyn Fn(&SoundName) -> SoundLength,
     /// The map to trace bullets through
     world: Option<&'a Hull>,
@@ -623,6 +661,7 @@ fn dispatch(event: &ClientEvent, decoder: &Decoder, scene: &mut Scene, effects: 
         tempents,
         decals,
         beams,
+        frames,
         lengths,
         world,
         decal_index,
@@ -660,6 +699,60 @@ fn dispatch(event: &ClientEvent, decoder: &Decoder, scene: &mut Scene, effects: 
                     beams.tracer(start, end, event.time, seed);
                 }
             }
+            Action::Gauss(shot) => {
+                let max = decoder.max_clients;
+                let out = gauss::fire(&shot, event.entity, max, scene, *world);
+                for call in out.impacts.sounds {
+                    audio.play(&call, event.time, view, lengths);
+                }
+                for (name, entity, at) in out.impacts.decals {
+                    if let Some(texture) = decal_index(name) {
+                        decals.shoot(texture, entity, at, None, scene);
+                    }
+                }
+                for b in out.beams {
+                    let gun = b.from_gun.then_some(event.entity);
+                    let (sprite, life) = (gauss::BEAM_SPRITE, 0.1);
+                    beams.line(
+                        sprite, b.start, gun, b.end, b.width, b.color, life, event.time,
+                    );
+                }
+                let glow = gauss::GLOW_SPRITE;
+                let glow_frames = frames(glow).unwrap_or(1);
+                for g in out.glows {
+                    let (at, scale) = (g.at, g.scale);
+                    tempents.glow(
+                        glow,
+                        glow_frames,
+                        at,
+                        scale,
+                        g.brightness,
+                        g.life,
+                        event.time,
+                    );
+                }
+                for b in out.balls {
+                    tempents.sprite_trail(
+                        glow,
+                        glow_frames,
+                        b.start,
+                        b.towards,
+                        b.count,
+                        b.life,
+                        b.size,
+                        b.spread,
+                        b.brightness,
+                        b.speed,
+                        event.time,
+                        b.seed,
+                    );
+                }
+            }
+            Action::EgonStart => {
+                let end = egon_end(scene, decoder, *world);
+                beams.egon_start(event.entity, scene.camera.origin, end, event.time);
+            }
+            Action::EgonStop => beams.egon_stop(),
         }
     }
 }

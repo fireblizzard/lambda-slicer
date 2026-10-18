@@ -12,7 +12,12 @@
 //! A bullet's trace takes brush models too, each through its own nodes, and
 //! the surface it meets is found as the engine finds the texture under a
 //! trace (`R_TraceTexture`). Down the nodes the line crosses, the first
-//! face on a crossed node whose texture extent holds the crossing point
+//! face on a crossed node whose texture extent holds the crossing point.
+//!
+//! A trace that starts in a solid leaf counts as stopped at once, its
+//! fraction 0, as the client's player trace counts it, but keeps where the
+//! line went on to meet something once out of the solid. The gauss finds
+//! the far side of a wall that way
 
 /// `CONTENTS_SOLID`
 pub const SOLID: i32 = -2;
@@ -65,6 +70,8 @@ pub struct Trace {
     pub normal: [f32; 3],
     /// It began in a solid leaf
     pub start_solid: bool,
+    /// It never left the solid
+    pub all_solid: bool,
 }
 
 fn dot(a: [f32; 3], b: [f32; 3]) -> f32 {
@@ -123,6 +130,7 @@ impl Hull {
                 end,
                 normal: [0.; 3],
                 start_solid: false,
+                all_solid: false,
             };
         };
         let mut trace = Trace {
@@ -130,15 +138,17 @@ impl Hull {
             end,
             normal: [0.; 3],
             start_solid: false,
+            all_solid: false,
         };
         let mut all_solid = true;
         self.check(root, (0., 1.), (start, end), &mut trace, &mut all_solid, 0);
         if all_solid {
             trace.start_solid = true;
+            trace.all_solid = true;
+            trace.end = start;
         }
         if trace.start_solid {
             trace.fraction = 0.;
-            trace.end = start;
         }
         trace
     }
@@ -333,7 +343,17 @@ mod tests {
         assert!(!clear.start_solid);
 
         let inside = hull.trace([0., 0., -10.], [0., 0., 10.]);
-        assert!(inside.start_solid);
+        assert!(inside.start_solid && !inside.all_solid);
+        assert_eq!(inside.fraction, 0.);
+
+        // Out of the floor and on into the wall, which is where it ends
+        let through = hull.trace([50., 0., -10.], [150., 0., 30.]);
+        assert!(through.start_solid && !through.all_solid);
+        assert!(through.end[0] > 99.9 && through.end[0] < 100.);
+
+        let buried = hull.trace([0., 0., -10.], [0., 0., -20.]);
+        assert!(buried.all_solid);
+        assert_eq!(buried.end, [0., 0., -10.]);
     }
 
     #[test]

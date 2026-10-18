@@ -517,13 +517,26 @@ impl Viewer {
             .iter()
             .filter(|f| f.time.0 > since || frame.at.0 - f.time.0 < FLASH_LIFE)
             .collect();
-        // Where each flash is, from its holder's pose
+        // Where each flash is, and the gun of each beam drawn from one, from
+        // the holder's pose
+        let gun_holders: Vec<Holder> = frame
+            .beams
+            .beams
+            .iter()
+            .filter_map(|b| b.from_gun.and_then(|n| gun_holder(frame, n)))
+            .collect();
         let mut flashed: Vec<(&Flash, [f32; 3])> = Vec::new();
+        let mut guns: HashMap<Holder, [f32; 3]> = HashMap::new();
         let mut place = |holder: Holder, model: &LoadedModel, bones: &[BoneTransform]| {
             for f in flashes.iter().filter(|f| f.holder == holder) {
                 if let Some(at) = model.attachment(bones, usize::from(f.attachment)) {
                     flashed.push((f, at));
                 }
+            }
+            if gun_holders.contains(&holder)
+                && let Some(at) = model.attachment(bones, 0)
+            {
+                guns.insert(holder, at);
             }
         };
         for drawn in drawn(frame) {
@@ -643,12 +656,12 @@ impl Viewer {
             sprites,
             viewmodel,
             decals: self.decals.mesh(),
-            streaks: self.streaks(frame),
+            streaks: self.streaks(frame, &guns),
         }
     }
 
     /// The frame's beams, trails and tracers as strips to draw
-    fn streaks(&self, frame: &PresentedFrame) -> Vec<Streak> {
+    fn streaks(&self, frame: &PresentedFrame, guns: &HashMap<Holder, [f32; 3]>) -> Vec<Streak> {
         let at = frame.at;
         let sprite =
             |path: &str, frame: usize| match self.models.get(&ModelRef::File(path.to_owned())) {
@@ -698,14 +711,20 @@ impl Viewer {
             ) else {
                 continue;
             };
-            let d = [0, 1, 2].map(|k| beam.end[k] - beam.start[k]);
+            // From the gun when the beam has one to start at
+            let start = beam
+                .from_gun
+                .and_then(|n| gun_holder(frame, n))
+                .and_then(|holder| guns.get(&holder).copied())
+                .unwrap_or(beam.start);
+            let d = [0, 1, 2].map(|k| beam.end[k] - start[k]);
             let length = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt();
             let v = (elapsed * beam.scroll).fract();
             out.push(Streak {
                 sprite: Some(sprite),
                 points: vec![
                     StreakPoint {
-                        position: beam.start,
+                        position: start,
                         v,
                         color: beam.color,
                     },
@@ -1134,6 +1153,24 @@ const TRACER_WIDTH: f32 = 1.5;
 /// How long a muzzle flash lasts, as the game's temporary entity does
 /// (`R_MuzzleFlash`), though it is drawn at least once
 const FLASH_LIFE: f64 = 0.01;
+
+/// The model whose first attachment a beam from entity `number`'s gun
+/// starts at, the viewmodel when the view is through that entity
+/// (`R_BeamEntPoint` with an attachment)
+fn gun_holder(frame: &PresentedFrame, number: u16) -> Option<Holder> {
+    let camera = &frame.recorder;
+    let viewer = camera.view_entity.unwrap_or(frame.local_entity);
+    let through = if camera.observer_mode == OBS_IN_EYE {
+        camera.observer_target == i64::from(number)
+    } else {
+        camera.observer_mode == 0 && viewer == number
+    };
+    if through {
+        return Some(Holder::Viewmodel);
+    }
+    let e = frame.entities.iter().find(|e| e.id.number == number)?;
+    Some(Holder::Entity(e.id))
+}
 
 /// One of the game's three muzzle flash sprites
 fn flash_sprite(sprite: u8) -> ModelRef {

@@ -16,13 +16,14 @@
 //! recording keeps, so each event seeds its own from where it was recorded.
 //! A seek then hears the same choices every time
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use lambda_slicer_core::analysis::events::{EventArgs, RecordedEvent};
 use lambda_slicer_core::state::{ActorResolution, EventSource};
 
 use crate::bullets::{Bullet, Volley};
+use crate::gauss::GaussShot;
 use crate::tempents::{Bounce, Throw};
 use crate::time::SourceTime;
 
@@ -113,6 +114,13 @@ pub enum Action {
     Shell(Throw),
     /// Fire bullets (`EV_HLDM_FireBullets`)
     Bullets(Volley),
+    /// Fire the gauss (`EV_FireGauss`)
+    Gauss(GaussShot),
+    /// Draw the Egon's beams for the local player, from the eye along its
+    /// view
+    EgonStart,
+    /// End them
+    EgonStop,
 }
 
 /// Events waiting for their time
@@ -124,7 +132,7 @@ pub struct Events {
     swings: u32,
     /// Each shooter's bullets so far, which say which are tracers
     /// (`tracerCount`)
-    tracers: HashMap<u16, u32>,
+    tracers: BTreeMap<u16, u32>,
 }
 
 impl Events {
@@ -222,13 +230,14 @@ pub fn handle(event: &ClientEvent, local: bool, swings: &mut u32) -> Vec<Action>
             animations.push(Action::WeaponAnimation { sequence, body });
         }
     };
-    let sounds = handle_sounds(event, &mut animate, swings);
+    let sounds = handle_sounds(event, local, &mut animate, swings);
     animations.extend(sounds);
     animations
 }
 
 fn handle_sounds(
     event: &ClientEvent,
+    local: bool,
     animate: &mut dyn FnMut(i32, i32),
     swings: &mut u32,
 ) -> Vec<Action> {
@@ -423,7 +432,17 @@ fn handle_sounds(
         animate(6, 2);
         let pitch = 85 + random.long(0, 0x1f);
         let volume = 0.5 + args.fparam1 / 400.;
-        vec![sound(CHAN_WEAPON, "weapons/gauss2.wav", volume, pitch)]
+        let shot = GaussShot {
+            source: eye(event),
+            axes: angle_vectors(args.angles),
+            damage: args.fparam1,
+            primary: args.bparam1 != 0,
+            seed: random.next(),
+        };
+        vec![
+            sound(CHAN_WEAPON, "weapons/gauss2.wav", volume, pitch),
+            Action::Gauss(shot),
+        ]
     } else if is("events/gaussspin.sc") {
         let flags = if args.bparam1 != 0 {
             crate::audio::flags::CHANGE_PITCH
@@ -451,7 +470,12 @@ fn handle_sounds(
         };
         // EGON_FIRE1 to EGON_FIRE4
         animate(5 + random.long(0, 3), 1);
-        vec![started]
+        let mut actions = vec![started];
+        // Only the local player's beams are the client's own
+        if args.bparam1 != 0 && local {
+            actions.push(Action::EgonStart);
+        }
+        actions
     } else if is("events/egon_stop.sc") {
         let mut actions = vec![Action::Sound(SoundCall {
             flags: crate::audio::flags::STOP,
@@ -459,6 +483,9 @@ fn handle_sounds(
         })];
         if args.iparam1 != 0 {
             actions.push(sound(CHAN_WEAPON, "weapons/egon_off1.wav", 0.98, 100));
+        }
+        if local {
+            actions.push(Action::EgonStop);
         }
         actions
     } else if is("events/train.sc") {
@@ -472,7 +499,7 @@ const SHELL: &str = "models/shell.mdl";
 const SHOTSHELL: &str = "models/shotgunshell.mdl";
 
 /// The game's view vectors for angles in degrees (`AngleVectors`)
-fn angle_vectors(angles: [f32; 3]) -> [[f32; 3]; 3] {
+pub(crate) fn angle_vectors(angles: [f32; 3]) -> [[f32; 3]; 3] {
     let [p, y, r] = angles.map(f32::to_radians);
     let (sp, cp) = p.sin_cos();
     let (sy, cy) = y.sin_cos();
