@@ -7,10 +7,23 @@
 //! is never interpolated from the one before. A new session starts an empty
 //! scene.
 //!
+//! Entities are presented as the client draws them, [`INTERPOLATION`]
+//! seconds behind its clock, each moved along its own samples from the last
+//! snapshots. A new life or a move longer than [`TELEPORT`] is not
+//! interpolated through.
+//!
+//! A player's legs follow how far it moved, as the game's client estimates
+//! it once a frame from the drawn position (`StudioEstimateGait` and
+//! `StudioProcessGait`). The scene steps that once a record group, each
+//! group being one frame the recording client drew, so the state is the
+//! same however a moment is reached. What depends on the model, the gait
+//! frame and the aim blend, is left to the renderer, which has the model.
+//!
 //! The camera is the view the client rendered when it wrote each network
 //! record, from the record's `ref_params_t`, with the field of view of the
-//! last client data record. Interpolation between samples, effects and HUD
-//! state come with M9 and M10
+//! last client data record. Effects and HUD state come with M10
+
+use std::collections::VecDeque;
 
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
@@ -21,6 +34,103 @@ use lambda_slicer_core::protocol::messages::{Message, ParsedMessage, resource_ty
 use lambda_slicer_core::state::{Decoder, EntityState, Snapshot};
 
 use crate::time::{ServerTime, SourceTime};
+
+/// The client's `ex_interp` in seconds, how far behind its latest snapshot
+/// it draws entities
+pub const INTERPOLATION: f64 = 0.1;
+
+/// A move longer than this between two snapshots is drawn as a jump
+pub const TELEPORT: f32 = 128.;
+
+/// Snapshots kept for interpolation, more than 0.1 s of any server's
+const RECENT: usize = 32;
+
+/// A player's legs, as the game's client keeps them, without the model
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Gait {
+    /// The way the legs face, in degrees
+    pub yaw: f32,
+    /// The torso controller value, 0 to 255, turning the upper body from
+    /// the legs to the view
+    pub torso: f32,
+    /// Units moved since the player's life began, counted back while
+    /// walking backwards
+    pub distance: f64,
+    /// Seconds since the player's life began
+    pub elapsed: f64,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct GaitTrack {
+    life: u32,
+    gait: Gait,
+    last_origin: [f32; 3],
+}
+
+/// `x - (int)(x / 360) * 360`, the game's wrap of an angle
+fn wrap(x: f32) -> f32 {
+    x - (x / 360.).trunc() * 360.
+}
+
+/// An angle wrapped into -180 to 180
+fn half_turn(x: f32) -> f32 {
+    let x = wrap(x);
+    if x > 180. {
+        x - 360.
+    } else if x < -180. {
+        x + 360.
+    } else {
+        x
+    }
+}
+
+impl GaitTrack {
+    /// One client frame of `dt` seconds with the player drawn at `origin`
+    /// facing `yaw`
+    fn step(&mut self, origin: [f32; 3], yaw: f32, dt: f32) {
+        let gait = &mut self.gait;
+
+        // StudioEstimateGait
+        let mut movement = 0.;
+        if dt > 0. {
+            let mut velocity = [0, 1, 2].map(|k| origin[k] - self.last_origin[k]);
+            self.last_origin = origin;
+            movement = (velocity[0].powi(2) + velocity[1].powi(2) + velocity[2].powi(2)).sqrt();
+            if movement / dt < 5. {
+                movement = 0.;
+                velocity[0] = 0.;
+                velocity[1] = 0.;
+            }
+            if velocity[0] == 0. && velocity[1] == 0. {
+                let difference = half_turn(yaw - gait.yaw);
+                let scale = if dt < 0.25 { dt * 4. } else { dt };
+                gait.yaw = wrap(gait.yaw + difference * scale);
+                movement = 0.;
+            } else {
+                gait.yaw = velocity[1]
+                    .atan2(velocity[0])
+                    .to_degrees()
+                    .clamp(-180., 180.);
+            }
+        }
+
+        // StudioProcessGait, turning the legs round when the body faces
+        // more than 120 degrees from them
+        let mut turn = half_turn(yaw - gait.yaw);
+        if turn > 120. {
+            gait.yaw -= 180.;
+            movement = -movement;
+            turn -= 180.;
+        } else if turn < -120. {
+            gait.yaw += 180.;
+            movement = -movement;
+            turn += 180.;
+        }
+        gait.torso = (turn / 4. + 30.) / (60. / 255.);
+        gait.distance += f64::from(movement);
+        gait.elapsed += f64::from(dt);
+    }
+}
 
 /// Which entity, across sessions and slot reuse
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -60,6 +170,11 @@ pub struct Entity {
     /// A player's observer mode and the player it observes
     pub iuser1: i64,
     pub iuser2: i64,
+    /// A player's weapon model index and name
+    pub weapon_model: i64,
+    pub weapon: Option<Arc<str>>,
+    /// A player's legs, in presented entities whose gait sequence is set
+    pub gait: Option<Gait>,
     /// Server time of the snapshot it was last taken from
     pub updated: ServerTime,
 }
@@ -156,6 +271,15 @@ pub struct Scene {
     /// the state it came from, which snapshots share while it is unchanged
     tables: Vec<FieldTable>,
     converted: HashMap<u16, (Arc<EntityState>, Entity)>,
+    /// The latest snapshots' entities by server time, oldest first
+    recent: VecDeque<(f64, Arc<Vec<Entity>>)>,
+    /// When the latest snapshot arrived, and its server time
+    snapshot_at: SourceTime,
+    server_time: f64,
+    max_clients: u8,
+    gaits: HashMap<u16, GaitTrack>,
+    /// The last client frame the legs were stepped for
+    last_frame: Option<SourceTime>,
 }
 
 /// A slot's current or last life
@@ -167,7 +291,7 @@ struct Slot {
 }
 
 /// The entity fields the scene reads, in this order
-const FIELDS: [&str; 32] = [
+const FIELDS: [&str; 33] = [
     "modelindex",
     "origin[0]",
     "origin[1]",
@@ -200,6 +324,7 @@ const FIELDS: [&str; 32] = [
     "rendercolor.r",
     "rendercolor.g",
     "rendercolor.b",
+    "weaponmodel",
 ];
 
 /// Where each of [`FIELDS`] sits in one schema, looked up once
@@ -260,8 +385,13 @@ impl Scene {
         }
     }
 
-    /// After a network record, its camera and any new snapshot
-    pub(crate) fn after_network(&mut self, decoder: &Decoder, frame: &NetworkFrame) {
+    /// After a network record at `time`, its camera and any new snapshot
+    pub(crate) fn after_network(
+        &mut self,
+        decoder: &Decoder,
+        frame: &NetworkFrame,
+        time: SourceTime,
+    ) {
         let client = |field: &str| {
             let schema = decoder.schema("clientdata_t")?;
             let data = decoder.latest_snapshot()?.clientdata.clone()?;
@@ -293,9 +423,17 @@ impl Scene {
             return;
         }
         self.snapshot = Some(snapshot.clone());
+        self.snapshot_at = time;
+        self.server_time = f64::from(f32::from_bits(snapshot.server_time_bits));
+        self.max_clients = decoder.max_clients;
         if let Some(entities) = &snapshot.entities {
             let updated = ServerTime(f32::from_bits(snapshot.server_time_bits));
             self.take_entities(decoder, entities, updated);
+            self.recent
+                .push_back((self.server_time, self.entities.clone()));
+            if self.recent.len() > RECENT {
+                self.recent.pop_front();
+            }
             self.changed();
         }
     }
@@ -429,6 +567,9 @@ impl Scene {
                 iuser1: v[27] as i64,
                 iuser2: v[28] as i64,
                 render_color: [v[29] as u8, v[30] as u8, v[31] as u8],
+                weapon_model: v[32] as i64,
+                weapon: self.model_name(decoder, v[32] as i64),
+                gait: None,
                 updated,
             };
             converted.insert(e.number, (e.clone(), entity.clone()));
@@ -446,5 +587,217 @@ impl Scene {
         self.lives = lives;
         self.converted = converted;
         self.entities = Arc::new(out);
+    }
+
+    /// The client's clock at source time `at`, the latest snapshot's server
+    /// time plus the source time since it arrived
+    pub fn client_time(&self, at: SourceTime) -> f64 {
+        self.server_time + (at.0 - self.snapshot_at.0)
+    }
+
+    fn is_player(&self, number: u16) -> bool {
+        number >= 1 && number <= u16::from(self.max_clients)
+    }
+
+    /// Where `id` is at server time `time`, between the snapshots around it,
+    /// or none to draw it as the latest snapshot has it
+    fn position_at(&self, id: EntityId, time: f64) -> Option<([f32; 3], [f32; 3])> {
+        let sample = |list: &Arc<Vec<Entity>>| {
+            let at = list
+                .binary_search_by_key(&id.number, |e| e.id.number)
+                .ok()?;
+            let e = &list[at];
+            (e.id == id).then_some((e.origin, e.angles))
+        };
+        let later = self.recent.iter().position(|(t, _)| *t > time)?;
+        let (t1, after) = &self.recent[later];
+        let after = sample(after)?;
+        let Some((t0, before)) = later.checked_sub(1).map(|i| &self.recent[i]) else {
+            return Some(after);
+        };
+        let Some(before) = sample(before) else {
+            return Some(after);
+        };
+
+        let step = [0, 1, 2].map(|k| after.0[k] - before.0[k]);
+        if (step[0].powi(2) + step[1].powi(2) + step[2].powi(2)).sqrt() > TELEPORT || t1 <= t0 {
+            return Some(after);
+        }
+        let f = ((time - t0) / (t1 - t0)).clamp(0., 1.) as f32;
+        let origin = [0, 1, 2].map(|k| before.0[k] + step[k] * f);
+        let angles = [0, 1, 2].map(|k| before.1[k] + half_turn(after.1[k] - before.1[k]) * f);
+        Some((origin, angles))
+    }
+
+    /// The entities as the client draws them at its time `client_time`,
+    /// moved between snapshots and with players' legs
+    pub fn presented(&self, client_time: f64) -> Vec<Entity> {
+        let render = client_time - INTERPOLATION;
+        self.entities
+            .iter()
+            .map(|e| {
+                let mut e = e.clone();
+                if let Some((origin, angles)) = self.position_at(e.id, render) {
+                    e.origin = origin;
+                    e.angles = angles;
+                }
+                e.gait = self
+                    .gaits
+                    .get(&e.id.number)
+                    .filter(|t| t.life == e.id.life && e.gait_sequence != 0)
+                    .map(|t| t.gait);
+                e
+            })
+            .collect()
+    }
+
+    /// Step every player's legs for the client frame of the group at `at`
+    pub(crate) fn step_gaits(&mut self, at: SourceTime) {
+        let dt = self
+            .last_frame
+            .map_or(0., |last| (at.0 - last.0).clamp(0., 1.)) as f32;
+        self.last_frame = Some(at);
+        let render = self.client_time(at) - INTERPOLATION;
+
+        let mut gaits = HashMap::with_capacity(self.gaits.len());
+        for e in self.entities.iter() {
+            if !self.is_player(e.id.number) || e.gait_sequence == 0 {
+                continue;
+            }
+            let (origin, angles) = self
+                .position_at(e.id, render)
+                .unwrap_or((e.origin, e.angles));
+            let mut track = match self.gaits.get(&e.id.number) {
+                Some(t) if t.life == e.id.life => *t,
+                _ => GaitTrack {
+                    life: e.id.life,
+                    gait: Gait {
+                        yaw: angles[1],
+                        ..Gait::default()
+                    },
+                    last_origin: origin,
+                },
+            };
+            track.step(origin, angles[1], dt);
+            gaits.insert(e.id.number, track);
+        }
+        self.gaits = gaits;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn track(yaw: f32) -> GaitTrack {
+        GaitTrack {
+            life: 0,
+            gait: Gait {
+                yaw,
+                ..Gait::default()
+            },
+            last_origin: [0.; 3],
+        }
+    }
+
+    #[test]
+    fn legs_follow_movement_and_turn_round_walking_backwards() {
+        // Forward along x at 100 units a second
+        let mut t = track(0.);
+        for i in 1..=10 {
+            t.step([i as f32, 0., 0.], 0., 0.01);
+        }
+        assert_eq!(t.gait.yaw, 0.);
+        assert!((t.gait.distance - 10.).abs() < 1e-4);
+        assert!((t.gait.torso - 127.5).abs() < 1e-4);
+
+        // The body faces back along -x, so the legs turn and count backwards
+        let mut t = track(0.);
+        t.step([1., 0., 0.], 180., 0.01);
+        assert_eq!(t.gait.yaw, -180.);
+        assert!((t.gait.distance + 1.).abs() < 1e-4);
+
+        // Standing still the legs turn towards the body, four times the
+        // frame's share of the difference while frames are short
+        let mut t = track(0.);
+        t.step([0.; 3], 90., 0.1);
+        assert!((t.gait.yaw - 36.).abs() < 1e-4);
+        assert_eq!(t.gait.distance, 0.);
+        assert!((t.gait.elapsed - 0.1).abs() < 1e-6);
+    }
+
+    fn entity(number: u16, life: u32, x: f32, yaw: f32) -> Entity {
+        Entity {
+            id: EntityId {
+                segment: 1,
+                number,
+                life,
+            },
+            model_index: 0,
+            model: None,
+            origin: [x, 0., 0.],
+            angles: [0., yaw, 0.],
+            sequence: 0,
+            gait_sequence: 0,
+            frame: 0.,
+            framerate: 0.,
+            animtime: 0.,
+            body: 0,
+            skin: 0,
+            controllers: [0.; 4],
+            blending: [0.; 2],
+            effects: 0,
+            render_mode: 0,
+            render_amount: 0,
+            render_fx: 0,
+            render_color: [0; 3],
+            scale: 0.,
+            move_type: 0,
+            solid: 0,
+            iuser1: 0,
+            iuser2: 0,
+            weapon_model: 0,
+            weapon: None,
+            gait: None,
+            updated: ServerTime(0.),
+        }
+    }
+
+    #[test]
+    fn entities_are_drawn_between_snapshots_but_not_across_jumps_or_lives() {
+        let mut scene = Scene::default();
+        let at = |t: f64, list: Vec<Entity>| (t, Arc::new(list));
+        scene.recent.push_back(at(
+            1.0,
+            vec![
+                entity(1, 0, 0., 350.),
+                entity(2, 0, 0., 0.),
+                entity(3, 0, 0., 0.),
+            ],
+        ));
+        scene.recent.push_back(at(
+            1.1,
+            vec![
+                entity(1, 0, 10., 10.),
+                entity(2, 0, 500., 0.),
+                entity(3, 1, 20., 0.),
+            ],
+        ));
+        scene.entities = scene.recent.back().unwrap().1.clone();
+        scene.server_time = 1.1;
+        scene.snapshot_at = SourceTime(5.);
+
+        // Half way between the snapshots, 0.1 s behind the client's clock
+        let drawn = scene.presented(scene.client_time(SourceTime(5.05)) + 0.);
+        assert!((drawn[0].origin[0] - 5.).abs() < 1e-4);
+        // The short way round from 350 to 10 degrees
+        assert!((drawn[0].angles[1] - 360.).abs() < 1e-3);
+        // A jump and a new life are drawn where the latest snapshot has them
+        assert_eq!(drawn[1].origin[0], 500.);
+        assert_eq!(drawn[2].origin[0], 20.);
+
+        // Past the latest snapshot nothing is extrapolated
+        let late = scene.presented(5.);
+        assert_eq!(late[0].origin[0], 10.);
     }
 }

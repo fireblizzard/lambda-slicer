@@ -34,7 +34,8 @@ use lambda_slicer_playback::worker::Worker;
 use lambda_slicer_render::Rgba;
 use lambda_slicer_render::camera::{Camera, Matrix};
 use lambda_slicer_render::gpu::{Blit, Brush, Instance, ModelHandle, RenderMode, Scene, View};
-use lambda_slicer_render::load::{self, EntityPose, LoadError, LoadedModel};
+use lambda_slicer_render::light::{LightTree, ModelLight};
+use lambda_slicer_render::load::{self, EntityPose, GaitPose, LoadError, LoadedModel};
 use lambda_slicer_render::world::{self, WorldMesh};
 
 use crate::i18n::Catalog;
@@ -175,6 +176,8 @@ pub struct Viewer {
     map: Option<String>,
     map_loading: Option<String>,
     models: HashMap<ModelRef, Slot>,
+    /// The map's light under models
+    light: Option<Arc<LightTree>>,
     clock: Instant,
     /// The demo's length, when the library knows it
     duration: f64,
@@ -243,6 +246,7 @@ impl Viewer {
             map: None,
             map_loading: None,
             models: HashMap::new(),
+            light: None,
             clock: Instant::now(),
             duration: f64::from(duration),
             bench: bench.map(|b| (b, None, Vec::new())),
@@ -293,7 +297,8 @@ impl Viewer {
         for item in loaded {
             match item {
                 Loaded::Map(name, Ok(map)) if self.map_loading.as_ref() == Some(&name) => {
-                    let LoadedMap { world, sky } = *map;
+                    let LoadedMap { mut world, sky } = *map;
+                    self.light = Some(Arc::new(std::mem::take(&mut world.light)));
                     resources.scene.set_world(device, queue, &world);
                     resources.scene.set_sky(device, queue, sky.as_ref());
                     self.map = Some(name);
@@ -334,10 +339,12 @@ impl Viewer {
             self.map_loading = Some(map);
         }
 
-        for (model, _) in drawn(frame) {
-            if let Entry::Vacant(slot) = self.models.entry(model) {
-                let _ = loader.requests.send(Asset::Model(slot.key().clone()));
-                slot.insert(Slot::Loading);
+        for drawn in drawn(frame) {
+            for model in std::iter::once(drawn.model).chain(drawn.weapon) {
+                if let Entry::Vacant(slot) = self.models.entry(model) {
+                    let _ = loader.requests.send(Asset::Model(slot.key().clone()));
+                    slot.insert(Slot::Loading);
+                }
             }
         }
     }
@@ -347,14 +354,32 @@ impl Viewer {
         let Some(frame) = &self.frame else {
             return Vec::new();
         };
+        let styles = light_styles(frame);
         let mut instances = Vec::new();
-        for (model, pose) in drawn(frame) {
-            if let Some(Slot::Ready(model, handle)) = self.models.get(&model)
-                && let Some(bones) = model.pose(&pose)
+        for drawn in drawn(frame) {
+            let Some(Slot::Ready(model, handle)) = self.models.get(&drawn.model) else {
+                continue;
+            };
+            let Some(bones) = model.pose(&drawn.pose) else {
+                continue;
+            };
+            let light = self
+                .light
+                .as_ref()
+                .and_then(|tree| tree.at(drawn.pose.origin, &styles))
+                .map_or(ModelLight::UNLIT, ModelLight::from_point);
+            instances.push(Instance {
+                model: *handle,
+                vertices: model.mesh.skin(&bones, &light),
+            });
+
+            if let Some(Slot::Ready(weapon, weapon_handle)) =
+                drawn.weapon.as_ref().and_then(|w| self.models.get(w))
+                && let Some(weapon_bones) = weapon.merged_pose(&drawn.pose, model, &bones)
             {
                 instances.push(Instance {
-                    model: *handle,
-                    vertices: model.mesh.skin(&bones),
+                    model: *weapon_handle,
+                    vertices: weapon.mesh.skin(&weapon_bones, &light),
                 });
             }
         }
@@ -515,15 +540,22 @@ impl Viewer {
     }
 }
 
+/// One entity to draw, its model, what it holds and its pose
+struct Drawn {
+    model: ModelRef,
+    weapon: Option<ModelRef>,
+    pose: EntityPose,
+}
+
 /// Which model each drawn entity uses and how it is posed. Players use the
 /// model their userinfo names, upright as the game draws them. The entity
 /// the recorder views from is left out, and so is the player a spectator
 /// sees through the eyes of
-fn drawn(frame: &PresentedFrame) -> Vec<(ModelRef, EntityPose)> {
+fn drawn(frame: &PresentedFrame) -> Vec<Drawn> {
     let viewer = frame.recorder.view_entity.unwrap_or(frame.local_entity);
     let observed =
         (frame.recorder.observer_mode == OBS_IN_EYE).then_some(frame.recorder.observer_target);
-    let client_time = client_time(frame);
+    let client_time = frame.client_time;
 
     let mut out = Vec::new();
     for e in frame.entities.iter() {
@@ -538,13 +570,23 @@ fn drawn(frame: &PresentedFrame) -> Vec<(ModelRef, EntityPose)> {
             (None, Some(path)) if path.ends_with(".mdl") => ModelRef::File(path.to_owned()),
             _ => continue,
         };
-        let mut angles = e.angles;
-        if player.is_some() {
-            angles[0] = 0.;
-        }
-        out.push((
+        let is_player = player.is_some();
+        let gait = e.gait.filter(|_| is_player).map(|g| GaitPose {
+            sequence: e.gait_sequence.max(0) as usize,
+            yaw: g.yaw,
+            torso: g.torso,
+            distance: g.distance,
+            elapsed: g.elapsed,
+        });
+        let weapon = e
+            .weapon
+            .as_deref()
+            .filter(|w| is_player && w.ends_with(".mdl"))
+            .map(|w| ModelRef::File(w.to_owned()));
+        out.push(Drawn {
             model,
-            EntityPose {
+            weapon,
+            pose: EntityPose {
                 sequence: e.sequence.max(0) as usize,
                 cycle: f64::from(e.frame),
                 elapsed: client_time - f64::from(e.animtime),
@@ -552,18 +594,24 @@ fn drawn(frame: &PresentedFrame) -> Vec<(ModelRef, EntityPose)> {
                 controllers: e.controllers.map(f64::from),
                 blending: e.blending.map(f64::from),
                 origin: e.origin,
-                angles,
+                angles: e.angles,
+                player: is_player,
+                gait,
             },
-        ));
+        });
     }
     out
 }
 
-/// The client's time for a frame, the last `svc_time` plus the source time
-/// since that packet
-fn client_time(frame: &PresentedFrame) -> f64 {
-    let since_snapshot = frame.position.map_or(0., |p| frame.at.0 - p.time.0);
-    f64::from(frame.server_time.0) + since_snapshot
+/// Every light style's brightness at the frame's client time
+fn light_styles(frame: &PresentedFrame) -> [f32; 64] {
+    let mut styles = [1.; 64];
+    for (index, pattern) in &frame.light_styles {
+        if let Some(slot) = styles.get_mut(usize::from(*index)) {
+            *slot = world::style_brightness(pattern, frame.client_time);
+        }
+    }
+    styles
 }
 
 /// The world, then every brush entity (`*N`) as its render mode draws it.
@@ -603,18 +651,11 @@ fn brushes(frame: &PresentedFrame) -> Vec<Brush> {
 /// What the frame is seen from and when, with every light style's
 /// brightness at the client's time
 fn view(frame: &PresentedFrame, rect: Rect) -> View {
-    let time = client_time(frame);
-    let mut light_styles = [1.; 64];
-    for (index, pattern) in &frame.light_styles {
-        if let Some(slot) = light_styles.get_mut(usize::from(*index)) {
-            *slot = world::style_brightness(pattern, time);
-        }
-    }
     View {
         view_projection: view_projection(frame, rect),
         eye: frame.recorder.origin,
-        time: time as f32,
-        light_styles,
+        time: frame.client_time as f32,
+        light_styles: light_styles(frame),
     }
 }
 

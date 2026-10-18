@@ -52,5 +52,11 @@ fn main() {
             e.origin,
             e.angles,
         );
+        if e.weapon.is_some() || e.gait.is_some() {
+            println!(
+                "        gait sequence {} {:?}, weapon {:?}",
+                e.gait_sequence, e.gait, e.weapon
+            );
+        }
     }
 }

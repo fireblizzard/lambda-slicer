@@ -10,9 +10,11 @@ use lambda_slicer_assets::search::SearchPath;
 use lambda_slicer_assets::tga;
 use lambda_slicer_assets::wad::Wad;
 use lambda_slicer_assets::xenoxide::bsp30::BspDocument;
+use lambda_slicer_assets::xenoxide::studio::StudioSequence;
 use lambda_slicer_assets::xenoxide::studio::{StudioModel, StudioRenderAsset};
 use lambda_slicer_assets::xenoxide::studio_pose::{
-    BoneTransform, Placement, PoseInputs, SequenceState, estimate_frame, evaluate_pose,
+    BoneTransform, GaitState, Placement, PoseInputs, SequenceState, estimate_frame, evaluate_pose,
+    player_blend,
 };
 use lambda_slicer_assets::{AssetError, Limits};
 
@@ -75,6 +77,19 @@ pub fn map(
     Ok((world::build(&bsp, &mut from_wads), unread))
 }
 
+/// A player's legs as playback keeps them
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct GaitPose {
+    pub sequence: usize,
+    /// The way the legs face, in degrees
+    pub yaw: f32,
+    /// The torso controller value, 0 to 255
+    pub torso: f32,
+    /// Units moved and seconds passed in the player's life
+    pub distance: f64,
+    pub elapsed: f64,
+}
+
 /// What an entity gives a studio model's pose
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct EntityPose {
@@ -89,6 +104,39 @@ pub struct EntityPose {
     pub blending: [f64; 2],
     pub origin: [f32; 3],
     pub angles: [f32; 3],
+    /// A player, posed as `StudioDrawPlayer` poses one
+    pub player: bool,
+    pub gait: Option<GaitPose>,
+}
+
+/// An angle wrapped into -180 to 180
+fn half_turn(x: f64) -> f64 {
+    let x = x - (x / 360.).trunc() * 360.;
+    if x > 180. {
+        x - 360.
+    } else if x < -180. {
+        x + 360.
+    } else {
+        x
+    }
+}
+
+/// The legs' frame in a gait sequence, from the distance moved through its
+/// linear movement, or from the time passed in one that does not move, as
+/// `StudioProcessGait` steps it
+fn gait_frame(sequence: &StudioSequence, gait: &GaitPose) -> f64 {
+    let frames = sequence.frames as f64;
+    if frames <= 0. {
+        return 0.;
+    }
+    let linear = f64::from(sequence.linear_movement[0]);
+    let frame = if linear > 0. {
+        gait.distance / linear * frames
+    } else {
+        f64::from(sequence.fps) * gait.elapsed
+    };
+    let frame = frame - (frame / frames).trunc() * frames;
+    if frame < 0. { frame + frames } else { frame }
 }
 
 /// The sky box `name` from `gfx/env`, its faces in the order the renderer
@@ -121,6 +169,17 @@ impl LoadedModel {
     /// model lacks falls back to its first. None when the pose cannot be
     /// evaluated
     pub fn pose(&self, entity: &EntityPose) -> Option<Vec<BoneTransform>> {
+        let (inputs, placement) = self.inputs(entity)?;
+        evaluate_pose(&self.model, &inputs, &placement)
+            .ok()
+            .map(|pose| pose.bones().to_vec())
+    }
+
+    /// The pose inputs and placement for an entity. A player with a gait
+    /// sequence aims through its first blend, faces the way its legs do with
+    /// its torso turned to its view, and walks its legs. One without keeps
+    /// its controllers centred
+    fn inputs(&self, entity: &EntityPose) -> Option<(PoseInputs, Placement)> {
         let sequences = self.model.sequences();
         let sequence = if entity.sequence < sequences.len() {
             entity.sequence
@@ -129,24 +188,74 @@ impl LoadedModel {
         };
         let s = sequences.get(sequence)?;
         let advance = entity.elapsed.max(0.) * entity.framerate * f64::from(s.fps);
+
+        let mut blend = entity.blending;
+        let mut controllers = entity.controllers;
+        let mut angles = entity.angles.map(f64::from);
+        let mut gait = None;
+        if entity.player {
+            match entity.gait {
+                Some(g) => {
+                    let (aim, rest) = player_blend(s, half_turn(angles[0]));
+                    blend[0] = aim;
+                    angles[0] = rest;
+                    controllers = [f64::from(g.torso); 4];
+                    let yaw = f64::from(g.yaw);
+                    angles[1] = if yaw < 0. { yaw + 360. } else { yaw };
+                    gait = sequences.get(g.sequence).map(|legs| GaitState {
+                        sequence: g.sequence,
+                        frame: gait_frame(legs, &g),
+                    });
+                }
+                None => controllers = [127.; 4],
+            }
+        }
+
         let inputs = PoseInputs {
             current: SequenceState {
                 sequence,
                 frame: estimate_frame(s, entity.cycle, advance),
-                blend: entity.blending,
+                blend,
             },
-            controllers: entity.controllers,
+            controllers,
             mouth: 0.,
             transition: None,
-            gait: None,
+            gait,
         };
         let placement = Placement {
             origin: entity.origin.map(f64::from),
-            angles: entity.angles.map(f64::from),
+            angles,
         };
-        evaluate_pose(&self.model, &inputs, &placement)
-            .ok()
-            .map(|pose| pose.bones().to_vec())
+        Some((inputs, placement))
+    }
+
+    /// The bones of a model a player holds, such as a `p_` weapon. Each bone
+    /// named as one of the player's takes that bone's transform, as
+    /// `StudioMergeBones` does, and the rest are posed with the player's
+    /// sequence and frame
+    pub fn merged_pose(
+        &self,
+        entity: &EntityPose,
+        holder: &LoadedModel,
+        holder_bones: &[BoneTransform],
+    ) -> Option<Vec<BoneTransform>> {
+        let (_, placement) = holder.inputs(entity)?;
+        let own = EntityPose {
+            player: false,
+            gait: None,
+            angles: placement.angles.map(|a| a as f32),
+            ..*entity
+        };
+        let mut bones = self.pose(&own)?;
+        let names = holder.model.bones();
+        for (i, bone) in self.model.bones().iter().enumerate() {
+            if let Some(j) = names.iter().position(|b| b.name == bone.name)
+                && let (Some(to), Some(from)) = (bones.get_mut(i), holder_bones.get(j))
+            {
+                *to = *from;
+            }
+        }
+        Some(bones)
     }
 
     /// The sequence labelled `label`, ignoring case

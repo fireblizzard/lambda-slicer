@@ -35,9 +35,14 @@ pub struct PresentedFrame {
     /// The source time shown, at or after the position's
     pub at: SourceTime,
     pub server_time: ServerTime,
+    /// The client's clock at `at`, the latest snapshot's server time plus
+    /// the source time since it arrived
+    pub client_time: f64,
     pub map: Option<String>,
     /// Grows whenever the scene changes
     pub scene_revision: u64,
+    /// As the client draws them at `client_time`, moved between snapshots
+    /// and with players' legs
     pub entities: Arc<Vec<Entity>>,
     /// The recorder's view, whatever camera the viewer uses
     pub recorder: Camera,
@@ -207,7 +212,7 @@ impl Playback {
                         scene.on_message(d, m, time);
                         audio.on_message(d, m, time);
                     });
-                    scene.after_network(decoder, frame);
+                    scene.after_network(decoder, frame, time);
                     applied
                 }
                 FrameBody::Event(event) => {
@@ -231,6 +236,7 @@ impl Playback {
             segment: self.state.decoder.segment,
             time,
         };
+        self.state.scene.step_gaits(time);
         self.state.position = Some(position);
         self.state.reach = SourceTime(self.state.reach.0.max(time.0));
 
@@ -329,6 +335,7 @@ impl Playback {
             Some(p) if at < p.time => p.time,
             _ => at,
         };
+        let client_time = state.scene.client_time(at);
         let sounds = state
             .audio
             .channels()
@@ -349,7 +356,8 @@ impl Playback {
             server_time: ServerTime(f32::from_bits(state.decoder.time_bits)),
             map: state.scene.map.clone(),
             scene_revision: state.scene.revision,
-            entities: state.scene.entities.clone(),
+            entities: Arc::new(state.scene.presented(client_time)),
+            client_time,
             recorder: state.scene.camera,
             camera,
             viewmodel: state.scene.viewmodel,

@@ -10,6 +10,7 @@
 
 pub mod camera;
 pub mod gpu;
+pub mod light;
 pub mod load;
 pub mod model;
 pub mod world;

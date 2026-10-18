@@ -3,13 +3,13 @@
 //! The chosen submodel of every body part is gathered into corners that
 //! name their point, normal and bone, grouped by skin texture. Skinning
 //! moves each corner by its bone's transform, on the CPU for the spike.
-//! Chrome, additive and flat-shaded textures are drawn as plain ones until
-//! M9
+//! Chrome, additive and flat-shaded textures are drawn as plain ones for now
 
 use lambda_slicer_assets::xenoxide::studio::StudioRenderAsset;
 use lambda_slicer_assets::xenoxide::studio_pose::BoneTransform;
 
 use crate::Rgba;
+use crate::light::ModelLight;
 use crate::world::Batch;
 
 #[repr(C)]
@@ -18,6 +18,8 @@ pub struct ModelVertex {
     pub position: [f32; 3],
     pub normal: [f32; 3],
     pub uv: [f32; 2],
+    /// The vertex's light, from [`ModelLight::vertex`]
+    pub light: [f32; 3],
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -121,9 +123,9 @@ impl ModelMesh {
         self.corners.len()
     }
 
-    /// Every corner moved by its bone in `bones`. A bone the pose lacks
-    /// leaves its points where the model stores them
-    pub fn skin(&self, bones: &[BoneTransform]) -> Vec<ModelVertex> {
+    /// Every corner moved by its bone in `bones` and lit by `light`. A bone
+    /// the pose lacks leaves its points where the model stores them
+    pub fn skin(&self, bones: &[BoneTransform], light: &ModelLight) -> Vec<ModelVertex> {
         let apply = |p: [f32; 3], bone: usize, translate: bool| -> [f32; 3] {
             let Some(m) = bones.get(bone) else {
                 return p;
@@ -145,10 +147,12 @@ impl ModelMesh {
                     .unwrap_or(([0., 0., 1.], 0));
                 let n = apply(normal, normal_bone, false);
                 let length = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt().max(1e-6);
+                let normal = n.map(|v| v / length);
                 ModelVertex {
                     position: apply(point, bone, true),
-                    normal: n.map(|v| v / length),
+                    normal,
                     uv: c.uv,
+                    light: light.vertex(normal),
                 }
             })
             .collect()

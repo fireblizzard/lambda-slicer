@@ -21,6 +21,7 @@ use std::collections::HashMap;
 use lambda_slicer_assets::xenoxide::bsp30::{BspDocument, LumpKind, MipTexture};
 
 use crate::Rgba;
+use crate::light::LightTree;
 
 /// The style slot that stands for full brightness, past the game's 64
 pub const FULL_BRIGHT: u8 = 64;
@@ -85,7 +86,7 @@ impl Entity {
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default)]
 pub struct WorldMesh {
     pub vertices: Vec<WorldVertex>,
     pub indices: Vec<u32>,
@@ -100,6 +101,8 @@ pub struct WorldMesh {
     pub entities: Vec<Entity>,
     /// The `worldspawn` sky name, `desert` when it names none
     pub sky: String,
+    /// What models are lit by
+    pub light: LightTree,
 }
 
 /// The map's entity text read into entities. Text outside quotes other than
@@ -543,6 +546,7 @@ pub fn build(bsp: &BspDocument, wad_texture: &mut dyn FnMut(&str) -> Option<Rgba
         },
         entities,
         sky,
+        light: LightTree::build(bsp),
     }
 }
 

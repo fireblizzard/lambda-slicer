@@ -14,6 +14,7 @@ use lambda_slicer_assets::Limits;
 use lambda_slicer_assets::search::{SearchOptions, SearchPath};
 use lambda_slicer_render::camera::Camera;
 use lambda_slicer_render::gpu::{Brush, COLOR_FORMAT, Instance, Scene, View};
+use lambda_slicer_render::light::ModelLight;
 use lambda_slicer_render::{load, world};
 
 const SIZE: [u32; 2] = [1920, 1080];
@@ -100,6 +101,10 @@ fn main() {
 
     let (spawn, yaw) = world::spawn(&mesh.entities);
     let sequence = player.sequence("run").unwrap_or(0);
+    let light = mesh
+        .light
+        .at(spawn, &[1.; 64])
+        .map_or(ModelLight::UNLIT, ModelLight::from_point);
     let frame = |scene: &mut Scene, t: f64, size: [u32; 2]| {
         let angle = t as f32 * 0.4;
         let eye = [
@@ -111,7 +116,7 @@ fn main() {
         let bones = player.bones_at(sequence, t, spawn, yaw).unwrap_or_default();
         let instance = Instance {
             model,
-            vertices: player.mesh.skin(&bones),
+            vertices: player.mesh.skin(&bones, &light),
         };
         let view_projection = camera.view_projection(size[0] as f32 / size[1] as f32, 4., 8192.);
         let view = View {

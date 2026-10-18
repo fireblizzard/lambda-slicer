@@ -129,15 +129,15 @@ fn world_fs(v: WorldOut) -> @location(0) vec4<f32> {
 struct ModelOut {
     @builtin(position) clip: vec4<f32>,
     @location(0) uv: vec2<f32>,
-    @location(1) normal: vec3<f32>,
+    @location(1) light: vec3<f32>,
 }
 
 @vertex
-fn model_vs(@location(0) position: vec3<f32>, @location(1) normal: vec3<f32>, @location(2) uv: vec2<f32>) -> ModelOut {
+fn model_vs(@location(0) position: vec3<f32>, @location(1) normal: vec3<f32>, @location(2) uv: vec2<f32>, @location(3) light: vec3<f32>) -> ModelOut {
     var out: ModelOut;
     out.clip = u.view_projection * vec4<f32>(position, 1.0);
     out.uv = uv;
-    out.normal = normal;
+    out.light = light;
     return out;
 }
 
@@ -147,8 +147,7 @@ fn model_fs(v: ModelOut) -> @location(0) vec4<f32> {
     if (a.a < 0.5) {
         discard;
     }
-    let shade = 0.55 + 0.45 * max(dot(normalize(v.normal), normalize(vec3<f32>(0.4, 0.3, 0.85))), 0.0);
-    return vec4<f32>(a.rgb * shade, 1.0);
+        return vec4<f32>(min(a.rgb * v.light * u.params.x, vec3<f32>(1.0)), 1.0);
 }
 
 struct SkyOut {
@@ -658,7 +657,7 @@ impl Scene {
                 wgpu::VertexBufferLayout {
                     array_stride: std::mem::size_of::<ModelVertex>() as u64,
                     step_mode: wgpu::VertexStepMode::Vertex,
-                    attributes: &wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3, 2 => Float32x2],
+                    attributes: &wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3, 2 => Float32x2, 3 => Float32x3],
                 },
                 None,
                 true,

@@ -241,16 +241,41 @@ game (9e):
 
 Not drawn yet: visibility and frustum culling (the whole world is drawn every frame), random tiling
 textures (`-0` names), scrolling conveyors, and decals. Sprites and the viewmodel come with 9d.
-Interpolation between snapshots, the client's player animation, team colours, held weapons and
-studio lighting come with 9c.
+
+### Models (9c)
+
+**Implemented**, from the game's client as the Half-Life SDK's `StudioModelRenderer` shows it, not yet
+compared with the game (9e):
+
+| Part | How |
+|---|---|
+| Interpolation | entities drawn 0.1 s behind the client's clock (`ex_interp`), each moved along its own samples from the last 32 snapshots, angles the short way round. Not through a new life, a move over 128 units between snapshots, or past the latest snapshot |
+| Client clock | the latest snapshot's `svc_time` plus the source time since it arrived |
+| Legs | `StudioEstimateGait` and `StudioProcessGait`, stepped once a record group, each group being a frame the recording client drew: the legs face the way the player moved, turn towards the body while standing, turn round with the movement counted back when the body faces more than 120 degrees away, and the torso twists the rest of the way over the four spine controllers |
+| Gait frame | the distance moved through the gait sequence's linear movement, or its frame rate over the time passed when it does not move |
+| Aim | a player with a gait sequence aims through its first blend from its pitch (`StudioPlayerBlend`), the rest of the pitch turning the model. One without keeps its controllers centred |
+| Held weapons | the player's `weaponmodel`, its bones named as the player's taking the player's transforms (`StudioMergeBones`), the rest posed with the player's sequence |
+| Lighting | the colour under the model from a line 2048 units down through the BSP tree to the first lit face, its lightmaps weighed by their styles (`R_LightPoint`). Its brightest channel is the ambient level up to 128 and the light from above up to 192, softened by a lambert of 1.5. Where nothing is under a model it is lit at 128 and 64 |
+
+The leg state lives in playback's scene, so checkpoints keep it and a seek reaches the same legs as
+playing does. The gait frame takes the whole life's distance through the current gait sequence, so
+when the gait sequence changes the legs keep their place in the cycle by distance, where the game
+carries on from the frame it had. That shows as a jump in the legs' phase at a change from walking
+to running, for example.
+
+**Observed:** AG's `w_weaponbox.mdl`, the box a player drops on death, has a black and white
+texture, so it looks like the checker drawn for a missing texture.
+
+Not drawn yet: team colours (`DM_Base` and `remap` textures), sequence transitions, mouth
+movement, chrome and additive model textures, and the sky's light on models.
 
 **Measured (2026-10-18)** with `--viewer-bench 10`, playing from 20 s in a 1920 by 1080 window with
 the view 1098 by 950 pixels, while the library scan ran:
 
-| Demo | Models in view | 9a mean, p95 | With the world of 9b, mean, p95 |
-|---|---|---|---|
-| `stalkx_naz_248.dem` | 4 | 3.7, 4.8 ms | 3.4, 4.3 ms |
-| `ray_vs_alex_cross.dem`, spectator | 8 | 6.7, 19.6 ms | 3.9, 5.1 ms |
-| `run_92.dem`, singleplayer | 10 | | 5.2, 6.3 ms |
+| Demo | Models in view | 9a mean, p95 | With the world of 9b, mean, p95 | With the models of 9c, mean, p95 |
+|---|---|---|---|---|
+| `stalkx_naz_248.dem` | 4 | 3.7, 4.8 ms | 3.4, 4.3 ms | 3.2, 4.8 ms |
+| `ray_vs_alex_cross.dem`, spectator | 8 to 9 | 6.7, 19.6 ms | 3.9, 5.1 ms | 4.6, 6.3 ms |
+| `run_92.dem`, singleplayer | 10 | | 5.2, 6.3 ms | 2.9, 4.0 ms |
 
-The library scan's load changes between runs, so the 9a and 9b figures are not a measure of 9b.
+The library scan's load changes between runs, so the columns are not a measure of each step.

@@ -60,6 +60,8 @@ pub struct App {
     show_settings: bool,
     show_problems: bool,
     screenshot: Option<Screenshot>,
+    /// A screenshot was asked for and its image has not come back
+    screenshot_requested: bool,
     cache_path: Option<PathBuf>,
     clips: ClipStore,
     clips_path: Option<PathBuf>,
@@ -163,6 +165,7 @@ impl App {
             show_settings: launch.show_settings,
             show_problems: false,
             screenshot: launch.screenshot,
+            screenshot_requested: false,
             cache_path,
             library,
             scan: None,
@@ -673,6 +676,12 @@ impl App {
     }
 
     fn take_screenshot(&mut self, ctx: &egui::Context) {
+        // The image comes back once later frames have read it from the GPU,
+        // and nothing else may ask for them
+        if self.screenshot_requested {
+            ctx.request_repaint();
+            return;
+        }
         let Some(shot) = &mut self.screenshot else {
             return;
         };
@@ -687,6 +696,7 @@ impl App {
         }
         let path = shot.path.clone();
         self.screenshot = None;
+        self.screenshot_requested = true;
         let closer = ctx.clone();
         ctx.request_screenshot(move |image: Arc<egui::ColorImage>| {
             let bytes: Vec<u8> = image.pixels.iter().flat_map(|c| c.to_array()).collect();
@@ -701,6 +711,7 @@ impl App {
             }
             closer.send_viewport_cmd(egui::ViewportCommand::Close);
         });
+        ctx.request_repaint();
     }
 }
 
