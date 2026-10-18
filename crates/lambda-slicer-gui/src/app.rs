@@ -50,6 +50,7 @@ pub struct Launch {
     /// Where the viewer seeks to once the demo is loaded
     pub viewer_at: Option<f64>,
     pub viewer_bench: Option<crate::viewer::Bench>,
+    pub viewer_capture: Option<crate::viewer::Capture>,
 }
 
 pub struct App {
@@ -84,6 +85,7 @@ pub struct App {
     game: Option<PathBuf>,
     viewer_at: Option<f64>,
     viewer_bench: Option<crate::viewer::Bench>,
+    viewer_capture: Option<crate::viewer::Capture>,
     /// The window's GPU device, which the viewer draws with
     pub render_state: Option<eframe::egui_wgpu::RenderState>,
 }
@@ -179,6 +181,7 @@ impl App {
             game: launch.game,
             viewer_at: launch.viewer_at,
             viewer_bench: launch.viewer_bench,
+            viewer_capture: launch.viewer_capture,
             render_state: None,
         }
     }
@@ -805,8 +808,11 @@ impl eframe::App for App {
                         game.clone(),
                         path.clone(),
                         *duration,
-                        self.viewer_at.take(),
-                        self.viewer_bench.take(),
+                        crate::viewer::Dev {
+                            start: self.viewer_at.take(),
+                            bench: self.viewer_bench.take(),
+                            capture: self.viewer_capture.take(),
+                        },
                         &ctx,
                     ));
                 }

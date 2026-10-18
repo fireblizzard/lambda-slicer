@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/lambda-slicer-core", "crates/lambda-slicer-cli", "crates/lambda-slicer-gui", "crates/lambda-slicer-assets", "crates/lambda-slicer-render", "crates/lambda-slicer-playback"]
+members = ["crates/lambda-slicer-core", "crates/lambda-slicer-cli", "crates/lambda-slicer-gui", "crates/lambda-slicer-assets", "crates/lambda-slicer-render", "crates/lambda-slicer-playback", "crates/lambda-slicer-audio"]
 exclude = ["vendor"]
 
 [workspace.package]
@@ -11,6 +11,7 @@ publish = false
 
 [workspace.dependencies]
 lambda-slicer-assets = { path = "crates/lambda-slicer-assets" }
+lambda-slicer-audio = { path = "crates/lambda-slicer-audio" }
 lambda-slicer-core = { path = "crates/lambda-slicer-core" }
 lambda-slicer-playback = { path = "crates/lambda-slicer-playback" }
 lambda-slicer-render = { path = "crates/lambda-slicer-render" }

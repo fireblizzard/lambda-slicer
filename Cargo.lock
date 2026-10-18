@@ -2117,6 +2117,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "lambda-slicer-audio"
+version = "0.1.0"
+dependencies = [
+ "lambda-slicer-assets",
+ "lambda-slicer-core",
+ "lambda-slicer-playback",
+]
+
+[[package]]
 name = "lambda-slicer-cli"
 version = "0.1.0"
 dependencies = [

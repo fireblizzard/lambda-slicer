@@ -1,0 +1,13 @@
+[package]
+name = "lambda-slicer-audio"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+lambda-slicer-assets.workspace = true
+lambda-slicer-playback.workspace = true
+
+[dev-dependencies]
+lambda-slicer-core.workspace = true

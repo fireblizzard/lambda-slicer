@@ -20,7 +20,7 @@ use std::sync::Arc;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::time::Instant;
 
-use eframe::egui::{self, Rect, Sense, Ui};
+use eframe::egui::{self, Sense, Ui};
 use eframe::egui_wgpu::{self, CallbackResources, CallbackTrait, RenderState, ScreenDescriptor};
 use eframe::wgpu;
 use lambda_slicer_assets::Limits as AssetLimits;
@@ -29,7 +29,7 @@ use lambda_slicer_assets::sprite::Sprite;
 use lambda_slicer_core::container::{Limits, read_header};
 use lambda_slicer_core::timeline::time::DemoTime;
 use lambda_slicer_playback::PresentedFrame;
-use lambda_slicer_playback::controller::{Command, Controller, Reply};
+use lambda_slicer_playback::controller::{Command, Controller, Reply, Stamp};
 use lambda_slicer_playback::time::SourceTime;
 use lambda_slicer_playback::worker::Worker;
 use lambda_slicer_render::Rgba;
@@ -40,6 +40,7 @@ use lambda_slicer_render::gpu::{
 };
 use lambda_slicer_render::light::{LightTree, ModelLight};
 use lambda_slicer_render::load::{self, EntityPose, GaitPose, LoadError, LoadedModel};
+use lambda_slicer_render::model::ModelMesh;
 use lambda_slicer_render::world::{self, WorldMesh};
 
 use crate::i18n::Catalog;
@@ -63,14 +64,46 @@ pub struct Bench {
     pub out: PathBuf,
 }
 
+/// Save the view at each of `times` as `<folder>/<seconds>.png`, `size`
+/// pixels, for comparing with the game's frames, and close the window
+pub struct Capture {
+    pub times: Vec<f64>,
+    pub folder: PathBuf,
+    pub size: [u32; 2],
+}
+
+/// Choices from the command line for checking the viewer
+#[derive(Default)]
+pub struct Dev {
+    /// Where to seek once the demo is loaded
+    pub start: Option<f64>,
+    pub bench: Option<Bench>,
+    pub capture: Option<Capture>,
+}
+
+enum CapturePhase {
+    /// Seek to the next time
+    Seek,
+    /// Wait for the seek's frame and everything it draws
+    Wait(Stamp),
+    /// The frame was drawn, read it back
+    Drawn,
+}
+
+struct Capturing {
+    capture: Capture,
+    next: usize,
+    phase: CapturePhase,
+}
+
 /// Which model an entity is drawn with
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 enum ModelRef {
     /// A model by path, such as `models/w_gauss.mdl`
     File(String),
     /// A player model by the name userinfo gives, the stock player model
-    /// when it is not installed
-    Player(String),
+    /// when it is not installed, in the player's top and bottom colours
+    Player(String, [u8; 2]),
 }
 
 enum Asset {
@@ -130,7 +163,17 @@ impl Loader {
                                     Err(LoadError::Sprite { name: path.clone() })
                                 }
                                 ModelRef::File(path) => load::model(search, path),
-                                ModelRef::Player(name) => load::player(search, name),
+                                ModelRef::Player(name, colours) => {
+                                    load::player(search, name).map(|mut m| {
+                                        m.mesh = ModelMesh::build_coloured(
+                                            &m.asset,
+                                            0,
+                                            0,
+                                            Some(*colours),
+                                        );
+                                        m
+                                    })
+                                }
                             };
                             let sprite = |path: &str| match load::sprite(search, path, limits) {
                                 Ok(s) => Outcome::Sprite(Box::new(s)),
@@ -197,6 +240,7 @@ pub struct Viewer {
     /// The demo's length, when the library knows it
     duration: f64,
     bench: Option<(Bench, Option<Instant>, Vec<f64>)>,
+    capturing: Option<Capturing>,
     last_frame: Option<Instant>,
 }
 
@@ -221,10 +265,14 @@ impl Viewer {
         install: PathBuf,
         demo: PathBuf,
         duration: f32,
-        start: Option<f64>,
-        bench: Option<Bench>,
+        dev: Dev,
         ctx: &egui::Context,
     ) -> Self {
+        let Dev {
+            start,
+            bench,
+            capture,
+        } = dev;
         {
             let device = &render_state.device;
             let resources = Resources {
@@ -265,6 +313,11 @@ impl Viewer {
             clock: Instant::now(),
             duration: f64::from(duration),
             bench: bench.map(|b| (b, None, Vec::new())),
+            capturing: capture.map(|capture| Capturing {
+                capture,
+                next: 0,
+                phase: CapturePhase::Seek,
+            }),
             last_frame: None,
         }
     }
@@ -502,12 +555,93 @@ impl Viewer {
         true
     }
 
+    /// Whether the frame shown answers `stamp`, and its map and every model
+    /// it draws are in
+    fn ready(&self, stamp: Stamp) -> bool {
+        let Some(frame) = &self.frame else {
+            return false;
+        };
+        let map = frame.map.as_deref().map(map_name);
+        let viewmodel = viewmodel_pose(frame).map(|(path, _)| ModelRef::File(path));
+        let loading = drawn(frame)
+            .into_iter()
+            .flat_map(|d| std::iter::once(d.model).chain(d.weapon))
+            .chain(viewmodel)
+            .any(|m| matches!(self.models.get(&m), None | Some(Slot::Loading)));
+        frame.stamp == stamp && map.is_some() && self.map == map && !loading
+    }
+
+    /// Step a capture run, and the size to draw at while it lasts. True in
+    /// the second place when the run is over
+    fn step_capture(&mut self) -> (Option<[u32; 2]>, bool) {
+        let Some(capturing) = &self.capturing else {
+            return (None, false);
+        };
+        let size = capturing.capture.size;
+        match capturing.phase {
+            CapturePhase::Seek => {
+                let Some(&time) = capturing.capture.times.get(capturing.next) else {
+                    return (Some(size), true);
+                };
+                self.command(Command::SeekTo(SourceTime(time)));
+                let stamp = self.controller.stamp();
+                if let Some(c) = &mut self.capturing {
+                    c.phase = CapturePhase::Wait(stamp);
+                }
+            }
+            CapturePhase::Wait(stamp) => {
+                if self.ready(stamp)
+                    && let Some(c) = &mut self.capturing
+                {
+                    c.phase = CapturePhase::Drawn;
+                }
+            }
+            CapturePhase::Drawn => {
+                let image = {
+                    let renderer = self.render_state.renderer.read();
+                    renderer
+                        .callback_resources
+                        .get::<Resources>()
+                        .and_then(|r| {
+                            r.scene
+                                .read_color(&self.render_state.device, &self.render_state.queue)
+                        })
+                };
+                let time = capturing.capture.times[capturing.next];
+                let path = capturing.capture.folder.join(format!("{time:09.3}.png"));
+                if let Some(image) = image
+                    && let Err(e) = image::save_buffer(
+                        &path,
+                        &image.pixels,
+                        image.width,
+                        image.height,
+                        image::ColorType::Rgba8,
+                    )
+                {
+                    eprintln!("cannot save {}: {e}", path.display());
+                }
+                if let Some(c) = &mut self.capturing {
+                    c.next += 1;
+                    c.phase = CapturePhase::Seek;
+                }
+            }
+        }
+        (Some(size), false)
+    }
+
     /// The view in `height` points with its controls under it, or all the
     /// space left in a bench run
     pub fn ui(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool, height: f32) {
         self.poll();
         self.request_assets();
         let ctx = ui.ctx().clone();
+        let (capture_size, captured) = self.step_capture();
+        if captured {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+        }
+        if capture_size.is_some() {
+            ctx.request_repaint();
+        }
         if let Some(problem) = self.controller.failed() {
             text::label(ui, &catalog.message(problem), rtl);
             return;
@@ -523,15 +657,15 @@ impl Viewer {
         let mut drawn = 0;
         match (&self.frame, &self.map) {
             (Some(frame), Some(_)) => {
-                let pixels = [
+                let pixels = capture_size.unwrap_or([
                     (rect.width() * ui.pixels_per_point()).round().max(1.) as u32,
                     (rect.height() * ui.pixels_per_point()).round().max(1.) as u32,
-                ];
+                ]);
                 let draw = self.draw_list();
                 drawn = draw.instances.len() + draw.sprites.len() + draw.viewmodel.len();
                 let callback = Frame {
                     pixels,
-                    view: view(frame, rect),
+                    view: view(frame, pixels[0] as f32 / pixels[1] as f32),
                     draw,
                 };
                 ui.painter()
@@ -623,7 +757,12 @@ fn drawn(frame: &PresentedFrame) -> Vec<Drawn> {
 
         let player = frame.players.iter().find(|p| p.entity == number);
         let model = match (player.and_then(|p| p.model.as_deref()), e.model.as_deref()) {
-            (Some(name), _) => ModelRef::Player(name.to_owned()),
+            (Some(name), _) => {
+                let colours = player.map_or([0; 2], |p| {
+                    [p.top_color.unwrap_or(0), p.bottom_color.unwrap_or(0)]
+                });
+                ModelRef::Player(name.to_owned(), colours)
+            }
             (None, Some(path)) if path.ends_with(".mdl") || path.ends_with(".spr") => {
                 ModelRef::File(path.to_owned())
             }
@@ -749,9 +888,9 @@ fn brushes(frame: &PresentedFrame) -> Vec<Brush> {
 
 /// What the frame is seen from and when, with every light style's
 /// brightness at the client's time
-fn view(frame: &PresentedFrame, rect: Rect) -> View {
+fn view(frame: &PresentedFrame, aspect: f32) -> View {
     View {
-        view_projection: view_projection(frame, rect),
+        view_projection: view_projection(frame, aspect),
         eye: frame.recorder.origin,
         angles: frame.recorder.angles,
         time: frame.client_time as f32,
@@ -761,8 +900,8 @@ fn view(frame: &PresentedFrame, rect: Rect) -> View {
 
 /// The recorder's view. The recorded field of view is across the screen's
 /// width, as the game's is
-fn view_projection(frame: &PresentedFrame, rect: Rect) -> Matrix {
-    let aspect = rect.aspect_ratio().max(0.01);
+fn view_projection(frame: &PresentedFrame, aspect: f32) -> Matrix {
+    let aspect = aspect.max(0.01);
     let fov_x = frame
         .recorder
         .fov

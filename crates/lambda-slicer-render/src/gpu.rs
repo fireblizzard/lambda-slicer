@@ -1167,6 +1167,50 @@ impl Scene {
         order
     }
 
+    /// The last frame drawn, read back from the GPU, waiting for it. For
+    /// captures and tests, never every frame
+    pub fn read_color(&self, device: &wgpu::Device, queue: &wgpu::Queue) -> Option<Rgba> {
+        let targets = self.targets.as_ref()?;
+        let texture = targets.color_view.texture();
+        let [width, height] = targets.size;
+        let row = width * 4;
+        let padded =
+            row.div_ceil(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT) * wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
+        let buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("viewer readback"),
+            size: u64::from(padded * height),
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        });
+        let mut encoder = device.create_command_encoder(&Default::default());
+        encoder.copy_texture_to_buffer(
+            texture.as_image_copy(),
+            wgpu::TexelCopyBufferInfo {
+                buffer: &buffer,
+                layout: wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(padded),
+                    rows_per_image: None,
+                },
+            },
+            texture.size(),
+        );
+        queue.submit([encoder.finish()]);
+        buffer.map_async(wgpu::MapMode::Read, .., |_| {});
+        device.poll(wgpu::PollType::wait_indefinitely()).ok()?;
+        let data = buffer.get_mapped_range(..).ok()?;
+        let pixels = data
+            .chunks(padded as usize)
+            .flat_map(|r| &r[..row as usize])
+            .copied()
+            .collect();
+        Some(Rgba {
+            width,
+            height,
+            pixels,
+        })
+    }
+
     /// The offscreen colour target, once a frame was drawn
     pub fn color_view(&self) -> Option<&wgpu::TextureView> {
         self.targets.as_ref().map(|t| &t.color_view)

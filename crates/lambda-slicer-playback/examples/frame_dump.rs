@@ -28,6 +28,20 @@ fn main() {
     for p in &f.players {
         println!("player {:?}", p);
     }
+    for c in &f.sounds {
+        let d = [0, 1, 2].map(|k| c.origin[k] - f.recorder.origin[k]);
+        println!(
+            "sound {:?} entity {} channel {} volume {:.2} attenuation {:.2} started {:.2} pitch {} {:.0} away",
+            c.sound,
+            c.entity,
+            c.channel,
+            c.volume,
+            c.attenuation,
+            c.started.0,
+            c.pitch_at(f.at),
+            (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt(),
+        );
+    }
 
     let eye = f.recorder.origin;
     let distance = |o: [f32; 3]| {

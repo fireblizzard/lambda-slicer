@@ -198,6 +198,7 @@ impl Playback {
         self.state.audio.retire(group.time, &*self.lengths);
 
         let time = group.time;
+        let lengths: &dyn Fn(&SoundName) -> SoundLength = &*self.lengths;
         let State {
             decoder,
             scene,
@@ -210,7 +211,7 @@ impl Playback {
                 FrameBody::Network(frame) => {
                     let applied = decoder.network_frame(record.location, frame, |d, m| {
                         scene.on_message(d, m, time);
-                        audio.on_message(d, m, time);
+                        audio.on_message(d, m, time, lengths);
                     });
                     scene.after_network(decoder, frame, time);
                     applied
@@ -221,7 +222,7 @@ impl Playback {
                 }
                 other => {
                     scene.on_record(other, time);
-                    audio.on_record(decoder, other, time);
+                    audio.on_record(decoder, other, time, lengths);
                     Ok(())
                 }
             };

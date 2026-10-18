@@ -165,6 +165,9 @@ pub fn sprite(search: &SearchPath, path: &str, limits: Limits) -> Result<Sprite,
 pub struct LoadedModel {
     pub model: StudioModel,
     pub mesh: ModelMesh,
+    /// What the mesh was built from, for building it again in a player's
+    /// colours
+    pub asset: StudioRenderAsset,
     /// The file it was read from
     pub path: String,
 }
@@ -335,6 +338,7 @@ pub fn model(search: &SearchPath, path: &str) -> Result<LoadedModel, LoadError> 
         StudioRenderAsset::parse(&model, &main, companion.as_deref()).map_err(|e| invalid(&e))?;
     Ok(LoadedModel {
         mesh: ModelMesh::build(&asset, 0, 0),
+        asset,
         model,
         path: path.to_owned(),
     })

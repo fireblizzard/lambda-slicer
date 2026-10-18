@@ -4,7 +4,8 @@
 //! [--dates] [--pseudo] [--size WxH] [--cache FILE] [--clips FILE]
 //! [--demo FILE [--window N] [--export DIR]]
 //! [--screenshot OUT.png [--frames N]]
-//! [--game DIR [--viewer-at SECONDS] [--viewer-bench SECONDS OUT.txt]]`
+//! [--game DIR [--viewer-at SECONDS] [--viewer-bench SECONDS OUT.txt]
+//! [--viewer-capture TIMES FOLDER [--viewer-size WxH]]]`
 //!
 //! Demos and folders given as `PATH` are opened for this session. `--locale`
 //! overrides the saved language, `--cache` the library cache and `--clips`
@@ -19,7 +20,9 @@
 //! installation folder, the one that holds `valve`, and plays the demo in
 //! the demo view, from `--viewer-at` seconds if given. `--viewer-bench`
 //! turns vsync off, plays and times the view's frames for `SECONDS`, writes
-//! the times to `OUT.txt` and exits
+//! the times to `OUT.txt` and exits. `--viewer-capture` saves the view at
+//! each of the comma-separated `TIMES` into `FOLDER` as `<seconds>.png`,
+//! `--viewer-size` pixels (1280x720 unless given), and exits
 
 // A release build opens no console window beside the app
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
@@ -63,6 +66,8 @@ fn main() -> eframe::Result {
     let mut pseudo = false;
     let mut game = None;
     let mut viewer_at = None;
+    let mut capture_times: Option<(Vec<f64>, PathBuf)> = None;
+    let mut capture_size = [1280, 720];
     let mut viewer_bench = None;
     while let Some(a) = args.next() {
         match a.as_str() {
@@ -92,6 +97,22 @@ fn main() -> eframe::Result {
             "--export" => export = args.next().map(PathBuf::from),
             "--game" => game = args.next().map(PathBuf::from),
             "--viewer-at" => viewer_at = args.next().and_then(|s| s.parse().ok()),
+            "--viewer-capture" => {
+                if let (Some(times), Some(folder)) = (args.next(), args.next()) {
+                    let times = times
+                        .split(',')
+                        .filter_map(|t| t.trim().parse().ok())
+                        .collect();
+                    capture_times = Some((times, PathBuf::from(folder)));
+                }
+            }
+            "--viewer-size" => {
+                if let Some((w, h)) = args.next().as_deref().and_then(|s| s.split_once('x'))
+                    && let (Ok(w), Ok(h)) = (w.parse(), h.parse())
+                {
+                    capture_size = [w, h];
+                }
+            }
             "--viewer-bench" => {
                 if let (Some(seconds), Some(out)) =
                     (args.next().and_then(|s| s.parse().ok()), args.next())
@@ -169,6 +190,11 @@ fn main() -> eframe::Result {
                     game,
                     viewer_at,
                     viewer_bench,
+                    viewer_capture: capture_times.map(|(times, folder)| viewer::Capture {
+                        times,
+                        folder,
+                        size: capture_size,
+                    }),
                 },
             );
             app.render_state = cc.wgpu_render_state.clone();

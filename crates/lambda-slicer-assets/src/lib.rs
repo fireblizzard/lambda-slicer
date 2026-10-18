@@ -15,6 +15,7 @@ pub mod search;
 pub mod sprite;
 pub mod tga;
 pub mod wad;
+pub mod wav;
 pub mod xenoxide;
 
 use std::path::PathBuf;
@@ -63,6 +64,8 @@ pub enum AssetError {
     Wad(String),
     #[error("not an image this version reads: {0}")]
     Image(String),
+    #[error("not a sound this version reads: {0}")]
+    Sound(String),
 }
 
 fn io_err(path: impl Into<PathBuf>) -> impl FnOnce(std::io::Error) -> AssetError {

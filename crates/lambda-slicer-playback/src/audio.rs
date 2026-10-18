@@ -10,9 +10,14 @@
 //! nothing starts the sound instead. `svc_stopsound` stops the channel
 //! whatever it plays. A new session silences everything.
 //!
+//! A sound that is not static takes one of the engine's eight dynamic
+//! channels. When all are busy it takes the one with the least time left,
+//! except that another entity's sound never takes one of the listener's
+//! own, and when nothing can be taken the sound is not heard
+//! (`SND_PickChannel`).
+//!
 //! How long a sample lasts, and whether it loops, is in the sample file, so
-//! [`Audio::retire`] takes the lengths from its caller. The engine's limit
-//! of eight dynamic channels is not applied yet
+//! the length comes from the caller
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -34,6 +39,9 @@ pub mod flags {
     pub const CHANGE_VOLUME: u16 = 64;
     pub const CHANGE_PITCH: u16 = 128;
 }
+
+/// The engine's dynamic channels
+pub const DYNAMIC_CHANNELS: usize = 8;
 
 pub const CHAN_AUTO: u8 = 0;
 pub const CHAN_STATIC: u8 = 6;
@@ -132,6 +140,10 @@ impl Channel {
     }
 }
 
+/// Where playback learns each sample's length, shared by every playback of
+/// a demo so their checkpoints agree
+pub type SoundLengths = Arc<dyn Fn(&SoundName) -> SoundLength + Send + Sync>;
+
 /// How long a sample plays, which the sample file says
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum SoundLength {
@@ -202,7 +214,14 @@ impl Audio {
     }
 
     /// A message the decoder has just applied, at `time`
-    pub(crate) fn on_message(&mut self, decoder: &Decoder, m: &ParsedMessage, time: SourceTime) {
+    pub(crate) fn on_message(
+        &mut self,
+        decoder: &Decoder,
+        m: &ParsedMessage,
+        time: SourceTime,
+        lengths: &dyn Fn(&SoundName) -> SoundLength,
+    ) {
+        let view = view_entity(decoder);
         match &m.message {
             Message::ServerInfo(_) => {
                 self.channels.clear();
@@ -210,7 +229,7 @@ impl Audio {
             }
             Message::Sound(sound) => {
                 let request = self.network(decoder, sound);
-                self.apply(request, time);
+                self.apply(request, time, view, lengths);
             }
             Message::StopSound(value) => {
                 let (entity, channel) = (value >> 3, (value & 7) as u8);
@@ -233,7 +252,7 @@ impl Audio {
                     origin: [coord(body, 0), coord(body, 2), coord(body, 4)],
                     pitch: body[12],
                 };
-                self.apply(request, time);
+                self.apply(request, time, view, lengths);
             }
             _ => {}
         }
@@ -262,15 +281,28 @@ impl Audio {
 
     /// A record other than a network one. A sound record carries no entity,
     /// so it plays on the entity the client views from
-    pub(crate) fn on_record(&mut self, decoder: &Decoder, body: &FrameBody, time: SourceTime) {
+    pub(crate) fn on_record(
+        &mut self,
+        decoder: &Decoder,
+        body: &FrameBody,
+        time: SourceTime,
+        lengths: &dyn Fn(&SoundName) -> SoundLength,
+    ) {
+        let view = view_entity(decoder);
         let FrameBody::Sound(record) = body else {
             return;
         };
         let request = recorded(decoder, record);
-        self.apply(request, time);
+        self.apply(request, time, view, lengths);
     }
 
-    fn apply(&mut self, r: Request, time: SourceTime) {
+    fn apply(
+        &mut self,
+        r: Request,
+        time: SourceTime,
+        view: u16,
+        lengths: &dyn Fn(&SoundName) -> SoundLength,
+    ) {
         let found = self.channels.iter().position(|c| {
             c.entity == r.entity && c.channel == r.channel && c.sound.matches(&r.sound)
         });
@@ -299,6 +331,29 @@ impl Audio {
         if r.channel != CHAN_AUTO && r.channel != CHAN_STATIC {
             self.channels
                 .retain(|c| c.is_static() || (c.entity, c.channel) != (r.entity, r.channel));
+        }
+
+        let is_static = r.source == SoundSource::Static || r.channel == CHAN_STATIC;
+        let dynamic = self.channels.iter().filter(|c| !c.is_static()).count();
+        if !is_static && dynamic >= DYNAMIC_CHANNELS {
+            let left = |c: &Channel| match lengths(&c.sound) {
+                SoundLength::Once(seconds) => seconds - c.cursor(time),
+                SoundLength::Looping => f64::INFINITY,
+                SoundLength::Unknown => UNKNOWN_LIMIT - (time.0 - c.started.0),
+            };
+            let taken = self
+                .channels
+                .iter()
+                .enumerate()
+                .filter(|(_, c)| !c.is_static() && !(c.entity == view && r.entity != view))
+                .min_by(|(_, a), (_, b)| left(a).total_cmp(&left(b)))
+                .map(|(i, _)| i);
+            match taken {
+                Some(i) => {
+                    self.channels.remove(i);
+                }
+                None => return,
+            }
         }
         self.channels.push(Channel {
             id: self.next_id,
@@ -329,6 +384,13 @@ impl Audio {
             self.revision += 1;
         }
     }
+}
+
+/// The entity the recording client views from, whose sounds are its own
+fn view_entity(decoder: &Decoder) -> u16 {
+    decoder
+        .view_entity
+        .unwrap_or(u16::from(decoder.player_num) + 1)
 }
 
 fn recorded(decoder: &Decoder, record: &SoundRecord) -> Request {
@@ -388,11 +450,31 @@ mod tests {
         let mut audio = Audio::default();
         let t = |s: f64| SourceTime(s);
 
-        audio.apply(request(0, 1, 1, "weapons/gauss2.wav", 100), t(0.));
+        audio.apply(
+            request(0, 1, 1, "weapons/gauss2.wav", 100),
+            t(0.),
+            1,
+            &|_| SoundLength::Unknown,
+        );
         // The same channel replaces it, the automatic channel adds
-        audio.apply(request(0, 1, 1, "weapons/electro4.wav", 100), t(0.1));
-        audio.apply(request(0, 1, CHAN_AUTO, "player/pl_step1.wav", 100), t(0.2));
-        audio.apply(request(0, 1, CHAN_AUTO, "player/pl_step2.wav", 100), t(0.3));
+        audio.apply(
+            request(0, 1, 1, "weapons/electro4.wav", 100),
+            t(0.1),
+            1,
+            &|_| SoundLength::Unknown,
+        );
+        audio.apply(
+            request(0, 1, CHAN_AUTO, "player/pl_step1.wav", 100),
+            t(0.2),
+            1,
+            &|_| SoundLength::Unknown,
+        );
+        audio.apply(
+            request(0, 1, CHAN_AUTO, "player/pl_step2.wav", 100),
+            t(0.3),
+            1,
+            &|_| SoundLength::Unknown,
+        );
         assert_eq!(
             names(&audio),
             [
@@ -406,11 +488,15 @@ mod tests {
         audio.apply(
             request(flags::STOP, 1, 1, "weapons/gauss2.wav", 100),
             t(0.4),
+            1,
+            &|_| SoundLength::Unknown,
         );
         assert_eq!(audio.channels().len(), 3);
         audio.apply(
             request(flags::STOP, 1, 1, "weapons/electro4.wav", 100),
             t(0.4),
+            1,
+            &|_| SoundLength::Unknown,
         );
         assert_eq!(audio.channels().len(), 2);
 
@@ -419,11 +505,15 @@ mod tests {
         audio.apply(
             request(flags::CHANGE_PITCH, 2, 2, "ambience/hum.wav", 100),
             t(1.),
+            1,
+            &|_| SoundLength::Unknown,
         );
         assert_eq!(audio.channels().len(), 3);
         audio.apply(
             request(flags::CHANGE_PITCH, 2, 2, "ambience/hum.wav", 200),
             t(2.),
+            1,
+            &|_| SoundLength::Unknown,
         );
         let hum = audio.channels().last().unwrap();
         assert_eq!(hum.pitch_at(t(1.5)), 100);
@@ -435,9 +525,24 @@ mod tests {
     #[test]
     fn finished_sounds_are_retired_by_their_length() {
         let mut audio = Audio::default();
-        audio.apply(request(0, 1, 1, "once.wav", 200), SourceTime(0.));
-        audio.apply(request(0, 1, 2, "loop.wav", 100), SourceTime(0.));
-        audio.apply(request(0, 1, 3, "unknown.wav", 100), SourceTime(0.));
+        audio.apply(
+            request(0, 1, 1, "once.wav", 200),
+            SourceTime(0.),
+            1,
+            &|_| SoundLength::Unknown,
+        );
+        audio.apply(
+            request(0, 1, 2, "loop.wav", 100),
+            SourceTime(0.),
+            1,
+            &|_| SoundLength::Unknown,
+        );
+        audio.apply(
+            request(0, 1, 3, "unknown.wav", 100),
+            SourceTime(0.),
+            1,
+            &|_| SoundLength::Unknown,
+        );
         let length = |s: &SoundName| match s {
             SoundName::File(n) if &**n == "once.wav" => SoundLength::Once(1.),
             SoundName::File(n) if &**n == "loop.wav" => SoundLength::Looping,
@@ -451,5 +556,80 @@ mod tests {
         assert_eq!(audio.channels().len(), 2);
         audio.retire(SourceTime(UNKNOWN_LIMIT), &length);
         assert_eq!(names(&audio), [(1, 2, "loop.wav".into())]);
+    }
+
+    #[test]
+    fn a_ninth_dynamic_sound_takes_the_channel_closest_to_its_end() {
+        let mut audio = Audio::default();
+        let length = |s: &SoundName| match s {
+            SoundName::File(n) if n.starts_with("long") => SoundLength::Once(10.),
+            SoundName::File(n) if n.starts_with("loop") => SoundLength::Looping,
+            _ => SoundLength::Once(1.),
+        };
+        // Eight automatic sounds on entity 2, the shortest started first
+        audio.apply(
+            request(0, 2, CHAN_AUTO, "short.wav", 100),
+            SourceTime(0.),
+            1,
+            &length,
+        );
+        for i in 0..6 {
+            audio.apply(
+                request(0, 2, CHAN_AUTO, &format!("long{i}.wav"), 100),
+                SourceTime(0.),
+                1,
+                &length,
+            );
+        }
+        audio.apply(
+            request(0, 1, CHAN_AUTO, "loop.wav", 100),
+            SourceTime(0.),
+            1,
+            &length,
+        );
+        // A static sound takes no dynamic channel
+        audio.apply(
+            request(0, 3, CHAN_STATIC, "ambient.wav", 100),
+            SourceTime(0.),
+            1,
+            &length,
+        );
+        assert_eq!(audio.channels().len(), 9);
+
+        audio.apply(
+            request(0, 2, CHAN_AUTO, "new.wav", 100),
+            SourceTime(0.5),
+            1,
+            &length,
+        );
+        let playing = names(&audio);
+        assert!(!playing.iter().any(|(_, _, n)| n == "short.wav"));
+        assert!(playing.iter().any(|(_, _, n)| n == "new.wav"));
+
+        // With every other channel the listener's own, another entity's sound
+        // is not heard
+        let mut own = Audio::default();
+        for i in 0..8 {
+            own.apply(
+                request(0, 1, CHAN_AUTO, &format!("s{i}.wav"), 100),
+                SourceTime(0.),
+                1,
+                &length,
+            );
+        }
+        own.apply(
+            request(0, 2, CHAN_AUTO, "other.wav", 100),
+            SourceTime(0.),
+            1,
+            &length,
+        );
+        assert!(!names(&own).iter().any(|(_, _, n)| n == "other.wav"));
+        own.apply(
+            request(0, 1, CHAN_AUTO, "mine.wav", 100),
+            SourceTime(0.),
+            1,
+            &length,
+        );
+        assert!(names(&own).iter().any(|(_, _, n)| n == "mine.wav"));
     }
 }

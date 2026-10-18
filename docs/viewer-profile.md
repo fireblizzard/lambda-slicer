@@ -137,8 +137,12 @@ compared with the game:
 - A sound's position in its sample is integrated over its pitch history
 - A new session silences everything
 
-Not yet: sample lengths and loops (every sound counts as finished after ten seconds until M10 reads
-the sample files), the limit of eight dynamic channels, and sentences resolved to their words.
+- A sound that is not static takes one of the engine's eight dynamic channels. When all are busy
+  it takes the one with the least time left, except that another entity's sound never takes one of
+  the listener's own, and when nothing can be taken it is not heard (`SND_PickChannel`)
+
+How long a sound plays comes from its WAV file (10a). Without the files every sound counts as
+finished after ten seconds. Sentences are not resolved to their words yet, so they have no samples.
 
 ### Measured (2026-10-18)
 
@@ -205,7 +209,8 @@ demo.
 ## Viewer
 
 The demo view plays the demo when a game folder is given with `--game DIR` (implementation plan
-§13.8). It keeps a playback controller and worker per demo, and a thread that reads the session's
+§13.8). `--viewer-capture` saves its frames at chosen times for comparing with the game
+([viewer validation](viewer-validation.md)). It keeps a playback controller and worker per demo, and a thread that reads the session's
 map and the studio models its entities use. Play, pause and a time bar drive the controller, and
 `--viewer-at SECONDS` seeks there once the demo is loaded. The asset folder setting and the rest
 of the viewer's controls come with M11.
@@ -256,6 +261,7 @@ compared with the game (9e):
 | Aim | a player with a gait sequence aims through its first blend from its pitch (`StudioPlayerBlend`), the rest of the pitch turning the model. One without keeps its controllers centred |
 | Held weapons | the player's `weaponmodel`, its bones named as the player's taking the player's transforms (`StudioMergeBones`), the rest posed with the player's sequence |
 | Lighting | the colour under the model from a line 2048 units down through the BSP tree to the first lit face, its lightmaps weighed by their styles (`R_LightPoint`). Its brightest channel is the ambient level up to 128 and the light from above up to 192, softened by a lambert of 1.5. Where nothing is under a model it is lit at 128 and 64 |
+| Team colours | a player model's `DM_Base` textures with palette entries 160 to 191 turned to the top colour's hue and 80 to 111 to the bottom colour's, each keeping its brightness and saturation, as the game's `PaletteHueReplace` does. The surveyed AG install's own player models have no such textures |
 
 The leg state lives in playback's scene, so checkpoints keep it and a seek reaches the same legs as
 playing does. The gait frame takes the whole life's distance through the current gait sequence, so
@@ -266,8 +272,8 @@ to running, for example.
 **Observed:** AG's `w_weaponbox.mdl`, the box a player drops on death, has a black and white
 texture, so it looks like the checker drawn for a missing texture.
 
-Not drawn yet: team colours (`DM_Base` and `remap` textures), sequence transitions, mouth
-movement, chrome and additive model textures, and the sky's light on models.
+Not drawn yet: `remap` textures, sequence transitions, mouth movement, chrome and additive model
+textures, and the sky's light on models.
 
 ### Viewmodel and sprites (9d)
 
@@ -296,3 +302,33 @@ the view 1098 by 950 pixels, while the library scan ran:
 | `run_92.dem`, singleplayer | 10 | | 5.2, 6.3 ms | 2.9, 4.0 ms |
 
 The library scan's load changes between runs, so the columns are not a measure of each step.
+
+## Sound (10a)
+
+`lambda-slicer-audio` reads the game's sounds and mixes playback's channels into stereo samples.
+
+**Observed:** the game's sounds are PCM WAV files of 8 or 16 bits, mono except for a few, at rates
+from 8,000 to 192,000 Hz. All 3,094 in the surveyed install's `valve` and `ag` sound folders read,
+and 338 of them loop.
+
+**Implemented**, from Quake's sound code as the game keeps it, not yet compared with the game:
+
+| Part | How |
+|---|---|
+| Loops | a `cue ` chunk makes a sound loop from the sample offset 32 bytes past the chunk's header, and a following `LIST` chunk labelled `mark` gives the loop's length (`GetWavinfo`) |
+| Names | `sound/<name>`, a leading `*` dropped |
+| Position | where a channel is in its sample is playback's cursor, its pitch integrated over time, read between stored samples linearly at any rate |
+| Placement | a sound from the entity the listener views from plays at full volume on both sides. Any other fades with distance times its attenuation over 1000 units, and moves between the ears by how far it lies to the listener's right, twice as loud on one side at most (`S_Spatialize`) |
+| Mix | every channel added and scaled by a master volume, then clipped to full scale |
+
+**Measured (2026-10-18)** with `examples/mix_probe.rs`, at 48 kHz and a master volume of 0.7, from the
+recorder's view:
+
+| Demo | Stretch | Mixed in | Sounds heard | Clipped samples |
+|---|---|---|---|---|
+| `stalkx_naz_248.dem` | 20 to 32 s | 0.19 s | 13 | 1 |
+| `ray_vs_alex_cross.dem`, spectator | 15 to 30 s | 0.23 s | 22 | 1,437 of 1.4 million |
+| `run_92.dem`, singleplayer | 6 to 22 s | 0.40 s | 90 | 12,581 of 1.5 million |
+
+Not yet: sentences, sounds that follow their entity as it moves (each stays where it started),
+room effects, and the sounds the game's client makes itself for weapon events (10c).

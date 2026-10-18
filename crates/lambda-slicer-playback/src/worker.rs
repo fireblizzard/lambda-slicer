@@ -16,6 +16,7 @@ use std::thread::JoinHandle;
 
 use lambda_slicer_core::container::Limits;
 
+use crate::audio::SoundLengths;
 use crate::controller::{Reply, Request, Target};
 use crate::playback::Playback;
 
@@ -29,11 +30,21 @@ impl Worker {
     /// Start the worker. `notify` is called after every reply, to wake the
     /// window
     pub fn spawn(limits: Limits, notify: impl Fn() + Send + 'static) -> Self {
+        Self::spawn_with(limits, None, notify)
+    }
+
+    /// Start the worker, its playbacks taking each sound's length from
+    /// `lengths`, read from the sample files
+    pub fn spawn_with(
+        limits: Limits,
+        lengths: Option<SoundLengths>,
+        notify: impl Fn() + Send + 'static,
+    ) -> Self {
         let (request_tx, request_rx) = mpsc::channel::<Request>();
         let (reply_tx, reply_rx) = mpsc::channel();
         let thread = std::thread::Builder::new()
             .name("playback".into())
-            .spawn(move || run(limits, request_rx, reply_tx, notify))
+            .spawn(move || run(limits, lengths, request_rx, reply_tx, notify))
             .expect("spawn playback worker");
 
         Self {
@@ -74,7 +85,24 @@ impl Drop for Worker {
 /// tens of milliseconds
 const INDEX_SLICE: usize = 1000;
 
-fn run(limits: Limits, requests: Receiver<Request>, replies: Sender<Reply>, notify: impl Fn()) {
+fn run(
+    limits: Limits,
+    lengths: Option<SoundLengths>,
+    requests: Receiver<Request>,
+    replies: Sender<Reply>,
+    notify: impl Fn(),
+) {
+    let open = |path: &std::path::Path, store: Option<crate::checkpoint::Shared>| {
+        let mut p = match store {
+            Some(store) => Playback::open_with(path, limits, store),
+            None => Playback::open(path, limits),
+        }?;
+        if let Some(lengths) = &lengths {
+            let lengths = lengths.clone();
+            p.set_sound_lengths(move |name| lengths(name));
+        }
+        Ok::<_, lambda_slicer_core::message::Message>(p)
+    };
     let mut playback: Option<(u64, Playback)> = None;
     let mut indexer: Option<Playback> = None;
 
@@ -108,9 +136,9 @@ fn run(limits: Limits, requests: Receiver<Request>, replies: Sender<Reply>, noti
         if let Some(path) = load {
             playback = None;
             indexer = None;
-            match Playback::open(&path, limits) {
+            match open(&path, None) {
                 Ok(p) => {
-                    indexer = Playback::open_with(&path, limits, p.checkpoints().clone()).ok();
+                    indexer = open(&path, Some(p.checkpoints().clone())).ok();
                     playback = Some((newest.stamp.generation, p));
                 }
                 Err(message) => {

@@ -32,6 +32,67 @@ struct Corner {
 /// `STUDIO_NF_MASKED`, palette index 255 drawn as nothing
 const MASKED: i32 = 0x40;
 
+/// The palette ranges a player's top and bottom colours recolour
+const PLATE: std::ops::RangeInclusive<usize> = 160..=191;
+const SUIT: std::ops::RangeInclusive<usize> = 80..=111;
+
+/// Give a range of palette colours the hue `colour`, 0 to 255 around the
+/// colour wheel, keeping each one's brightness and saturation, as the
+/// game's `PaletteHueReplace` does
+fn replace_hue(palette: &mut [[u8; 3]], colour: u8, range: std::ops::RangeInclusive<usize>) {
+    let hue = f32::from(colour) * (360. / 255.);
+    for entry in palette
+        .iter_mut()
+        .take(range.end() + 1)
+        .skip(*range.start())
+    {
+        let [r, g, b] = entry.map(f32::from);
+        let max = r.max(g).max(b) / 255.;
+        let min = r.min(g).min(b) / 255.;
+        if max == 0. {
+            continue;
+        }
+        let value = max;
+        let saturation = (max - min) / max;
+        let low = value * (1. - saturation);
+
+        let (r, g, b) = if hue <= 120. {
+            if hue < 60. {
+                (value, low + hue * (value - low) / (120. - hue), low)
+            } else {
+                (low + (120. - hue) * (value - low) / hue, value, low)
+            }
+        } else if hue <= 240. {
+            if hue < 180. {
+                (
+                    low,
+                    value,
+                    low + (hue - 120.) * (value - low) / (240. - hue),
+                )
+            } else {
+                (
+                    low,
+                    low + (240. - hue) * (value - low) / (hue - 120.),
+                    value,
+                )
+            }
+        } else if hue < 300. {
+            (
+                low + (hue - 240.) * (value - low) / (360. - hue),
+                low,
+                value,
+            )
+        } else {
+            (
+                value,
+                low,
+                low + (360. - hue) * (value - low) / (hue - 240.),
+            )
+        };
+        *entry = [r, g, b].map(|c| (c * 255.) as u8);
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct ModelMesh {
     corners: Vec<Corner>,
@@ -46,11 +107,29 @@ pub struct ModelMesh {
 impl ModelMesh {
     /// The submodels `body` chooses, with skin family `skin`
     pub fn build(asset: &StudioRenderAsset, body: u32, skin: usize) -> Self {
+        Self::build_coloured(asset, body, skin, None)
+    }
+
+    /// [`ModelMesh::build`] with a player's top and bottom colours on its
+    /// `DM_Base` textures, as the game colours them
+    pub fn build_coloured(
+        asset: &StudioRenderAsset,
+        body: u32,
+        skin: usize,
+        colours: Option<[u8; 2]>,
+    ) -> Self {
         let textures: Vec<Rgba> = asset
             .textures()
             .iter()
             .map(|t| {
-                let palette: Vec<u8> = t.palette.iter().flatten().copied().collect();
+                let mut palette = t.palette.clone();
+                if let Some([top, bottom]) = colours
+                    && t.name.to_ascii_lowercase().starts_with("dm_base")
+                {
+                    replace_hue(&mut palette, top, PLATE);
+                    replace_hue(&mut palette, bottom, SUIT);
+                }
+                let palette: Vec<u8> = palette.iter().flatten().copied().collect();
                 let transparent = (t.flags & MASKED != 0).then_some(255);
                 Rgba::from_palette(
                     t.width as u32,
@@ -156,5 +235,32 @@ impl ModelMesh {
                 }
             })
             .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hues_turn_around_the_wheel_keeping_brightness() {
+        let mut palette = vec![[0u8; 3]; 256];
+        palette[160] = [200, 100, 100];
+        palette[161] = [0, 0, 0];
+        palette[90] = [255, 255, 255];
+
+        // A hue of 0 is red, 85 green, 170 blue
+        replace_hue(&mut palette, 0, PLATE);
+        assert_eq!(palette[160], [200, 100, 100]);
+        replace_hue(&mut palette, 85, PLATE);
+        assert_eq!(palette[160], [100, 200, 100]);
+        replace_hue(&mut palette, 170, PLATE);
+        assert_eq!(palette[160], [100, 100, 200]);
+        assert_eq!(palette[161], [0, 0, 0]);
+
+        // Grey keeps no hue, outside the range nothing changes
+        replace_hue(&mut palette, 170, SUIT);
+        assert_eq!(palette[90], [255, 255, 255]);
+        assert_eq!(palette[0], [0, 0, 0]);
     }
 }
