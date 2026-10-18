@@ -53,6 +53,7 @@ pub struct Entity {
     pub render_mode: i64,
     pub render_amount: i64,
     pub render_fx: i64,
+    pub render_color: [u8; 3],
     pub scale: f32,
     pub move_type: i64,
     pub solid: i64,
@@ -166,7 +167,7 @@ struct Slot {
 }
 
 /// The entity fields the scene reads, in this order
-const FIELDS: [&str; 29] = [
+const FIELDS: [&str; 32] = [
     "modelindex",
     "origin[0]",
     "origin[1]",
@@ -196,6 +197,9 @@ const FIELDS: [&str; 29] = [
     "solid",
     "iuser1",
     "iuser2",
+    "rendercolor.r",
+    "rendercolor.g",
+    "rendercolor.b",
 ];
 
 /// Where each of [`FIELDS`] sits in one schema, looked up once
@@ -424,6 +428,7 @@ impl Scene {
                 solid: v[26] as i64,
                 iuser1: v[27] as i64,
                 iuser2: v[28] as i64,
+                render_color: [v[29] as u8, v[30] as u8, v[31] as u8],
                 updated,
             };
             converted.insert(e.number, (e.clone(), entity.clone()));

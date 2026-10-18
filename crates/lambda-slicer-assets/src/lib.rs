@@ -12,6 +12,7 @@
 pub mod pak;
 pub mod resource;
 pub mod search;
+pub mod tga;
 pub mod wad;
 pub mod xenoxide;
 
@@ -59,6 +60,8 @@ pub enum AssetError {
     Pak { path: PathBuf, detail: String },
     #[error("not a valid WAD3 archive: {0}")]
     Wad(String),
+    #[error("not an image this version reads: {0}")]
+    Image(String),
 }
 
 fn io_err(path: impl Into<PathBuf>) -> impl FnOnce(std::io::Error) -> AssetError {

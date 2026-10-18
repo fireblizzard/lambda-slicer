@@ -7,6 +7,7 @@
 //! `models/player.mdl` when that is missing
 
 use lambda_slicer_assets::search::SearchPath;
+use lambda_slicer_assets::tga;
 use lambda_slicer_assets::wad::Wad;
 use lambda_slicer_assets::xenoxide::bsp30::BspDocument;
 use lambda_slicer_assets::xenoxide::studio::{StudioModel, StudioRenderAsset};
@@ -88,6 +89,22 @@ pub struct EntityPose {
     pub blending: [f64; 2],
     pub origin: [f32; 3],
     pub angles: [f32; 3],
+}
+
+/// The sky box `name` from `gfx/env`, its faces in the order the renderer
+/// draws them ([`crate::gpu::SKY_FACES`])
+pub fn sky(search: &SearchPath, name: &str, limits: Limits) -> Result<[Rgba; 6], LoadError> {
+    let mut faces = Vec::with_capacity(6);
+    for suffix in crate::gpu::SKY_FACES {
+        let path = format!("gfx/env/{name}{suffix}.tga");
+        let image = tga::decode(&search.read(&search.find(&path)?)?, limits)?;
+        faces.push(Rgba {
+            width: image.width,
+            height: image.height,
+            pixels: image.rgba,
+        });
+    }
+    Ok(faces.try_into().expect("six faces"))
 }
 
 /// A studio model ready to pose and draw

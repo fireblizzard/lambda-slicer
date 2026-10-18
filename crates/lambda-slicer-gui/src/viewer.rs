@@ -31,10 +31,11 @@ use lambda_slicer_playback::PresentedFrame;
 use lambda_slicer_playback::controller::{Command, Controller, Reply};
 use lambda_slicer_playback::time::SourceTime;
 use lambda_slicer_playback::worker::Worker;
+use lambda_slicer_render::Rgba;
 use lambda_slicer_render::camera::{Camera, Matrix};
-use lambda_slicer_render::gpu::{Blit, Instance, ModelHandle, Scene};
+use lambda_slicer_render::gpu::{Blit, Brush, Instance, ModelHandle, RenderMode, Scene, View};
 use lambda_slicer_render::load::{self, EntityPose, LoadError, LoadedModel};
-use lambda_slicer_render::world::WorldMesh;
+use lambda_slicer_render::world::{self, WorldMesh};
 
 use crate::i18n::Catalog;
 use crate::layout;
@@ -80,8 +81,14 @@ enum Outcome {
     Failed(String),
 }
 
+/// A map's world and its sky, none when the sky could not be read
+struct LoadedMap {
+    world: WorldMesh,
+    sky: Option<[Rgba; 6]>,
+}
+
 enum Loaded {
-    Map(String, Result<WorldMesh, String>),
+    Map(String, Result<Box<LoadedMap>, String>),
     Model(ModelRef, Outcome),
 }
 
@@ -104,10 +111,13 @@ impl Loader {
                 for request in request_rx {
                     let loaded = match (&search, request) {
                         (Ok(search), Asset::Map(name)) => {
-                            let world = load::map(search, &name, limits)
-                                .map(|(world, _)| world)
-                                .map_err(|e| e.to_string());
-                            Loaded::Map(name, world)
+                            let world = load::map(search, &name, limits).map(|(world, _)| {
+                                let sky = load::sky(search, &world.sky, limits)
+                                    .inspect_err(|e| eprintln!("viewer: sky {}, {e}", world.sky))
+                                    .ok();
+                                Box::new(LoadedMap { world, sky })
+                            });
+                            Loaded::Map(name, world.map_err(|e| e.to_string()))
                         }
                         (Ok(search), Asset::Model(model)) => {
                             let loaded = match &model {
@@ -282,8 +292,10 @@ impl Viewer {
         };
         for item in loaded {
             match item {
-                Loaded::Map(name, Ok(world)) if self.map_loading.as_ref() == Some(&name) => {
+                Loaded::Map(name, Ok(map)) if self.map_loading.as_ref() == Some(&name) => {
+                    let LoadedMap { world, sky } = *map;
                     resources.scene.set_world(device, queue, &world);
+                    resources.scene.set_sky(device, queue, sky.as_ref());
                     self.map = Some(name);
                     self.map_loading = None;
                 }
@@ -442,7 +454,8 @@ impl Viewer {
                 drawn = instances.len();
                 let callback = Frame {
                     pixels,
-                    view_projection: view_projection(frame, rect),
+                    view: view(frame, rect),
+                    brushes: brushes(frame),
                     instances,
                 };
                 ui.painter()
@@ -510,8 +523,7 @@ fn drawn(frame: &PresentedFrame) -> Vec<(ModelRef, EntityPose)> {
     let viewer = frame.recorder.view_entity.unwrap_or(frame.local_entity);
     let observed =
         (frame.recorder.observer_mode == OBS_IN_EYE).then_some(frame.recorder.observer_target);
-    let since_snapshot = frame.position.map_or(0., |p| frame.at.0 - p.time.0);
-    let client_time = f64::from(frame.server_time.0) + since_snapshot;
+    let client_time = client_time(frame);
 
     let mut out = Vec::new();
     for e in frame.entities.iter() {
@@ -547,6 +559,65 @@ fn drawn(frame: &PresentedFrame) -> Vec<(ModelRef, EntityPose)> {
     out
 }
 
+/// The client's time for a frame, the last `svc_time` plus the source time
+/// since that packet
+fn client_time(frame: &PresentedFrame) -> f64 {
+    let since_snapshot = frame.position.map_or(0., |p| frame.at.0 - p.time.0);
+    f64::from(frame.server_time.0) + since_snapshot
+}
+
+/// The world, then every brush entity (`*N`) as its render mode draws it.
+/// A translucent one at amount 0 is not drawn, as the game skips it
+fn brushes(frame: &PresentedFrame) -> Vec<Brush> {
+    let mut out = vec![Brush::world()];
+    for e in frame.entities.iter() {
+        let Some(model) = e
+            .model
+            .as_deref()
+            .and_then(|m| m.strip_prefix('*'))
+            .and_then(|n| n.parse::<usize>().ok())
+        else {
+            continue;
+        };
+        let mode = RenderMode::from_game(e.render_mode);
+        let amount = match mode {
+            RenderMode::Normal => 1.,
+            _ => e.render_amount.clamp(0, 255) as f32 / 255.,
+        };
+        if e.effects & NO_DRAW != 0 || (mode != RenderMode::Normal && amount == 0.) {
+            continue;
+        }
+        out.push(Brush {
+            model,
+            origin: e.origin,
+            angles: e.angles,
+            mode,
+            amount,
+            color: e.render_color.map(|c| f32::from(c) / 255.),
+            alternate: e.frame != 0.,
+        });
+    }
+    out
+}
+
+/// What the frame is seen from and when, with every light style's
+/// brightness at the client's time
+fn view(frame: &PresentedFrame, rect: Rect) -> View {
+    let time = client_time(frame);
+    let mut light_styles = [1.; 64];
+    for (index, pattern) in &frame.light_styles {
+        if let Some(slot) = light_styles.get_mut(usize::from(*index)) {
+            *slot = world::style_brightness(pattern, time);
+        }
+    }
+    View {
+        view_projection: view_projection(frame, rect),
+        eye: frame.recorder.origin,
+        time: time as f32,
+        light_styles,
+    }
+}
+
 /// The recorder's view. The recorded field of view is across the screen's
 /// width, as the game's is
 fn view_projection(frame: &PresentedFrame, rect: Rect) -> Matrix {
@@ -568,7 +639,8 @@ fn view_projection(frame: &PresentedFrame, rect: Rect) -> Matrix {
 /// One frame of the scene, drawn offscreen in `prepare` and shown in `paint`
 struct Frame {
     pixels: [u32; 2],
-    view_projection: Matrix,
+    view: View,
+    brushes: Vec<Brush>,
     instances: Vec<Instance>,
 }
 
@@ -588,7 +660,8 @@ impl CallbackTrait for Frame {
             device,
             queue,
             self.pixels,
-            self.view_projection,
+            &self.view,
+            &self.brushes,
             &self.instances,
         );
         if (resized || r.blit_group.is_none())

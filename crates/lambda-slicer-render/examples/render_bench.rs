@@ -13,7 +13,7 @@ use std::time::{Duration, Instant};
 use lambda_slicer_assets::Limits;
 use lambda_slicer_assets::search::{SearchOptions, SearchPath};
 use lambda_slicer_render::camera::Camera;
-use lambda_slicer_render::gpu::{COLOR_FORMAT, Instance, Scene};
+use lambda_slicer_render::gpu::{Brush, COLOR_FORMAT, Instance, Scene, View};
 use lambda_slicer_render::{load, world};
 
 const SIZE: [u32; 2] = [1920, 1080];
@@ -61,7 +61,7 @@ fn main() {
     println!(
         "map {map}: {} triangles in {} batches, {} textures ({} missing), lightmap {}x{}, WADs not read {unread:?}, {map_ms:.1} ms",
         mesh.indices.len() / 3,
-        mesh.batches.len(),
+        mesh.models.first().map_or(0, Vec::len),
         mesh.textures.len(),
         mesh.missing_textures.len(),
         mesh.lightmap.width,
@@ -114,7 +114,14 @@ fn main() {
             vertices: player.mesh.skin(&bones),
         };
         let view_projection = camera.view_projection(size[0] as f32 / size[1] as f32, 4., 8192.);
-        let (_, commands) = scene.render(&device, &queue, size, view_projection, &[instance]);
+        let view = View {
+            view_projection,
+            eye,
+            time: t as f32,
+            light_styles: [1.; 64],
+        };
+        let (_, commands) =
+            scene.render(&device, &queue, size, &view, &[Brush::world()], &[instance]);
         queue.submit([commands]);
         device
             .poll(wgpu::PollType::wait_indefinitely())

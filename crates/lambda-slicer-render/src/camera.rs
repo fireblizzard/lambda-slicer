@@ -40,6 +40,42 @@ pub fn multiply(a: &Matrix, b: &Matrix) -> Matrix {
     out
 }
 
+/// An entity's model to world transform as the renderer builds it for
+/// brush models, yaw about z, then pitch about y the opposite way, then
+/// roll about x, then the move to `origin`
+pub fn entity_matrix(origin: [f32; 3], angles: [f32; 3]) -> Matrix {
+    let [p, y, r] = angles.map(f32::to_radians);
+    let (sy, cy) = y.sin_cos();
+    let (sp, cp) = (-p).sin_cos();
+    let (sr, cr) = r.sin_cos();
+    let yaw: Matrix = [
+        [cy, sy, 0., 0.],
+        [-sy, cy, 0., 0.],
+        [0., 0., 1., 0.],
+        [0., 0., 0., 1.],
+    ];
+    let pitch: Matrix = [
+        [cp, 0., -sp, 0.],
+        [0., 1., 0., 0.],
+        [sp, 0., cp, 0.],
+        [0., 0., 0., 1.],
+    ];
+    let roll: Matrix = [
+        [1., 0., 0., 0.],
+        [0., cr, sr, 0.],
+        [0., -sr, cr, 0.],
+        [0., 0., 0., 1.],
+    ];
+    let [ox, oy, oz] = origin;
+    let moved: Matrix = [
+        [1., 0., 0., 0.],
+        [0., 1., 0., 0.],
+        [0., 0., 1., 0.],
+        [ox, oy, oz, 1.],
+    ];
+    multiply(&moved, &multiply(&yaw, &multiply(&pitch, &roll)))
+}
+
 impl Camera {
     /// A camera at `eye` turned towards `target`, without roll
     pub fn looking_at(eye: [f32; 3], target: [f32; 3], fov_y: f32) -> Self {
@@ -102,6 +138,19 @@ mod tests {
         // Looking down
         let (f, _, _) = angle_vectors([90., 0., 0.]);
         assert!(near(f, [0., 0., -1.]));
+    }
+
+    #[test]
+    fn entities_turn_and_move_as_the_renderer_turns_them() {
+        let near = |a: [f32; 3], b: [f32; 3]| a.iter().zip(b).all(|(x, y)| (x - y).abs() < 1e-5);
+        let m = entity_matrix([10., 20., 30.], [0., 90., 0.]);
+        assert!(near(apply(&m, [1., 0., 0.]), [10., 21., 30.]));
+        assert!(near(
+            apply(&entity_matrix([0.; 3], [0.; 3]), [1., 2., 3.]),
+            [1., 2., 3.]
+        ));
+        // A positive pitch lifts the front of a brush model
+        assert!(apply(&entity_matrix([0.; 3], [30., 0., 0.]), [1., 0., 0.])[2] > 0.);
     }
 
     #[test]

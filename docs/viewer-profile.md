@@ -224,11 +224,33 @@ of the viewer's controls come with M11.
 starts with `IDSP`). The game tells a model's kind by its header, and so does the viewer, which
 leaves those items for the sprites (9d).
 
-Not drawn yet: brush entities, sprites, the viewmodel, light styles, visibility and frustum
-culling (9b), interpolation between snapshots, the client's player animation, team colours and held
-weapons (9c).
+### World (9b)
+
+**Implemented**, from the game's renderer as GLQuake's source shows it, not yet compared with the
+game (9e):
+
+| Part | How |
+|---|---|
+| Brush entities | every BSP model an entity names as `*N`, turned and moved as the renderer turns brush models (yaw about z, pitch about y the opposite way, roll about x) |
+| Render modes | normal and alpha-tested drawn with the world. Texture mode lit and blended by the render amount, colour mode a flat blended colour, additive and glow modes added unlit. Translucent entities are drawn last, the furthest first, and one at amount 0 is not drawn |
+| Light styles | up to four lightmaps a face, each weighed by its style's brightness at the client's time. A pattern steps ten times a second, `a` to `z` meaning 0 to 550 where 256 is the lightmap as stored. A style no message set is 256 |
+| Unlit faces | full brightness, as the game draws a face without light data |
+| Animated textures | `+0` to `+9` chains at ten frames a second, and the `+a` to `+j` chain while a brush entity's frame is not 0 |
+| Water | `!` and turbulent faces unlit, their texture coordinates warped by eight texels in a sine of the other coordinate and the time, at 64 texels a repeat |
+| Sky | the `worldspawn` `skyname`, `desert` by default, from `gfx/env/<name>{rt,lf,bk,ft,up,dn}.tga` in the sky box's layout, drawn wherever nothing else was |
+
+Not drawn yet: visibility and frustum culling (the whole world is drawn every frame), random tiling
+textures (`-0` names), scrolling conveyors, and decals. Sprites and the viewmodel come with 9d.
+Interpolation between snapshots, the client's player animation, team colours, held weapons and
+studio lighting come with 9c.
 
 **Measured (2026-10-18)** with `--viewer-bench 10`, playing from 20 s in a 1920 by 1080 window with
-the view 1098 by 950 pixels, while the library scan ran: `stalkx_naz_248.dem` (4 models in view)
-at 3.7 ms a frame on average, p95 4.8 ms, and `ray_vs_alex_cross.dem` (8 models, a spectator) at
-6.7 ms, p95 19.6 ms.
+the view 1098 by 950 pixels, while the library scan ran:
+
+| Demo | Models in view | 9a mean, p95 | With the world of 9b, mean, p95 |
+|---|---|---|---|
+| `stalkx_naz_248.dem` | 4 | 3.7, 4.8 ms | 3.4, 4.3 ms |
+| `ray_vs_alex_cross.dem`, spectator | 8 | 6.7, 19.6 ms | 3.9, 5.1 ms |
+| `run_92.dem`, singleplayer | 10 | | 5.2, 6.3 ms |
+
+The library scan's load changes between runs, so the 9a and 9b figures are not a measure of 9b.
