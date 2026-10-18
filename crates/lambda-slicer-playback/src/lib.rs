@@ -13,9 +13,11 @@
 //! shown. Nothing here draws, plays sound or depends on a GPU, a sound device
 //! or the installed game
 
+pub mod animation;
 pub mod audio;
 pub mod checkpoint;
 pub mod controller;
+pub mod events;
 pub mod playback;
 pub mod scene;
 pub mod source;
@@ -23,3 +25,12 @@ pub mod time;
 pub mod worker;
 
 pub use playback::PresentedFrame;
+
+/// What playback reads from the game's files, the length of each sound and
+/// each model's sequences, shared by every playback of a demo so their
+/// checkpoints agree
+#[derive(Clone)]
+pub struct GameFiles {
+    pub lengths: audio::SoundLengths,
+    pub sequences: animation::ModelSequences,
+}

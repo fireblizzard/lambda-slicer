@@ -212,8 +212,7 @@ fn advance<'a>(
             .inspect_err(|e| eprintln!("sound: {e:?}"))
             .ok()
             .map(|mut playback| {
-                let lengths = library.lengths();
-                playback.set_sound_lengths(move |name| lengths(name));
+                playback.set_game_files(&library.game_files());
                 playback
             });
         *own = Some((demo.generation, opened));

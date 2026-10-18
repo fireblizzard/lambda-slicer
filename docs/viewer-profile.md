@@ -363,3 +363,62 @@ compared with `mix_probe` at the same rate and a master volume of 0.7 against th
 Before the mixer had a playback of its own it mixed the channels of the frame last shown, and
 sounds shorter than a window frame came late or not at all (windows down to 0.17 of the expected
 level).
+
+## Client events (10c)
+
+The game's client turns weapon events into sounds, weapon animations and effects in its event
+handlers, and acts on the client events in the animations of the models it draws. Playback does
+both as each group moves time on, so they come out the same however often the window draws and
+whatever a seek passed through.
+
+**Observed:**
+
+- A demo's sound records hold only the sounds the recording client's movement makes. In
+  `stalkx_naz_248.dem` they are 2,736 footsteps and 7 falls, and no weapon sound. Weapon sounds
+  come only from the event handlers.
+- Event records come with the recorder's own predicted shots, and network events with other
+  players' shots and with the singleplayer player's.
+- AG records a weapon animation record for the animations its predicted weapons start, but not for
+  the one an event's handler starts. `stalkx_naz_248.dem` has the gauss shot at 5.92 s as events
+  without a weapon animation record. `run_92.dem`, singleplayer, has neither records nor
+  `svc_weaponanim` around its MP5 shots, so the handlers animate the viewmodel there.
+- AG's own viewmodels (`ag/models/v_*.mdl`) carry reload sounds (event 5004) and no muzzle flash,
+  where Half-Life's carry a muzzle flash on the first frame of their shoot sequences. The player
+  models carry one on the first frame of each shoot sequence, on the hand's attachment.
+- A shot fired mid-jump keeps the jump sequence and only sets `EF_MUZZLEFLASH`, which the engine
+  turns into a light and no sprite. Of the 17 glock shots the opponent fired in the first 5
+  minutes of `naz_crossfire_pb_01.dem`, 6 came that way.
+
+**Implemented**, from the SDK's `ev_hldm.cpp` and `hl_events.cpp` and the engine's behaviour as
+Xash3D restates it, not yet compared with the game:
+
+| Part | How |
+|---|---|
+| Events | event records, `svc_event` and `svc_event_reliable`, each run through its handler when it arrives, or queued until its delay has passed. The gauss's stop takes back the spin events queued for its player (`EV_KillEvents`) |
+| Sounds | the glock, shotgun, MP5 and its grenade, python, crowbar, crossbow, RPG, hornet gun, gauss shot and charge, Egon start, run and stop, and the train, with the handlers' samples, channels, volumes and pitches. The gauss's charge changes its pitch as each spin event comes, and its stop silences it |
+| Random choices | each event draws its own from a seed made of where it was recorded, the record, the message and the event's index, as the client's generator is not recorded. A seek makes the same choices |
+| Place | the event's origin, or where its entity is when the event gives none |
+| Viewmodel | for the local player's events, the recorder or the player watched through the eyes of (`EV_IsLocal`), the handler's weapon animation, the crowbar's swings counted through its three misses |
+| Animation events | a model's client events (5000 on) fire when its frame passes them between one group and the next, from before the first frame when an animation that does not loop has begun. An entity's begins when its sequence changes or its frame goes back with a new animation time, the viewmodel's with each weapon animation. Each frame fires once in one animation. Models the game does not draw fire none |
+| Muzzle flashes | events 5001, 5011, 5021 and 5031 at attachments 0 to 3. The option's last digit picks `sprites/muzzleflash1.spr` to `muzzleflash3.spr`, its tens the scale in tenths (0.5 for none). Added to the view, at a random frame, rolled 0 to 20 degrees for the first sprite and anywhere for the others, for 0.01 s and drawn at least once (`R_MuzzleFlash`) |
+| Model sounds | event 5004's sample, heard as the listener's own at full volume (`pfnPlaySoundByNameAtLocation`) |
+
+`examples/sound_starts.rs` counts the sounds playback starts by where they come from, and
+`examples/studio_events.rs` lists the client events in a folder's models. `mix_probe` also counts
+muzzle flashes.
+
+**Measured (2026-10-18):**
+
+| Demo | Stretch | Events | Result |
+|---|---|---|---|
+| `stalkx_naz_248.dem` | 0 to 60 s | 28 gauss shots, 29 stops, 27 spin starts, 1 crossbow shot | 28 `gauss2.wav` and 27 `pulsemachine.wav` starts, the crossbow's two sounds |
+| `naz_crossfire_pb_01.dem` | 0 to 300 s | 11 own glock shots as event records, 17 of the opponent's as network events | 11 muzzle flashes on the opponent, AG's reload sounds from the viewmodel |
+| `run_92.dem`, singleplayer | 0 to 100 s | 27 MP5, 11 hornet gun, 9 gauss, 3 shotgun and 2 crowbar events | 34 muzzle flashes, from soldiers' animations, none from AG's MP5 |
+
+Played on the device from 18 s of `stalkx_naz_248.dem` through the gauss's charge, the mix still
+matches `mix_probe`: 150 windows of 50 ms with sound, ratio 0.714 at the median, 2 windows at about
+0.82 where a sound ends or is replaced within a block and the two mixes' blocks fall at other times.
+
+Not yet: shells, which come next with a trace through the map, impacts, ricochets and decals
+(10d), the gauss's and Egon's beams (10e), the tripmine's and snark's handlers, which trace first,
+the view's punch, sparks (event 5002), and the lights of muzzle flashes and `EF_MUZZLEFLASH`.

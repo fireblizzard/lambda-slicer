@@ -9,7 +9,7 @@
 //!
 //! - `bsp30` is `crates/xenoxide-bsp30/src`, unchanged
 //! - `studio` is `crates/xenoxide-assets/src/studio.rs` and its folder,
-//!   unchanged
+//!   reading attachments as well
 //! - `studio_pose` is `crates/xenoxide-game/src/studio_pose.rs` and its
 //!   tests, reading `studio` here and calling `libm` itself for the sines,
 //!   cosines and arc cosines `xenoxide-physics` takes from it

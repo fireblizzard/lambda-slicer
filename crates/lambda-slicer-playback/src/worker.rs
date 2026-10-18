@@ -18,7 +18,7 @@ use std::thread::JoinHandle;
 
 use lambda_slicer_core::container::Limits;
 
-use crate::audio::SoundLengths;
+use crate::GameFiles;
 use crate::controller::{Reply, Request, Target};
 use crate::playback::Playback;
 
@@ -46,11 +46,11 @@ impl Worker {
         Self::spawn_with(limits, None, notify)
     }
 
-    /// Start the worker, its playbacks taking each sound's length from
-    /// `lengths`, read from the sample files
+    /// Start the worker, its playbacks taking each sound's length and each
+    /// model's sequences from the game's files
     pub fn spawn_with(
         limits: Limits,
-        lengths: Option<SoundLengths>,
+        files: Option<GameFiles>,
         notify: impl Fn() + Send + 'static,
     ) -> Self {
         let (request_tx, request_rx) = mpsc::channel::<Request>();
@@ -59,7 +59,7 @@ impl Worker {
         let (reply_tx, reply_rx) = mpsc::channel();
         let thread = std::thread::Builder::new()
             .name("playback".into())
-            .spawn(move || run(limits, lengths, request_rx, reply_tx, thread_loaded, notify))
+            .spawn(move || run(limits, files, request_rx, reply_tx, thread_loaded, notify))
             .expect("spawn playback worker");
 
         Self {
@@ -111,7 +111,7 @@ const INDEX_SLICE: usize = 1000;
 
 fn run(
     limits: Limits,
-    lengths: Option<SoundLengths>,
+    files: Option<GameFiles>,
     requests: Receiver<Request>,
     replies: Sender<Reply>,
     loaded: Arc<Mutex<Option<Loaded>>>,
@@ -122,9 +122,8 @@ fn run(
             Some(store) => Playback::open_with(path, limits, store),
             None => Playback::open(path, limits),
         }?;
-        if let Some(lengths) = &lengths {
-            let lengths = lengths.clone();
-            p.set_sound_lengths(move |name| lengths(name));
+        if let Some(files) = &files {
+            p.set_game_files(files);
         }
         Ok::<_, lambda_slicer_core::message::Message>(p)
     };

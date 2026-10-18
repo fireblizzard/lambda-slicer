@@ -10,8 +10,8 @@
 //! This reads what poses and hit queries need: bones, bone controllers, hitboxes and
 //! their hit groups, sequence groups, sequences with their events, and every sequence's
 //! animation tracks, decoded to a value per frame with the run boundaries the renderer's
-//! translation and rotation readings depend on. Meshes, textures, skins, body parts,
-//! attachments and the transition table are not read yet.
+//! translation and rotation readings depend on. Meshes, textures, skins, body parts and
+//! the transition table are not read yet. (Lambda Slicer: attachments are read.)
 //!
 //! A sequence whose animation lives in an external sequence-group file (`IDSQ`) cannot
 //! be completed from the main file alone: [`StudioModel::parse`] lists the files it
@@ -58,6 +58,9 @@ const SEQUENCE_GROUP_SIZE: usize = 104;
 const SEQUENCE_SIZE: usize = 176;
 const EVENT_SIZE: usize = 76;
 const ANIMATION_OFFSETS_SIZE: usize = 12;
+// Lambda Slicer: `mstudioattachment_t`, and as many as a model may list
+const ATTACHMENT_SIZE: usize = 88;
+const MAX_STUDIO_ATTACHMENTS: usize = 512;
 
 /// Motion and controller axis flags (`STUDIO_X` .. `STUDIO_ZR`) and `STUDIO_RLOOP`
 const STUDIO_AXES: [i32; 6] = [0x01, 0x02, 0x04, 0x08, 0x10, 0x20];
@@ -158,6 +161,15 @@ pub struct StudioHitbox {
     pub group: i32,
     pub min: [f32; 3],
     pub max: [f32; 3],
+}
+
+/// Lambda Slicer: `mstudioattachment_t`, a point fixed to a bone, such as a muzzle
+#[derive(Clone, Debug, PartialEq)]
+pub struct StudioAttachment {
+    pub name: String,
+    pub bone: usize,
+    /// In the bone's space
+    pub origin: [f32; 3],
 }
 
 /// `mstudioseqgroup_t`
@@ -313,6 +325,8 @@ pub struct StudioModel {
     sequences: Vec<StudioSequence>,
     texture_companion: bool,
     identity: StudioModelIdentity,
+    // Lambda Slicer
+    attachments: Vec<StudioAttachment>,
 }
 
 impl StudioModel {
@@ -363,6 +377,11 @@ impl StudioModel {
         &self.sequences
     }
 
+    /// Lambda Slicer: the model's attachments, in order
+    pub fn attachments(&self) -> &[StudioAttachment] {
+        &self.attachments
+    }
+
     /// The model keeps its textures in a companion file (`<name>T.mdl`), needed only
     /// for rendering
     pub fn texture_companion(&self) -> bool {
@@ -375,6 +394,12 @@ impl StudioModel {
 }
 
 impl UnresolvedStudioModel {
+    /// Lambda Slicer: the sequences as the main file describes them, their events
+    /// included, with the animation of those in other files still to come
+    pub fn sequences(&self) -> &[StudioSequence] {
+        &self.model.sequences
+    }
+
     /// The external sequence groups the sequences use, by index; groups no sequence
     /// uses are not dependencies
     pub fn dependencies(&self) -> &[SequenceGroupDependency] {
@@ -879,6 +904,7 @@ pub(crate) fn parse_main(
         return Err(StudioError::InvalidSequenceGroup { index: 0 });
     }
     let texture_companion = field(10) == 0;
+    let attachments = parse_attachments(bytes, field(18), field(19), bones.len());
 
     let mut budget = budget;
     let mut sequences = Vec::with_capacity(sequence_count);
@@ -943,6 +969,7 @@ pub(crate) fn parse_main(
             sequences,
             texture_companion,
             identity: StudioModelIdentity::new(StudioDigest::of(bytes), Vec::new()),
+            attachments,
         },
         pending,
         dependencies,
@@ -1040,6 +1067,35 @@ fn parse_controllers(
         });
     }
     Ok(controllers)
+}
+
+/// Lambda Slicer: attachments matter only to drawing effects, so a model whose list
+/// cannot be read keeps none rather than failing, and one naming no bone of the model
+/// is left out
+fn parse_attachments(bytes: &[u8], count: i32, offset: i32, bones: usize) -> Vec<StudioAttachment> {
+    let Ok((count, start)) = table(
+        bytes,
+        "attachment",
+        count,
+        offset,
+        ATTACHMENT_SIZE,
+        MAX_STUDIO_ATTACHMENTS,
+    ) else {
+        return Vec::new();
+    };
+    (0..count)
+        .filter_map(|index| {
+            let at = start + index * ATTACHMENT_SIZE;
+            let bone = usize::try_from(i32_at(bytes, at + 36))
+                .ok()
+                .filter(|b| *b < bones)?;
+            Some(StudioAttachment {
+                name: name_at(bytes, at, 32, "attachment", index).ok()?,
+                bone,
+                origin: finite_array(bytes, at + 40, "attachment", index).ok()?,
+            })
+        })
+        .collect()
 }
 
 fn parse_hitboxes(

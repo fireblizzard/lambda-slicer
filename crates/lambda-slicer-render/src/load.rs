@@ -267,6 +267,15 @@ impl LoadedModel {
         Some(bones)
     }
 
+    /// Where attachment `index` is on the model posed with `bones`, its
+    /// point carried by its bone as `StudioCalcAttachments` carries it
+    pub fn attachment(&self, bones: &[BoneTransform], index: usize) -> Option<[f32; 3]> {
+        let a = self.model.attachments().get(index)?;
+        let m = bones.get(a.bone)?;
+        let o = a.origin.map(f64::from);
+        Some([0, 1, 2].map(|r| (m[r][0] * o[0] + m[r][1] * o[1] + m[r][2] * o[2] + m[r][3]) as f32))
+    }
+
     /// The sequence labelled `label`, ignoring case
     pub fn sequence(&self, label: &str) -> Option<usize> {
         self.model

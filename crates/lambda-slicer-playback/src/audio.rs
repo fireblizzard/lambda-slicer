@@ -26,6 +26,7 @@ use lambda_slicer_core::container::{FrameBody, SoundRecord};
 use lambda_slicer_core::protocol::messages::{Message, ParsedMessage, SoundMessage, resource_type};
 use lambda_slicer_core::state::Decoder;
 
+use crate::events::SoundCall;
 use crate::time::SourceTime;
 
 /// `svc_sound` and sound record flags
@@ -88,6 +89,8 @@ pub enum SoundSource {
     Static,
     /// A demo sound record, a sound the recording client started itself
     Recorded,
+    /// A sound the game's client starts for an event
+    Client,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -296,6 +299,28 @@ impl Audio {
         self.apply(request, time, view, lengths);
     }
 
+    /// A sound an event's handler starts, changes or stops at `time`
+    pub(crate) fn play(
+        &mut self,
+        call: &SoundCall,
+        time: SourceTime,
+        view: u16,
+        lengths: &dyn Fn(&SoundName) -> SoundLength,
+    ) {
+        let request = Request {
+            source: SoundSource::Client,
+            flags: call.flags,
+            entity: call.entity,
+            channel: call.channel,
+            sound: SoundName::File(call.sample.clone()),
+            volume: call.volume,
+            attenuation: call.attenuation,
+            origin: call.origin,
+            pitch: call.pitch,
+        };
+        self.apply(request, time, view, lengths);
+    }
+
     fn apply(
         &mut self,
         r: Request,
@@ -387,7 +412,7 @@ impl Audio {
 }
 
 /// The entity the recording client views from, whose sounds are its own
-fn view_entity(decoder: &Decoder) -> u16 {
+pub(crate) fn view_entity(decoder: &Decoder) -> u16 {
     decoder
         .view_entity
         .unwrap_or(u16::from(decoder.player_num) + 1)

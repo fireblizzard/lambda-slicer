@@ -95,53 +95,57 @@ pub fn recorded_events(d: &Decoder) -> Vec<RecordedEvent> {
     d.events
         .iter()
         .enumerate()
-        .map(|(id, e)| {
-            let (args, dispatch_flags, delay) = match &e.demo {
-                Some(r) => (
-                    EventArgs {
-                        flags: Some(r.args_flags()),
-                        entindex: r.entity_index(),
-                        origin: r.origin(),
-                        angles: r.angles(),
-                        velocity: Some(r.velocity()),
-                        ducking: r.ducking(),
-                        fparam1: r.fparam1(),
-                        fparam2: r.fparam2(),
-                        iparam1: r.iparam1(),
-                        iparam2: r.iparam2(),
-                        bparam1: r.bparam1(),
-                        bparam2: r.bparam2(),
-                    },
-                    Some(r.flags),
-                    Some(r.delay()),
-                ),
-                None => (
-                    network_args(d, e),
-                    None,
-                    e.delay_raw.map(|v| v as f32 / 100.),
-                ),
-            };
-
-            RecordedEvent {
-                id,
-                segment: e.segment,
-                entry: e.location.entry,
-                ordinal: e.location.ordinal,
-                time: e.location.playback_time(),
-                server_time: f32::from_bits(e.server_time_bits),
-                source: e.source,
-                message_ordinal: e.message_ordinal,
-                index: e.index,
-                resource: e
-                    .resource
-                    .as_ref()
-                    .map(|r| String::from_utf8_lossy(r).into_owned()),
-                dispatch_flags,
-                args,
-                delay,
-                actor: e.actor.clone(),
-                player: e.player.clone(),
-            }
-        })
+        .map(|(id, e)| recorded_event(d, id, e))
         .collect()
+}
+
+/// One event the decoder collected, numbered `id`, read while the decoder
+/// still holds the schema it arrived with
+pub fn recorded_event(d: &Decoder, id: usize, e: &DecodedEvent) -> RecordedEvent {
+    let (args, dispatch_flags, delay) = match &e.demo {
+        Some(r) => (
+            EventArgs {
+                flags: Some(r.args_flags()),
+                entindex: r.entity_index(),
+                origin: r.origin(),
+                angles: r.angles(),
+                velocity: Some(r.velocity()),
+                ducking: r.ducking(),
+                fparam1: r.fparam1(),
+                fparam2: r.fparam2(),
+                iparam1: r.iparam1(),
+                iparam2: r.iparam2(),
+                bparam1: r.bparam1(),
+                bparam2: r.bparam2(),
+            },
+            Some(r.flags),
+            Some(r.delay()),
+        ),
+        None => (
+            network_args(d, e),
+            None,
+            e.delay_raw.map(|v| v as f32 / 100.),
+        ),
+    };
+
+    RecordedEvent {
+        id,
+        segment: e.segment,
+        entry: e.location.entry,
+        ordinal: e.location.ordinal,
+        time: e.location.playback_time(),
+        server_time: f32::from_bits(e.server_time_bits),
+        source: e.source,
+        message_ordinal: e.message_ordinal,
+        index: e.index,
+        resource: e
+            .resource
+            .as_ref()
+            .map(|r| String::from_utf8_lossy(r).into_owned()),
+        dispatch_flags,
+        args,
+        delay,
+        actor: e.actor.clone(),
+        player: e.player.clone(),
+    }
 }

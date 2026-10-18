@@ -13,13 +13,17 @@ use std::collections::BTreeMap;
 use std::path::Path;
 use std::sync::{Arc, MutexGuard};
 
+use lambda_slicer_core::analysis::events::recorded_event;
 use lambda_slicer_core::container::{FrameBody, Limits};
 use lambda_slicer_core::message::{Coded, Message};
 use lambda_slicer_core::state::Decoder;
 
-use crate::audio::{Audio, Channel, SoundLength, SoundName, UNKNOWN_LIMIT};
+use crate::GameFiles;
+use crate::animation::{Animations, Fired, Flash, IN_EYE, Sequence};
+use crate::audio::{Audio, CHAN_AUTO, Channel, SoundLength, SoundName, UNKNOWN_LIMIT, view_entity};
 use crate::checkpoint::{self, Checkpoint, Checkpoints, State};
 use crate::controller::{CameraMode, Stamp};
+use crate::events::{ATTN_NORM, Action, ClientEvent, Events, PITCH_NORM, SoundCall, handle};
 use crate::scene::{self, Camera, Entity, PlayerView, Scene, Viewmodel};
 use crate::source::{Cursor, Group, Source};
 use crate::time::{Position, ServerTime, SourceTime};
@@ -63,9 +67,12 @@ pub struct PresentedFrame {
     pub players: Vec<PlayerView>,
     /// The recorder's own player entity
     pub local_entity: u16,
+    /// Muzzle flashes fired lately, at or before `at`
+    pub flashes: Vec<Flash>,
 }
 
 type Lengths = Box<dyn Fn(&SoundName) -> SoundLength + Send>;
+type Sequences = Box<dyn Fn(&str) -> Option<Arc<[Sequence]>> + Send>;
 
 pub struct Playback {
     path: Arc<Path>,
@@ -77,6 +84,7 @@ pub struct Playback {
     initial: (State, Cursor),
     checkpoints: checkpoint::Shared,
     lengths: Lengths,
+    sequences: Sequences,
 }
 
 impl Playback {
@@ -95,13 +103,16 @@ impl Playback {
         limits: Limits,
         checkpoints: checkpoint::Shared,
     ) -> Result<Self, Message> {
+        // Events are taken from the decoder as each record brings them
         let mut decoder = Decoder::new();
-        decoder.collect_events = false;
+        decoder.collect_events = true;
         let source = Source::open(path, limits)?;
         let state = State {
             decoder,
             scene: Scene::default(),
             audio: Audio::default(),
+            events: Events::default(),
+            animations: Animations::default(),
             position: None,
             reach: SourceTime::ZERO,
             exhausted: false,
@@ -116,6 +127,7 @@ impl Playback {
             next: None,
             checkpoints,
             lengths: Box::new(|_| SoundLength::Unknown),
+            sequences: Box::new(|_| None),
         })
     }
 
@@ -136,6 +148,23 @@ impl Playback {
         self.lengths = Box::new(lengths);
     }
 
+    /// Each model's sequences, from the model files. Without them no
+    /// animation fires its client events
+    pub fn set_model_sequences(
+        &mut self,
+        sequences: impl Fn(&str) -> Option<Arc<[Sequence]>> + Send + 'static,
+    ) {
+        self.sequences = Box::new(sequences);
+    }
+
+    /// Both from the game's files
+    pub fn set_game_files(&mut self, files: &GameFiles) {
+        let lengths = files.lengths.clone();
+        self.set_sound_lengths(move |name| lengths(name));
+        let sequences = files.sequences.clone();
+        self.set_model_sequences(move |model| sequences(model));
+    }
+
     pub fn position(&self) -> Option<Position> {
         self.state.position
     }
@@ -146,6 +175,10 @@ impl Playback {
 
     pub fn audio(&self) -> &Audio {
         &self.state.audio
+    }
+
+    pub fn animations(&self) -> &Animations {
+        &self.state.animations
     }
 
     pub fn decoder(&self) -> &Decoder {
@@ -203,9 +236,13 @@ impl Playback {
             decoder,
             scene,
             audio,
+            events,
             stopped,
             ..
         } = &mut self.state;
+        for event in events.due(time) {
+            dispatch(&event, decoder, scene, audio, events, lengths);
+        }
         for record in &group.records {
             let result = match &record.body {
                 FrameBody::Network(frame) => {
@@ -226,6 +263,15 @@ impl Playback {
                     Ok(())
                 }
             };
+            for decoded in std::mem::take(&mut decoder.events) {
+                let recorded = recorded_event(decoder, 0, &decoded);
+                let multiplayer = decoder.max_clients > 1;
+                if let Some(event) = ClientEvent::new(&recorded, time, multiplayer)
+                    .and_then(|event| events.arrive(event, time))
+                {
+                    dispatch(&event, decoder, scene, audio, events, lengths);
+                }
+            }
             if let Err(e) = result {
                 *stopped = Some(e.message());
                 break;
@@ -238,6 +284,26 @@ impl Playback {
             time,
         };
         self.state.scene.step_gaits(time);
+        let fired = self
+            .state
+            .animations
+            .step(&self.state.scene, &*self.sequences, time);
+        let view = view_entity(&self.state.decoder);
+        for f in fired {
+            if let Fired::Sound { sample, origin } = f {
+                let call = SoundCall {
+                    entity: view,
+                    channel: CHAN_AUTO,
+                    sample,
+                    volume: 1.,
+                    attenuation: ATTN_NORM,
+                    flags: 0,
+                    pitch: PITCH_NORM,
+                    origin,
+                };
+                self.state.audio.play(&call, time, view, &*self.lengths);
+            }
+        }
         self.state.position = Some(position);
         self.state.reach = SourceTime(self.state.reach.0.max(time.0));
 
@@ -371,6 +437,47 @@ impl Playback {
             indexed,
             players: scene::players(&state.decoder),
             local_entity: u16::from(state.decoder.player_num) + 1,
+            flashes: state
+                .animations
+                .flashes()
+                .iter()
+                .filter(|f| f.time <= at)
+                .copied()
+                .collect(),
+        }
+    }
+}
+
+/// Run the client's handler for `event`. An event that gives no origin
+/// sounds where its entity is
+fn dispatch(
+    event: &ClientEvent,
+    decoder: &Decoder,
+    scene: &mut Scene,
+    audio: &mut Audio,
+    events: &mut Events,
+    lengths: &dyn Fn(&SoundName) -> SoundLength,
+) {
+    let mut event = event.clone();
+    if event.args.origin == [0.; 3]
+        && let Some(e) = scene.entities.iter().find(|e| e.id.number == event.entity)
+    {
+        event.args.origin = e.origin;
+    }
+    let view = view_entity(decoder);
+    let camera = &scene.camera;
+    let local = if camera.observer_mode == IN_EYE {
+        i64::from(event.entity) == camera.observer_target
+    } else {
+        event.entity == u16::from(decoder.player_num) + 1
+    };
+    for action in handle(&event, local, events.swings()) {
+        match action {
+            Action::Sound(call) => audio.play(&call, event.time, view, lengths),
+            Action::Kill { entity, script } => events.kill(entity, script),
+            Action::WeaponAnimation { sequence, body } => {
+                scene.animate_viewmodel(sequence, body, event.time)
+            }
         }
     }
 }

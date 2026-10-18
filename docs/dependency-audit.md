@@ -82,7 +82,9 @@ of their code is used.
 Copies live in `crates/lambda-slicer-assets/src/xenoxide`, whose `mod.rs` lists every file's source
 and what changed. They keep Xenoxide's own comments and layout, so they can be compared with their
 source and updated from it, and the comment check skips that folder. The only changes so far are
-import paths and `libm` called directly for the pose's sines, cosines and arc cosines. Copies are
+import paths, `libm` called directly for the pose's sines, cosines and arc cosines, studio
+attachments read, and an unresolved model's sequences readable before its sequence group files
+are, each marked `Lambda Slicer`. Copies are
 made only of what a milestone uses. Xenoxide's working tree had uncommitted changes in its
 interface crates at that revision, none in the files copied. Its tests came along and pass, the
 six that read the installed game included (`XENOXIDE_GAME_DIRECTORY`), among them the stock

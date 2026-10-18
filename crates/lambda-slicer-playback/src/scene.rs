@@ -467,6 +467,16 @@ impl Scene {
         }
     }
 
+    /// Start a weapon animation on the viewmodel at `time`
+    pub(crate) fn animate_viewmodel(&mut self, sequence: i32, body: i32, time: SourceTime) {
+        self.viewmodel = Some(Viewmodel {
+            sequence,
+            body,
+            started: time,
+        });
+        self.changed();
+    }
+
     fn model_name(&mut self, decoder: &Decoder, index: i64) -> Option<Arc<str>> {
         let resources = decoder.resources();
         if resources.len() != self.models_from {

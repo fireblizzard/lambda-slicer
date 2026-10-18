@@ -4,8 +4,8 @@
 //! `mix_probe INSTALL DEMO START SECONDS OUT.wav [RATE]`
 //!
 //! Playback moves in blocks of 10 ms, the sounds each block holds mixed at
-//! 48 kHz or at `RATE`. The level, the channels heard and the sounds that
-//! could not be read are reported
+//! 48 kHz or at `RATE`. The level, the channels heard, the muzzle flashes
+//! and the sounds that could not be read are reported
 
 use std::collections::BTreeSet;
 use std::path::Path;
@@ -43,8 +43,7 @@ fn main() {
     let library = Arc::new(Library::new(search, AssetLimits::default()));
 
     let mut playback = Playback::open(Path::new(demo), Limits::default()).expect("demo");
-    let lengths = library.lengths();
-    playback.set_sound_lengths(move |name| lengths(name));
+    playback.set_game_files(&library.game_files());
 
     // The master volume, below full scale as the game's usually is
     let output = Output {
@@ -56,6 +55,7 @@ fn main() {
     let mut samples = Vec::new();
     let mut heard = BTreeSet::new();
     let mut missing = BTreeSet::new();
+    let mut flashes = BTreeSet::new();
     let blocks = (seconds * f64::from(rate) / block as f64) as usize;
     for b in 0..blocks {
         let at = SourceTime(start + (b * block) as f64 / f64::from(rate));
@@ -63,6 +63,9 @@ fn main() {
         // sound starting within it is heard from its start
         let to = SourceTime(at.0 + block as f64 / f64::from(rate));
         playback.advance_to(to).expect("playback");
+        for f in playback.animations().flashes() {
+            flashes.insert((f.time.0.to_bits(), format!("{:?}", f.holder)));
+        }
         let channels = playback.audio().channels();
         for c in channels {
             match (&c.sound, library.sound(&c.sound)) {
@@ -95,7 +98,12 @@ fn main() {
     println!(
         "{} sounds heard: {:?}",
         heard.len(),
-        heard.iter().take(12).collect::<Vec<_>>()
+        heard.iter().collect::<Vec<_>>()
+    );
+    let viewmodel = flashes.iter().filter(|(_, h)| h == "Viewmodel").count();
+    println!(
+        "{} muzzle flashes, {viewmodel} of them the viewmodel's",
+        flashes.len()
     );
     println!(
         "{} without samples: {:?}",

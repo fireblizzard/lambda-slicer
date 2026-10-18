@@ -25,7 +25,9 @@ use std::sync::{Arc, Mutex};
 use lambda_slicer_core::message::Message;
 use lambda_slicer_core::state::Decoder;
 
+use crate::animation::Animations;
 use crate::audio::Audio;
+use crate::events::Events;
 use crate::scene::Scene;
 use crate::source::Cursor;
 use crate::time::{Position, SourceTime};
@@ -42,6 +44,9 @@ pub(crate) struct State {
     pub decoder: Decoder,
     pub scene: Scene,
     pub audio: Audio,
+    /// Events waiting for their time
+    pub events: Events,
+    pub animations: Animations,
     pub position: Option<Position>,
     /// The latest source time of any group applied
     pub reach: SourceTime,

@@ -27,12 +27,15 @@ use eframe::wgpu;
 use lambda_slicer_assets::Limits as AssetLimits;
 use lambda_slicer_assets::search::{SearchOptions, SearchPath};
 use lambda_slicer_assets::sprite::Sprite;
+use lambda_slicer_assets::xenoxide::studio_pose::BoneTransform;
 use lambda_slicer_audio::device::{Device, Feed};
 use lambda_slicer_audio::library::Library;
 use lambda_slicer_core::container::{Limits, read_header};
 use lambda_slicer_core::timeline::time::DemoTime;
 use lambda_slicer_playback::PresentedFrame;
+use lambda_slicer_playback::animation::{Flash, Holder};
 use lambda_slicer_playback::controller::{Command, Controller, Reply, Stamp};
+use lambda_slicer_playback::scene::EntityId;
 use lambda_slicer_playback::time::SourceTime;
 use lambda_slicer_playback::worker::Worker;
 use lambda_slicer_render::Rgba;
@@ -251,6 +254,9 @@ pub struct Viewer {
     /// Seconds to play for, and when playing began
     play: Option<(f64, Option<Instant>)>,
     last_frame: Option<Instant>,
+    /// The source time of the frame last drawn, so a muzzle flash fired
+    /// since then is drawn at least once
+    flashes_to: f64,
 }
 
 /// The demo's game folder, from its header
@@ -311,7 +317,7 @@ impl Viewer {
         });
         let worker = Worker::spawn_with(
             Limits::default(),
-            library.as_ref().map(|l| l.lengths()),
+            library.as_ref().map(|l| l.game_files()),
             move || repaint.request_repaint(),
         );
         let quiet = bench.is_some() || capture.is_some();
@@ -354,6 +360,7 @@ impl Viewer {
                 phase: CapturePhase::Seek,
             }),
             last_frame: None,
+            flashes_to: f64::NEG_INFINITY,
         }
     }
 
@@ -447,7 +454,8 @@ impl Viewer {
         let drawn = drawn(frame)
             .into_iter()
             .flat_map(|d| std::iter::once(d.model).chain(d.weapon));
-        for model in drawn.chain(viewmodel) {
+        let flashes = frame.flashes.iter().map(|f| flash_sprite(f.sprite));
+        for model in drawn.chain(viewmodel).chain(flashes) {
             if let Entry::Vacant(slot) = self.models.entry(model) {
                 let _ = loader.requests.send(Asset::Model(slot.key().clone()));
                 slot.insert(Slot::Loading);
@@ -469,6 +477,25 @@ impl Viewer {
         };
         let mut instances = Vec::new();
         let mut sprites = Vec::new();
+        let since = if self.flashes_to > frame.at.0 {
+            f64::NEG_INFINITY
+        } else {
+            self.flashes_to
+        };
+        let flashes: Vec<&Flash> = frame
+            .flashes
+            .iter()
+            .filter(|f| f.time.0 > since || frame.at.0 - f.time.0 < FLASH_LIFE)
+            .collect();
+        // Where each flash is, from its holder's pose
+        let mut flashed: Vec<(&Flash, [f32; 3])> = Vec::new();
+        let mut place = |holder: Holder, model: &LoadedModel, bones: &[BoneTransform]| {
+            for f in flashes.iter().filter(|f| f.holder == holder) {
+                if let Some(at) = model.attachment(bones, usize::from(f.attachment)) {
+                    flashed.push((f, at));
+                }
+            }
+        };
         for drawn in drawn(frame) {
             if let Some(Slot::Sprite(handle)) = self.models.get(&drawn.model) {
                 sprites.push(SpriteInstance {
@@ -494,6 +521,7 @@ impl Viewer {
                 model: *handle,
                 vertices: model.mesh.skin(&bones, &light),
             });
+            place(Holder::Entity(drawn.id), model, &bones);
 
             if let Some(Slot::Ready(weapon, weapon_handle)) =
                 drawn.weapon.as_ref().and_then(|w| self.models.get(w))
@@ -516,6 +544,21 @@ impl Viewer {
                 model: *handle,
                 vertices: model.mesh.skin(&bones, &light),
             });
+            place(Holder::Viewmodel, model, &bones);
+        }
+        for (f, origin) in flashed {
+            if let Some(Slot::Sprite(handle)) = self.models.get(&flash_sprite(f.sprite)) {
+                sprites.push(SpriteInstance {
+                    sprite: *handle,
+                    frame: f.frame as usize,
+                    origin,
+                    angles: [0., 0., f.roll],
+                    scale: f.scale,
+                    mode: RenderMode::from_game(5),
+                    amount: 1.,
+                    color: [0.; 3],
+                });
+            }
         }
 
         DrawList {
@@ -690,6 +733,7 @@ impl Viewer {
         let size = egui::vec2(ui.available_width(), height.max(1.));
         let (rect, _) = ui.allocate_exact_size(size, Sense::hover());
         let mut drawn = 0;
+        let mut drawn_at = None;
         match (&self.frame, &self.map) {
             (Some(frame), Some(_)) => {
                 let pixels = capture_size.unwrap_or([
@@ -697,6 +741,7 @@ impl Viewer {
                     (rect.height() * ui.pixels_per_point()).round().max(1.) as u32,
                 ]);
                 let draw = self.draw_list();
+                drawn_at = Some(frame.at.0);
                 drawn = draw.instances.len() + draw.sprites.len() + draw.viewmodel.len();
                 let callback = Frame {
                     pixels,
@@ -712,6 +757,9 @@ impl Viewer {
             _ => {
                 ui.put(rect, egui::Spinner::new());
             }
+        }
+        if let Some(at) = drawn_at {
+            self.flashes_to = at;
         }
 
         self.feed_sound();
@@ -812,6 +860,7 @@ impl Viewer {
 
 /// One entity to draw, its model, what it holds and its pose
 struct Drawn {
+    id: EntityId,
     model: ModelRef,
     weapon: Option<ModelRef>,
     pose: EntityPose,
@@ -868,6 +917,7 @@ fn drawn(frame: &PresentedFrame) -> Vec<Drawn> {
             .map(|w| ModelRef::File(w.to_owned()));
         let mode = RenderMode::from_game(e.render_mode);
         out.push(Drawn {
+            id: e.id,
             model,
             weapon,
             frame: e.frame,
@@ -893,6 +943,15 @@ fn drawn(frame: &PresentedFrame) -> Vec<Drawn> {
         });
     }
     out
+}
+
+/// How long a muzzle flash lasts, as the game's temporary entity does
+/// (`R_MuzzleFlash`), though it is drawn at least once
+const FLASH_LIFE: f64 = 0.01;
+
+/// One of the game's three muzzle flash sprites
+fn flash_sprite(sprite: u8) -> ModelRef {
+    ModelRef::File(format!("sprites/muzzleflash{}.spr", sprite + 1))
 }
 
 /// The recorder's first-person weapon and its pose, the last weapon
