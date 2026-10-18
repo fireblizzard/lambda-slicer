@@ -287,7 +287,7 @@ textures, and the sky's light on models.
 | Sprites | `IDSP` version 2, single frames and frame groups, in normal, additive, index-alpha and alpha-tested formats. Every sprite in the surveyed install reads (268, AG's sprite items included) |
 | Sprite entities | an entity whose model is a `.spr`, or one of AG's sprites under a `.mdl` name, at its frame and scale (0 meaning 1) |
 | Orientation | facing the view, facing the view upright, facing the camera's position upright, turned by the entity's angles, or facing the view rolled by the entity, as the five `SPR_` types say |
-| Render modes | normal and alpha modes cut out at half alpha, texture and colour modes blended by the render amount, additive mode added, and glow added without depth, fading as 19000 over the squared distance between 0.05 and 1. Additive and glowing sprites take the render colour, white when it is black. Drawn after translucent brushes, the furthest first |
+| Render modes | normal and alpha modes cut out at half alpha, texture and colour modes blended by the render amount, additive mode added, and glow added without depth, fading as 19000 over the squared distance between 0.05 and 1. Every mode takes the render colour, white when it is black, as Xash3D says the engine's sprite drawing does (until 10d only additive and glowing sprites did). Drawn after translucent brushes, the furthest first |
 
 Not drawn yet: the viewmodel's body groups and the bob and lag the game adds to it, glow sprites'
 check for what hides them, and the sprites of temporary effects, which come with M10.
@@ -430,6 +430,47 @@ matches `mix_probe`: 150 windows of 50 ms with sound, ratio 0.714 at the median,
 With shells, the first 300 s of `naz_crossfire_pb_01.dem` throw out 28, one for each glock shot,
 the recorder's and the opponent's. None falls more than 200 units, and the 300 s still mix in 3.2 s.
 
-Not yet: impacts, ricochets and decals (10d), the gauss's and Egon's beams (10e), the tripmine's
-and snark's handlers, which trace first, the view's punch, sparks (event 5002), and the lights of
-muzzle flashes and `EF_MUZZLEFLASH`.
+Not yet: bullet impacts with their decals and ricochets (10d), the gauss's and Egon's beams (10e),
+the tripmine's and snark's handlers, which trace first, the view's punch, sparks (event 5002), and
+the lights of muzzle flashes and `EF_MUZZLEFLASH`.
+
+## Temporary entities (10d)
+
+The server asks the client for effects with `svc_temp_entity`, and the client makes them as
+temporary entities alongside the shells of 10c (`lambda-slicer-playback`'s `tempents`).
+
+**Observed:** five demos (`stalkx_naz_248.dem`, `naz_crossfire_pb_01.dem`, `run_92.dem`,
+`ray_vs_alex_cross.dem` and `20230909_224143_stalkyard.dem`, `examples/effects_survey.rs`) hold 21
+kinds. The most common are world decals (16,635 messages), sparks (10,734), blood sprites (5,809),
+explosions (1,160), smoke (661), gunshot decals (472), tracers (439) and beam trails (273).
+
+**Implemented**, the builders from the engine as Xash3D restates them and the movement from the
+SDK's `HUD_TempEntUpdate`, not yet compared with the game:
+
+| Kind | How |
+|---|---|
+| Movement | each group, on along the velocity, the sprite's frame on by its frame rate, turned by its spin, traced through the world when it collides, then pulled down by gravity or half of it. A sprite that plays once is gone after its last frame. One that fades out loses its brightness at its fade speed once its time is up. At most 500 at once |
+| Explosion | the sprite at its frame rate (10 for none) and scale, added at amount 180 or drawn solid, 10 units up and rising 8 a second, with one of `weapons/explode3.wav` to `5` unless the message says no sound |
+| Smoke | the sprite alpha-tested in a dark grey of 20 to 35, 20 units up and rising 30 a second |
+| Sprite | the sprite played once, added at the message's brightness |
+| Sparks | an unseen shower flying out at up to 300 units a second under half gravity, bouncing off the world, glinting with `sprites/richo1.spr` every tenth of a second for 0.5 to 1.5 seconds. The glint fades out over an eighth of a second, a steady glow. The streaks the engine adds are not drawn |
+| Blood sprite | a splash in the palette colour a little past the message's, playing through in a quarter of a second, and the message's size plus 2 to 16 drops flying out under half gravity in the colour before it, for 1 to 3 seconds |
+| Sprite spray | sprites flying along a direction with noise under half gravity, fading out in a third of a second |
+| Armour ricochet | the glint and one of `weapons/ric1.wav` to `5` |
+| Gunshot decal | one of the ricochets for half of them. The decal and its dust come with decals |
+| Model | a studio model thrown out and bouncing as a shell does, for its given life, with a shell's or shotgun shell's sounds when the message names one |
+
+A new session clears them all. Sprites take their colours from the game's palette
+(`gfx/palette.lmp`) where the message gives an index. `mix_probe` counts the temporary entities
+it makes, by model.
+
+**Measured (2026-10-18):**
+
+| Demo | Stretch | Made |
+|---|---|---|
+| `naz_crossfire_pb_01.dem` | 0 to 300 s | 7 explosions (`zerogxplode.spr`) with their sounds, 6 smoke puffs, 78 blood splashes with 1,651 drops, 101 spark showers with 1,104 glints, 28 shells. 300 s mix in 3.7 s, against 3.2 s before |
+| `run_92.dem`, singleplayer | 0 to 100 s | 7 explosions, 61 blood splashes with 766 drops, 163 spark showers with 1,739 glints, 63 `muz1.spr` sprites, 35 `tinyspit.spr` sprays, 108 shells, and all five ricochets heard |
+
+Not yet: decals of every kind and the bullet impacts that make them (next), beams and tracers, the
+gibs of `TE_BREAKMODEL`, particles (the sparks' streaks and the explosions' flicker), and dynamic
+lights.

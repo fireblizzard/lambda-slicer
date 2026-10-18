@@ -14,6 +14,7 @@ use std::sync::{Arc, Mutex};
 
 use lambda_slicer_assets::Limits;
 use lambda_slicer_assets::search::SearchPath;
+use lambda_slicer_assets::sprite;
 use lambda_slicer_assets::wav::{self, Sound};
 use lambda_slicer_assets::xenoxide::bsp30::BspDocument;
 use lambda_slicer_assets::xenoxide::studio::StudioModel;
@@ -31,6 +32,7 @@ pub struct Library {
     sounds: Mutex<HashMap<Arc<str>, Option<Arc<Sound>>>>,
     sequences: Mutex<HashMap<String, Option<Arc<[Sequence]>>>>,
     hulls: Mutex<HashMap<String, Option<Arc<Hull>>>>,
+    sprites: Mutex<HashMap<String, Option<u32>>>,
 }
 
 impl Library {
@@ -41,6 +43,7 @@ impl Library {
             sounds: Mutex::new(HashMap::new()),
             sequences: Mutex::new(HashMap::new()),
             hulls: Mutex::new(HashMap::new()),
+            sprites: Mutex::new(HashMap::new()),
         }
     }
 
@@ -140,13 +143,43 @@ impl Library {
         hull
     }
 
-    /// The sound lengths, model sequences and map worlds playback reads
+    /// The game's palette (`gfx/palette.lmp`), empty when it cannot be read
+    pub fn palette(&self) -> Vec<[u8; 3]> {
+        let bytes = self
+            .search
+            .find("gfx/palette.lmp")
+            .and_then(|found| self.search.read(&found))
+            .unwrap_or_default();
+        bytes.as_chunks::<3>().0.iter().take(256).copied().collect()
+    }
+
+    /// How many frames the sprite at `path` has, none when it cannot be
+    /// read
+    pub fn sprite_frames(&self, path: &str) -> Option<u32> {
+        let mut known = self.sprites.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(frames) = known.get(path) {
+            return *frames;
+        }
+        let frames = self
+            .search
+            .find(path)
+            .and_then(|found| self.search.read(&found))
+            .and_then(|bytes| sprite::parse(&bytes, self.limits))
+            .ok()
+            .map(|s| u32::try_from(s.frames.len()).unwrap_or(u32::MAX));
+        known.insert(path.to_owned(), frames);
+        frames
+    }
+
+    /// The sound lengths, model sequences, map worlds and sprite frames
+    /// playback reads
     pub fn game_files(self: &Arc<Self>) -> GameFiles {
-        let (models, maps) = (self.clone(), self.clone());
+        let (models, maps, sprites) = (self.clone(), self.clone(), self.clone());
         GameFiles {
             lengths: self.lengths(),
             sequences: Arc::new(move |path| models.sequences(path)),
             hulls: Arc::new(move |path| maps.hull(path)),
+            sprite_frames: Arc::new(move |path| sprites.sprite_frames(path)),
         }
     }
 }

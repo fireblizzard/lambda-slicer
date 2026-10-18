@@ -432,7 +432,11 @@ pub struct SpriteInstance {
     pub scale: f32,
     pub mode: RenderMode,
     pub amount: f32,
+    /// Black for the sprite's own colours
     pub color: [f32; 3],
+    /// A glow keeping its brightness at any distance
+    /// (`kRenderFxNoDissipation`)
+    pub steady: bool,
 }
 
 /// Everything drawn in one frame besides the sky
@@ -513,17 +517,24 @@ fn sprite_quad(
     let far_right = (frame_origin[0] + frame_size[0] as i32) as f32 * scale;
     let distance = (to[0] * to[0] + to[1] * to[1] + to[2] * to[2]).sqrt();
 
+    // Every mode takes the render colour, black meaning none
     let tint = if s.color == [0.; 3] { [1.; 3] } else { s.color };
     let (pass, color) = match s.mode {
-        RenderMode::Normal | RenderMode::Alpha => (SpritePass::Cut, [1., 1., 1., 2.]),
+        RenderMode::Normal | RenderMode::Alpha => {
+            (SpritePass::Cut, [tint[0], tint[1], tint[2], 2.])
+        }
         RenderMode::Color => (
             SpritePass::Blend,
             [s.color[0], s.color[1], s.color[2], s.amount],
         ),
-        RenderMode::Texture => (SpritePass::Blend, [1., 1., 1., s.amount]),
+        RenderMode::Texture => (SpritePass::Blend, [tint[0], tint[1], tint[2], s.amount]),
         RenderMode::Additive => (SpritePass::Add, [tint[0], tint[1], tint[2], s.amount]),
         RenderMode::Glow => {
-            let amount = s.amount * glow_brightness(distance);
+            let amount = if s.steady {
+                s.amount
+            } else {
+                s.amount * glow_brightness(distance)
+            };
             (SpritePass::Glow, [tint[0], tint[1], tint[2], amount])
         }
     };
@@ -1648,6 +1659,7 @@ mod tests {
             mode,
             amount: 0.5,
             color: [0.; 3],
+            steady: false,
         }
     }
 

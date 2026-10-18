@@ -36,6 +36,7 @@ use lambda_slicer_playback::PresentedFrame;
 use lambda_slicer_playback::animation::{Flash, Holder};
 use lambda_slicer_playback::controller::{Command, Controller, Reply, Stamp};
 use lambda_slicer_playback::scene::EntityId;
+use lambda_slicer_playback::tempents::Tint;
 use lambda_slicer_playback::time::SourceTime;
 use lambda_slicer_playback::worker::Worker;
 use lambda_slicer_render::Rgba;
@@ -257,6 +258,8 @@ pub struct Viewer {
     /// The source time of the frame last drawn, so a muzzle flash fired
     /// since then is drawn at least once
     flashes_to: f64,
+    /// The game's palette, for blood's colours
+    palette: Vec<[u8; 3]>,
 }
 
 /// The demo's game folder, from its header
@@ -320,6 +323,7 @@ impl Viewer {
             library.as_ref().map(|l| l.game_files()),
             move || repaint.request_repaint(),
         );
+        let palette = library.as_ref().map(|l| l.palette()).unwrap_or_default();
         let quiet = bench.is_some() || capture.is_some();
         let sound = library.filter(|_| !quiet).and_then(|l| {
             let tap = std::env::var_os("LAMBDA_SLICER_SOUND_TAP").map(PathBuf::from);
@@ -361,6 +365,7 @@ impl Viewer {
             }),
             last_frame: None,
             flashes_to: f64::NEG_INFINITY,
+            palette,
         }
     }
 
@@ -456,9 +461,9 @@ impl Viewer {
             .flat_map(|d| std::iter::once(d.model).chain(d.weapon));
         let flashes = frame.flashes.iter().map(|f| flash_sprite(f.sprite));
         let temp = frame
-            .temp_models
+            .temp_entities
             .iter()
-            .map(|m| ModelRef::File(m.model.to_string()));
+            .filter_map(|e| e.model.as_deref().map(|m| ModelRef::File(m.to_owned())));
         for model in drawn.chain(viewmodel).chain(flashes).chain(temp) {
             if let Entry::Vacant(slot) = self.models.entry(model) {
                 let _ = loader.requests.send(Asset::Model(slot.key().clone()));
@@ -511,6 +516,7 @@ impl Viewer {
                     mode: drawn.mode,
                     amount: drawn.amount,
                     color: drawn.color,
+                    steady: false,
                 });
                 continue;
             }
@@ -538,11 +544,28 @@ impl Viewer {
             }
         }
 
-        // The client's own models, such as shells, in their first frame
-        for m in &frame.temp_models {
-            let Some(Slot::Ready(model, handle)) =
-                self.models.get(&ModelRef::File(m.model.to_string()))
-            else {
+        // The client's own sprites and models, the models in their first
+        // frame
+        for m in &frame.temp_entities {
+            let Some(path) = m.model.as_deref() else {
+                continue;
+            };
+            let slot = self.models.get(&ModelRef::File(path.to_owned()));
+            if let Some(Slot::Sprite(handle)) = slot {
+                sprites.push(SpriteInstance {
+                    sprite: *handle,
+                    frame: m.frame.max(0.) as usize,
+                    origin: m.origin,
+                    angles: m.angles,
+                    scale: m.scale,
+                    mode: RenderMode::from_game(m.render_mode),
+                    amount: (m.render_amount / 255.).clamp(0., 1.),
+                    color: self.tint(m.tint),
+                    steady: m.steady,
+                });
+                continue;
+            }
+            let Some(Slot::Ready(model, handle)) = slot else {
                 continue;
             };
             let pose = EntityPose {
@@ -588,6 +611,7 @@ impl Viewer {
                     mode: RenderMode::from_game(5),
                     amount: 1.,
                     color: [0.; 3],
+                    steady: false,
                 });
             }
         }
@@ -598,6 +622,19 @@ impl Viewer {
             sprites,
             viewmodel,
         }
+    }
+
+    /// A temporary sprite's colour, black for its own
+    fn tint(&self, tint: Tint) -> [f32; 3] {
+        let rgb = match tint {
+            Tint::None => return [0.; 3],
+            Tint::Rgb(rgb) => rgb,
+            Tint::Palette(i) => match self.palette.get(usize::from(i)) {
+                Some(rgb) => *rgb,
+                None => return [0.; 3],
+            },
+        };
+        rgb.map(|c| f32::from(c) / 255.)
     }
 
     /// Bytes the scene holds on the GPU

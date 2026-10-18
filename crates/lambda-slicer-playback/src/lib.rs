@@ -36,7 +36,12 @@ pub struct GameFiles {
     pub lengths: audio::SoundLengths,
     pub sequences: animation::ModelSequences,
     pub hulls: MapHulls,
+    /// Each sprite's frame count
+    pub sprite_frames: SpriteFrames,
 }
+
+/// Where playback learns how many frames a sprite has, by its path
+pub type SpriteFrames = std::sync::Arc<dyn Fn(&str) -> Option<u32> + Send + Sync>;
 
 /// Where playback learns a map's world, by its path such as
 /// `maps/crossfire.bsp`

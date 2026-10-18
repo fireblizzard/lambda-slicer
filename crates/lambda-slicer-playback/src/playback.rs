@@ -17,6 +17,7 @@ use lambda_slicer_core::analysis::events::recorded_event;
 use lambda_slicer_core::analysis::motion;
 use lambda_slicer_core::container::{FrameBody, Limits};
 use lambda_slicer_core::message::{Coded, Message};
+use lambda_slicer_core::protocol::messages::{self as protocol, resource_type};
 use lambda_slicer_core::state::Decoder;
 
 use crate::GameFiles;
@@ -27,7 +28,7 @@ use crate::controller::{CameraMode, Stamp};
 use crate::events::{ATTN_NORM, Action, ClientEvent, Events, PITCH_NORM, SoundCall, handle};
 use crate::scene::{self, Camera, Entity, PlayerView, Scene, Viewmodel};
 use crate::source::{Cursor, Group, Source};
-use crate::tempents::{TempEntities, TempModel};
+use crate::tempents::{Lookup, TempEntities, TempEntity};
 use crate::time::{Position, ServerTime, SourceTime};
 use crate::trace::Hull;
 
@@ -72,13 +73,14 @@ pub struct PresentedFrame {
     pub local_entity: u16,
     /// Muzzle flashes fired lately, at or before `at`
     pub flashes: Vec<Flash>,
-    /// The client's own models, shells among them
-    pub temp_models: Vec<TempModel>,
+    /// The client's own sprites and models, shells among them
+    pub temp_entities: Vec<TempEntity>,
 }
 
 type Lengths = Box<dyn Fn(&SoundName) -> SoundLength + Send>;
 type Sequences = Box<dyn Fn(&str) -> Option<Arc<[Sequence]>> + Send>;
 type Hulls = Box<dyn Fn(&str) -> Option<Arc<Hull>> + Send>;
+type SpriteFrames = Box<dyn Fn(&str) -> Option<u32> + Send>;
 
 pub struct Playback {
     path: Arc<Path>,
@@ -92,6 +94,7 @@ pub struct Playback {
     lengths: Lengths,
     sequences: Sequences,
     hulls: Hulls,
+    sprite_frames: SpriteFrames,
     /// The map traced through and its world, once read
     hull: Option<(String, Option<Arc<Hull>>)>,
 }
@@ -139,6 +142,7 @@ impl Playback {
             lengths: Box::new(|_| SoundLength::Unknown),
             sequences: Box::new(|_| None),
             hulls: Box::new(|_| None),
+            sprite_frames: Box::new(|_| None),
             hull: None,
         })
     }
@@ -177,6 +181,8 @@ impl Playback {
         self.set_model_sequences(move |model| sequences(model));
         let hulls = files.hulls.clone();
         self.hulls = Box::new(move |map| hulls(map));
+        let frames = files.sprite_frames.clone();
+        self.sprite_frames = Box::new(move |sprite| frames(sprite));
         self.hull = None;
     }
 
@@ -194,6 +200,10 @@ impl Playback {
 
     pub fn animations(&self) -> &Animations {
         &self.state.animations
+    }
+
+    pub fn tempents(&self) -> &TempEntities {
+        &self.state.tempents
     }
 
     pub fn decoder(&self) -> &Decoder {
@@ -256,6 +266,7 @@ impl Playback {
 
         let time = group.time;
         let lengths: &dyn Fn(&SoundName) -> SoundLength = &*self.lengths;
+        let frames: &dyn Fn(&str) -> Option<u32> = &*self.sprite_frames;
         let State {
             decoder,
             scene,
@@ -278,9 +289,25 @@ impl Playback {
             let result = match &record.body {
                 FrameBody::Network(frame) => {
                     let audio = &mut *effects.audio;
+                    let tempents = &mut *effects.tempents;
                     let applied = decoder.network_frame(record.location, frame, |d, m| {
                         scene.on_message(d, m, time);
                         audio.on_message(d, m, time, lengths);
+                        match &m.message {
+                            protocol::Message::ServerInfo(_) => tempents.clear(),
+                            protocol::Message::TempEntity { kind, body } => {
+                                let model = |index: i16| precached_model(d, index);
+                                let lookup = Lookup {
+                                    model: &model,
+                                    frames,
+                                };
+                                let view = view_entity(d);
+                                for call in tempents.message(*kind, body, time, &lookup) {
+                                    audio.play(&call, time, view, lengths);
+                                }
+                            }
+                            _ => {}
+                        }
                     });
                     scene.after_network(decoder, frame, time);
                     applied
@@ -482,9 +509,25 @@ impl Playback {
                 .filter(|f| f.time <= at)
                 .copied()
                 .collect(),
-            temp_models: state.tempents.models().to_vec(),
+            temp_entities: state
+                .tempents
+                .entities()
+                .iter()
+                .filter(|e| e.visible())
+                .cloned()
+                .collect(),
         }
     }
+}
+
+/// The model precached at `index`, a sprite or studio model's path
+fn precached_model(decoder: &Decoder, index: i16) -> Option<Arc<str>> {
+    let index = u16::try_from(index).ok()?;
+    decoder
+        .resources()
+        .iter()
+        .find(|r| r.kind == resource_type::MODEL && r.index == index)
+        .map(|r| Arc::from(String::from_utf8_lossy(&r.name).as_ref()))
 }
 
 /// What an event's handler changes besides the scene

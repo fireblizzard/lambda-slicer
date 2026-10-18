@@ -4,8 +4,9 @@
 //! `mix_probe INSTALL DEMO START SECONDS OUT.wav [RATE]`
 //!
 //! Playback moves in blocks of 10 ms, the sounds each block holds mixed at
-//! 48 kHz or at `RATE`. The level, the channels heard, the muzzle flashes
-//! and the sounds that could not be read are reported
+//! 48 kHz or at `RATE`. The level, the channels heard, the muzzle flashes,
+//! the temporary entities made and the sounds that could not be read are
+//! reported
 
 use std::collections::BTreeSet;
 use std::path::Path;
@@ -56,6 +57,8 @@ fn main() {
     let mut heard = BTreeSet::new();
     let mut missing = BTreeSet::new();
     let mut flashes = BTreeSet::new();
+    let mut temp_seen = std::collections::HashSet::new();
+    let mut temps: std::collections::BTreeMap<String, u32> = Default::default();
     let blocks = (seconds * f64::from(rate) / block as f64) as usize;
     for b in 0..blocks {
         let at = SourceTime(start + (b * block) as f64 / f64::from(rate));
@@ -65,6 +68,12 @@ fn main() {
         playback.advance_to(to).expect("playback");
         for f in playback.animations().flashes() {
             flashes.insert((f.time.0.to_bits(), format!("{:?}", f.holder)));
+        }
+        for e in playback.tempents().entities() {
+            if temp_seen.insert(e.id) {
+                let model = e.model.as_deref().unwrap_or("none, a spark shower");
+                *temps.entry(model.to_owned()).or_insert(0) += 1;
+            }
         }
         let channels = playback.audio().channels();
         for c in channels {
@@ -105,6 +114,7 @@ fn main() {
         "{} muzzle flashes, {viewmodel} of them the viewmodel's",
         flashes.len()
     );
+    println!("temporary entities made: {temps:?}");
     println!(
         "{} without samples: {:?}",
         missing.len(),
