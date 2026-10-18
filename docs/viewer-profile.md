@@ -242,7 +242,7 @@ game (9e):
 | Unlit faces | full brightness, as the game draws a face without light data |
 | Animated textures | `+0` to `+9` chains at ten frames a second, and the `+a` to `+j` chain while a brush entity's frame is not 0 |
 | Water | `!` and turbulent faces unlit, their texture coordinates warped by eight texels in a sine of the other coordinate and the time, at 64 texels a repeat |
-| Sky | the `worldspawn` `skyname`, `desert` by default, from `gfx/env/<name>{rt,lf,bk,ft,up,dn}.tga` in the sky box's layout, drawn wherever nothing else was |
+| Sky | the sky the server's movement variables name (`sv_skyname`), and until it names one the `worldspawn` `skyname`, `desert` by default, from `gfx/env/<name>{rt,lf,bk,ft,up,dn}.tga` in the sky box's layout, drawn wherever nothing else was. Confirmed against the game, where the two differ, in `ls_9e_cross` ([viewer validation](viewer-validation.md)) |
 
 Not drawn yet: visibility and frustum culling (the whole world is drawn every frame), random tiling
 textures (`-0` names), scrolling conveyors, and decals. Sprites and the viewmodel come with 9d.
@@ -282,7 +282,7 @@ textures, and the sky's light on models.
 
 | Part | How |
 |---|---|
-| Viewmodel | the model the recorder's client data names (`viewmodel`), playing the last weapon animation, from a record or a message, from when it started. At the view's origin and angles, the pitch turned the other way as the game gives it to a viewmodel, and lit by the light under the eye. Drawn last against a cleared depth, so it never sinks into a wall |
+| Viewmodel | the model the recorder's client data names (`viewmodel`), or through a player's eyes the viewmodel of that player's weapon model (`V_FindViewModelByWeaponModel`), starting at its first animation when the weapon changes, playing the last weapon animation, from a record or a message, from when it started. At the view's origin and angles, the pitch turned the other way as the game gives it to a viewmodel, and lit by the light under the eye. Drawn last against a cleared depth, so it never sinks into a wall |
 | Viewmodel hidden | while the recorder's health is 0 or less, at intermission, and while spectating other than through a player's eyes |
 | Sprites | `IDSP` version 2, single frames and frame groups, in normal, additive, index-alpha and alpha-tested formats. Every sprite in the surveyed install reads (268, AG's sprite items included) |
 | Sprite entities | an entity whose model is a `.spr`, or one of AG's sprites under a `.mdl` name, at its frame and scale (0 meaning 1) |

@@ -33,6 +33,7 @@ use lambda_slicer_core::protocol::delta::DeltaSchema;
 use lambda_slicer_core::protocol::messages::{Message, ParsedMessage, resource_type};
 use lambda_slicer_core::state::{Decoder, EntityState, Snapshot};
 
+use crate::animation::IN_EYE;
 use crate::time::{ServerTime, SourceTime};
 
 /// The client's `ex_interp` in seconds, how far behind its latest snapshot
@@ -261,7 +262,12 @@ pub struct Scene {
     pub entities: Arc<Vec<Entity>>,
     pub camera: Camera,
     pub viewmodel: Option<Viewmodel>,
+    /// The weapon of the player a spectator watches through the eyes of
+    watched_weapon: Option<Arc<str>>,
     pub light_styles: BTreeMap<u8, Vec<u8>>,
+    /// The sky the server names in its movement variables (`sv_skyname`),
+    /// which the game draws whatever the map's worldspawn names
+    pub sky: Option<Arc<str>>,
     /// Grows whenever anything here changes, so a renderer can skip work
     pub revision: u64,
     /// The snapshot the entities were taken from
@@ -357,6 +363,43 @@ impl FieldTable {
     }
 }
 
+/// The viewmodel of a player's weapon model, as the client finds it for
+/// a spectator watching through the player's eyes
+/// (`V_FindViewModelByWeaponModel`)
+fn view_model_for(weapon: &str) -> Option<&'static str> {
+    const MODELS: [(&str, &str); 15] = [
+        ("models/p_crossbow.mdl", "models/v_crossbow.mdl"),
+        ("models/p_crowbar.mdl", "models/v_crowbar.mdl"),
+        ("models/p_egon.mdl", "models/v_egon.mdl"),
+        ("models/p_gauss.mdl", "models/v_gauss.mdl"),
+        ("models/p_9mmhandgun.mdl", "models/v_9mmhandgun.mdl"),
+        ("models/p_grenade.mdl", "models/v_grenade.mdl"),
+        ("models/p_hgun.mdl", "models/v_hgun.mdl"),
+        ("models/p_9mmAR.mdl", "models/v_9mmAR.mdl"),
+        ("models/p_357.mdl", "models/v_357.mdl"),
+        ("models/p_rpg.mdl", "models/v_rpg.mdl"),
+        ("models/p_shotgun.mdl", "models/v_shotgun.mdl"),
+        ("models/p_squeak.mdl", "models/v_squeak.mdl"),
+        ("models/p_tripmine.mdl", "models/v_tripmine.mdl"),
+        ("models/p_satchel_radio.mdl", "models/v_satchel_radio.mdl"),
+        ("models/p_satchel.mdl", "models/v_satchel.mdl"),
+    ];
+    MODELS
+        .iter()
+        .find(|(p, _)| p.eq_ignore_ascii_case(weapon))
+        .map(|(_, v)| *v)
+}
+
+/// The sky's name in an `svc_newmovevars` body, a string after 16 floats,
+/// the footsteps byte and 8 more floats. None when it names none
+fn sky_name(body: &[u8]) -> Option<Arc<str>> {
+    let name = body.get(97..)?;
+    let end = name.iter().position(|b| *b == 0).unwrap_or(name.len());
+    let name = String::from_utf8_lossy(&name[..end]);
+    let name = name.trim();
+    (!name.is_empty()).then(|| Arc::from(name))
+}
+
 impl Scene {
     fn changed(&mut self) {
         self.revision += 1;
@@ -376,6 +419,13 @@ impl Scene {
             Message::LightStyle { index, style } => {
                 self.light_styles.insert(*index, style.clone());
                 self.changed();
+            }
+            Message::NewMoveVars(body) => {
+                let sky = sky_name(body);
+                if sky != self.sky {
+                    self.sky = sky;
+                    self.changed();
+                }
             }
             Message::WeaponAnim { sequence, body } => {
                 self.viewmodel = Some(Viewmodel {
@@ -401,7 +451,28 @@ impl Scene {
             let data = decoder.latest_snapshot()?.clientdata.clone()?;
             data.value(&schema, field)?.as_i64()
         };
-        let viewmodel = client("viewmodel").and_then(|i| self.model_name(decoder, i));
+        let mut viewmodel = client("viewmodel").and_then(|i| self.model_name(decoder, i));
+        let observer_mode = client("iuser1").unwrap_or(0);
+        let observer_target = client("iuser2").unwrap_or(0);
+        if viewmodel.is_none() && observer_mode == IN_EYE {
+            // Through a player's eyes the client draws the watched player's
+            // weapon, which the spectator's own client data does not name
+            let weapon = self
+                .entities
+                .iter()
+                .find(|e| i64::from(e.id.number) == observer_target)
+                .and_then(|e| e.weapon.clone());
+            if weapon != self.watched_weapon {
+                // A new weapon starts on its first animation
+                self.watched_weapon = weapon.clone();
+                self.viewmodel = Some(Viewmodel {
+                    sequence: 0,
+                    body: 0,
+                    started: time,
+                });
+            }
+            viewmodel = weapon.as_deref().and_then(view_model_for).map(Arc::from);
+        }
         let camera = Camera {
             origin: frame.info_vieworg(),
             angles: frame.info_viewangles(),
@@ -409,8 +480,8 @@ impl Scene {
             view_entity: decoder.view_entity,
             spectating: frame.info_spectator() != 0,
             intermission: frame.info_intermission() != 0,
-            observer_mode: client("iuser1").unwrap_or(0),
-            observer_target: client("iuser2").unwrap_or(0),
+            observer_mode,
+            observer_target,
             viewmodel,
             health: client("health").unwrap_or(0),
         };
@@ -715,6 +786,30 @@ mod tests {
             },
             last_origin: [0.; 3],
         }
+    }
+
+    #[test]
+    fn a_watched_players_weapon_gives_its_viewmodel() {
+        assert_eq!(
+            view_model_for("models/p_gauss.mdl"),
+            Some("models/v_gauss.mdl")
+        );
+        assert_eq!(
+            view_model_for("MODELS/P_9MMAR.MDL"),
+            Some("models/v_9mmAR.mdl")
+        );
+        assert_eq!(view_model_for("models/p_flag.mdl"), None);
+    }
+
+    #[test]
+    fn the_sky_is_named_after_the_movement_variables_numbers() {
+        let mut body = vec![0u8; 97];
+        body.extend_from_slice(b"dusk\0");
+        assert_eq!(sky_name(&body).as_deref(), Some("dusk"));
+        body.truncate(97);
+        body.push(0);
+        assert_eq!(sky_name(&body), None);
+        assert_eq!(sky_name(&[0; 40]), None);
     }
 
     #[test]

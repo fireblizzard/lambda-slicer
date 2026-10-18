@@ -121,6 +121,8 @@ enum Asset {
     /// A map by name, without `maps/` or `.bsp`
     Map(String),
     Model(ModelRef),
+    /// A sky by name, from `gfx/env`
+    Sky(String),
 }
 
 enum Outcome {
@@ -139,6 +141,8 @@ struct LoadedMap {
 enum Loaded {
     Map(String, Result<Box<LoadedMap>, String>),
     Model(ModelRef, Outcome),
+    /// A sky by name, none when it could not be read
+    Sky(String, Option<Box<[Rgba; 6]>>),
 }
 
 /// The thread that reads maps and models for one demo
@@ -200,6 +204,14 @@ impl Loader {
                             };
                             Loaded::Model(model, outcome)
                         }
+                        (Ok(search), Asset::Sky(name)) => {
+                            let sky = load::sky(search, &name, limits)
+                                .inspect_err(|e| eprintln!("viewer: sky {name}, {e}"))
+                                .ok()
+                                .map(Box::new);
+                            Loaded::Sky(name, sky)
+                        }
+                        (Err(_), Asset::Sky(name)) => Loaded::Sky(name, None),
                         (Err(e), Asset::Map(name)) => Loaded::Map(name, Err(e.clone())),
                         (Err(e), Asset::Model(model)) => {
                             Loaded::Model(model, Outcome::Failed(e.clone()))
@@ -246,6 +258,9 @@ pub struct Viewer {
     /// The map whose world is drawn, and the one being read
     map: Option<String>,
     map_loading: Option<String>,
+    /// The sky drawn and the one being read
+    sky: Option<String>,
+    sky_loading: Option<String>,
     models: HashMap<ModelRef, Slot>,
     /// The map's light under models
     light: Option<Arc<LightTree>>,
@@ -359,6 +374,8 @@ impl Viewer {
             frame: None,
             map: None,
             map_loading: None,
+            sky: None,
+            sky_loading: None,
             models: HashMap::new(),
             light: None,
             clock: Instant::now(),
@@ -423,6 +440,7 @@ impl Viewer {
                     let LoadedMap { mut world, sky } = *map;
                     self.light = Some(Arc::new(std::mem::take(&mut world.light)));
                     resources.scene.set_world(device, queue, &world);
+                    self.sky = Some(world.sky.clone());
                     self.decals.set_world(Arc::new(world));
                     resources.scene.set_sky(device, queue, sky.as_ref());
                     self.map = Some(name);
@@ -434,6 +452,16 @@ impl Viewer {
                     self.map_loading = None;
                 }
                 Loaded::Map(..) => {}
+                Loaded::Sky(name, sky) => {
+                    // A sky that cannot be read leaves the one drawn
+                    if let Some(sky) = sky {
+                        resources.scene.set_sky(device, queue, Some(&*sky));
+                    }
+                    if self.sky_loading.as_ref() == Some(&name) {
+                        self.sky_loading = None;
+                    }
+                    self.sky = Some(name);
+                }
                 Loaded::Model(model, Outcome::Ready(loaded)) => {
                     let handle = resources.scene.add_model(device, queue, &loaded.mesh);
                     self.models
@@ -462,6 +490,19 @@ impl Viewer {
         {
             let _ = loader.requests.send(Asset::Map(map.clone()));
             self.map_loading = Some(map);
+        }
+
+        // The sky the server names, once the map's own is drawn
+        if let Some(sky) = frame.sky.as_deref()
+            && self.map_loading.is_none()
+            && self
+                .sky
+                .as_deref()
+                .is_some_and(|drawn| !drawn.eq_ignore_ascii_case(sky))
+            && self.sky_loading.as_deref() != Some(sky)
+        {
+            let _ = loader.requests.send(Asset::Sky(sky.to_owned()));
+            self.sky_loading = Some(sky.to_owned());
         }
 
         let viewmodel = viewmodel_pose(frame).map(|(path, _)| ModelRef::File(path));

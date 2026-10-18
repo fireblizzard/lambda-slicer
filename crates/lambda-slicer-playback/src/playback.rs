@@ -62,6 +62,8 @@ pub struct PresentedFrame {
     pub camera: CameraMode,
     pub viewmodel: Option<Viewmodel>,
     pub light_styles: BTreeMap<u8, Vec<u8>>,
+    /// The sky the server names, the map's own when none
+    pub sky: Option<Arc<str>>,
     /// Sounds playing at `at`
     pub sounds: Vec<Channel>,
     pub audio_revision: u64,
@@ -558,6 +560,7 @@ impl Playback {
             camera,
             viewmodel: state.scene.viewmodel,
             light_styles: state.scene.light_styles.clone(),
+            sky: state.scene.sky.clone(),
             sounds,
             audio_revision: state.audio.revision,
             audible,

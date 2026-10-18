@@ -51,7 +51,7 @@ fn main() {
     entities.sort_by(|a, b| distance(a.origin).total_cmp(&distance(b.origin)));
     for e in entities {
         println!(
-            "{:5.0} away  #{} life {} {:?} seq {} frame {:.0} rate {:.2} animtime {:.3} effects {} iuser {} {} origin {:?} angles {:?}",
+            "{:5.0} away  #{} life {} {:?} seq {} frame {:.0} rate {:.2} animtime {:.3} effects {} iuser {} {} render {} {} {} {:?} origin {:?} angles {:?}",
             distance(e.origin),
             e.id.number,
             e.id.life,
@@ -63,6 +63,10 @@ fn main() {
             e.effects,
             e.iuser1,
             e.iuser2,
+            e.render_mode,
+            e.render_amount,
+            e.render_fx,
+            e.render_color,
             e.origin,
             e.angles,
         );
