@@ -20,7 +20,7 @@ use lambda_slicer_core::state::Decoder;
 use crate::audio::{Audio, Channel, SoundLength, SoundName, UNKNOWN_LIMIT};
 use crate::checkpoint::{self, Checkpoint, Checkpoints, State};
 use crate::controller::{CameraMode, Stamp};
-use crate::scene::{Camera, Entity, Scene, Viewmodel};
+use crate::scene::{self, Camera, Entity, PlayerView, Scene, Viewmodel};
 use crate::source::{Cursor, Group, Source};
 use crate::time::{Position, ServerTime, SourceTime};
 
@@ -55,6 +55,9 @@ pub struct PresentedFrame {
     pub stopped: Option<Message>,
     /// How far checkpoints reach, and whether they cover the whole demo
     pub indexed: (SourceTime, bool),
+    pub players: Vec<PlayerView>,
+    /// The recorder's own player entity
+    pub local_entity: u16,
 }
 
 type Lengths = Box<dyn Fn(&SoundName) -> SoundLength + Send>;
@@ -357,6 +360,8 @@ impl Playback {
             end,
             stopped: state.stopped.clone(),
             indexed,
+            players: scene::players(&state.decoder),
+            local_entity: u16::from(state.decoder.player_num) + 1,
         }
     }
 }

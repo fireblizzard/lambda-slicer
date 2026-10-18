@@ -128,10 +128,21 @@ struct WorldGpu {
 }
 
 struct ModelGpu {
-    mesh_batches: Vec<Batch>,
+    batches: Vec<Batch>,
     textures: Vec<wgpu::BindGroup>,
-    vertices: wgpu::Buffer,
-    capacity: u64,
+    corners: usize,
+}
+
+/// A model uploaded once with [`Scene::add_model`], drawn as any number of
+/// instances
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct ModelHandle(usize);
+
+/// One posed copy of a model, its corners skinned in the model's order
+#[derive(Clone, Debug, PartialEq)]
+pub struct Instance {
+    pub model: ModelHandle,
+    pub vertices: Vec<ModelVertex>,
 }
 
 struct Targets {
@@ -149,7 +160,11 @@ pub struct Scene {
     world_pipeline: wgpu::RenderPipeline,
     model_pipeline: wgpu::RenderPipeline,
     world: Option<WorldGpu>,
-    model: Option<ModelGpu>,
+    world_bytes: u64,
+    models: Vec<ModelGpu>,
+    /// Every instance's corners for the frame, grown as needed
+    instances: Option<wgpu::Buffer>,
+    instance_capacity: u64,
     targets: Option<Targets>,
     /// Bytes of every buffer and texture made here, targets included
     gpu_bytes: u64,
@@ -294,7 +309,10 @@ impl Scene {
             world_pipeline,
             model_pipeline,
             world: None,
-            model: None,
+            world_bytes: 0,
+            models: Vec::new(),
+            instances: None,
+            instance_capacity: 0,
             targets: None,
             gpu_bytes: std::mem::size_of::<Uniforms>() as u64,
             target_bytes: 0,
@@ -354,7 +372,12 @@ impl Scene {
         })
     }
 
+    /// Draw `mesh` as the world from now on, in place of any other
     pub fn set_world(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, mesh: &WorldMesh) {
+        self.world = None;
+        self.gpu_bytes -= self.world_bytes;
+        let before = self.gpu_bytes;
+
         let vertices = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("world vertices"),
             contents: bytemuck::cast_slice(&mesh.vertices),
@@ -380,28 +403,27 @@ impl Scene {
             textures,
             lightmap,
         });
+        self.world_bytes = self.gpu_bytes - before;
     }
 
-    pub fn set_model(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, mesh: &ModelMesh) {
-        let capacity = (mesh.corner_count().max(1) * std::mem::size_of::<ModelVertex>()) as u64;
-        let vertices = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("model vertices"),
-            size: capacity,
-            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-        self.gpu_bytes += capacity;
+    /// Upload a model's textures, for instances of it to be drawn
+    pub fn add_model(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        mesh: &ModelMesh,
+    ) -> ModelHandle {
         let textures = mesh
             .textures
             .iter()
             .map(|t| self.texture(device, queue, t, true))
             .collect();
-        self.model = Some(ModelGpu {
-            mesh_batches: mesh.batches.clone(),
+        self.models.push(ModelGpu {
+            batches: mesh.batches.clone(),
             textures,
-            vertices,
-            capacity,
+            corners: mesh.corner_count(),
         });
+        ModelHandle(self.models.len() - 1)
     }
 
     /// The offscreen colour target, once a frame was drawn
@@ -445,15 +467,61 @@ impl Scene {
         self.target_bytes = u64::from(size[0]) * u64::from(size[1]) * 8;
     }
 
-    /// One frame at `size`, the model drawn from `model_vertices`. Returns
-    /// whether the targets were made again, for a resize, and the commands
+    /// Every instance's corners in one buffer, and where each instance
+    /// starts in it. An instance whose corner count does not match its model
+    /// is left out
+    fn upload_instances(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        instances: &[Instance],
+    ) -> Vec<Option<u32>> {
+        let mut bytes: Vec<u8> = Vec::new();
+        let mut starts = Vec::with_capacity(instances.len());
+        let mut corners = 0u32;
+        for instance in instances {
+            let fits = self
+                .models
+                .get(instance.model.0)
+                .is_some_and(|m| m.corners == instance.vertices.len());
+            if !fits {
+                starts.push(None);
+                continue;
+            }
+            starts.push(Some(corners));
+            bytes.extend_from_slice(bytemuck::cast_slice(&instance.vertices));
+            corners += instance.vertices.len() as u32;
+        }
+        if bytes.is_empty() {
+            return starts;
+        }
+
+        if bytes.len() as u64 > self.instance_capacity {
+            let capacity = (bytes.len() as u64).next_power_of_two();
+            self.gpu_bytes = self.gpu_bytes - self.instance_capacity + capacity;
+            self.instance_capacity = capacity;
+            self.instances = Some(device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("model instances"),
+                size: capacity,
+                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            }));
+        }
+        if let Some(buffer) = &self.instances {
+            queue.write_buffer(buffer, 0, &bytes);
+        }
+        starts
+    }
+
+    /// One frame at `size` with the world and `instances`. Returns whether
+    /// the targets were made again, for a resize, and the commands
     pub fn render(
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         size: [u32; 2],
         view_projection: Matrix,
-        model_vertices: &[ModelVertex],
+        instances: &[Instance],
     ) -> (bool, wgpu::CommandBuffer) {
         let before = self.targets.as_ref().map(|t| t.size);
         self.ensure_targets(device, size);
@@ -463,12 +531,7 @@ impl Scene {
             params: [1.6, 0., 0., 0.],
         };
         queue.write_buffer(&self.uniforms, 0, bytemuck::bytes_of(&uniforms));
-        if let Some(model) = &self.model {
-            let bytes: &[u8] = bytemuck::cast_slice(model_vertices);
-            if (bytes.len() as u64) <= model.capacity {
-                queue.write_buffer(&model.vertices, 0, bytes);
-            }
-        }
+        let starts = self.upload_instances(device, queue, instances);
 
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("viewer"),
@@ -514,15 +577,19 @@ impl Scene {
                     pass.draw_indexed(b.first..b.first + b.count, 0, 0..1);
                 }
             }
-            if let Some(model) = &self.model
-                && !model_vertices.is_empty()
-            {
+            if let Some(buffer) = &self.instances {
                 pass.set_pipeline(&self.model_pipeline);
-                pass.set_vertex_buffer(0, model.vertices.slice(..));
-                for b in &model.mesh_batches {
-                    if let Some(texture) = model.textures.get(b.texture) {
-                        pass.set_bind_group(1, texture, &[]);
-                        pass.draw(b.first..b.first + b.count, 0..1);
+                pass.set_vertex_buffer(0, buffer.slice(..));
+                for (instance, start) in instances.iter().zip(starts) {
+                    let Some(start) = start else {
+                        continue;
+                    };
+                    let model = &self.models[instance.model.0];
+                    for b in &model.batches {
+                        if let Some(texture) = model.textures.get(b.texture) {
+                            pass.set_bind_group(1, texture, &[]);
+                            pass.draw(start + b.first..start + b.first + b.count, 0..1);
+                        }
                     }
                 }
             }

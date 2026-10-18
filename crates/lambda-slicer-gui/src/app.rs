@@ -47,6 +47,8 @@ pub struct Launch {
     pub pseudo: bool,
     /// The game's installation folder, for the backend spike's view
     pub game: Option<PathBuf>,
+    /// Where the viewer seeks to once the demo is loaded
+    pub viewer_at: Option<f64>,
     pub viewer_bench: Option<crate::viewer::Bench>,
 }
 
@@ -78,6 +80,7 @@ pub struct App {
     /// Dropped items that were not demos or folders
     rejected: Vec<String>,
     game: Option<PathBuf>,
+    viewer_at: Option<f64>,
     viewer_bench: Option<crate::viewer::Bench>,
     /// The window's GPU device, which the viewer draws with
     pub render_state: Option<eframe::egui_wgpu::RenderState>,
@@ -171,6 +174,7 @@ impl App {
             opened: launch.open,
             rejected: Vec::new(),
             game: launch.game,
+            viewer_at: launch.viewer_at,
             viewer_bench: launch.viewer_bench,
             render_state: None,
         }
@@ -789,6 +793,8 @@ impl eframe::App for App {
                         render_state.clone(),
                         game.clone(),
                         path.clone(),
+                        *duration,
+                        self.viewer_at.take(),
                         self.viewer_bench.take(),
                         &ctx,
                     ));

@@ -1875,7 +1875,7 @@ impl DemoView {
         });
         if let Some(viewer) = &mut self.viewer {
             let height = (ui.available_height() * 0.45).min(ui.available_width() * 9. / 16.);
-            viewer.ui(ui, height);
+            viewer.ui(ui, catalog, rtl, height);
             ui.separator();
         }
 

@@ -144,5 +144,5 @@ What the viewer keeps from here on:
 - **Playback drives poses.** The spike's looping clock is a placeholder. From 8d on, poses come
   from the playback controller's time and the recorded sequence, frame and blend values.
 
-The spike's view shows only with `--game DIR` and has no translated text yet. Its controls,
-settings and status come with the viewer's interface.
+The demo view now plays the demo on this contract (docs/viewer-profile.md, "Viewer"), with
+many posed model instances drawn from one vertex buffer a frame.

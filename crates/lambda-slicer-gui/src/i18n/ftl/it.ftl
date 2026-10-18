@@ -202,6 +202,8 @@ scores-frags = Frag
 scores-deaths = Morti
 
 show-timeline = Mostra la timeline
+viewer-play = Riproduci
+viewer-pause = Pausa
 legend-shot = Colpo
 legend-charge = Carica
 legend-kill = Uccisione

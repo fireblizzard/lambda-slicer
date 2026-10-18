@@ -197,6 +197,8 @@ scores-frags = Fraglar
 scores-deaths = Ölümler
 
 show-timeline = Zaman çizelgesini göster
+viewer-play = Oynat
+viewer-pause = Duraklat
 legend-shot = Atış
 legend-charge = Şarj
 legend-kill = Öldürme

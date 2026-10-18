@@ -197,6 +197,8 @@ scores-frags = Fragit
 scores-deaths = Kuolemat
 
 show-timeline = Näytä aikajana
+viewer-play = Toista
+viewer-pause = Tauko
 legend-shot = Laukaus
 legend-charge = Lataus
 legend-kill = Tappo

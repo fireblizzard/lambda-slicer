@@ -201,3 +201,34 @@ and 5.1 ms at p95. Every indexed p95 is within the plan's target of 200 ms. The 
 closest to it, as its spacing doubled twice, and a longer one would double again. A first seek
 before the index reaches the destination replays from the start, at about 3 ms per second of a busy
 demo.
+
+## Viewer
+
+The demo view plays the demo when a game folder is given with `--game DIR` (implementation plan
+§13.8). It keeps a playback controller and worker per demo, and a thread that reads the session's
+map and the studio models its entities use. Play, pause and a time bar drive the controller, and
+`--viewer-at SECONDS` seeks there once the demo is loaded. The asset folder setting and the rest
+of the viewer's controls come with M11.
+
+### What is drawn (9a)
+
+| Part | How |
+|---|---|
+| Camera | the recorder's view of each network record, with the recorded field of view across the screen's width, as the game's is. 90 degrees when the recording names none |
+| World | the session's map, read again when a later session changes it |
+| Entities | each with a studio model, posed from its recorded sequence, frame, frame rate, animation time, controllers and blends, the frame estimated as the renderer's `StudioEstimateFrame` does. Client time is the last `svc_time` plus the source time since that packet |
+| Players | the model their userinfo names (`models/player/<name>/<name>.mdl`), the stock player model when it is not installed, drawn upright |
+| Left out | the entity the recorder views from, the player a spectator sees through the eyes of (observer mode 4 and its target, from the recorder's client data as the game's client takes them), and entities with `EF_NODRAW` |
+
+**Observed:** AG ships some item models as sprites under a `.mdl` name (`ag/models/w_357.mdl`
+starts with `IDSP`). The game tells a model's kind by its header, and so does the viewer, which
+leaves those items for the sprites (9d).
+
+Not drawn yet: brush entities, sprites, the viewmodel, light styles, visibility and frustum
+culling (9b), interpolation between snapshots, the client's player animation, team colours and held
+weapons (9c).
+
+**Measured (2026-10-18)** with `--viewer-bench 10`, playing from 20 s in a 1920 by 1080 window with
+the view 1098 by 950 pixels, while the library scan ran: `stalkx_naz_248.dem` (4 models in view)
+at 3.7 ms a frame on average, p95 4.8 ms, and `ray_vs_alex_cross.dem` (8 models, a spectator) at
+6.7 ms, p95 19.6 ms.

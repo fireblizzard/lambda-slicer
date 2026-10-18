@@ -207,6 +207,8 @@ scores-frags = Фраги
 scores-deaths = Смерті
 
 show-timeline = Показати шкалу часу
+viewer-play = Відтворити
+viewer-pause = Пауза
 legend-shot = Постріл
 legend-charge = Заряджання
 legend-kill = Вбивство

@@ -198,6 +198,8 @@ scores-frags = Frags
 scores-deaths = Deaths
 
 show-timeline = Show timeline
+viewer-play = Play
+viewer-pause = Pause
 legend-shot = Shot
 legend-charge = Charging
 legend-kill = Kill

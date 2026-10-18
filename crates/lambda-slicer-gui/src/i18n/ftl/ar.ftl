@@ -217,6 +217,8 @@ scores-frags = القتلات
 scores-deaths = الوفيات
 
 show-timeline = إظهار الخط الزمني
+viewer-play = تشغيل
+viewer-pause = إيقاف مؤقت
 legend-shot = طلقة
 legend-charge = شحن
 legend-kill = قتل

@@ -4,7 +4,7 @@
 //! [--dates] [--pseudo] [--size WxH] [--cache FILE] [--clips FILE]
 //! [--demo FILE [--window N] [--export DIR]]
 //! [--screenshot OUT.png [--frames N]]
-//! [--game DIR [--viewer-bench SECONDS OUT.txt]]`
+//! [--game DIR [--viewer-at SECONDS] [--viewer-bench SECONDS OUT.txt]]`
 //!
 //! Demos and folders given as `PATH` are opened for this session. `--locale`
 //! overrides the saved language, `--cache` the library cache and `--clips`
@@ -16,10 +16,10 @@
 //! not fit, and `--size` sets the window size. `--screenshot` saves the window to a
 //! PNG `N` frames after any demo has loaded and its exports finished, and
 //! exits, for checking how a language renders. `--game` names the game's
-//! installation folder, the one that holds `valve`, and shows the demo's
-//! map in the M8 backend spike's view. `--viewer-bench` turns vsync off,
-//! times that view's frames for `SECONDS` once its scene is in, writes the
-//! times to `OUT.txt` and exits
+//! installation folder, the one that holds `valve`, and plays the demo in
+//! the demo view, from `--viewer-at` seconds if given. `--viewer-bench`
+//! turns vsync off, plays and times the view's frames for `SECONDS`, writes
+//! the times to `OUT.txt` and exits
 
 // A release build opens no console window beside the app
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
@@ -62,6 +62,7 @@ fn main() -> eframe::Result {
     let mut export = None;
     let mut pseudo = false;
     let mut game = None;
+    let mut viewer_at = None;
     let mut viewer_bench = None;
     while let Some(a) = args.next() {
         match a.as_str() {
@@ -90,6 +91,7 @@ fn main() -> eframe::Result {
             "--pseudo" => pseudo = true,
             "--export" => export = args.next().map(PathBuf::from),
             "--game" => game = args.next().map(PathBuf::from),
+            "--viewer-at" => viewer_at = args.next().and_then(|s| s.parse().ok()),
             "--viewer-bench" => {
                 if let (Some(seconds), Some(out)) =
                     (args.next().and_then(|s| s.parse().ok()), args.next())
@@ -165,6 +167,7 @@ fn main() -> eframe::Result {
                     export: export.is_some(),
                     pseudo,
                     game,
+                    viewer_at,
                     viewer_bench,
                 },
             );

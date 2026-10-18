@@ -18,6 +18,7 @@ image = { version = "0.25.10", default-features = false, features = ["png"] }
 intl-memoizer = "0.5.3"
 lambda-slicer-assets.workspace = true
 lambda-slicer-core.workspace = true
+lambda-slicer-playback.workspace = true
 lambda-slicer-render.workspace = true
 rfd = "0.17.2"
 serde = { version = "1.0.229", features = ["derive"] }

@@ -2160,6 +2160,7 @@ dependencies = [
  "intl_pluralrules",
  "lambda-slicer-assets",
  "lambda-slicer-core",
+ "lambda-slicer-playback",
  "lambda-slicer-render",
  "rfd",
  "serde",

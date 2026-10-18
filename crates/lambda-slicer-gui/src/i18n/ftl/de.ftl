@@ -197,6 +197,8 @@ scores-frags = Frags
 scores-deaths = Tode
 
 show-timeline = Zeitleiste zeigen
+viewer-play = Abspielen
+viewer-pause = Pause
 legend-shot = Schuss
 legend-charge = Aufladen
 legend-kill = Abschuss

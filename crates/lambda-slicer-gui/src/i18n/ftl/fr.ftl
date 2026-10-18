@@ -202,6 +202,8 @@ scores-frags = Frags
 scores-deaths = Morts
 
 show-timeline = Afficher la frise
+viewer-play = Lecture
+viewer-pause = Pause
 legend-shot = Tir
 legend-charge = Charge
 legend-kill = Élimination

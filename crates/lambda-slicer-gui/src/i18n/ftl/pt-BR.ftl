@@ -202,6 +202,8 @@ scores-frags = Abates
 scores-deaths = Mortes
 
 show-timeline = Mostrar linha do tempo
+viewer-play = Reproduzir
+viewer-pause = Pausar
 legend-shot = Disparo
 legend-charge = Carregando
 legend-kill = Abate

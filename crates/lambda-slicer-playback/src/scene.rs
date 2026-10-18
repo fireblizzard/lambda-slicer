@@ -56,6 +56,9 @@ pub struct Entity {
     pub scale: f32,
     pub move_type: i64,
     pub solid: i64,
+    /// A player's observer mode and the player it observes
+    pub iuser1: i64,
+    pub iuser2: i64,
     /// Server time of the snapshot it was last taken from
     pub updated: ServerTime,
 }
@@ -69,6 +72,55 @@ pub struct Camera {
     pub view_entity: Option<u16>,
     pub spectating: bool,
     pub intermission: bool,
+    /// The recorder's observer mode and the player it observes, from its
+    /// client data as the game's client takes them. 0 when not observing
+    pub observer_mode: i64,
+    pub observer_target: i64,
+}
+
+/// A player of the session, with what its userinfo names for drawing it
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PlayerView {
+    pub slot: u8,
+    /// Its entity number, one more than the slot
+    pub entity: u16,
+    pub name: String,
+    /// The `model` key, such as `gordon`, none when unset
+    pub model: Option<String>,
+    pub top_color: Option<u8>,
+    pub bottom_color: Option<u8>,
+}
+
+/// The value of `key` in a `\key\value` userinfo string
+fn userinfo<'a>(info: &'a [u8], key: &[u8]) -> Option<&'a [u8]> {
+    let info = info.strip_prefix(b"\\").unwrap_or(info);
+    let mut parts = info.split(|&b| b == b'\\');
+    while let (Some(k), Some(v)) = (parts.next(), parts.next()) {
+        if k == key {
+            return Some(v);
+        }
+    }
+    None
+}
+
+/// The session's players as the decoder knows them now
+pub fn players(decoder: &Decoder) -> Vec<PlayerView> {
+    let text = |v: &[u8]| String::from_utf8_lossy(v).into_owned();
+    let color = |v: &[u8]| std::str::from_utf8(v).ok()?.trim().parse::<u8>().ok();
+    decoder
+        .players
+        .values()
+        .map(|p| PlayerView {
+            slot: p.slot,
+            entity: u16::from(p.slot) + 1,
+            name: p.name.clone(),
+            model: userinfo(&p.info, b"model")
+                .filter(|m| !m.is_empty())
+                .map(text),
+            top_color: userinfo(&p.info, b"topcolor").and_then(color),
+            bottom_color: userinfo(&p.info, b"bottomcolor").and_then(color),
+        })
+        .collect()
 }
 
 /// The first-person weapon's animation, from the last weapon animation
@@ -114,7 +166,7 @@ struct Slot {
 }
 
 /// The entity fields the scene reads, in this order
-const FIELDS: [&str; 27] = [
+const FIELDS: [&str; 29] = [
     "modelindex",
     "origin[0]",
     "origin[1]",
@@ -142,6 +194,8 @@ const FIELDS: [&str; 27] = [
     "scale",
     "movetype",
     "solid",
+    "iuser1",
+    "iuser2",
 ];
 
 /// Where each of [`FIELDS`] sits in one schema, looked up once
@@ -204,6 +258,11 @@ impl Scene {
 
     /// After a network record, its camera and any new snapshot
     pub(crate) fn after_network(&mut self, decoder: &Decoder, frame: &NetworkFrame) {
+        let client = |field: &str| {
+            let schema = decoder.schema("clientdata_t")?;
+            let data = decoder.latest_snapshot()?.clientdata.clone()?;
+            data.value(&schema, field)?.as_i64()
+        };
         let camera = Camera {
             origin: frame.info_vieworg(),
             angles: frame.info_viewangles(),
@@ -211,6 +270,8 @@ impl Scene {
             view_entity: decoder.view_entity,
             spectating: frame.info_spectator() != 0,
             intermission: frame.info_intermission() != 0,
+            observer_mode: client("iuser1").unwrap_or(0),
+            observer_target: client("iuser2").unwrap_or(0),
         };
         if camera != self.camera {
             self.camera = camera;
@@ -361,6 +422,8 @@ impl Scene {
                 scale: v[24] as f32,
                 move_type: v[25] as i64,
                 solid: v[26] as i64,
+                iuser1: v[27] as i64,
+                iuser2: v[28] as i64,
                 updated,
             };
             converted.insert(e.number, (e.clone(), entity.clone()));

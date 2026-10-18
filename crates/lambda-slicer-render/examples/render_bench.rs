@@ -13,7 +13,7 @@ use std::time::{Duration, Instant};
 use lambda_slicer_assets::Limits;
 use lambda_slicer_assets::search::{SearchOptions, SearchPath};
 use lambda_slicer_render::camera::Camera;
-use lambda_slicer_render::gpu::{COLOR_FORMAT, Scene};
+use lambda_slicer_render::gpu::{COLOR_FORMAT, Instance, Scene};
 use lambda_slicer_render::{load, world};
 
 const SIZE: [u32; 2] = [1920, 1080];
@@ -88,7 +88,7 @@ fn main() {
     let started = Instant::now();
     let mut scene = Scene::new(&device);
     scene.set_world(&device, &queue, &mesh);
-    scene.set_model(&device, &queue, &player.mesh);
+    let model = scene.add_model(&device, &queue, &player.mesh);
     device
         .poll(wgpu::PollType::wait_indefinitely())
         .expect("upload");
@@ -109,9 +109,12 @@ fn main() {
         ];
         let camera = Camera::looking_at(eye, spawn, 73.74);
         let bones = player.bones_at(sequence, t, spawn, yaw).unwrap_or_default();
-        let vertices = player.mesh.skin(&bones);
+        let instance = Instance {
+            model,
+            vertices: player.mesh.skin(&bones),
+        };
         let view_projection = camera.view_projection(size[0] as f32 / size[1] as f32, 4., 8192.);
-        let (_, commands) = scene.render(&device, &queue, size, view_projection, &vertices);
+        let (_, commands) = scene.render(&device, &queue, size, view_projection, &[instance]);
         queue.submit([commands]);
         device
             .poll(wgpu::PollType::wait_indefinitely())
