@@ -103,6 +103,23 @@ pub struct WorldMesh {
     pub sky: String,
     /// What models are lit by
     pub light: LightTree,
+    /// Each BSP model's faces that take decals, the world's first
+    pub surfaces: Vec<Vec<Surface>>,
+}
+
+/// A face as decals see it, flat, with its texture axes and where its
+/// lightmap sits in the atlas
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Surface {
+    pub points: Vec<[f32; 3]>,
+    /// Facing the side the face is drawn on
+    pub normal: [f32; 3],
+    pub axes: [[f32; 4]; 2],
+    /// The atlas coordinates are `(lightmap[0] + s / 16, lightmap[1] + t /
+    /// 16)` over the atlas's size, none for a face at full brightness
+    pub lightmap: Option<[f32; 2]>,
+    pub style_step: f32,
+    pub styles: [u8; 4],
 }
 
 /// The map's entity text read into entities. Text outside quotes other than
@@ -235,6 +252,8 @@ struct Polygon {
     points: Vec<[f32; 3]>,
     light: FaceLight,
     axes: [[f32; 4]; 2],
+    /// Facing the side the face is drawn on
+    normal: [f32; 3],
     warp: bool,
 }
 
@@ -289,6 +308,7 @@ pub fn build(bsp: &BspDocument, wad_texture: &mut dyn FnMut(&str) -> Option<Rgba
     let surface_edges: Vec<i32> = bsp.surface_edges().map(|e| e.edge).collect();
     let texinfo: Vec<_> = bsp.texture_info().collect();
     let faces: Vec<_> = bsp.faces().collect();
+    let planes: Vec<[f32; 3]> = bsp.planes().map(|p| p.normal.map(|f| f.value)).collect();
     let lighting = bsp.lump(LumpKind::Lighting);
     let entities = entities(bsp.entity_bytes());
     let sky = worldspawn(&entities)
@@ -431,6 +451,13 @@ pub fn build(bsp: &BspDocument, wad_texture: &mut dyn FnMut(&str) -> Option<Rgba
                     at,
                 },
                 axes,
+                normal: planes.get(usize::from(face.plane)).map_or([0.; 3], |n| {
+                    if face.plane_side != 0 {
+                        n.map(|v| -v)
+                    } else {
+                        *n
+                    }
+                }),
                 warp,
             });
         }
@@ -473,6 +500,7 @@ pub fn build(bsp: &BspDocument, wad_texture: &mut dyn FnMut(&str) -> Option<Rgba
 
     // Triangles grouped by model and texture
     let mut out_vertices = Vec::new();
+    let mut surfaces: Vec<Vec<Surface>> = vec![Vec::new(); models.len()];
     let mut per_texture: Vec<Vec<Vec<u32>>> = vec![vec![Vec::new(); textures.len()]; models.len()];
     for polygon in &polygons {
         let Polygon {
@@ -481,11 +509,28 @@ pub fn build(bsp: &BspDocument, wad_texture: &mut dyn FnMut(&str) -> Option<Rgba
             points,
             light,
             axes,
+            normal,
             warp,
         } = polygon;
         let base = out_vertices.len() as u32;
         let [tw, th] = sizes.get(*texture).copied().unwrap_or([1., 1.]);
         let style_step = (light.size[0] + 2) as f32 / ATLAS_WIDTH as f32;
+        // Turbulent faces take no decals, as the game's do not
+        if !*warp && let Some(list) = surfaces.get_mut(*model) {
+            list.push(Surface {
+                points: points.clone(),
+                normal: *normal,
+                axes: *axes,
+                lightmap: light.data.as_ref().map(|_| {
+                    [
+                        light.at.0 as f32 + 1. - light.mins[0] + 0.5,
+                        light.at.1 as f32 + 1. - light.mins[1] + 0.5,
+                    ]
+                }),
+                style_step,
+                styles: light.styles,
+            });
+        }
         for p in points {
             let s = p[0] * axes[0][0] + p[1] * axes[0][1] + p[2] * axes[0][2] + axes[0][3];
             let t = p[0] * axes[1][0] + p[1] * axes[1][1] + p[2] * axes[1][2] + axes[1][3];
@@ -547,6 +592,7 @@ pub fn build(bsp: &BspDocument, wad_texture: &mut dyn FnMut(&str) -> Option<Rgba
         entities,
         sky,
         light: LightTree::build(bsp),
+        surfaces,
     }
 }
 

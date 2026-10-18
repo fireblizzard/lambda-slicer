@@ -17,6 +17,7 @@ pub mod animation;
 pub mod audio;
 pub mod checkpoint;
 pub mod controller;
+pub mod decals;
 pub mod events;
 pub mod playback;
 pub mod scene;

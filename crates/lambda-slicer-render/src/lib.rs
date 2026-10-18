@@ -9,6 +9,7 @@
 //! (docs/viewer-backend.md)
 
 pub mod camera;
+pub mod decal;
 pub mod gpu;
 pub mod light;
 pub mod load;

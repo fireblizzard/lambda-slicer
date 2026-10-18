@@ -457,7 +457,7 @@ SDK's `HUD_TempEntUpdate`, not yet compared with the game:
 | Blood sprite | a splash in the palette colour a little past the message's, playing through in a quarter of a second, and the message's size plus 2 to 16 drops flying out under half gravity in the colour before it, for 1 to 3 seconds |
 | Sprite spray | sprites flying along a direction with noise under half gravity, fading out in a third of a second |
 | Armour ricochet | the glint and one of `weapons/ric1.wav` to `5` |
-| Gunshot decal | one of the ricochets for half of them. The decal and its dust come with decals |
+| Gunshot decal | one of the ricochets for half of them, and the decal (below). Its dust is not drawn yet |
 | Model | a studio model thrown out and bouncing as a shell does, for its given life, with a shell's or shotgun shell's sounds when the message names one |
 
 A new session clears them all. Sprites take their colours from the game's palette
@@ -471,6 +471,31 @@ it makes, by model.
 | `naz_crossfire_pb_01.dem` | 0 to 300 s | 7 explosions (`zerogxplode.spr`) with their sounds, 6 smoke puffs, 78 blood splashes with 1,651 drops, 101 spark showers with 1,104 glints, 28 shells. 300 s mix in 3.7 s, against 3.2 s before |
 | `run_92.dem`, singleplayer | 0 to 100 s | 7 explosions, 61 blood splashes with 766 drops, 163 spark showers with 1,739 glints, 63 `muz1.spr` sprites, 35 `tinyspit.spr` sprays, 108 shells, and all five ricochets heard |
 
-Not yet: decals of every kind and the bullet impacts that make them (next), beams and tracers, the
-gibs of `TE_BREAKMODEL`, particles (the sparks' streaks and the explosions' flicker), and dynamic
-lights.
+### Decals
+
+**Observed:** no recording sends `svc_decalname`. The server names a decal by its place in
+`decals.wad`'s directory, and so does the client, both reading the same file. `valve/decals.wad`
+holds 222 and AG has none of its own. Read that way, the indices the demos send are the expected
+ones: `{BLOOD1` to `{BLOOD6` (27 to 32) where players bleed, `{SCORCH1` and `{SCORCH2` (176, 177)
+under explosions and `{YBLOOD` ones under aliens. Each decal texture keeps its colour in its
+palette's last entry, from white at index 0, and every texel's index is how much of it shows.
+
+**Implemented**, from the engine as Xash3D restates it, not yet compared with the game:
+
+| Part | How |
+|---|---|
+| Messages | world decals (`TE_WORLDDECAL`, and `HIGH` for the second 256), decals on an entity (`TE_DECAL`, `TE_DECALHIGH`), gunshot decals and map decals (`TE_BSPDECAL`, which names the brush model) |
+| Keeping | the newest 4096, oldest dropped first, cleared by a new session, kept in playback's state so a seek finds the same ones |
+| Brush entities | a decal on a door or other brush entity is kept in the brush's own space, so it moves with it. One aimed at any other entity is dropped, as the engine puts decals only on brushes |
+| Placement | the texture at one unit a texel, centred where it was aimed, right along each face's texture s axis and down along its t axis within the face's plane, on every face whose plane is within 4 units of the point (`DECAL_DISTANCE`). Each face is cut to the decal's square. Turbulent faces take none |
+| Drawing | over the face a tenth of a unit off it, blended by the texels' coverage, lit by the face's lightmaps and light styles, after the opaque world and brushes |
+
+Each decal is laid on the map once, when it first appears, and kept until playback drops it. After a
+seek far into the 32-player `20230909_224143_stalkyard.dem` the full 4096 are laid in 107 ms, once,
+and one new decal takes about 60 microseconds. The window sends all decals' triangles to the GPU
+again whenever one is made (55,000 vertices for 4096 decals).
+
+Not yet: the decals and impacts of bullets the clients' own weapon events fire, which trace through
+players and read the surface's material (next), player sprays (`TE_PLAYERDECAL`), beams and tracers,
+the gibs of `TE_BREAKMODEL`, particles (the sparks' streaks, the explosions' flicker and the dust of
+a gunshot), and dynamic lights.

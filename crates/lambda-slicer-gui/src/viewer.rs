@@ -27,6 +27,7 @@ use eframe::wgpu;
 use lambda_slicer_assets::Limits as AssetLimits;
 use lambda_slicer_assets::search::{SearchOptions, SearchPath};
 use lambda_slicer_assets::sprite::Sprite;
+use lambda_slicer_assets::wad::Wad;
 use lambda_slicer_assets::xenoxide::studio_pose::BoneTransform;
 use lambda_slicer_audio::device::{Device, Feed};
 use lambda_slicer_audio::library::Library;
@@ -50,6 +51,7 @@ use lambda_slicer_render::load::{self, EntityPose, GaitPose, LoadError, LoadedMo
 use lambda_slicer_render::model::ModelMesh;
 use lambda_slicer_render::world::{self, WorldMesh};
 
+use crate::decals::DecalCache;
 use crate::i18n::Catalog;
 use crate::layout;
 use crate::text::{self, Look};
@@ -260,6 +262,7 @@ pub struct Viewer {
     flashes_to: f64,
     /// The game's palette, for blood's colours
     palette: Vec<[u8; 3]>,
+    decals: DecalCache,
 }
 
 /// The demo's game folder, from its header
@@ -324,6 +327,10 @@ impl Viewer {
             move || repaint.request_repaint(),
         );
         let palette = library.as_ref().map(|l| l.palette()).unwrap_or_default();
+        let decal_wad = library
+            .as_ref()
+            .and_then(|l| l.read("decals.wad"))
+            .and_then(|bytes| Wad::parse(bytes, AssetLimits::default()).ok());
         let quiet = bench.is_some() || capture.is_some();
         let sound = library.filter(|_| !quiet).and_then(|l| {
             let tap = std::env::var_os("LAMBDA_SLICER_SOUND_TAP").map(PathBuf::from);
@@ -366,6 +373,7 @@ impl Viewer {
             last_frame: None,
             flashes_to: f64::NEG_INFINITY,
             palette,
+            decals: DecalCache::new(decal_wad),
         }
     }
 
@@ -415,6 +423,7 @@ impl Viewer {
                     let LoadedMap { mut world, sky } = *map;
                     self.light = Some(Arc::new(std::mem::take(&mut world.light)));
                     resources.scene.set_world(device, queue, &world);
+                    self.decals.set_world(Arc::new(world));
                     resources.scene.set_sky(device, queue, sky.as_ref());
                     self.map = Some(name);
                     self.map_loading = None;
@@ -621,6 +630,7 @@ impl Viewer {
             instances,
             sprites,
             viewmodel,
+            decals: self.decals.mesh(),
         }
     }
 
@@ -780,6 +790,9 @@ impl Viewer {
     pub fn ui(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool, height: f32) {
         self.poll();
         self.request_assets();
+        if let Some(frame) = &self.frame {
+            self.decals.update(&frame.decals, frame.decal_revision);
+        }
         let ctx = ui.ctx().clone();
         let (capture_size, captured) = self.step_capture();
         if captured {

@@ -17,9 +17,13 @@
 //! its light style's brightness, and animated textures at their frame for
 //! the time
 
+use std::collections::HashMap;
+use std::sync::Arc;
+
 use wgpu::util::DeviceExt;
 
 use crate::Rgba;
+use crate::decal::{DecalBatch, DecalMesh};
 use lambda_slicer_assets::sprite::{self, Orientation};
 
 use crate::camera::{Matrix, angle_vectors, entity_matrix};
@@ -111,10 +115,12 @@ fn world_fs(v: WorldOut) -> @location(0) vec4<f32> {
     if (mode == 1u) {
         return vec4<f32>(object.color.rgb, object.color.a);
     }
-    if (mode == 3u || mode == 5u) {
+        if (mode == 3u || mode == 5u) {
         return vec4<f32>(a.rgb * object.color.a, 1.0);
     }
-    if (a.a < 0.5) {
+    // Decals show as much as their texels say, over the face
+    let decal = mode == 6u;
+    if (!decal && a.a < 0.5) {
         discard;
     }
 
@@ -127,7 +133,10 @@ fn world_fs(v: WorldOut) -> @location(0) vec4<f32> {
         let offset = vec2<f32>(f32(k) * v.style_step, 0.0);
         light = light + textureSample(lightmap, lightmap_sampler, v.lightmap_uv + offset).rgb * style_value(s);
     }
-    let lit = min(a.rgb * light * u.params.x, vec3<f32>(1.0));
+        let lit = min(a.rgb * light * u.params.x, vec3<f32>(1.0));
+    if (decal) {
+        return vec4<f32>(lit, a.a);
+    }
     if (mode == 2u) {
         return vec4<f32>(lit, object.color.a);
     }
@@ -358,6 +367,16 @@ pub struct View {
     pub light_styles: [f32; 64],
 }
 
+/// The render mode the world's shader takes for decals
+const DECAL_MODE: f32 = 6.;
+
+struct DecalGpu {
+    revision: u64,
+    vertices: wgpu::Buffer,
+    batches: Vec<DecalBatch>,
+    bytes: u64,
+}
+
 struct WorldGpu {
     vertices: wgpu::Buffer,
     indices: wgpu::Buffer,
@@ -448,6 +467,9 @@ pub struct DrawList {
     pub sprites: Vec<SpriteInstance>,
     /// The first-person weapon, drawn over everything
     pub viewmodel: Vec<Instance>,
+    /// The decals on the world and brush entities, uploaded again when
+    /// their revision changes
+    pub decals: Option<Arc<DecalMesh>>,
 }
 
 #[repr(C)]
@@ -586,6 +608,9 @@ pub struct Scene {
     pipelines: Pipelines,
     world: Option<WorldGpu>,
     world_bytes: u64,
+    decals: Option<DecalGpu>,
+    /// Decal textures by their place in `decals.wad`
+    decal_textures: HashMap<u16, wgpu::BindGroup>,
     sky: Option<SkyGpu>,
     sky_bytes: u64,
     models: Vec<ModelGpu>,
@@ -918,6 +943,8 @@ impl Scene {
             pipelines,
             world: None,
             world_bytes: 0,
+            decals: None,
+            decal_textures: HashMap::new(),
             sky: None,
             sky_bytes: 0,
             models: Vec::new(),
@@ -989,6 +1016,9 @@ impl Scene {
     pub fn set_world(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, mesh: &WorldMesh) {
         self.world = None;
         self.gpu_bytes -= self.world_bytes;
+        if let Some(decals) = self.decals.take() {
+            self.gpu_bytes -= decals.bytes;
+        }
         let before = self.gpu_bytes;
 
         let vertices = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -1311,8 +1341,9 @@ impl Scene {
 
     /// Each brush's object uniform at its own offset, the buffer grown as
     /// needed
+    /// Each brush's object, then each brush's again for its decals
     fn upload_objects(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, brushes: &[Brush]) {
-        let needed = brushes.len().max(1) as u64;
+        let needed = (brushes.len() * 2).max(1) as u64;
         if needed > self.object_capacity {
             let capacity = needed.next_power_of_two();
             self.gpu_bytes =
@@ -1322,13 +1353,21 @@ impl Scene {
             self.object_capacity = capacity;
         }
 
-        let mut bytes = vec![0u8; brushes.len() * OBJECT_STRIDE as usize];
-        for (i, brush) in brushes.iter().enumerate() {
-            let object = ObjectUniform {
+        let mut bytes = vec![0u8; brushes.len() * 2 * OBJECT_STRIDE as usize];
+        let decals = brushes.iter().map(|brush| ObjectUniform {
+            model: entity_matrix(brush.origin, brush.angles),
+            color: [1.; 4],
+            mode: [DECAL_MODE, 0., 0., 0.],
+        });
+        let objects = brushes
+            .iter()
+            .map(|brush| ObjectUniform {
                 model: entity_matrix(brush.origin, brush.angles),
                 color: [brush.color[0], brush.color[1], brush.color[2], brush.amount],
                 mode: [brush.mode.code(), 0., 0., 0.],
-            };
+            })
+            .chain(decals);
+        for (i, object) in objects.enumerate() {
             let at = i * OBJECT_STRIDE as usize;
             bytes[at..at + std::mem::size_of::<ObjectUniform>()]
                 .copy_from_slice(bytemuck::bytes_of(&object));
@@ -1336,6 +1375,53 @@ impl Scene {
         if !bytes.is_empty() {
             queue.write_buffer(&self.objects, 0, &bytes);
         }
+    }
+
+    /// The decals' triangles and any textures they bring, when they changed
+    fn upload_decals(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        mesh: Option<&DecalMesh>,
+    ) {
+        let Some(mesh) = mesh else {
+            if let Some(old) = self.decals.take() {
+                self.gpu_bytes -= old.bytes;
+            }
+            return;
+        };
+        if self
+            .decals
+            .as_ref()
+            .is_some_and(|d| d.revision == mesh.revision)
+        {
+            return;
+        }
+        for (index, image) in mesh.textures.iter() {
+            if !self.decal_textures.contains_key(index) {
+                let group = self.texture(device, queue, image, false);
+                self.decal_textures.insert(*index, group);
+            }
+        }
+        if let Some(old) = self.decals.take() {
+            self.gpu_bytes -= old.bytes;
+        }
+        if mesh.vertices.is_empty() {
+            return;
+        }
+        let vertices = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("decal vertices"),
+            contents: bytemuck::cast_slice(&mesh.vertices),
+            usage: wgpu::BufferUsages::VERTEX,
+        });
+        let bytes = std::mem::size_of_val(mesh.vertices.as_slice()) as u64;
+        self.gpu_bytes += bytes;
+        self.decals = Some(DecalGpu {
+            revision: mesh.revision,
+            vertices,
+            batches: mesh.batches.clone(),
+            bytes,
+        });
     }
 
     /// One frame at `size` of everything in `draw`. Returns whether the
@@ -1373,6 +1459,7 @@ impl Scene {
         let instances = &draw.instances;
         let sprites = self.upload_sprites(device, queue, view, &draw.sprites);
         self.upload_objects(device, queue, brushes);
+        self.upload_decals(device, queue, draw.decals.as_deref());
 
         // Translucent brushes from the furthest in
         let distance = |b: &Brush| {
@@ -1450,6 +1537,23 @@ impl Scene {
                 for (i, brush) in brushes.iter().enumerate() {
                     if brush.mode.pass() == Pass::Opaque {
                         draw_brush(&mut pass, world, i);
+                    }
+                }
+            }
+
+            // Decals over the world and the brushes that carry them
+            if let (Some(world), Some(decals)) = (&self.world, &self.decals) {
+                pass.set_pipeline(&self.pipelines.blend);
+                pass.set_vertex_buffer(0, decals.vertices.slice(..));
+                pass.set_bind_group(2, &world.lightmap, &[]);
+                for (i, brush) in brushes.iter().enumerate() {
+                    let offset = ((brushes.len() + i) as u64 * OBJECT_STRIDE) as u32;
+                    pass.set_bind_group(3, &self.object_group, &[offset]);
+                    for b in decals.batches.iter().filter(|b| b.model == brush.model) {
+                        if let Some(texture) = self.decal_textures.get(&b.texture) {
+                            pass.set_bind_group(1, texture, &[]);
+                            pass.draw(b.first..b.first + b.count, 0..1);
+                        }
                     }
                 }
             }

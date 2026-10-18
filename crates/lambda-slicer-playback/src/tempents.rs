@@ -557,8 +557,8 @@ impl TempEntities {
                 }
             }
             kind::GUNSHOT_DECAL => {
-                // The decal and the dust come with decals. Half the shots
-                // ricochet
+                // The decal is laid with the others and the dust is not
+                // drawn yet. Half the shots ricochet
                 let origin = b.vector();
                 if random.long(0, 0x7fff) < 0x3fff {
                     sounds.push(ricochet_sound(origin, &mut random));

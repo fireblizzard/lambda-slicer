@@ -9,7 +9,7 @@
 //! decode error stops playback where it happened, and the frames from then
 //! on say why
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, VecDeque};
 use std::path::Path;
 use std::sync::{Arc, MutexGuard};
 
@@ -25,6 +25,7 @@ use crate::animation::{Animations, Fired, Flash, IN_EYE, Sequence};
 use crate::audio::{Audio, CHAN_AUTO, Channel, SoundLength, SoundName, UNKNOWN_LIMIT, view_entity};
 use crate::checkpoint::{self, Checkpoint, Checkpoints, State};
 use crate::controller::{CameraMode, Stamp};
+use crate::decals::{Decal, Decals};
 use crate::events::{ATTN_NORM, Action, ClientEvent, Events, PITCH_NORM, SoundCall, handle};
 use crate::scene::{self, Camera, Entity, PlayerView, Scene, Viewmodel};
 use crate::source::{Cursor, Group, Source};
@@ -75,6 +76,10 @@ pub struct PresentedFrame {
     pub flashes: Vec<Flash>,
     /// The client's own sprites and models, shells among them
     pub temp_entities: Vec<TempEntity>,
+    /// The decals on the map, oldest first
+    pub decals: Arc<VecDeque<Decal>>,
+    /// Grows whenever a decal is made or they are cleared
+    pub decal_revision: u64,
 }
 
 type Lengths = Box<dyn Fn(&SoundName) -> SoundLength + Send>;
@@ -126,6 +131,7 @@ impl Playback {
             events: Events::default(),
             animations: Animations::default(),
             tempents: TempEntities::default(),
+            decals: Decals::default(),
             position: None,
             reach: SourceTime::ZERO,
             exhausted: false,
@@ -273,6 +279,7 @@ impl Playback {
             audio,
             events,
             tempents,
+            decals,
             stopped,
             ..
         } = &mut self.state;
@@ -290,13 +297,18 @@ impl Playback {
                 FrameBody::Network(frame) => {
                     let audio = &mut *effects.audio;
                     let tempents = &mut *effects.tempents;
+                    let decals = &mut *decals;
                     let applied = decoder.network_frame(record.location, frame, |d, m| {
                         scene.on_message(d, m, time);
                         audio.on_message(d, m, time, lengths);
                         match &m.message {
-                            protocol::Message::ServerInfo(_) => tempents.clear(),
+                            protocol::Message::ServerInfo(_) => {
+                                tempents.clear();
+                                decals.clear();
+                            }
                             protocol::Message::TempEntity { kind, body } => {
                                 let model = |index: i16| precached_model(d, index);
+                                decals.message(*kind, body, scene, &model);
                                 let lookup = Lookup {
                                     model: &model,
                                     frames,
@@ -509,6 +521,8 @@ impl Playback {
                 .filter(|f| f.time <= at)
                 .copied()
                 .collect(),
+            decals: state.decals.list().clone(),
+            decal_revision: state.decals.revision,
             temp_entities: state
                 .tempents
                 .entities()

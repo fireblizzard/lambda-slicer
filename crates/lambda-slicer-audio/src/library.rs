@@ -143,6 +143,15 @@ impl Library {
         hull
     }
 
+    /// The file at `path` through the search path, none when it is not
+    /// there
+    pub fn read(&self, path: &str) -> Option<Vec<u8>> {
+        self.search
+            .find(path)
+            .and_then(|found| self.search.read(&found))
+            .ok()
+    }
+
     /// The game's palette (`gfx/palette.lmp`), empty when it cannot be read
     pub fn palette(&self) -> Vec<[u8; 3]> {
         let bytes = self

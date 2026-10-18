@@ -32,6 +32,7 @@
 
 mod app;
 mod clips;
+mod decals;
 mod demo;
 mod export;
 mod i18n;
