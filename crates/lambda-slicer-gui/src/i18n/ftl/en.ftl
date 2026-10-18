@@ -200,6 +200,7 @@ scores-deaths = Deaths
 show-timeline = Show timeline
 viewer-play = Play
 viewer-pause = Pause
+viewer-volume = Volume
 legend-shot = Shot
 legend-charge = Charging
 legend-kill = Kill

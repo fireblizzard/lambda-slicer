@@ -18,6 +18,7 @@ use std::sync::Arc;
 
 use lambda_slicer_assets::wav::Sound;
 use lambda_slicer_playback::audio::{Channel, SoundName};
+use lambda_slicer_playback::playback::Playback;
 use lambda_slicer_playback::time::SourceTime;
 
 /// The game's `sound_nominal_clip_dist`
@@ -31,6 +32,30 @@ pub struct Listener {
     pub right: [f32; 3],
     /// The entity it views from, whose sounds are not placed
     pub entity: u16,
+}
+
+impl Listener {
+    /// Where `playback`'s recorder hears from
+    pub fn of(playback: &Playback) -> Self {
+        let camera = &playback.scene().camera;
+        Self {
+            origin: camera.origin,
+            right: right_of(camera.angles),
+            entity: camera
+                .view_entity
+                .unwrap_or(u16::from(playback.decoder().player_num) + 1),
+        }
+    }
+}
+
+/// The game's right for view angles in degrees, as `AngleVectors` turns
+/// them
+pub fn right_of(angles: [f32; 3]) -> [f32; 3] {
+    let [p, y, r] = angles.map(f32::to_radians);
+    let (sp, cp) = p.sin_cos();
+    let (sy, cy) = y.sin_cos();
+    let (sr, cr) = r.sin_cos();
+    [-sr * sp * cy + cr * sy, -sr * sp * sy - cr * cy, -sr * cp]
 }
 
 /// A channel's left and right gains for this listener
@@ -146,6 +171,29 @@ pub fn mix(
         *sample = sample.map(|v| v.clamp(-1., 1.));
     }
     out
+}
+
+/// Stereo samples as a 16-bit WAV file, for listening to a mix
+pub fn write_wav(path: &std::path::Path, rate: u32, samples: &[[f32; 2]]) -> std::io::Result<()> {
+    let data: Vec<u8> = samples
+        .iter()
+        .flat_map(|s| s.map(|v| (v.clamp(-1., 1.) * 32767.) as i16))
+        .flat_map(i16::to_le_bytes)
+        .collect();
+    let mut out = b"RIFF".to_vec();
+    out.extend((36 + data.len() as u32).to_le_bytes());
+    out.extend(b"WAVEfmt ");
+    out.extend(16u32.to_le_bytes());
+    out.extend(1u16.to_le_bytes());
+    out.extend(2u16.to_le_bytes());
+    out.extend(rate.to_le_bytes());
+    out.extend((rate * 4).to_le_bytes());
+    out.extend(4u16.to_le_bytes());
+    out.extend(16u16.to_le_bytes());
+    out.extend(b"data");
+    out.extend((data.len() as u32).to_le_bytes());
+    out.extend(data);
+    std::fs::write(path, out)
 }
 
 #[cfg(test)]

@@ -1,0 +1,326 @@
+//! The mix sent to the system's default output device
+//!
+//! The window publishes what is playing in a [`Feed`] every frame, the demo
+//! the worker has open, the playback clock and whether sound is heard. A
+//! mixing thread runs a playback of its own of the same demo, sharing the
+//! worker's checkpoints so a seek finds its place quickly, and moves it to
+//! the end of each block of 10 ms before mixing the channels it then has.
+//! Every block hears exactly the sounds playing during it, however late
+//! the window's frames come. The device's callback copies blocks out. It
+//! takes no lock the mixer holds for long, reads no file and frees nothing,
+//! as the blocks go back to the mixer to be filled again.
+//!
+//! The mixer keeps its own place in source time and follows the clock,
+//! starting again from it after a seek, a load, a pause or when it falls
+//! more than [`DRIFT`] away. While paused, seeking or stepping it plays
+//! silence, and the device's own latency comes on top
+
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::mpsc::{self, Receiver, SyncSender, TryRecvError};
+use std::sync::{Arc, Mutex};
+use std::thread::JoinHandle;
+use std::time::{Duration, Instant};
+
+use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use lambda_slicer_playback::controller::Stamp;
+use lambda_slicer_playback::playback::Playback;
+use lambda_slicer_playback::time::{Clock, SourceTime};
+use lambda_slicer_playback::worker::Loaded;
+
+use crate::library::Library;
+use crate::mixer::{Listener, Output, mix, write_wav};
+
+/// How far the mixer may drift from the clock before it starts again
+pub const DRIFT: f64 = 0.04;
+
+/// Blocks of 10 ms queued ahead of the device
+const QUEUED: usize = 4;
+
+/// What is playing, as the window last saw it
+#[derive(Clone)]
+pub struct Feed {
+    pub stamp: Stamp,
+    /// The demo open in the worker, which must be of the stamp's generation
+    pub demo: Loaded,
+    pub clock: Clock,
+    /// The instant the clock's wall time counts from
+    pub clock_base: Instant,
+    /// Sound is heard, playing forward
+    pub audible: bool,
+}
+
+/// Sound playing on the default output device until dropped
+pub struct Device {
+    _stream: cpal::Stream,
+    feed: Arc<Mutex<Option<Feed>>>,
+    volume: Arc<AtomicU32>,
+    stop: Arc<AtomicBool>,
+    mixer: Option<JoinHandle<()>>,
+}
+
+impl Device {
+    /// Open the default output device, mixing `library`'s sounds. With
+    /// `tap`, every block from the first heard on is written there as a WAV
+    /// file when the device closes, for checking the mix, and the device
+    /// plays silence at the same pace
+    pub fn open(library: Arc<Library>, tap: Option<PathBuf>) -> Result<Self, String> {
+        let host = cpal::default_host();
+        let device = host
+            .default_output_device()
+            .ok_or_else(|| "no output device".to_owned())?;
+        let config = device.default_output_config().map_err(|e| e.to_string())?;
+        let rate = config.sample_rate();
+        let channels = usize::from(config.channels());
+        let block = (rate / 100).max(1) as usize;
+
+        let (filled_tx, filled_rx) = mpsc::sync_channel::<Vec<[f32; 2]>>(QUEUED);
+        let (empty_tx, empty_rx) = mpsc::sync_channel::<Vec<[f32; 2]>>(QUEUED + 2);
+        for _ in 0..QUEUED + 2 {
+            let _ = empty_tx.try_send(Vec::with_capacity(block));
+        }
+
+        let muted = tap.is_some();
+        let mut current: Option<Vec<[f32; 2]>> = None;
+        let mut read = 0;
+        let stream = device
+            .build_output_stream(
+                config.config(),
+                move |out: &mut [f32], _| {
+                    for frame in out.chunks_mut(channels) {
+                        if current.as_ref().is_none_or(|b| read >= b.len()) {
+                            if let Some(done) = current.take() {
+                                let _ = empty_tx.try_send(done);
+                            }
+                            current = filled_rx.try_recv().ok();
+                            read = 0;
+                        }
+                        let sample = current
+                            .as_ref()
+                            .and_then(|b| b.get(read))
+                            .copied()
+                            .unwrap_or([0.; 2]);
+                        read += 1;
+                        for (i, value) in frame.iter_mut().enumerate() {
+                            *value = if i < 2 && !muted { sample[i] } else { 0. };
+                        }
+                    }
+                },
+                |e| eprintln!("sound: {e}"),
+                None,
+            )
+            .map_err(|e| e.to_string())?;
+        stream.play().map_err(|e| e.to_string())?;
+
+        let feed = Arc::new(Mutex::new(None));
+        let volume = Arc::new(AtomicU32::new(0.5f32.to_bits()));
+        let stop = Arc::new(AtomicBool::new(false));
+        let mixer = {
+            let (feed, volume, stop) = (feed.clone(), volume.clone(), stop.clone());
+            std::thread::Builder::new()
+                .name("sound mixer".into())
+                .spawn(move || {
+                    let tapped = run(
+                        library,
+                        feed,
+                        volume,
+                        stop,
+                        rate,
+                        block,
+                        filled_tx,
+                        empty_rx,
+                        tap.is_some(),
+                    );
+                    if let Some(path) = tap
+                        && let Err(e) = write_wav(&path, rate, &tapped)
+                    {
+                        eprintln!("sound: {}: {e}", path.display());
+                    }
+                })
+                .map_err(|e| e.to_string())?
+        };
+
+        Ok(Self {
+            _stream: stream,
+            feed,
+            volume,
+            stop,
+            mixer: Some(mixer),
+        })
+    }
+
+    /// Publish what is playing now
+    pub fn feed(&self, feed: Feed) {
+        *self.feed.lock().unwrap_or_else(|e| e.into_inner()) = Some(feed);
+    }
+
+    /// The master volume, 0 to 1
+    pub fn set_volume(&self, volume: f32) {
+        self.volume
+            .store(volume.clamp(0., 1.).to_bits(), Ordering::Relaxed);
+    }
+
+    pub fn volume(&self) -> f32 {
+        f32::from_bits(self.volume.load(Ordering::Relaxed))
+    }
+}
+
+impl Drop for Device {
+    fn drop(&mut self) {
+        self.stop.store(true, Ordering::Relaxed);
+        if let Some(mixer) = self.mixer.take() {
+            let _ = mixer.join();
+        }
+    }
+}
+
+/// Where the next block starts in source time. The mixer goes on from where
+/// it is unless a seek or load came in between or it drifted more than
+/// [`DRIFT`] from `wanted`, where the clock says it should be
+fn block_start(place: Option<(Stamp, SourceTime)>, stamp: Stamp, wanted: SourceTime) -> SourceTime {
+    match place {
+        Some((at_stamp, at)) if at_stamp == stamp && (at.0 - wanted.0).abs() <= DRIFT => at,
+        _ => wanted,
+    }
+}
+
+/// The source time `feed`'s clock gives at `instant`
+fn clock_at(feed: &Feed, instant: Instant) -> SourceTime {
+    let wall = instant
+        .saturating_duration_since(feed.clock_base)
+        .as_secs_f64();
+    feed.clock.at(wall)
+}
+
+/// The mixer's own playback, for one load generation. None when the demo
+/// could not be opened
+type Own = Option<(u64, Option<Playback>)>;
+
+/// Move the mixer's playback of `demo` to `time`, opening it on a new
+/// generation, and the channels and listener it then has
+fn advance<'a>(
+    own: &'a mut Own,
+    demo: &Loaded,
+    library: &Arc<Library>,
+    time: SourceTime,
+) -> Option<&'a Playback> {
+    if own
+        .as_ref()
+        .is_none_or(|(generation, _)| *generation != demo.generation)
+    {
+        let opened = Playback::open_with(&demo.demo, demo.limits, demo.checkpoints.clone())
+            .inspect_err(|e| eprintln!("sound: {e:?}"))
+            .ok()
+            .map(|mut playback| {
+                let lengths = library.lengths();
+                playback.set_sound_lengths(move |name| lengths(name));
+                playback
+            });
+        *own = Some((demo.generation, opened));
+    }
+    let playback = own.as_mut()?.1.as_mut()?;
+    playback.advance_to(time).ok()?;
+    Some(playback)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn run(
+    library: Arc<Library>,
+    feed: Arc<Mutex<Option<Feed>>>,
+    volume: Arc<AtomicU32>,
+    stop: Arc<AtomicBool>,
+    rate: u32,
+    block: usize,
+    filled: SyncSender<Vec<[f32; 2]>>,
+    empty: Receiver<Vec<[f32; 2]>>,
+    tapping: bool,
+) -> Vec<[f32; 2]> {
+    let mut tapped = Vec::new();
+    // Where the mixer is in source time, for which load and seek, none
+    // while silent
+    let mut place: Option<(Stamp, SourceTime)> = None;
+    let mut own: Own = None;
+    let sound = |name: &_| library.sound(name);
+
+    while !stop.load(Ordering::Relaxed) {
+        let mut buffer = match empty.try_recv() {
+            Ok(b) => b,
+            Err(TryRecvError::Empty) => {
+                std::thread::sleep(Duration::from_millis(2));
+                continue;
+            }
+            Err(TryRecvError::Disconnected) => break,
+        };
+        buffer.clear();
+
+        let now = feed.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        let playing = now
+            .filter(|f| f.audible && f.clock.playing() && f.demo.generation == f.stamp.generation);
+        let mixed = playing.and_then(|f| {
+            // The block is heard once the queued blocks before it are
+            let heard = Instant::now()
+                + Duration::from_secs_f64(QUEUED as f64 * block as f64 / f64::from(rate));
+            let from = block_start(place, f.stamp, clock_at(&f, heard));
+            let speed = f.clock.rate().factor();
+            let to = SourceTime(from.0 + block as f64 * speed / f64::from(rate));
+            let playback = advance(&mut own, &f.demo, &library, to)?;
+            let output = Output {
+                rate,
+                speed,
+                volume: f32::from_bits(volume.load(Ordering::Relaxed)),
+            };
+            let channels = playback.audio().channels();
+            buffer.extend(mix(
+                channels,
+                &sound,
+                &Listener::of(playback),
+                from,
+                block,
+                &output,
+            ));
+            Some((f.stamp, to))
+        });
+        place = mixed;
+        if place.is_none() {
+            buffer.clear();
+            buffer.resize(block, [0.; 2]);
+        }
+        if tapping && (place.is_some() || !tapped.is_empty()) {
+            tapped.extend_from_slice(&buffer);
+        }
+        if filled.send(buffer).is_err() {
+            break;
+        }
+    }
+    tapped
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn blocks_follow_on_until_a_seek_or_drift() {
+        let stamp = Stamp {
+            generation: 1,
+            revision: 2,
+        };
+        let at = SourceTime(10.);
+        // Close to the clock, the mixer goes on from where it is
+        assert_eq!(block_start(Some((stamp, at)), stamp, SourceTime(10.03)), at);
+        // Too far, after a seek, or from silence, it starts at the clock
+        assert_eq!(
+            block_start(Some((stamp, at)), stamp, SourceTime(10.05)),
+            SourceTime(10.05)
+        );
+        let seek = Stamp {
+            revision: 3,
+            ..stamp
+        };
+        assert_eq!(
+            block_start(Some((stamp, at)), seek, SourceTime(10.01)),
+            SourceTime(10.01)
+        );
+        assert_eq!(block_start(None, stamp, SourceTime(3.)), SourceTime(3.));
+    }
+}

@@ -110,6 +110,12 @@ impl Controller {
         self.clock.playing()
     }
 
+    /// The clock, for whatever follows the playhead on its own, such as
+    /// sound
+    pub fn clock(&self) -> Clock {
+        self.clock
+    }
+
     pub fn rate(&self) -> Rate {
         self.clock.rate()
     }

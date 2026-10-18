@@ -11,7 +11,9 @@
 //! in short slices to add checkpoints, so later seeks start nearby. A new
 //! request waits for one slice at most
 
+use std::path::Path;
 use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
+use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 
 use lambda_slicer_core::container::Limits;
@@ -24,6 +26,17 @@ pub struct Worker {
     requests: Option<Sender<Request>>,
     replies: Receiver<Reply>,
     thread: Option<JoinHandle<()>>,
+    loaded: Arc<Mutex<Option<Loaded>>>,
+}
+
+/// The demo the worker has open, for another playback of it to share its
+/// checkpoints
+#[derive(Clone)]
+pub struct Loaded {
+    pub generation: u64,
+    pub demo: Arc<Path>,
+    pub checkpoints: crate::checkpoint::Shared,
+    pub limits: Limits,
 }
 
 impl Worker {
@@ -41,16 +54,19 @@ impl Worker {
         notify: impl Fn() + Send + 'static,
     ) -> Self {
         let (request_tx, request_rx) = mpsc::channel::<Request>();
+        let loaded = Arc::new(Mutex::new(None));
+        let thread_loaded = loaded.clone();
         let (reply_tx, reply_rx) = mpsc::channel();
         let thread = std::thread::Builder::new()
             .name("playback".into())
-            .spawn(move || run(limits, lengths, request_rx, reply_tx, notify))
+            .spawn(move || run(limits, lengths, request_rx, reply_tx, thread_loaded, notify))
             .expect("spawn playback worker");
 
         Self {
             requests: Some(request_tx),
             replies: reply_rx,
             thread: Some(thread),
+            loaded,
         }
     }
 
@@ -58,6 +74,14 @@ impl Worker {
         if let Some(tx) = &self.requests {
             let _ = tx.send(request);
         }
+    }
+
+    /// The demo open now and its checkpoints
+    pub fn loaded(&self) -> Option<Loaded> {
+        self.loaded
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
     }
 
     /// Replies waiting, oldest first
@@ -90,6 +114,7 @@ fn run(
     lengths: Option<SoundLengths>,
     requests: Receiver<Request>,
     replies: Sender<Reply>,
+    loaded: Arc<Mutex<Option<Loaded>>>,
     notify: impl Fn(),
 ) {
     let open = |path: &std::path::Path, store: Option<crate::checkpoint::Shared>| {
@@ -139,6 +164,12 @@ fn run(
             match open(&path, None) {
                 Ok(p) => {
                     indexer = open(&path, Some(p.checkpoints().clone())).ok();
+                    *loaded.lock().unwrap_or_else(|e| e.into_inner()) = Some(Loaded {
+                        generation: newest.stamp.generation,
+                        demo: Arc::from(path.as_path()),
+                        checkpoints: p.checkpoints().clone(),
+                        limits,
+                    });
                     playback = Some((newest.stamp.generation, p));
                 }
                 Err(message) => {

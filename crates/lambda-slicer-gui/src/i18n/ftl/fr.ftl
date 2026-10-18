@@ -204,6 +204,7 @@ scores-deaths = Morts
 show-timeline = Afficher la frise
 viewer-play = Lecture
 viewer-pause = Pause
+viewer-volume = Volume
 legend-shot = Tir
 legend-charge = Charge
 legend-kill = Élimination

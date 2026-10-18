@@ -199,6 +199,7 @@ scores-deaths = Tode
 show-timeline = Zeitleiste zeigen
 viewer-play = Abspielen
 viewer-pause = Pause
+viewer-volume = Lautstärke
 legend-shot = Schuss
 legend-charge = Aufladen
 legend-kill = Abschuss

@@ -199,6 +199,7 @@ scores-deaths = Ölümler
 show-timeline = Zaman çizelgesini göster
 viewer-play = Oynat
 viewer-pause = Duraklat
+viewer-volume = Ses düzeyi
 legend-shot = Atış
 legend-charge = Şarj
 legend-kill = Öldürme

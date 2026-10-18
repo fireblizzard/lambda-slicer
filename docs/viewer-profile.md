@@ -332,3 +332,34 @@ recorder's view:
 
 Not yet: sentences, sounds that follow their entity as it moves (each stays where it started),
 room effects, and the sounds the game's client makes itself for weapon events (10c).
+
+## Sound output (10b)
+
+The demo view plays sound on the system's default output device while playing forward, with a
+volume slider beside the controls. `lambda-slicer-audio`'s `device` feature holds the output, through
+`cpal` (WASAPI on Windows, ALSA on Linux).
+
+| Part | How |
+|---|---|
+| Timing | a mixing thread keeps a playback of its own of the demo the worker has open, sharing the worker's checkpoints, and moves it to the end of each 10 ms block before mixing the channels it then has. Each block hears the sounds playing during it, whenever the window's frames come |
+| Clock | each block is placed where the playback clock will be once the blocks queued before it are heard, four of them. The mixer goes on from its own place unless a load or seek comes or it falls more than 40 ms from the clock |
+| Silence | while paused, seeking, stepping or before the demo is open, and at the start of each new load |
+| Device | the callback copies finished blocks out and returns them to the mixer to be filled again, with no file read, no lock held for long and nothing freed |
+| Listener | the recorder's view at the end of the block, the entity it views from heard as its own |
+
+`LAMBDA_SLICER_SOUND_TAP=FILE` with `--viewer-play SECONDS` writes every block from the first heard
+on to a WAV file, the device playing silence at the same pace, for comparing with
+`examples/mix_probe.rs`.
+
+**Measured (2026-10-18)** on Windows, `stalkx_naz_248.dem` played 8 s from 20 s at 44.1 kHz, the tap
+compared with `mix_probe` at the same rate and a master volume of 0.7 against the device's 0.5:
+
+| Check | Result |
+|---|---|
+| Alignment | one offset for the whole tap, every half second at the same sample |
+| Level in 50 ms windows | 110 windows with sound, ratio 0.702 to 0.719 for the expected 0.714 |
+| Difference left | 0.002 RMS against a signal of 0.057, from block edges falling at other times |
+
+Before the mixer had a playback of its own it mixed the channels of the frame last shown, and
+sounds shorter than a window frame came late or not at all (windows down to 0.17 of the expected
+level).

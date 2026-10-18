@@ -204,6 +204,7 @@ scores-deaths = Morti
 show-timeline = Mostra la timeline
 viewer-play = Riproduci
 viewer-pause = Pausa
+viewer-volume = Volume
 legend-shot = Colpo
 legend-charge = Carica
 legend-kill = Uccisione

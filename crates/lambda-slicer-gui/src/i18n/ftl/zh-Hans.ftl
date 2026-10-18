@@ -194,6 +194,7 @@ scores-deaths = 死亡
 show-timeline = 显示时间线
 viewer-play = 播放
 viewer-pause = 暂停
+viewer-volume = 音量
 legend-shot = 射击
 legend-charge = 蓄力
 legend-kill = 击杀

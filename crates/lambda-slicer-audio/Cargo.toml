@@ -6,8 +6,13 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+cpal = { version = "0.18.2", optional = true }
 lambda-slicer-assets.workspace = true
 lambda-slicer-playback.workspace = true
 
 [dev-dependencies]
 lambda-slicer-core.workspace = true
+
+[features]
+# Sound output to the system's default device
+device = ["dep:cpal"]

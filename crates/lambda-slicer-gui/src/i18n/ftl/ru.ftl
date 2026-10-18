@@ -209,6 +209,7 @@ scores-deaths = Смерти
 show-timeline = Показать шкалу времени
 viewer-play = Воспроизвести
 viewer-pause = Пауза
+viewer-volume = Громкость
 legend-shot = Выстрел
 legend-charge = Зарядка
 legend-kill = Убийство

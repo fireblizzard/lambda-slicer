@@ -94,6 +94,7 @@ player pose matching Xenoxide's golden transforms bit for bit.
 | libm | 0.2.16 | MIT OR Apache-2.0 | the same sines, cosines and arc cosines on every platform, for poses |
 | wgpu (`wgsl` only) | 30.0.1 | MIT OR Apache-2.0 | the viewer's drawing, on the device eframe opens, the version egui-wgpu 0.37 uses ([viewer backend](viewer-backend.md)) |
 | bytemuck (`derive`) | 1.25.2 | Zlib OR Apache-2.0 OR MIT | vertex and uniform bytes for the GPU |
+| cpal | 0.18.2 | Apache-2.0 | sound output to the default device, behind `lambda-slicer-audio`'s `device` feature. On Linux it links the system's ALSA library through `alsa` 0.11.0 (Apache-2.0 OR MIT) and `alsa-sys` 0.4.0 (MIT) |
 | pollster, wgpu, image (`png`) (dev) | 0.4.0, 30.0.1, 0.25.10 | Apache-2.0 OR MIT, MIT OR Apache-2.0, MIT OR Apache-2.0 | the headless render bench: a device of its own and a saved frame |
 
 ## Project license

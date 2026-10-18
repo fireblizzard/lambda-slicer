@@ -5,7 +5,7 @@
 //! [--demo FILE [--window N] [--export DIR]]
 //! [--screenshot OUT.png [--frames N]]
 //! [--game DIR [--viewer-at SECONDS] [--viewer-bench SECONDS OUT.txt]
-//! [--viewer-capture TIMES FOLDER [--viewer-size WxH]]]`
+//! [--viewer-capture TIMES FOLDER [--viewer-size WxH]] [--viewer-play SECONDS]]`
 //!
 //! Demos and folders given as `PATH` are opened for this session. `--locale`
 //! overrides the saved language, `--cache` the library cache and `--clips`
@@ -22,7 +22,10 @@
 //! turns vsync off, plays and times the view's frames for `SECONDS`, writes
 //! the times to `OUT.txt` and exits. `--viewer-capture` saves the view at
 //! each of the comma-separated `TIMES` into `FOLDER` as `<seconds>.png`,
-//! `--viewer-size` pixels (1280x720 unless given), and exits
+//! `--viewer-size` pixels (1280x720 unless given), and exits.
+//! `--viewer-play` plays for `SECONDS` with sound and exits, and with
+//! `LAMBDA_SLICER_SOUND_TAP` set to a file the sound sent to the device is
+//! written there as a WAV file
 
 // A release build opens no console window beside the app
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
@@ -68,6 +71,7 @@ fn main() -> eframe::Result {
     let mut viewer_at = None;
     let mut capture_times: Option<(Vec<f64>, PathBuf)> = None;
     let mut capture_size = [1280, 720];
+    let mut viewer_play = None;
     let mut viewer_bench = None;
     while let Some(a) = args.next() {
         match a.as_str() {
@@ -106,6 +110,7 @@ fn main() -> eframe::Result {
                     capture_times = Some((times, PathBuf::from(folder)));
                 }
             }
+            "--viewer-play" => viewer_play = args.next().and_then(|s| s.parse().ok()),
             "--viewer-size" => {
                 if let Some((w, h)) = args.next().as_deref().and_then(|s| s.split_once('x'))
                     && let (Ok(w), Ok(h)) = (w.parse(), h.parse())
@@ -190,6 +195,7 @@ fn main() -> eframe::Result {
                     game,
                     viewer_at,
                     viewer_bench,
+                    viewer_play,
                     viewer_capture: capture_times.map(|(times, folder)| viewer::Capture {
                         times,
                         folder,

@@ -17,6 +17,7 @@ fluent-bundle = "0.16.0"
 image = { version = "0.25.10", default-features = false, features = ["png"] }
 intl-memoizer = "0.5.3"
 lambda-slicer-assets.workspace = true
+lambda-slicer-audio = { workspace = true, features = ["device"] }
 lambda-slicer-core.workspace = true
 lambda-slicer-playback.workspace = true
 lambda-slicer-render.workspace = true

@@ -64,9 +64,10 @@ need a new login to refresh their icon cache. Linux desktop appearance remains u
 ## Linux
 
 The workspace builds and every test passes on Linux x86_64 (Ubuntu in WSL, 2026-10-17), and CI
-repeats that. Building the GUI needs no native development packages. At run time it needs
-xkbcommon, a Vulkan or OpenGL driver, an XDG desktop portal for the file dialogs, and fontconfig
-fonts for CJK and Arabic text. **Pending** until tried on a Linux desktop: the GUI's rendering,
+repeats that. Building the GUI needs the ALSA development package for sound output
+(`libasound2-dev` on Debian and Ubuntu) and `pkg-config`. At run time it needs ALSA, xkbcommon, a
+Vulkan or OpenGL driver, an XDG desktop portal for the file dialogs, and fontconfig fonts for CJK
+and Arabic text. **Pending** until tried on a Linux desktop: the GUI's rendering,
 file dialogs, drag and drop, system font discovery, and playback of exported demos in the Linux
 game.
 

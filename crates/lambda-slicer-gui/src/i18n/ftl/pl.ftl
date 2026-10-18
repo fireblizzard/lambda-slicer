@@ -209,6 +209,7 @@ scores-deaths = Zgony
 show-timeline = Pokaż oś czasu
 viewer-play = Odtwórz
 viewer-pause = Wstrzymaj
+viewer-volume = Głośność
 legend-shot = Strzał
 legend-charge = Ładowanie
 legend-kill = Zabójstwo

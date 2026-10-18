@@ -1,11 +1,11 @@
 //! Mixes a stretch of a demo's sound to a WAV file, heard from the
 //! recorder's view
 //!
-//! `mix_probe INSTALL DEMO START SECONDS OUT.wav`
+//! `mix_probe INSTALL DEMO START SECONDS OUT.wav [RATE]`
 //!
 //! Playback moves in blocks of 10 ms, the sounds each block holds mixed at
-//! 48 kHz. The level, the channels heard and the sounds that could not be
-//! read are reported
+//! 48 kHz or at `RATE`. The level, the channels heard and the sounds that
+//! could not be read are reported
 
 use std::collections::BTreeSet;
 use std::path::Path;
@@ -14,54 +14,21 @@ use std::sync::Arc;
 use lambda_slicer_assets::Limits as AssetLimits;
 use lambda_slicer_assets::search::{SearchOptions, SearchPath};
 use lambda_slicer_audio::library::Library;
-use lambda_slicer_audio::mixer::{Listener, Output, mix};
+use lambda_slicer_audio::mixer::{Listener, Output, mix, write_wav};
 use lambda_slicer_core::container::{Limits, read_header};
 use lambda_slicer_playback::audio::SoundName;
-use lambda_slicer_playback::controller::{CameraMode, Stamp};
 use lambda_slicer_playback::playback::Playback;
 use lambda_slicer_playback::time::SourceTime;
 
-const RATE: u32 = 48_000;
-const BLOCK: usize = 480;
-
-/// The game's right for these angles
-fn right(angles: [f32; 3]) -> [f32; 3] {
-    let [p, y, r] = angles.map(f32::to_radians);
-    let (sp, cp) = p.sin_cos();
-    let (sy, cy) = y.sin_cos();
-    let (sr, cr) = r.sin_cos();
-    [-sr * sp * cy + cr * sy, -sr * sp * sy - cr * cy, -sr * cp]
-}
-
-fn write_wav(path: &Path, samples: &[[f32; 2]]) -> std::io::Result<()> {
-    let data: Vec<u8> = samples
-        .iter()
-        .flat_map(|s| s.map(|v| (v * 32767.) as i16))
-        .flat_map(i16::to_le_bytes)
-        .collect();
-    let mut out = b"RIFF".to_vec();
-    out.extend((36 + data.len() as u32).to_le_bytes());
-    out.extend(b"WAVEfmt ");
-    out.extend(16u32.to_le_bytes());
-    out.extend(1u16.to_le_bytes());
-    out.extend(2u16.to_le_bytes());
-    out.extend(RATE.to_le_bytes());
-    out.extend((RATE * 4).to_le_bytes());
-    out.extend(4u16.to_le_bytes());
-    out.extend(16u16.to_le_bytes());
-    out.extend(b"data");
-    out.extend((data.len() as u32).to_le_bytes());
-    out.extend(data);
-    std::fs::write(path, out)
-}
-
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let [install, demo, start, seconds, out, ..] = args.as_slice() else {
-        eprintln!("usage: mix_probe INSTALL DEMO START SECONDS OUT.wav");
+    let [install, demo, start, seconds, out, rest @ ..] = args.as_slice() else {
+        eprintln!("usage: mix_probe INSTALL DEMO START SECONDS OUT.wav [RATE]");
         std::process::exit(2);
     };
     let (start, seconds): (f64, f64) = (start.parse().unwrap(), seconds.parse().unwrap());
+    let rate: u32 = rest.first().map_or(48_000, |r| r.parse().unwrap());
+    let block = (rate / 100) as usize;
 
     let mut file = std::fs::File::open(demo).expect("demo");
     let len = file.metadata().expect("demo").len();
@@ -81,7 +48,7 @@ fn main() {
 
     // The master volume, below full scale as the game's usually is
     let output = Output {
-        rate: RATE,
+        rate,
         speed: 1.,
         volume: 0.7,
     };
@@ -89,17 +56,15 @@ fn main() {
     let mut samples = Vec::new();
     let mut heard = BTreeSet::new();
     let mut missing = BTreeSet::new();
-    let blocks = (seconds * f64::from(RATE) / BLOCK as f64) as usize;
+    let blocks = (seconds * f64::from(rate) / block as f64) as usize;
     for b in 0..blocks {
-        let at = SourceTime(start + (b * BLOCK) as f64 / f64::from(RATE));
-        playback.advance_to(at).expect("playback");
-        let frame = playback.present(Stamp::default(), at, CameraMode::Recorder, true);
-        let listener = Listener {
-            origin: frame.recorder.origin,
-            right: right(frame.recorder.angles),
-            entity: frame.recorder.view_entity.unwrap_or(frame.local_entity),
-        };
-        for c in &frame.sounds {
+        let at = SourceTime(start + (b * block) as f64 / f64::from(rate));
+        // As the device does, playback moves to the end of the block so a
+        // sound starting within it is heard from its start
+        let to = SourceTime(at.0 + block as f64 / f64::from(rate));
+        playback.advance_to(to).expect("playback");
+        let channels = playback.audio().channels();
+        for c in channels {
             match (&c.sound, library.sound(&c.sound)) {
                 (SoundName::File(name), Some(_)) => heard.insert(name.to_string()),
                 (other, None) => missing.insert(format!("{other:?}")),
@@ -107,7 +72,14 @@ fn main() {
             };
         }
         let sound = |name: &SoundName| library.sound(name);
-        samples.extend(mix(&frame.sounds, &sound, &listener, at, BLOCK, &output));
+        samples.extend(mix(
+            channels,
+            &sound,
+            &Listener::of(&playback),
+            at,
+            block,
+            &output,
+        ));
     }
 
     let peak = samples.iter().flatten().fold(0f32, |m, v| m.max(v.abs()));
@@ -115,7 +87,7 @@ fn main() {
         / (samples.len() * 2).max(1) as f32)
         .sqrt();
     let clipped = samples.iter().flatten().filter(|v| v.abs() >= 1.).count();
-    write_wav(Path::new(out), &samples).expect("write");
+    write_wav(Path::new(out), rate, &samples).expect("write");
     println!(
         "{seconds} s from {start} s mixed in {:?}: peak {peak:.3}, rms {rms:.4}, {clipped} clipped samples",
         started.elapsed()

@@ -209,6 +209,7 @@ scores-deaths = Mirtys
 show-timeline = Rodyti laiko juostą
 viewer-play = Leisti
 viewer-pause = Pristabdyti
+viewer-volume = Garsumas
 legend-shot = Šūvis
 legend-charge = Krovimas
 legend-kill = Nužudymas

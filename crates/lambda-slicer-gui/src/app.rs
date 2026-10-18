@@ -45,12 +45,14 @@ pub struct Launch {
     pub export: bool,
     /// Pseudo-localise every message, to find text that does not fit
     pub pseudo: bool,
-    /// The game's installation folder, for the backend spike's view
+    /// The game's installation folder, for the viewer
     pub game: Option<PathBuf>,
     /// Where the viewer seeks to once the demo is loaded
     pub viewer_at: Option<f64>,
     pub viewer_bench: Option<crate::viewer::Bench>,
     pub viewer_capture: Option<crate::viewer::Capture>,
+    /// Seconds the viewer plays with sound before the window closes
+    pub viewer_play: Option<f64>,
 }
 
 pub struct App {
@@ -86,6 +88,7 @@ pub struct App {
     viewer_at: Option<f64>,
     viewer_bench: Option<crate::viewer::Bench>,
     viewer_capture: Option<crate::viewer::Capture>,
+    viewer_play: Option<f64>,
     /// The window's GPU device, which the viewer draws with
     pub render_state: Option<eframe::egui_wgpu::RenderState>,
 }
@@ -182,6 +185,7 @@ impl App {
             viewer_at: launch.viewer_at,
             viewer_bench: launch.viewer_bench,
             viewer_capture: launch.viewer_capture,
+            viewer_play: launch.viewer_play,
             render_state: None,
         }
     }
@@ -812,6 +816,7 @@ impl eframe::App for App {
                             start: self.viewer_at.take(),
                             bench: self.viewer_bench.take(),
                             capture: self.viewer_capture.take(),
+                            play: self.viewer_play.take(),
                         },
                         &ctx,
                     ));

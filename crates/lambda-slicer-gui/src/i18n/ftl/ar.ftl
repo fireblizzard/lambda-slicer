@@ -219,6 +219,7 @@ scores-deaths = الوفيات
 show-timeline = إظهار الخط الزمني
 viewer-play = تشغيل
 viewer-pause = إيقاف مؤقت
+viewer-volume = مستوى الصوت
 legend-shot = طلقة
 legend-charge = شحن
 legend-kill = قتل

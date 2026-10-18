@@ -8,8 +8,9 @@
 //! a player is drawn with the model its userinfo names. The entity the
 //! recorder views from is left out, as the game leaves it out.
 //!
-//! Brush entities, sprites, the viewmodel, interpolation between snapshots
-//! and the client's player animation come with the rest of M9. Shown only
+//! Sound plays on the default output device while playing forward, mixed
+//! from a playback of its own that shares the worker's checkpoints and
+//! heard from the recorder's view. Shown only
 //! when a game folder is given with `--game`, until the viewer's settings
 //! come (M11)
 
@@ -26,6 +27,8 @@ use eframe::wgpu;
 use lambda_slicer_assets::Limits as AssetLimits;
 use lambda_slicer_assets::search::{SearchOptions, SearchPath};
 use lambda_slicer_assets::sprite::Sprite;
+use lambda_slicer_audio::device::{Device, Feed};
+use lambda_slicer_audio::library::Library;
 use lambda_slicer_core::container::{Limits, read_header};
 use lambda_slicer_core::timeline::time::DemoTime;
 use lambda_slicer_playback::PresentedFrame;
@@ -79,6 +82,8 @@ pub struct Dev {
     pub start: Option<f64>,
     pub bench: Option<Bench>,
     pub capture: Option<Capture>,
+    /// Play this many seconds with sound, then close the window
+    pub play: Option<f64>,
 }
 
 enum CapturePhase {
@@ -228,6 +233,8 @@ pub struct Viewer {
     render_state: RenderState,
     controller: Controller,
     worker: Worker,
+    /// Sound output, none without a device or in a bench or capture run
+    sound: Option<Device>,
     loader: Option<Loader>,
     frame: Option<Box<PresentedFrame>>,
     /// The map whose world is drawn, and the one being read
@@ -241,6 +248,8 @@ pub struct Viewer {
     duration: f64,
     bench: Option<(Bench, Option<Instant>, Vec<f64>)>,
     capturing: Option<Capturing>,
+    /// Seconds to play for, and when playing began
+    play: Option<(f64, Option<Instant>)>,
     last_frame: Option<Instant>,
 }
 
@@ -272,6 +281,7 @@ impl Viewer {
             start,
             bench,
             capture,
+            play,
         } = dev;
         {
             let device = &render_state.device;
@@ -288,8 +298,30 @@ impl Viewer {
         }
 
         let repaint = ctx.clone();
-        let worker = Worker::spawn(Limits::default(), move || repaint.request_repaint());
-        let loader = game_dir(&demo).map(|game| Loader::start(install, game, ctx.clone()));
+        let game = game_dir(&demo);
+        let library = game.as_ref().and_then(|game| {
+            let search = SearchPath::new(
+                &install,
+                game,
+                &SearchOptions::default(),
+                AssetLimits::default(),
+            )
+            .ok()?;
+            Some(Arc::new(Library::new(search, AssetLimits::default())))
+        });
+        let worker = Worker::spawn_with(
+            Limits::default(),
+            library.as_ref().map(|l| l.lengths()),
+            move || repaint.request_repaint(),
+        );
+        let quiet = bench.is_some() || capture.is_some();
+        let sound = library.filter(|_| !quiet).and_then(|l| {
+            let tap = std::env::var_os("LAMBDA_SLICER_SOUND_TAP").map(PathBuf::from);
+            Device::open(l, tap)
+                .inspect_err(|e| eprintln!("sound: {e}"))
+                .ok()
+        });
+        let loader = game.map(|game| Loader::start(install, game, ctx.clone()));
         let mut controller = Controller::default();
         if let Some(request) = controller.command(Command::Load(demo), 0.) {
             worker.send(request);
@@ -304,6 +336,8 @@ impl Viewer {
             render_state,
             controller,
             worker,
+            sound,
+
             loader,
             frame: None,
             map: None,
@@ -313,6 +347,7 @@ impl Viewer {
             clock: Instant::now(),
             duration: f64::from(duration),
             bench: bench.map(|b| (b, None, Vec::new())),
+            play: play.map(|seconds| (seconds, None)),
             capturing: capture.map(|capture| Capturing {
                 capture,
                 next: 0,
@@ -679,10 +714,46 @@ impl Viewer {
             }
         }
 
+        self.feed_sound();
+        if self.step_play() {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+        }
         self.controls(ui, catalog, rtl);
         if self.controller.playing() || drawn > 0 && self.bench.is_some() {
             ctx.request_repaint();
         }
+    }
+
+    /// Start a timed play once the first frame is in, and true when it is over
+    fn step_play(&mut self) -> bool {
+        let Some((seconds, began)) = self.play else {
+            return false;
+        };
+        match began {
+            None if self.frame.is_some() && self.map.is_some() => {
+                self.command(Command::Play);
+                self.play = Some((seconds, Some(Instant::now())));
+                false
+            }
+            Some(began) => began.elapsed().as_secs_f64() >= seconds,
+            None => false,
+        }
+    }
+
+    /// Tell the sound mixer what the frame shown plays
+    fn feed_sound(&self) {
+        let (Some(sound), Some(frame), Some(demo)) =
+            (&self.sound, &self.frame, self.worker.loaded())
+        else {
+            return;
+        };
+        sound.feed(Feed {
+            stamp: self.controller.stamp(),
+            demo,
+            clock: self.controller.clock(),
+            clock_base: self.clock,
+            audible: frame.audible,
+        });
     }
 
     fn controls(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool) {
@@ -714,6 +785,20 @@ impl Viewer {
 
             let shown = format!("{} / {}", clock(now), clock(end));
             ui.label(text::widget_text(&ctx, &shown, false, None, Look::Plain));
+
+            if let Some(sound) = &self.sound {
+                let label =
+                    text::widget_text(&ctx, &catalog.text("viewer-volume"), rtl, None, Look::Plain);
+                ui.label(label);
+                let mut volume = sound.volume();
+                ui.spacing_mut().slider_width = 80.;
+                if ui
+                    .add(egui::Slider::new(&mut volume, 0. ..=1.).show_value(false))
+                    .changed()
+                {
+                    sound.set_volume(volume);
+                }
+            }
 
             let mut at = now;
             ui.spacing_mut().slider_width = ui.available_width().max(40.);
