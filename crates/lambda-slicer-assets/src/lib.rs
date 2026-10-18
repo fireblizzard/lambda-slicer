@@ -12,6 +12,7 @@
 pub mod pak;
 pub mod resource;
 pub mod search;
+pub mod sprite;
 pub mod tga;
 pub mod wad;
 pub mod xenoxide;

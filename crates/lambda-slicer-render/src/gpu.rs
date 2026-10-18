@@ -10,7 +10,9 @@
 //!
 //! A frame draws the opaque world and brush entities, then studio models,
 //! then the sky wherever nothing was drawn, then translucent brush entities
-//! from the furthest in, as the game orders them. Each BSP model is drawn
+//! and sprites from the furthest in, as the game orders them. The viewmodel
+//! comes last, in a pass of its own with the depth cleared, so it never
+//! sinks into a wall. Each BSP model is drawn
 //! with its entity's transform and render mode, every lightmap weighed by
 //! its light style's brightness, and animated textures at their frame for
 //! the time
@@ -18,7 +20,9 @@
 use wgpu::util::DeviceExt;
 
 use crate::Rgba;
-use crate::camera::{Matrix, entity_matrix};
+use lambda_slicer_assets::sprite::{self, Orientation};
+
+use crate::camera::{Matrix, angle_vectors, entity_matrix};
 use crate::model::{ModelMesh, ModelVertex};
 use crate::world::{Animation, Batch, FULL_BRIGHT, WorldMesh, WorldVertex};
 
@@ -30,6 +34,10 @@ pub const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 const WORLD_ATTRIBUTES: [wgpu::VertexAttribute; 6] = wgpu::vertex_attr_array![
     0 => Float32x3, 1 => Float32x2, 2 => Float32x2, 3 => Float32, 4 => Uint8x4, 5 => Uint32
 ];
+
+/// A sprite vertex's position, texture coordinates and colour
+const SPRITE_ATTRIBUTES: [wgpu::VertexAttribute; 3] =
+    wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x2, 2 => Float32x4];
 
 /// Light style slots, the game's 64 and full brightness
 const STYLE_SLOTS: usize = FULL_BRIGHT as usize + 1;
@@ -168,6 +176,32 @@ fn sky_vs(@location(0) direction: vec3<f32>, @location(1) uv: vec2<f32>) -> SkyO
 @fragment
 fn sky_fs(v: SkyOut) -> @location(0) vec4<f32> {
     return vec4<f32>(textureSample(albedo, albedo_sampler, v.uv).rgb, 1.0);
+}
+
+struct SpriteOut {
+    @builtin(position) clip: vec4<f32>,
+    @location(0) uv: vec2<f32>,
+    @location(1) color: vec4<f32>,
+}
+
+@vertex
+fn sprite_vs(@location(0) position: vec3<f32>, @location(1) uv: vec2<f32>, @location(2) color: vec4<f32>) -> SpriteOut {
+    var out: SpriteOut;
+    out.clip = u.view_projection * vec4<f32>(position, 1.0);
+    out.uv = uv;
+    out.color = color;
+    return out;
+}
+
+@fragment
+fn sprite_fs(v: SpriteOut) -> @location(0) vec4<f32> {
+    let a = textureSample(albedo, albedo_sampler, v.uv);
+    let c = vec4<f32>(a.rgb * v.color.rgb, a.a * v.color.a);
+    // A cut-out sprite's colour is 1 in alpha, which marks it
+    if (v.color.a > 1.5 && a.a < 0.5) {
+        discard;
+    }
+    return vec4<f32>(c.rgb, min(c.a, 1.0));
 }
 "#;
 
@@ -314,8 +348,10 @@ impl Brush {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct View {
     pub view_projection: Matrix,
-    /// The camera's position, for ordering translucent brushes
+    /// The camera's position, for ordering translucent brushes and sprites
     pub eye: [f32; 3],
+    /// The camera's angles, which most sprites face
+    pub angles: [f32; 3],
     /// The client's time in seconds, for animations, light styles and water
     pub time: f32,
     /// Each light style's brightness, 1 for the game's `m`
@@ -369,6 +405,140 @@ pub struct Instance {
     pub vertices: Vec<ModelVertex>,
 }
 
+struct SpriteFrame {
+    texture: wgpu::BindGroup,
+    origin: [i32; 2],
+    size: [u32; 2],
+}
+
+struct SpriteGpu {
+    orientation: Orientation,
+    frames: Vec<SpriteFrame>,
+}
+
+/// A sprite uploaded once with [`Scene::add_sprite`]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct SpriteHandle(usize);
+
+/// One sprite drawn this frame
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SpriteInstance {
+    pub sprite: SpriteHandle,
+    /// Wrapped to the sprite's frames
+    pub frame: usize,
+    pub origin: [f32; 3],
+    pub angles: [f32; 3],
+    /// 0 for the sprite's own size
+    pub scale: f32,
+    pub mode: RenderMode,
+    pub amount: f32,
+    pub color: [f32; 3],
+}
+
+/// Everything drawn in one frame besides the sky
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct DrawList {
+    /// The world first, then brush entities
+    pub brushes: Vec<Brush>,
+    pub instances: Vec<Instance>,
+    pub sprites: Vec<SpriteInstance>,
+    /// The first-person weapon, drawn over everything
+    pub viewmodel: Vec<Instance>,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+struct SpriteVertex {
+    position: [f32; 3],
+    uv: [f32; 2],
+    color: [f32; 4],
+}
+
+/// The pipeline a sprite draws with
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SpritePass {
+    Cut,
+    Blend,
+    Add,
+    Glow,
+}
+
+/// How bright a glowing sprite is at `distance`, as the game fades them
+/// (`GlowBlend`, without its test for what hides the sprite)
+fn glow_brightness(distance: f32) -> f32 {
+    (19000. / (distance * distance).max(1.)).clamp(0.05, 1.)
+}
+
+fn normalize(v: [f32; 3]) -> [f32; 3] {
+    let length = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
+    if length > 0. {
+        v.map(|c| c / length)
+    } else {
+        v
+    }
+}
+
+/// A sprite's six corners as two triangles, its pipeline and its distance
+/// from the camera, turned as its orientation turns it (`R_DrawSpriteModel`)
+fn sprite_quad(
+    orientation: Orientation,
+    frame_origin: [i32; 2],
+    frame_size: [u32; 2],
+    s: &SpriteInstance,
+    view: &View,
+) -> ([SpriteVertex; 6], SpritePass, f32) {
+    let (forward, camera_right, camera_up) = angle_vectors(view.angles);
+    let to = [0, 1, 2].map(|k| s.origin[k] - view.eye[k]);
+    let (right, up) = match orientation {
+        Orientation::Parallel => (camera_right, camera_up),
+        Orientation::ParallelUpright => (normalize([forward[1], -forward[0], 0.]), [0., 0., 1.]),
+        Orientation::FacingUpright => (normalize([to[1], -to[0], 0.]), [0., 0., 1.]),
+        Orientation::Oriented => {
+            let (_, r, u) = angle_vectors(s.angles);
+            (r, u)
+        }
+        Orientation::ParallelOriented => {
+            let (sr, cr) = s.angles[2].to_radians().sin_cos();
+            (
+                [0, 1, 2].map(|k| camera_right[k] * cr + camera_up[k] * sr),
+                [0, 1, 2].map(|k| -camera_right[k] * sr + camera_up[k] * cr),
+            )
+        }
+    };
+
+    let scale = if s.scale > 0. { s.scale } else { 1. };
+    let down = (frame_origin[1] - frame_size[1] as i32) as f32 * scale;
+    let top = frame_origin[1] as f32 * scale;
+    let left = frame_origin[0] as f32 * scale;
+    let far_right = (frame_origin[0] + frame_size[0] as i32) as f32 * scale;
+    let distance = (to[0] * to[0] + to[1] * to[1] + to[2] * to[2]).sqrt();
+
+    let tint = if s.color == [0.; 3] { [1.; 3] } else { s.color };
+    let (pass, color) = match s.mode {
+        RenderMode::Normal | RenderMode::Alpha => (SpritePass::Cut, [1., 1., 1., 2.]),
+        RenderMode::Color => (
+            SpritePass::Blend,
+            [s.color[0], s.color[1], s.color[2], s.amount],
+        ),
+        RenderMode::Texture => (SpritePass::Blend, [1., 1., 1., s.amount]),
+        RenderMode::Additive => (SpritePass::Add, [tint[0], tint[1], tint[2], s.amount]),
+        RenderMode::Glow => {
+            let amount = s.amount * glow_brightness(distance);
+            (SpritePass::Glow, [tint[0], tint[1], tint[2], amount])
+        }
+    };
+    let corner = |v: f32, h: f32, uv: [f32; 2]| SpriteVertex {
+        position: [0, 1, 2].map(|k| s.origin[k] + up[k] * v + right[k] * h),
+        uv,
+        color,
+    };
+    let a = corner(down, left, [0., 1.]);
+    let b = corner(top, left, [0., 0.]);
+    let c = corner(top, far_right, [1., 0.]);
+    let d = corner(down, far_right, [1., 1.]);
+    ([a, b, c, a, c, d], pass, distance)
+}
+
 struct SkyGpu {
     vertices: wgpu::Buffer,
     faces: Vec<wgpu::BindGroup>,
@@ -386,6 +556,10 @@ struct Pipelines {
     add: wgpu::RenderPipeline,
     model: wgpu::RenderPipeline,
     sky: wgpu::RenderPipeline,
+    sprite_cut: wgpu::RenderPipeline,
+    sprite_blend: wgpu::RenderPipeline,
+    sprite_add: wgpu::RenderPipeline,
+    sprite_glow: wgpu::RenderPipeline,
 }
 
 pub struct Scene {
@@ -404,6 +578,10 @@ pub struct Scene {
     sky: Option<SkyGpu>,
     sky_bytes: u64,
     models: Vec<ModelGpu>,
+    sprites: Vec<SpriteGpu>,
+    /// Every sprite's corners for the frame, grown as needed
+    sprite_vertices: Option<wgpu::Buffer>,
+    sprite_capacity: u64,
     /// Every instance's corners for the frame, grown as needed
     instances: Option<wgpu::Buffer>,
     instance_capacity: u64,
@@ -622,6 +800,29 @@ impl Scene {
             alpha: wgpu::BlendComponent::OVER,
         };
         let less = wgpu::CompareFunction::Less;
+        let added_by_alpha = wgpu::BlendState {
+            color: wgpu::BlendComponent {
+                src_factor: wgpu::BlendFactor::SrcAlpha,
+                dst_factor: wgpu::BlendFactor::One,
+                operation: wgpu::BlendOperation::Add,
+            },
+            alpha: wgpu::BlendComponent::OVER,
+        };
+        let sprite_pipeline = |name: &str, blend, write, compare| {
+            pipeline(
+                name,
+                "sprite",
+                &[Some(&uniforms_layout), Some(&texture_layout)],
+                wgpu::VertexBufferLayout {
+                    array_stride: std::mem::size_of::<SpriteVertex>() as u64,
+                    step_mode: wgpu::VertexStepMode::Vertex,
+                    attributes: &SPRITE_ATTRIBUTES,
+                },
+                blend,
+                write,
+                compare,
+            )
+        };
         let pipelines = Pipelines {
             opaque: pipeline(
                 "world opaque",
@@ -676,6 +877,20 @@ impl Scene {
                 false,
                 wgpu::CompareFunction::LessEqual,
             ),
+            sprite_cut: sprite_pipeline("sprite cut", None, true, less),
+            sprite_blend: sprite_pipeline(
+                "sprite blend",
+                Some(wgpu::BlendState::ALPHA_BLENDING),
+                false,
+                less,
+            ),
+            sprite_add: sprite_pipeline("sprite add", Some(added_by_alpha), false, less),
+            sprite_glow: sprite_pipeline(
+                "sprite glow",
+                Some(added_by_alpha),
+                false,
+                wgpu::CompareFunction::Always,
+            ),
         };
 
         Self {
@@ -695,6 +910,9 @@ impl Scene {
             sky: None,
             sky_bytes: 0,
             models: Vec::new(),
+            sprites: Vec::new(),
+            sprite_vertices: None,
+            sprite_capacity: 0,
             instances: None,
             instance_capacity: 0,
             targets: None,
@@ -867,6 +1085,88 @@ impl Scene {
         ModelHandle(self.models.len() - 1)
     }
 
+    /// Upload a sprite's frames, for instances of it to be drawn
+    pub fn add_sprite(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        sprite: &sprite::Sprite,
+    ) -> SpriteHandle {
+        let frames = sprite
+            .frames
+            .iter()
+            .map(|f| {
+                let image = Rgba {
+                    width: f.width.max(1),
+                    height: f.height.max(1),
+                    pixels: if f.width * f.height > 0 {
+                        sprite.rgba(f)
+                    } else {
+                        vec![0; 4]
+                    },
+                };
+                SpriteFrame {
+                    texture: self.texture(device, queue, &image, false),
+                    origin: f.origin,
+                    size: [f.width, f.height],
+                }
+            })
+            .collect();
+        self.sprites.push(SpriteGpu {
+            orientation: sprite.orientation,
+            frames,
+        });
+        SpriteHandle(self.sprites.len() - 1)
+    }
+
+    /// Every sprite's corners in one buffer, each sprite's pipeline and
+    /// place in it, the furthest first
+    fn upload_sprites(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        view: &View,
+        sprites: &[SpriteInstance],
+    ) -> Vec<(usize, SpritePass, u32)> {
+        let mut quads: Vec<(f32, usize, SpritePass, [SpriteVertex; 6])> = sprites
+            .iter()
+            .enumerate()
+            .filter_map(|(i, s)| {
+                let gpu = self.sprites.get(s.sprite.0)?;
+                let frame = gpu.frames.get(s.frame % gpu.frames.len().max(1))?;
+                let (quad, pass, distance) =
+                    sprite_quad(gpu.orientation, frame.origin, frame.size, s, view);
+                Some((distance, i, pass, quad))
+            })
+            .collect();
+        quads.sort_by(|a, b| b.0.total_cmp(&a.0));
+
+        let mut bytes = Vec::with_capacity(quads.len() * 6 * std::mem::size_of::<SpriteVertex>());
+        let mut order = Vec::with_capacity(quads.len());
+        for (k, (_, i, pass, quad)) in quads.iter().enumerate() {
+            bytes.extend_from_slice(bytemuck::cast_slice(quad));
+            order.push((*i, *pass, k as u32 * 6));
+        }
+        if bytes.is_empty() {
+            return order;
+        }
+        if bytes.len() as u64 > self.sprite_capacity {
+            let capacity = (bytes.len() as u64).next_power_of_two();
+            self.gpu_bytes = self.gpu_bytes - self.sprite_capacity + capacity;
+            self.sprite_capacity = capacity;
+            self.sprite_vertices = Some(device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("sprite vertices"),
+                size: capacity,
+                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            }));
+        }
+        if let Some(buffer) = &self.sprite_vertices {
+            queue.write_buffer(buffer, 0, &bytes);
+        }
+        order
+    }
+
     /// The offscreen colour target, once a frame was drawn
     pub fn color_view(&self) -> Option<&wgpu::TextureView> {
         self.targets.as_ref().map(|t| &t.color_view)
@@ -983,18 +1283,17 @@ impl Scene {
         }
     }
 
-    /// One frame at `size` with `brushes`, the world among them, and
-    /// `instances`. Returns whether the targets were made again, for a
-    /// resize, and the commands
+    /// One frame at `size` of everything in `draw`. Returns whether the
+    /// targets were made again, for a resize, and the commands
     pub fn render(
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         size: [u32; 2],
         view: &View,
-        brushes: &[Brush],
-        instances: &[Instance],
+        draw: &DrawList,
     ) -> (bool, wgpu::CommandBuffer) {
+        let brushes = &draw.brushes;
         let before = self.targets.as_ref().map(|t| t.size);
         self.ensure_targets(device, size);
         let resized = before != self.targets.as_ref().map(|t| t.size);
@@ -1008,7 +1307,16 @@ impl Scene {
             styles,
         };
         queue.write_buffer(&self.uniforms, 0, bytemuck::bytes_of(&uniforms));
-        let starts = self.upload_instances(device, queue, instances);
+        let models: Vec<Instance> = draw
+            .instances
+            .iter()
+            .chain(&draw.viewmodel)
+            .cloned()
+            .collect();
+        let starts = self.upload_instances(device, queue, &models);
+        let (starts, viewmodel_starts) = starts.split_at(draw.instances.len());
+        let instances = &draw.instances;
+        let sprites = self.upload_sprites(device, queue, view, &draw.sprites);
         self.upload_objects(device, queue, brushes);
 
         // Translucent brushes from the furthest in
@@ -1094,7 +1402,7 @@ impl Scene {
             if let Some(buffer) = &self.instances {
                 pass.set_pipeline(&self.pipelines.model);
                 pass.set_vertex_buffer(0, buffer.slice(..));
-                for (instance, start) in instances.iter().zip(&starts) {
+                for (instance, start) in instances.iter().zip(starts) {
                     let Some(start) = *start else {
                         continue;
                     };
@@ -1127,6 +1435,69 @@ impl Scene {
                     };
                     pass.set_pipeline(pipeline);
                     draw_brush(&mut pass, world, i);
+                }
+            }
+
+            if let Some(buffer) = &self.sprite_vertices
+                && !sprites.is_empty()
+            {
+                pass.set_vertex_buffer(0, buffer.slice(..));
+                for &(i, kind, first) in &sprites {
+                    let s = &draw.sprites[i];
+                    let gpu = &self.sprites[s.sprite.0];
+                    let frame = &gpu.frames[s.frame % gpu.frames.len()];
+                    pass.set_pipeline(match kind {
+                        SpritePass::Cut => &self.pipelines.sprite_cut,
+                        SpritePass::Blend => &self.pipelines.sprite_blend,
+                        SpritePass::Add => &self.pipelines.sprite_add,
+                        SpritePass::Glow => &self.pipelines.sprite_glow,
+                    });
+                    pass.set_bind_group(1, &frame.texture, &[]);
+                    pass.draw(first..first + 6, 0..1);
+                }
+            }
+        }
+
+        // The viewmodel over everything, against a cleared depth
+        if let Some(buffer) = &self.instances
+            && viewmodel_starts.iter().any(Option::is_some)
+        {
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("viewmodel"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &targets.color_view,
+                    depth_slice: None,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Load,
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: &targets.depth_view,
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(1.),
+                        store: wgpu::StoreOp::Discard,
+                    }),
+                    stencil_ops: None,
+                }),
+                timestamp_writes: None,
+                occlusion_query_set: None,
+                multiview_mask: None,
+            });
+            pass.set_bind_group(0, &self.uniform_group, &[]);
+            pass.set_pipeline(&self.pipelines.model);
+            pass.set_vertex_buffer(0, buffer.slice(..));
+            for (instance, start) in draw.viewmodel.iter().zip(viewmodel_starts) {
+                let Some(start) = *start else {
+                    continue;
+                };
+                let model = &self.models[instance.model.0];
+                for b in &model.batches {
+                    if let Some(texture) = model.textures.get(b.texture) {
+                        pass.set_bind_group(1, texture, &[]);
+                        pass.draw(start + b.first..start + b.first + b.count, 0..1);
+                    }
                 }
             }
         }
@@ -1206,5 +1577,75 @@ impl Blit {
         pass.set_pipeline(&self.pipeline);
         pass.set_bind_group(0, group, &[]);
         pass.draw(0..3, 0..1);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn view() -> View {
+        View {
+            view_projection: [[0.; 4]; 4],
+            eye: [0.; 3],
+            angles: [0.; 3],
+            time: 0.,
+            light_styles: [1.; 64],
+        }
+    }
+
+    fn sprite(mode: RenderMode) -> SpriteInstance {
+        SpriteInstance {
+            sprite: SpriteHandle(0),
+            frame: 0,
+            origin: [100., 0., 0.],
+            angles: [0.; 3],
+            scale: 2.,
+            mode,
+            amount: 0.5,
+            color: [0.; 3],
+        }
+    }
+
+    #[test]
+    fn sprites_face_the_view_and_take_their_frame_offset() {
+        // Looking along x, right is -y and up is z. A 2 by 2 frame whose
+        // top left is 1 left and 1 up of the origin, at scale 2
+        let (quad, pass, distance) = sprite_quad(
+            Orientation::Parallel,
+            [-1, 1],
+            [2, 2],
+            &sprite(RenderMode::Normal),
+            &view(),
+        );
+        assert_eq!(pass, SpritePass::Cut);
+        assert_eq!(distance, 100.);
+        assert_eq!(quad[0].position, [100., 2., -2.]);
+        assert_eq!(quad[1].position, [100., 2., 2.]);
+        assert_eq!(quad[2].position, [100., -2., 2.]);
+        assert_eq!(quad[1].uv, [0., 0.]);
+
+        // An upright sprite facing the camera's position stays vertical
+        let mut v = view();
+        v.angles = [45., 0., 0.];
+        let (quad, _, _) = sprite_quad(
+            Orientation::FacingUpright,
+            [-1, 1],
+            [2, 2],
+            &sprite(RenderMode::Additive),
+            &v,
+        );
+        assert_eq!(quad[0].position[0], quad[1].position[0]);
+
+        // Additive sprites without a render colour are white, glow fades far
+        let (quad, pass, _) = sprite_quad(
+            Orientation::Parallel,
+            [0, 0],
+            [1, 1],
+            &sprite(RenderMode::Additive),
+            &view(),
+        );
+        assert_eq!((pass, quad[0].color), (SpritePass::Add, [1., 1., 1., 0.5]));
+        assert!(glow_brightness(1000.) < glow_brightness(100.));
     }
 }

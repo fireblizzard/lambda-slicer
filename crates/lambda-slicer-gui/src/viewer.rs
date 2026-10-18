@@ -25,6 +25,7 @@ use eframe::egui_wgpu::{self, CallbackResources, CallbackTrait, RenderState, Scr
 use eframe::wgpu;
 use lambda_slicer_assets::Limits as AssetLimits;
 use lambda_slicer_assets::search::{SearchOptions, SearchPath};
+use lambda_slicer_assets::sprite::Sprite;
 use lambda_slicer_core::container::{Limits, read_header};
 use lambda_slicer_core::timeline::time::DemoTime;
 use lambda_slicer_playback::PresentedFrame;
@@ -33,7 +34,10 @@ use lambda_slicer_playback::time::SourceTime;
 use lambda_slicer_playback::worker::Worker;
 use lambda_slicer_render::Rgba;
 use lambda_slicer_render::camera::{Camera, Matrix};
-use lambda_slicer_render::gpu::{Blit, Brush, Instance, ModelHandle, RenderMode, Scene, View};
+use lambda_slicer_render::gpu::{
+    Blit, Brush, DrawList, Instance, ModelHandle, RenderMode, Scene, SpriteHandle, SpriteInstance,
+    View,
+};
 use lambda_slicer_render::light::{LightTree, ModelLight};
 use lambda_slicer_render::load::{self, EntityPose, GaitPose, LoadError, LoadedModel};
 use lambda_slicer_render::world::{self, WorldMesh};
@@ -77,8 +81,8 @@ enum Asset {
 
 enum Outcome {
     Ready(Box<LoadedModel>),
-    /// A sprite under a model's name, drawn with the sprites (9d)
-    Sprite,
+    /// A `.spr`, or one of AG's sprites under a model's name
+    Sprite(Box<Sprite>),
     Failed(String),
 }
 
@@ -122,13 +126,23 @@ impl Loader {
                         }
                         (Ok(search), Asset::Model(model)) => {
                             let loaded = match &model {
+                                ModelRef::File(path) if path.ends_with(".spr") => {
+                                    Err(LoadError::Sprite { name: path.clone() })
+                                }
                                 ModelRef::File(path) => load::model(search, path),
                                 ModelRef::Player(name) => load::player(search, name),
                             };
-                            let outcome = match loaded {
-                                Ok(m) => Outcome::Ready(Box::new(m)),
-                                Err(LoadError::Sprite { .. }) => Outcome::Sprite,
+                            let sprite = |path: &str| match load::sprite(search, path, limits) {
+                                Ok(s) => Outcome::Sprite(Box::new(s)),
                                 Err(e) => Outcome::Failed(e.to_string()),
+                            };
+                            let outcome = match (&model, loaded) {
+                                (ModelRef::File(path), _) if path.ends_with(".spr") => sprite(path),
+                                (_, Ok(m)) => Outcome::Ready(Box::new(m)),
+                                (ModelRef::File(path), Err(LoadError::Sprite { .. })) => {
+                                    sprite(path)
+                                }
+                                (_, Err(e)) => Outcome::Failed(e.to_string()),
                             };
                             Loaded::Model(model, outcome)
                         }
@@ -155,7 +169,8 @@ impl Loader {
 enum Slot {
     Loading,
     Ready(Arc<LoadedModel>, ModelHandle),
-    /// A sprite, or a model that could not be read
+    Sprite(SpriteHandle),
+    /// A model that could not be read
     NotDrawn,
 }
 
@@ -315,8 +330,9 @@ impl Viewer {
                     self.models
                         .insert(model, Slot::Ready(Arc::from(loaded), handle));
                 }
-                Loaded::Model(model, Outcome::Sprite) => {
-                    self.models.insert(model, Slot::NotDrawn);
+                Loaded::Model(model, Outcome::Sprite(sprite)) => {
+                    let handle = resources.scene.add_sprite(device, queue, &sprite);
+                    self.models.insert(model, Slot::Sprite(handle));
                 }
                 Loaded::Model(model, Outcome::Failed(e)) => {
                     eprintln!("viewer: model {model:?}, {e}");
@@ -339,35 +355,53 @@ impl Viewer {
             self.map_loading = Some(map);
         }
 
-        for drawn in drawn(frame) {
-            for model in std::iter::once(drawn.model).chain(drawn.weapon) {
-                if let Entry::Vacant(slot) = self.models.entry(model) {
-                    let _ = loader.requests.send(Asset::Model(slot.key().clone()));
-                    slot.insert(Slot::Loading);
-                }
+        let viewmodel = viewmodel_pose(frame).map(|(path, _)| ModelRef::File(path));
+        let drawn = drawn(frame)
+            .into_iter()
+            .flat_map(|d| std::iter::once(d.model).chain(d.weapon));
+        for model in drawn.chain(viewmodel) {
+            if let Entry::Vacant(slot) = self.models.entry(model) {
+                let _ = loader.requests.send(Asset::Model(slot.key().clone()));
+                slot.insert(Slot::Loading);
             }
         }
     }
 
-    /// Every entity drawn this frame, posed and skinned
-    fn instances(&self) -> Vec<Instance> {
+    /// Everything drawn this frame, models posed and skinned
+    fn draw_list(&self) -> DrawList {
         let Some(frame) = &self.frame else {
-            return Vec::new();
+            return DrawList::default();
         };
         let styles = light_styles(frame);
+        let light_at = |point: [f32; 3]| {
+            self.light
+                .as_ref()
+                .and_then(|tree| tree.at(point, &styles))
+                .map_or(ModelLight::UNLIT, ModelLight::from_point)
+        };
         let mut instances = Vec::new();
+        let mut sprites = Vec::new();
         for drawn in drawn(frame) {
+            if let Some(Slot::Sprite(handle)) = self.models.get(&drawn.model) {
+                sprites.push(SpriteInstance {
+                    sprite: *handle,
+                    frame: drawn.frame.max(0.) as usize,
+                    origin: drawn.pose.origin,
+                    angles: drawn.pose.angles,
+                    scale: drawn.scale,
+                    mode: drawn.mode,
+                    amount: drawn.amount,
+                    color: drawn.color,
+                });
+                continue;
+            }
             let Some(Slot::Ready(model, handle)) = self.models.get(&drawn.model) else {
                 continue;
             };
             let Some(bones) = model.pose(&drawn.pose) else {
                 continue;
             };
-            let light = self
-                .light
-                .as_ref()
-                .and_then(|tree| tree.at(drawn.pose.origin, &styles))
-                .map_or(ModelLight::UNLIT, ModelLight::from_point);
+            let light = light_at(drawn.pose.origin);
             instances.push(Instance {
                 model: *handle,
                 vertices: model.mesh.skin(&bones, &light),
@@ -383,7 +417,25 @@ impl Viewer {
                 });
             }
         }
-        instances
+
+        let mut viewmodel = Vec::new();
+        if let Some((path, pose)) = viewmodel_pose(frame)
+            && let Some(Slot::Ready(model, handle)) = self.models.get(&ModelRef::File(path))
+            && let Some(bones) = model.pose(&pose)
+        {
+            let light = light_at(pose.origin);
+            viewmodel.push(Instance {
+                model: *handle,
+                vertices: model.mesh.skin(&bones, &light),
+            });
+        }
+
+        DrawList {
+            brushes: brushes(frame),
+            instances,
+            sprites,
+            viewmodel,
+        }
     }
 
     /// Bytes the scene holds on the GPU
@@ -475,13 +527,12 @@ impl Viewer {
                     (rect.width() * ui.pixels_per_point()).round().max(1.) as u32,
                     (rect.height() * ui.pixels_per_point()).round().max(1.) as u32,
                 ];
-                let instances = self.instances();
-                drawn = instances.len();
+                let draw = self.draw_list();
+                drawn = draw.instances.len() + draw.sprites.len() + draw.viewmodel.len();
                 let callback = Frame {
                     pixels,
                     view: view(frame, rect),
-                    brushes: brushes(frame),
-                    instances,
+                    draw,
                 };
                 ui.painter()
                     .add(egui_wgpu::Callback::new_paint_callback(rect, callback));
@@ -545,6 +596,12 @@ struct Drawn {
     model: ModelRef,
     weapon: Option<ModelRef>,
     pose: EntityPose,
+    /// What a sprite takes from its entity
+    frame: f32,
+    scale: f32,
+    mode: RenderMode,
+    amount: f32,
+    color: [f32; 3],
 }
 
 /// Which model each drawn entity uses and how it is posed. Players use the
@@ -567,7 +624,9 @@ fn drawn(frame: &PresentedFrame) -> Vec<Drawn> {
         let player = frame.players.iter().find(|p| p.entity == number);
         let model = match (player.and_then(|p| p.model.as_deref()), e.model.as_deref()) {
             (Some(name), _) => ModelRef::Player(name.to_owned()),
-            (None, Some(path)) if path.ends_with(".mdl") => ModelRef::File(path.to_owned()),
+            (None, Some(path)) if path.ends_with(".mdl") || path.ends_with(".spr") => {
+                ModelRef::File(path.to_owned())
+            }
             _ => continue,
         };
         let is_player = player.is_some();
@@ -583,9 +642,18 @@ fn drawn(frame: &PresentedFrame) -> Vec<Drawn> {
             .as_deref()
             .filter(|w| is_player && w.ends_with(".mdl"))
             .map(|w| ModelRef::File(w.to_owned()));
+        let mode = RenderMode::from_game(e.render_mode);
         out.push(Drawn {
             model,
             weapon,
+            frame: e.frame,
+            scale: e.scale,
+            mode,
+            amount: match mode {
+                RenderMode::Normal => 1.,
+                _ => e.render_amount.clamp(0, 255) as f32 / 255.,
+            },
+            color: e.render_color.map(|c| f32::from(c) / 255.),
             pose: EntityPose {
                 sequence: e.sequence.max(0) as usize,
                 cycle: f64::from(e.frame),
@@ -601,6 +669,37 @@ fn drawn(frame: &PresentedFrame) -> Vec<Drawn> {
         });
     }
     out
+}
+
+/// The recorder's first-person weapon and its pose, the last weapon
+/// animation played from when it started, at the view's origin and angles,
+/// the pitch turned the other way as the game gives it to a viewmodel. None
+/// while dead, at intermission, or spectating other than through a player's
+/// eyes
+fn viewmodel_pose(frame: &PresentedFrame) -> Option<(String, EntityPose)> {
+    let camera = &frame.recorder;
+    let path = camera
+        .viewmodel
+        .as_deref()
+        .filter(|p| p.ends_with(".mdl"))?;
+    let observing = camera.observer_mode != 0 && camera.observer_mode != OBS_IN_EYE;
+    if camera.health <= 0 || camera.intermission || observing {
+        return None;
+    }
+    let animation = frame.viewmodel?;
+    let pose = EntityPose {
+        sequence: animation.sequence.max(0) as usize,
+        cycle: 0.,
+        elapsed: frame.at.0 - animation.started.0,
+        framerate: 1.,
+        controllers: [127.; 4],
+        blending: [0.; 2],
+        origin: camera.origin,
+        angles: [-camera.angles[0], camera.angles[1], camera.angles[2]],
+        player: false,
+        gait: None,
+    };
+    Some((path.to_owned(), pose))
 }
 
 /// Every light style's brightness at the frame's client time
@@ -654,6 +753,7 @@ fn view(frame: &PresentedFrame, rect: Rect) -> View {
     View {
         view_projection: view_projection(frame, rect),
         eye: frame.recorder.origin,
+        angles: frame.recorder.angles,
         time: frame.client_time as f32,
         light_styles: light_styles(frame),
     }
@@ -681,8 +781,7 @@ fn view_projection(frame: &PresentedFrame, rect: Rect) -> Matrix {
 struct Frame {
     pixels: [u32; 2],
     view: View,
-    brushes: Vec<Brush>,
-    instances: Vec<Instance>,
+    draw: DrawList,
 }
 
 impl CallbackTrait for Frame {
@@ -697,14 +796,9 @@ impl CallbackTrait for Frame {
         let Some(r) = resources.get_mut::<Resources>() else {
             return Vec::new();
         };
-        let (resized, commands) = r.scene.render(
-            device,
-            queue,
-            self.pixels,
-            &self.view,
-            &self.brushes,
-            &self.instances,
-        );
+        let (resized, commands) =
+            r.scene
+                .render(device, queue, self.pixels, &self.view, &self.draw);
         if (resized || r.blit_group.is_none())
             && let Some(view) = r.scene.color_view()
         {

@@ -7,6 +7,7 @@
 //! `models/player.mdl` when that is missing
 
 use lambda_slicer_assets::search::SearchPath;
+use lambda_slicer_assets::sprite::{self, Sprite};
 use lambda_slicer_assets::tga;
 use lambda_slicer_assets::wad::Wad;
 use lambda_slicer_assets::xenoxide::bsp30::BspDocument;
@@ -153,6 +154,11 @@ pub fn sky(search: &SearchPath, name: &str, limits: Limits) -> Result<[Rgba; 6],
         });
     }
     Ok(faces.try_into().expect("six faces"))
+}
+
+/// The sprite at `path`, a `.spr` or one of AG's sprites named as a model
+pub fn sprite(search: &SearchPath, path: &str, limits: Limits) -> Result<Sprite, LoadError> {
+    Ok(sprite::parse(&search.read(&search.find(path)?)?, limits)?)
 }
 
 /// A studio model ready to pose and draw

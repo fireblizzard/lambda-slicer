@@ -179,7 +179,7 @@ pub struct Entity {
     pub updated: ServerTime,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Camera {
     pub origin: [f32; 3],
     pub angles: [f32; 3],
@@ -192,6 +192,10 @@ pub struct Camera {
     /// client data as the game's client takes them. 0 when not observing
     pub observer_mode: i64,
     pub observer_target: i64,
+    /// The recorder's first-person weapon model and health, from its client
+    /// data
+    pub viewmodel: Option<Arc<str>>,
+    pub health: i64,
 }
 
 /// A player of the session, with what its userinfo names for drawing it
@@ -397,6 +401,7 @@ impl Scene {
             let data = decoder.latest_snapshot()?.clientdata.clone()?;
             data.value(&schema, field)?.as_i64()
         };
+        let viewmodel = client("viewmodel").and_then(|i| self.model_name(decoder, i));
         let camera = Camera {
             origin: frame.info_vieworg(),
             angles: frame.info_viewangles(),
@@ -406,6 +411,8 @@ impl Scene {
             intermission: frame.info_intermission() != 0,
             observer_mode: client("iuser1").unwrap_or(0),
             observer_target: client("iuser2").unwrap_or(0),
+            viewmodel,
+            health: client("health").unwrap_or(0),
         };
         if camera != self.camera {
             self.camera = camera;

@@ -358,7 +358,7 @@ impl Playback {
             scene_revision: state.scene.revision,
             entities: Arc::new(state.scene.presented(client_time)),
             client_time,
-            recorder: state.scene.camera,
+            recorder: state.scene.camera.clone(),
             camera,
             viewmodel: state.scene.viewmodel,
             light_styles: state.scene.light_styles.clone(),

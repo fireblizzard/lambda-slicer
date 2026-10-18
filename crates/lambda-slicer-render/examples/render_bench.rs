@@ -13,7 +13,7 @@ use std::time::{Duration, Instant};
 use lambda_slicer_assets::Limits;
 use lambda_slicer_assets::search::{SearchOptions, SearchPath};
 use lambda_slicer_render::camera::Camera;
-use lambda_slicer_render::gpu::{Brush, COLOR_FORMAT, Instance, Scene, View};
+use lambda_slicer_render::gpu::{Brush, COLOR_FORMAT, DrawList, Instance, Scene, View};
 use lambda_slicer_render::light::ModelLight;
 use lambda_slicer_render::{load, world};
 
@@ -122,11 +122,21 @@ fn main() {
         let view = View {
             view_projection,
             eye,
+            angles: camera.angles,
             time: t as f32,
             light_styles: [1.; 64],
         };
-        let (_, commands) =
-            scene.render(&device, &queue, size, &view, &[Brush::world()], &[instance]);
+        let (_, commands) = scene.render(
+            &device,
+            &queue,
+            size,
+            &view,
+            &DrawList {
+                brushes: vec![Brush::world()],
+                instances: vec![instance],
+                ..DrawList::default()
+            },
+        );
         queue.submit([commands]);
         device
             .poll(wgpu::PollType::wait_indefinitely())

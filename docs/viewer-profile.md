@@ -269,6 +269,23 @@ texture, so it looks like the checker drawn for a missing texture.
 Not drawn yet: team colours (`DM_Base` and `remap` textures), sequence transitions, mouth
 movement, chrome and additive model textures, and the sky's light on models.
 
+### Viewmodel and sprites (9d)
+
+**Implemented**, from the game's client and GLQuake's sprite drawing, not yet compared with the game
+(9e):
+
+| Part | How |
+|---|---|
+| Viewmodel | the model the recorder's client data names (`viewmodel`), playing the last weapon animation, from a record or a message, from when it started. At the view's origin and angles, the pitch turned the other way as the game gives it to a viewmodel, and lit by the light under the eye. Drawn last against a cleared depth, so it never sinks into a wall |
+| Viewmodel hidden | while the recorder's health is 0 or less, at intermission, and while spectating other than through a player's eyes |
+| Sprites | `IDSP` version 2, single frames and frame groups, in normal, additive, index-alpha and alpha-tested formats. Every sprite in the surveyed install reads (268, AG's sprite items included) |
+| Sprite entities | an entity whose model is a `.spr`, or one of AG's sprites under a `.mdl` name, at its frame and scale (0 meaning 1) |
+| Orientation | facing the view, facing the view upright, facing the camera's position upright, turned by the entity's angles, or facing the view rolled by the entity, as the five `SPR_` types say |
+| Render modes | normal and alpha modes cut out at half alpha, texture and colour modes blended by the render amount, additive mode added, and glow added without depth, fading as 19000 over the squared distance between 0.05 and 1. Additive and glowing sprites take the render colour, white when it is black. Drawn after translucent brushes, the furthest first |
+
+Not drawn yet: the viewmodel's body groups and the bob and lag the game adds to it, glow sprites'
+check for what hides them, and the sprites of temporary effects, which come with M10.
+
 **Measured (2026-10-18)** with `--viewer-bench 10`, playing from 20 s in a 1920 by 1080 window with
 the view 1098 by 950 pixels, while the library scan ran:
 
