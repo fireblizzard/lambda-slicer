@@ -288,23 +288,27 @@ of every clip, at 640 by 480 every 0.05 s through the clip's length and a second
 whose game frames are in `ag`, it then runs `examples/frame_compare.rs` in `lambda-slicer-gui` and
 writes a contact sheet of every tenth pair to `FOLDER\<clip>.png`, the game's frame on the left.
 
-`frame_compare` takes as the demo the game's frames for the clip's length from the first that
-differs from the one before, the demo's first after the loading screen (`--seconds`), or the
-frames numbered as given (`--frames FIRST-LAST`). Without either it guesses them as the longest
-run of changing frames, still for 3 s at most, which a longer pause in the demo would cut short,
-so the script always gives the length. It cuts both sides to the 4:3 scene and makes grey 160 by
-120 thumbnails, the speedometer left out, finds the offset between the game's clock and the
-clip's within 2 s, and says how many of the demo's frames found a pair, how much the pairs differ
+`frame_compare` aligns the game's frames with the clip's clock first, counting from the first
+frame that differs from the one before, the demo's first after the loading screen, and then takes
+those in the clip's first seconds, its end left out (`--seconds`, which the script gives as the
+clip's length). Every frame those seconds should have counts, so a recording that ends early or
+lacks a frame shows as frames without a pair, and the run fails. Given frame numbers instead
+(`--frames FIRST-LAST`) are all compared, and refused when the recording ends before the last.
+Without either it guesses the demo's frames as the longest run of changing frames, still for 3 s
+at most, which a longer pause in the demo would cut short. It cuts both sides to the 4:3 scene and
+makes grey 160 by 120 thumbnails, the speedometer left out, finds the offset between the game's
+clock and the clip's within 2 s, and says how many frames found a pair, how much the pairs differ
 against frames a second apart, and which differ most.
 
-**Checked (2026-10-19)** on `ls_9e_run.dem` and the game's frames of 9e (`-Clips ls_9e_run
--Length 16`): frames 2 to 161 of the game's taken as the demo and an offset of -0.40 s, as found
-by hand in 9e, 156 of the 160 paired (the first four fall before the clip's start at that offset),
-and the pairs differing by 9.4 against 23.9 for frames a second apart (8.4 in 9e, before the beam
-entities and steady glows changed this clip). Given frames 2 to 166, the frames 9e took, and with
-the frames guessed from the movement, it finds the same offset and difference. The pairs differing most are at 4.4 to 4.9 s,
-where a crate breaks. The viewer's wooden gibs are larger and nearer the camera than the game's,
-not yet looked into.
+**Checked (2026-10-20)** on `ls_9e_run.dem` and the game's frames of 9e (`-Clips ls_9e_run
+-Length 16`): an offset of -0.40 s, as found by hand in 9e, so the clip's 16 s are the game's
+frames 6 to 165, all 160 paired, differing by 9.3 against 23.4 for frames a second apart (8.4 in
+9e, before the beam entities and steady glows changed this clip). The frame at the clip's end,
+16.0 s, is left out, as a clip's end is not in it, and the game shows its menu there. Given frames
+2 to 166, the frames 9e took, and with the frames guessed from the movement, it finds the same
+offset and pairs differing by 9.4. With the recording cut after its 120th frame it counts the 45
+frames missing and fails. The pairs differing most are at 4.4 to 4.9 s, where a crate breaks. The
+viewer's wooden gibs are larger and nearer the camera than the game's, not yet looked into.
 
 **Status:** the clips and the viewer's frames of them are ready. The game's frames and sound of
 the eight new clips are not recorded yet, so nothing of them is compared.

@@ -8,8 +8,9 @@
 # through the clip's -Length in seconds and one more, drawn with the game's
 # gamma settings. When the game's frames are there too, recorded with
 # `startmovie` under the clip's name without its first underscore
-# (`ls12d_kill`), the clip's length from the game's first frame that changes
-# is compared and a contact sheet of pairs is written to FOLDER\<clip>.png. Build first with
+# (`ls12d_kill`), the clip's length is compared once the game's clock is
+# aligned with the clip's, and a contact sheet of pairs is written to
+# FOLDER\<clip>.png. Build first with
 # cargo build --release -p lambda-slicer-gui --example frame_compare
 
 param(

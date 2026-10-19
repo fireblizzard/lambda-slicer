@@ -10,12 +10,16 @@
 //! clip as `--viewer-capture` writes them, `<seconds>.png`, every 0.05 s.
 //!
 //! The demo's frames among the game's, which loading screens and the menu
-//! surround, are the frames numbered `FIRST` to `LAST`, or `S` seconds from
-//! the first frame that differs from the one before, the demo's first after
-//! the loading screen. Without either they are guessed as the longest run of
-//! frames that differ from the one before, still for 3 s at most, which a
-//! longer pause in the demo would cut short. It says which frames it took
-//! and how many of them found a viewer frame to pair with.
+//! surround, are the frames numbered `FIRST` to `LAST`, which must all be
+//! there, or those in the clip's first `S` seconds once the game's clock is
+//! aligned with the clip's, counted from the first frame that differs from
+//! the one before, the demo's first after the loading screen. Every frame the
+//! clip's `S` seconds should have counts, so a recording that ends early
+//! shows as frames without a pair. Without either the demo's frames are
+//! guessed as the longest run of frames that differ from the one before,
+//! still for 3 s at most, which a longer pause in the demo would cut short.
+//! It says which frames it took and how many of them found a viewer frame to
+//! pair with.
 //!
 //! Both are cut to the 4:3 scene in their middle, as the game draws 4:3
 //! between black bars, and made into grey 160 by 120 thumbnails, with AG's
@@ -46,6 +50,8 @@ const PLAYED: usize = 20;
 const DONE: usize = 100;
 /// How far apart in seconds two frames may be to make a pair
 const PAIRED: f64 = 0.03;
+/// The furthest in seconds the game's clock may be from the clip's
+const MAX_OFFSET: f64 = 2.;
 /// The pictures on the contact sheet
 const SHEET_WIDTH: u32 = 320;
 const SHEET_HEIGHT: u32 = 240;
@@ -168,8 +174,8 @@ fn read_frame(path: &Path) -> Option<RgbImage> {
 enum Interval {
     /// The frames numbered from the first to the last, both included
     Frames(usize, usize),
-    /// This many seconds from the first frame that differs from the one
-    /// before
+    /// The clip's first seconds, the game's clock counted from the first
+    /// frame that differs from the one before and aligned with the clip's
     Seconds(f64),
     /// The longest run of frames that differ from the one before
     Guessed,
@@ -210,8 +216,9 @@ fn game_frames(prefix: &Path, interval: Interval) -> Vec<Frame> {
 
         let enough = match interval {
             Interval::Frames(_, last) => frames.len() >= last,
+            // As far as the furthest offset could put the clip's end
             Interval::Seconds(seconds) => {
-                let wanted = (seconds * GAME_RATE) as usize;
+                let wanted = ((seconds + MAX_OFFSET) * GAME_RATE) as usize + 1;
                 first.is_some_and(|f| frames.len() >= f + wanted)
             }
             Interval::Guessed => moved >= PLAYED && still >= DONE,
@@ -223,17 +230,16 @@ fn game_frames(prefix: &Path, interval: Interval) -> Vec<Frame> {
     frames
 }
 
-/// The demo's frames among the game's, as a range of indices
+/// The game's frames to align with the clip, as a range of indices. For
+/// the clip's first seconds these are all read from the first change on,
+/// which the alignment narrows to the clip's
 fn demo_frames(frames: &[Frame], interval: Interval) -> std::ops::Range<usize> {
     match interval {
-        Interval::Frames(first, last) => (first - 1).min(frames.len())..last.min(frames.len()),
-        Interval::Seconds(seconds) => {
-            let Some(first) = first_change(frames) else {
-                return 0..0;
-            };
-            let end = first + (seconds * GAME_RATE) as usize;
-            first..end.min(frames.len())
-        }
+        Interval::Frames(first, last) => (first - 1)..last,
+        Interval::Seconds(_) => match first_change(frames) {
+            Some(first) => first..frames.len(),
+            None => 0..0,
+        },
         Interval::Guessed => longest_run(frames),
     }
 }
@@ -310,19 +316,61 @@ fn nearest(viewer: &[(f64, Frame)], time: f64) -> Option<&Frame> {
     Some(&closer.1)
 }
 
-/// Each game frame's clip time with `offset`, its pair's difference, and
-/// the difference from the viewer's frame a second later
-fn pairs(game: &[Frame], viewer: &[(f64, Frame)], offset: f64) -> Vec<(f64, f32, Option<f32>)> {
-    let mut out = Vec::new();
-    for (i, g) in game.iter().enumerate() {
+/// One game frame's clip time, the difference from its pair, and the
+/// difference from the viewer's frame a second later
+type Pair = (f64, f32, Option<f32>);
+
+/// The pairs at one offset, and the game frames counted for coverage
+struct Paired {
+    pairs: Vec<Pair>,
+    /// The game frames there should be
+    expected: usize,
+    /// How many of those were read
+    read: usize,
+}
+
+/// The game's frames paired with the viewer's at `offset`. With `window`,
+/// only those whose clip times fall from its start up to its end in
+/// seconds, and every such frame counts whether it was read or not.
+/// Otherwise every game frame
+fn pairs(
+    game: &[Frame],
+    viewer: &[(f64, Frame)],
+    offset: f64,
+    window: Option<(f64, f64)>,
+) -> Paired {
+    // Game frame `i` falls at clip time `i / GAME_RATE + offset`, so the
+    // window holds the frames from `first` to `last`, read or not. Its end
+    // is left out, as a clip's is, where the demo has ended
+    let (first, last) = match window {
+        Some((from, to)) => {
+            let first = ((from - offset) * GAME_RATE - 1e-6).ceil() as i64;
+            let last = ((to - offset) * GAME_RATE - 1e-6).ceil() as i64 - 1;
+            (first, last)
+        }
+        None => (0, game.len() as i64 - 1),
+    };
+    let expected = (last - first + 1).max(0) as usize;
+
+    let mut pairs = Vec::new();
+    let mut read = 0;
+    for i in first.max(0)..=last {
+        let Some(g) = game.get(i as usize) else {
+            break;
+        };
+        read += 1;
         let time = i as f64 / GAME_RATE + offset;
         let Some(v) = nearest(viewer, time) else {
             continue;
         };
         let apart = nearest(viewer, time + 1.).map(|later| difference(&g.thumb, &later.thumb));
-        out.push((time, difference(&g.thumb, &v.thumb), apart));
+        pairs.push((time, difference(&g.thumb, &v.thumb), apart));
     }
-    out
+    Paired {
+        pairs,
+        expected,
+        read,
+    }
 }
 
 fn mean(values: impl Iterator<Item = f32>) -> f32 {
@@ -336,11 +384,11 @@ fn mean(values: impl Iterator<Item = f32>) -> f32 {
 }
 
 /// Every tenth pair side by side, the game's frame on the left
-fn write_sheet(path: &Path, game: &[Frame], viewer: &[(f64, Frame)], offset: f64) {
+fn write_sheet(path: &Path, game: &[Frame], viewer: &[(f64, Frame)], offset: f64, found: &[Pair]) {
     let mut chosen = Vec::new();
-    for (i, g) in game.iter().enumerate().step_by(10) {
-        let time = i as f64 / GAME_RATE + offset;
-        if let Some(v) = nearest(viewer, time) {
+    for (time, ..) in found.iter().step_by(10) {
+        let i = ((time - offset) * GAME_RATE).round() as usize;
+        if let (Some(g), Some(v)) = (game.get(i), nearest(viewer, *time)) {
             chosen.push((g, v));
         }
     }
@@ -408,6 +456,15 @@ fn main() {
     }
 
     let all = game_frames(Path::new(&game_prefix), interval);
+    if let Interval::Frames(_, last) = interval
+        && all.len() < last
+    {
+        eprintln!(
+            "frames up to {last} asked for, but the game's frames end at {}",
+            all.len()
+        );
+        std::process::exit(1);
+    }
     let run = demo_frames(&all, interval);
     let game = &all[run.clone()];
     let viewer = viewer_frames(Path::new(&viewer_folder));
@@ -420,10 +477,13 @@ fn main() {
         );
         std::process::exit(1);
     }
-    let how = match interval {
-        Interval::Frames(..) => "as given".to_owned(),
-        Interval::Seconds(seconds) => format!("{seconds} s from the first change"),
-        Interval::Guessed => "guessed from the movement".to_owned(),
+    let (how, window) = match interval {
+        Interval::Frames(..) => ("as given".to_owned(), None),
+        Interval::Seconds(seconds) => (
+            format!("the clip's first {seconds} s taken once aligned"),
+            Some((0., seconds)),
+        ),
+        Interval::Guessed => ("guessed from the movement".to_owned(), None),
     };
     println!(
         "game frames {} to {} of {} read, {how}, and {} viewer frames from {:.2} to {:.2} s",
@@ -435,36 +495,44 @@ fn main() {
         viewer[viewer.len() - 1].0
     );
 
-    // The offset that pairs at least half the game's frames and makes the
-    // pairs differ least
+    // The offset that pairs at least half the frames there should be and
+    // makes the pairs differ least
     let mut best: Option<(f64, f32)> = None;
-    for step in -40..=40 {
+    let steps = (MAX_OFFSET / 0.05).round() as i32;
+    for step in -steps..=steps {
         let offset = f64::from(step) * 0.05;
-        let found = pairs(game, &viewer, offset);
-        if found.len() * 2 < game.len() {
+        let found = pairs(game, &viewer, offset, window);
+        if found.pairs.is_empty() || found.pairs.len() * 2 < found.expected {
             continue;
         }
-        let score = mean(found.iter().map(|(_, d, _)| *d));
+        let score = mean(found.pairs.iter().map(|(_, d, _)| *d));
         if best.is_none_or(|(_, b)| score < b) {
             best = Some((offset, score));
         }
     }
     let Some((offset, score)) = best else {
-        eprintln!("no offset within 2 s pairs half the game's frames");
+        eprintln!("no offset within {MAX_OFFSET} s pairs half the game's frames");
         std::process::exit(1);
     };
 
-    let found = pairs(game, &viewer, offset);
+    let Paired {
+        pairs: found,
+        expected,
+        read,
+    } = pairs(game, &viewer, offset, window);
     let apart = mean(found.iter().filter_map(|(_, _, a)| *a));
     println!(
-        "offset {offset:+.2} s, {} of {} game frames paired, differing by {score:.1} on average, against {apart:.1} for frames a second apart",
-        found.len(),
-        game.len()
+        "offset {offset:+.2} s, {} of {expected} game frames paired, differing by {score:.1} on average, against {apart:.1} for frames a second apart",
+        found.len()
     );
-    let unpaired = game.len() - found.len();
-    if unpaired > 0 {
+    let missing = expected - read;
+    let lone = read - found.len();
+    if missing > 0 {
+        println!("{missing} of the clip's frames are not among the game's, which end too soon");
+    }
+    if lone > 0 {
         println!(
-            "{unpaired} of the demo's frames found no viewer frame within {PAIRED} s, their clip times before or after the viewer's capture"
+            "{lone} of the game's frames found no viewer frame within {PAIRED} s, their clip times before or after the viewer's capture"
         );
     }
     let mut worst = found.clone();
@@ -477,6 +545,12 @@ fn main() {
     println!("differing most at {}", listed.join(", "));
 
     if let Some(path) = sheet {
-        write_sheet(&path, game, &viewer, offset);
+        write_sheet(&path, game, &viewer, offset, &found);
+    }
+
+    // A recording missing some of the clip is incomplete, whatever the rest
+    // shows
+    if missing > 0 {
+        std::process::exit(1);
     }
 }
