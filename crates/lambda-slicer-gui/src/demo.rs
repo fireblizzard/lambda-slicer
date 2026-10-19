@@ -232,8 +232,12 @@ pub struct DemoView {
     export: Option<ExportJob>,
     /// How each clip's latest export went, by its requested range
     exports: HashMap<ClipKey, ExportState>,
-    /// The backend spike's view of the demo's map
+    /// The demo viewer, when a game folder is known
     pub viewer: Option<crate::viewer::Viewer>,
+    /// The game folder the viewer was opened with
+    pub viewer_game: Option<PathBuf>,
+    /// The demo's length in seconds, as the library knows it
+    pub duration: f32,
     /// The clip the viewer loops
     looping: Option<usize>,
     /// The timeline's ruler or playhead is being dragged
@@ -269,6 +273,8 @@ impl DemoView {
             exports: HashMap::new(),
             export_on_load: false,
             viewer: None,
+            viewer_game: None,
+            duration,
             looping: None,
             scrubbing: false,
         }

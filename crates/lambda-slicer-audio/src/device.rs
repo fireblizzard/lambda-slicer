@@ -61,8 +61,31 @@ pub struct Feed {
     pub until: Option<SourceTime>,
 }
 
-/// A block of samples and the mark of the feed it was mixed for
-type Block = (u64, Vec<[f32; 2]>);
+/// A block of samples, the mark of the feed it was mixed for, and where in
+/// the demo it starts as that feed's clock ran
+struct Block {
+    mark: u64,
+    samples: Vec<[f32; 2]>,
+    timing: Option<Timing>,
+}
+
+/// Where a block starts in the demo, and the clock it was mixed against
+#[derive(Clone, Copy)]
+struct Timing {
+    start: SourceTime,
+    clock: Clock,
+    base: Instant,
+}
+
+/// How far the sound heard runs ahead of the playhead, in seconds, when a
+/// block begins to be heard at `heard`
+fn skew(timing: &Timing, heard: Instant) -> f64 {
+    timing.start.0 - clock_at_instant(&timing.clock, timing.base, heard).0
+}
+
+fn clock_at_instant(clock: &Clock, base: Instant, at: Instant) -> SourceTime {
+    clock.at(at.saturating_duration_since(base).as_secs_f64())
+}
 
 /// Sound playing on the default output device until dropped
 pub struct Device {
@@ -74,14 +97,22 @@ pub struct Device {
     volume: Arc<AtomicU32>,
     stop: Arc<AtomicBool>,
     mixer: Option<JoinHandle<()>>,
+    /// Writes the measured skew out when the device closes
+    skew_log: Option<JoinHandle<()>>,
 }
 
 impl Device {
     /// Open the default output device, mixing `library`'s sounds. With
     /// `tap`, every block from the first heard on is written there as a WAV
     /// file when the device closes, for checking the mix, and the device
-    /// plays silence at the same pace
-    pub fn open(library: Arc<Library>, tap: Option<PathBuf>) -> Result<Self, String> {
+    /// plays silence at the same pace. With `skew_log`, how far each block
+    /// heard runs ahead of the playhead is written there as text when the
+    /// device closes, with the device's latency
+    pub fn open(
+        library: Arc<Library>,
+        tap: Option<PathBuf>,
+        skew_log: Option<PathBuf>,
+    ) -> Result<Self, String> {
         let host = cpal::default_host();
         let device = host
             .default_output_device()
@@ -92,6 +123,12 @@ impl Device {
         let block = (rate / 100).max(1) as usize;
 
         let (filled_tx, filled_rx) = mpsc::sync_channel::<Block>(QUEUED);
+        // The device's own latency, from when the callback runs to when its
+        // first sample is heard
+        let latency = Arc::new(AtomicU64::new(0));
+        let measured = latency.clone();
+        let (skew_tx, skew_rx) = mpsc::sync_channel::<(Instant, Timing, u64)>(4096);
+        let skew_tx = skew_log.is_some().then_some(skew_tx);
         let (empty_tx, empty_rx) = mpsc::sync_channel::<Vec<[f32; 2]>>(QUEUED + 2);
         for _ in 0..QUEUED + 2 {
             let _ = empty_tx.try_send(Vec::with_capacity(block));
@@ -105,31 +142,46 @@ impl Device {
         let stream = device
             .build_output_stream(
                 config.config(),
-                move |out: &mut [f32], _| {
+                move |out: &mut [f32], info: &cpal::OutputCallbackInfo| {
+                    let called = Instant::now();
+                    let stamps = info.timestamp();
+                    let delay = stamps.playback.duration_since(stamps.callback);
+                    measured.store(delay.as_nanos() as u64, Ordering::Relaxed);
                     let now = live.load(Ordering::SeqCst);
-                    for frame in out.chunks_mut(channels) {
+                    for (k, frame) in out.chunks_mut(channels).enumerate() {
                         if current
                             .as_ref()
-                            .is_none_or(|(m, b)| read >= b.len() || *m != now)
+                            .is_none_or(|b: &Block| read >= b.samples.len() || b.mark != now)
                         {
-                            if let Some((_, done)) = current.take() {
-                                let _ = empty_tx.try_send(done);
+                            if let Some(done) = current.take() {
+                                let _ = empty_tx.try_send(done.samples);
                             }
                             // Blocks mixed for an older feed are not heard
                             current = loop {
                                 match filled_rx.try_recv() {
-                                    Ok((m, stale)) if m != now => {
-                                        let _ = empty_tx.try_send(stale);
+                                    Ok(stale) if stale.mark != now => {
+                                        let _ = empty_tx.try_send(stale.samples);
                                     }
                                     Ok(fresh) => break Some(fresh),
                                     Err(_) => break None,
                                 }
                             };
                             read = 0;
+                            // When this block's first sample is heard
+                            if let (Some(tx), Some(timing)) =
+                                (&skew_tx, current.as_ref().and_then(|b| b.timing))
+                            {
+                                let offset = Duration::from_secs_f64(k as f64 / f64::from(rate));
+                                let _ = tx.try_send((
+                                    called + delay + offset,
+                                    timing,
+                                    delay.as_micros() as u64,
+                                ));
+                            }
                         }
                         let sample = current
                             .as_ref()
-                            .and_then(|(_, b)| b.get(read))
+                            .and_then(|b| b.samples.get(read))
                             .copied()
                             .unwrap_or([0.; 2]);
                         read += 1;
@@ -153,6 +205,7 @@ impl Device {
                 mark: mark.clone(),
                 volume: volume.clone(),
                 stop: stop.clone(),
+                latency: latency.clone(),
             };
             std::thread::Builder::new()
                 .name("sound mixer".into())
@@ -175,6 +228,30 @@ impl Device {
                 .map_err(|e| e.to_string())?
         };
 
+        // Collected off the device's thread, written at the end
+        let skew_log = skew_log.map(|path| {
+            std::thread::spawn(move || {
+                let lines: Vec<String> = skew_rx
+                    .iter()
+                    .map(|(heard, timing, delay)| {
+                        format!(
+                            "{:.4} {:.2} {:.2}",
+                            timing.start.0,
+                            skew(&timing, heard) * 1000.,
+                            delay as f64 / 1000.
+                        )
+                    })
+                    .collect();
+                let text = format!(
+                    "# source_s skew_ms device_latency_ms\n{}\n",
+                    lines.join("\n")
+                );
+                if let Err(e) = std::fs::write(&path, text) {
+                    eprintln!("sound: {}: {e}", path.display());
+                }
+            })
+        });
+
         Ok(Self {
             stream: Some(stream),
             feed,
@@ -182,6 +259,7 @@ impl Device {
             volume,
             stop,
             mixer: Some(mixer),
+            skew_log,
         })
     }
 
@@ -215,6 +293,10 @@ impl Drop for Device {
         if let Some(mixer) = self.mixer.take() {
             let _ = mixer.join();
         }
+        // The stream held the log's sending end, so the log ends now
+        if let Some(log) = self.skew_log.take() {
+            let _ = log.join();
+        }
     }
 }
 
@@ -242,6 +324,8 @@ struct Shared {
     mark: Arc<AtomicU64>,
     volume: Arc<AtomicU32>,
     stop: Arc<AtomicBool>,
+    /// The device's latency in nanoseconds, as its callback last measured
+    latency: Arc<AtomicU64>,
 }
 
 /// The mixer's own playback, for one load generation. None when the demo
@@ -290,6 +374,7 @@ fn run(
         mark,
         volume,
         stop,
+        latency,
     } = shared;
     // The mark of the feed being mixed, which a seek stops for once the
     // feed's changes or the device closes
@@ -327,9 +412,12 @@ fn run(
         let playing = now
             .filter(|f| f.audible && f.clock.playing() && f.demo.generation == f.stamp.generation);
         let mixed = playing.and_then(|f| {
-            // The block is heard once the queued blocks before it are
-            let heard = Instant::now()
-                + Duration::from_secs_f64(QUEUED as f64 * block as f64 / f64::from(rate));
+            // The block is heard once the queued blocks before it are, the
+            // one playing half done on average, and the device's latency
+            // has passed
+            let queued = (QUEUED as f64 + 0.5) * block as f64 / f64::from(rate);
+            let device = Duration::from_nanos(latency.load(Ordering::Relaxed));
+            let heard = Instant::now() + Duration::from_secs_f64(queued) + device;
             let from = block_start(place, f.stamp, clock_at(&f, heard));
             if f.until.is_some_and(|until| from.0 >= until.0) {
                 return None;
@@ -351,11 +439,13 @@ fn run(
                 block,
                 &output,
             ));
-            Some((f.stamp, to))
+            Some((f.stamp, to, from, f.clock, f.clock_base))
         });
         // A block whose feed changed while it was mixed is not heard, and
         // the next starts at the clock
-        place = mixed.filter(|_| mark.load(Ordering::SeqCst) == tag);
+        let mixed = mixed.filter(|_| mark.load(Ordering::SeqCst) == tag);
+        place = mixed.map(|(stamp, to, ..)| (stamp, to));
+        let timing = mixed.map(|(_, _, start, clock, base)| Timing { start, clock, base });
         if place.is_none() {
             buffer.clear();
             buffer.resize(block, [0.; 2]);
@@ -363,7 +453,12 @@ fn run(
         if tapping && (place.is_some() || !tapped.is_empty()) {
             tapped.extend_from_slice(&buffer);
         }
-        if !send(&filled, (tag, buffer), &stop) {
+        let block = Block {
+            mark: tag,
+            samples: buffer,
+            timing,
+        };
+        if !send(&filled, block, &stop) {
             break;
         }
     }

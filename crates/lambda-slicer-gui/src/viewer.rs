@@ -49,7 +49,7 @@ use lambda_slicer_render::gpu::{
 };
 use lambda_slicer_render::light::{LightTree, ModelLight};
 use lambda_slicer_render::load::{self, EntityPose, GaitPose, LoadError, LoadedModel};
-use lambda_slicer_render::model::{Eye, ModelMesh};
+use lambda_slicer_render::model::{Eye, ModelMesh, ModelVertex};
 use lambda_slicer_render::world::{self, WorldMesh};
 
 use fluent_bundle::FluentValue;
@@ -58,6 +58,7 @@ use fluent_bundle::types::{FluentNumber, FluentNumberOptions};
 use crate::decals::DecalCache;
 use crate::i18n::Catalog;
 use crate::layout;
+use crate::settings::ViewerSettings;
 use crate::text::{self, Look};
 
 /// `EF_NODRAW`, an entity the game does not draw
@@ -143,14 +144,15 @@ enum Outcome {
 /// A map's world and its sky, none when the sky could not be read
 struct LoadedMap {
     world: WorldMesh,
-    sky: Option<[Rgba; 6]>,
+    /// The map's own sky, or why it could not be read
+    sky: Result<[Rgba; 6], String>,
 }
 
 enum Loaded {
     Map(String, Result<Box<LoadedMap>, String>),
     Model(ModelRef, Outcome),
-    /// A sky by name, none when it could not be read
-    Sky(String, Option<Box<[Rgba; 6]>>),
+    /// A sky by name, or why it could not be read
+    Sky(String, Result<Box<[Rgba; 6]>, String>),
 }
 
 /// The thread that reads maps and models for one demo
@@ -174,8 +176,7 @@ impl Loader {
                         (Ok(search), Asset::Map(name)) => {
                             let world = load::map(search, &name, limits).map(|(world, _)| {
                                 let sky = load::sky(search, &world.sky, limits)
-                                    .inspect_err(|e| eprintln!("viewer: sky {}, {e}", world.sky))
-                                    .ok();
+                                    .map_err(|e| e.to_string());
                                 Box::new(LoadedMap { world, sky })
                             });
                             Loaded::Map(name, world.map_err(|e| e.to_string()))
@@ -219,12 +220,11 @@ impl Loader {
                         }
                         (Ok(search), Asset::Sky(name)) => {
                             let sky = load::sky(search, &name, limits)
-                                .inspect_err(|e| eprintln!("viewer: sky {name}, {e}"))
-                                .ok()
-                                .map(Box::new);
+                                .map(Box::new)
+                                .map_err(|e| e.to_string());
                             Loaded::Sky(name, sky)
                         }
-                        (Err(_), Asset::Sky(name)) => Loaded::Sky(name, None),
+                        (Err(e), Asset::Sky(name)) => Loaded::Sky(name, Err(e.clone())),
                         (Err(e), Asset::Map(name)) => Loaded::Map(name, Err(e.clone())),
                         (Err(e), Asset::Model(model)) => {
                             Loaded::Model(model, Outcome::Failed(e.clone()))
@@ -261,6 +261,8 @@ struct Resources {
 }
 
 pub struct Viewer {
+    /// The settings it shows and plays with, the app's each frame
+    pub settings: ViewerSettings,
     render_state: RenderState,
     controller: Controller,
     worker: Worker,
@@ -268,6 +270,9 @@ pub struct Viewer {
     sound: Option<Device>,
     /// A scrub Escape cancelled, whose drag goes on until it is let go
     scrub_cancelled: bool,
+    /// While measuring A/V skew, where to write how far each picture
+    /// painted trails the playhead, and those lags
+    video_lag: Option<(PathBuf, Vec<(f64, f64)>)>,
     loader: Option<Loader>,
     frame: Option<Box<PresentedFrame>>,
     /// The map whose world is drawn, and the one being read
@@ -298,6 +303,8 @@ pub struct Viewer {
     decals: DecalCache,
     /// The game's files, for the map's hull that hides glows
     library: Option<Arc<Library>>,
+    /// Maps, models, sprites and skies that could not be read, and why
+    missing: std::collections::BTreeMap<String, String>,
 }
 
 /// The demo's game folder, from its header
@@ -370,7 +377,7 @@ impl Viewer {
         let glow_library = library.clone();
         let sound = library.filter(|_| !quiet).and_then(|l| {
             let tap = std::env::var_os("LAMBDA_SLICER_SOUND_TAP").map(PathBuf::from);
-            Device::open(l, tap)
+            Device::open(l, tap, skew_path())
                 .inspect_err(|e| eprintln!("sound: {e}"))
                 .ok()
         });
@@ -386,16 +393,19 @@ impl Viewer {
         }
 
         Self {
+            settings: ViewerSettings::default(),
             render_state,
             controller,
             worker,
             sound,
             scrub_cancelled: false,
+            video_lag: skew_path().map(|p| (p.with_extension("video.txt"), Vec::new())),
 
             loader,
             frame: None,
             map: None,
             map_loading: None,
+            missing: std::collections::BTreeMap::new(),
             map_failed: None,
             sky: None,
             sky_loading: None,
@@ -521,6 +531,11 @@ impl Viewer {
             match item {
                 Loaded::Map(name, Ok(map)) if self.map_loading.as_ref() == Some(&name) => {
                     let LoadedMap { mut world, sky } = *map;
+                    let sky = sky
+                        .inspect_err(|e| {
+                            self.missing.insert(sky_file(&world.sky), e.clone());
+                        })
+                        .ok();
                     self.light = Some(Arc::new(std::mem::take(&mut world.light)));
                     resources.scene.set_world(device, queue, &world);
                     self.sky = Some(world.sky.clone());
@@ -531,6 +546,7 @@ impl Viewer {
                 }
                 Loaded::Map(name, Err(e)) if self.map_loading.as_ref() == Some(&name) => {
                     eprintln!("viewer: map {name}, {e}");
+                    self.missing.insert(format!("maps/{name}.bsp"), e.clone());
                     // Nothing of the map drawn before is kept for this one
                     self.map = None;
                     self.light = None;
@@ -540,8 +556,11 @@ impl Viewer {
                 Loaded::Map(..) => {}
                 Loaded::Sky(name, sky) => {
                     // A sky that cannot be read leaves the one drawn
-                    if let Some(sky) = sky {
-                        resources.scene.set_sky(device, queue, Some(&*sky));
+                    match sky {
+                        Ok(sky) => resources.scene.set_sky(device, queue, Some(&*sky)),
+                        Err(e) => {
+                            self.missing.insert(sky_file(&name), e);
+                        }
                     }
                     if self.sky_loading.as_ref() == Some(&name) {
                         self.sky_loading = None;
@@ -558,7 +577,7 @@ impl Viewer {
                     self.models.insert(model, Slot::Sprite(handle));
                 }
                 Loaded::Model(model, Outcome::Failed(e)) => {
-                    eprintln!("viewer: model {model:?}, {e}");
+                    self.missing.insert(model_file(&model), e);
                     self.models.insert(model, Slot::NotDrawn);
                 }
             }
@@ -618,6 +637,7 @@ impl Viewer {
         // Chrome reflects the view the scene is drawn from
         let eye = Eye::new(frame.recorder.origin, frame.recorder.angles);
         let mut instances = Vec::new();
+        let mut silhouettes = Vec::new();
         let mut sprites = Vec::new();
         let since = if self.flashes_to > frame.at.0 {
             f64::NEG_INFINITY
@@ -673,6 +693,7 @@ impl Viewer {
                 continue;
             };
             let light = light_at(drawn.pose.origin);
+            let first = instances.len();
             instances.push(Instance {
                 model: *handle,
                 vertices: model.mesh.skin(&bones, &light, &eye),
@@ -680,6 +701,12 @@ impl Viewer {
                 amount: drawn.amount,
             });
             place(Holder::Entity(drawn.id), model, &bones);
+            // Shown again where walls hide it, a player in its top colour
+            let tint = match drawn.pose.player {
+                true if self.settings.see_through => Some(team_tint(drawn.top_color)),
+                false if self.settings.see_through_items => Some(ITEM_TINT),
+                _ => None,
+            };
 
             // The weapon is drawn as its holder is
             if let Some(Slot::Ready(weapon, weapon_handle)) =
@@ -692,6 +719,11 @@ impl Viewer {
                     mode: drawn.mode,
                     amount: drawn.amount,
                 });
+            }
+            if let Some(tint) = tint {
+                for instance in &instances[first..] {
+                    silhouettes.push(silhouette(instance, tint));
+                }
             }
         }
 
@@ -744,7 +776,8 @@ impl Viewer {
         }
 
         let mut viewmodel = Vec::new();
-        if let Some((_, pose)) = viewmodel_pose(frame)
+        if self.settings.viewmodel
+            && let Some((_, pose)) = viewmodel_pose(frame)
             && let Some(Slot::Ready(model, handle)) = viewmodel_ref(frame, &self.models)
                 .as_ref()
                 .and_then(|m| self.models.get(m))
@@ -790,6 +823,7 @@ impl Viewer {
             instances,
             sprites,
             viewmodel,
+            silhouettes,
             decals: self.decals.mesh(),
             streaks: self.streaks(frame, &guns),
         }
@@ -984,6 +1018,38 @@ impl Viewer {
         frame.stamp == stamp && map.is_some() && self.map == map && !loading && sky
     }
 
+    /// The files the view could not read, with the reasons, folded away
+    /// under their count
+    fn missing_files(&self, ui: &mut Ui, catalog: &Catalog, rtl: bool) {
+        let sounds = self
+            .library
+            .as_ref()
+            .map(|l| l.missing_sounds())
+            .unwrap_or_default();
+        let count = self.missing.len() + sounds.len();
+        if count == 0 {
+            return;
+        }
+        let title = catalog.text_with("viewer-missing", &[("count", (count as i64).into())]);
+        let title = text::widget_text(ui.ctx(), &title, rtl, None, Look::Plain);
+        egui::CollapsingHeader::new(title)
+            .id_salt("viewer-missing")
+            .show(ui, |ui| {
+                egui::ScrollArea::vertical()
+                    .id_salt("viewer-missing-list")
+                    .max_height(120.)
+                    .show(ui, |ui| {
+                        let files = self.missing.iter().map(|(n, r)| (n.as_str(), r.as_str()));
+                        let sounds = sounds.iter().map(|(n, r)| (n.as_str(), r.as_str()));
+                        for (name, reason) in files.chain(sounds) {
+                            // File names and reasons read left to right
+                            let line = format!("{name} · {reason}");
+                            ui.label(text::widget_text(ui.ctx(), &line, false, None, Look::Weak));
+                        }
+                    });
+            });
+    }
+
     /// The map the frame is on, and why, when it could not be loaded
     fn failed_map(&self) -> Option<&(String, String)> {
         let map = self.frame.as_ref()?.map.as_deref().map(map_name)?;
@@ -1030,17 +1096,20 @@ impl Viewer {
                                 .read_color(&self.render_state.device, &self.render_state.queue)
                         })
                 };
+                // Nothing drawn yet, as before the first frame is painted,
+                // is read again next frame rather than skipped
+                let Some(image) = image else {
+                    return (Some(size), false);
+                };
                 let time = capturing.capture.times[capturing.next];
                 let path = capturing.capture.folder.join(format!("{time:09.3}.png"));
-                if let Some(image) = image
-                    && let Err(e) = image::save_buffer(
-                        &path,
-                        &image.pixels,
-                        image.width,
-                        image.height,
-                        image::ColorType::Rgba8,
-                    )
-                {
+                if let Err(e) = image::save_buffer(
+                    &path,
+                    &image.pixels,
+                    image.width,
+                    image.height,
+                    image::ColorType::Rgba8,
+                ) {
                     eprintln!("cannot save {}: {e}", path.display());
                 }
                 if let Some(c) = &mut self.capturing {
@@ -1055,6 +1124,11 @@ impl Viewer {
     /// The view in `height` points with its controls under it, or all the
     /// space left in a bench run
     pub fn ui(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool, height: f32) {
+        if let Some(sound) = &self.sound
+            && sound.volume() != self.settings.volume
+        {
+            sound.set_volume(self.settings.volume);
+        }
         self.shortcuts(ui.ctx());
         self.poll();
         self.request_assets();
@@ -1105,7 +1179,7 @@ impl Viewer {
                     drawn = draw.instances.len() + draw.sprites.len() + draw.viewmodel.len();
                     let callback = Frame {
                         pixels,
-                        view: view(frame, pixels[0] as f32 / pixels[1] as f32),
+                        view: view(frame, pixels[0] as f32 / pixels[1] as f32, &self.settings),
                         draw,
                     };
                     ui.painter()
@@ -1119,6 +1193,7 @@ impl Viewer {
                 }
             }
         }
+        self.missing_files(ui, catalog, rtl);
         if let Some(stopped) = self.frame.as_ref().and_then(|f| f.stopped.as_ref()) {
             let reason = catalog.message(stopped);
             text::label(
@@ -1129,6 +1204,11 @@ impl Viewer {
         }
         if let Some(at) = drawn_at {
             self.flashes_to = at;
+            // How far the picture painted trails the playhead
+            let now = self.controller.time(self.wall()).0;
+            if let Some((_, lags)) = &mut self.video_lag {
+                lags.push((at, (now - at) * 1000.));
+            }
         }
 
         self.feed_sound();
@@ -1152,7 +1232,20 @@ impl Viewer {
                 self.play = Some((seconds, Some(Instant::now())));
                 false
             }
-            Some(began) => began.elapsed().as_secs_f64() >= seconds,
+            Some(began) => {
+                let over = began.elapsed().as_secs_f64() >= seconds;
+                if over && let Some((path, lags)) = &self.video_lag {
+                    let lines: Vec<String> = lags
+                        .iter()
+                        .map(|(at, lag)| format!("{at:.4} {lag:.2}"))
+                        .collect();
+                    let text = format!("# source_s picture_lag_ms\n{}\n", lines.join("\n"));
+                    if let Err(e) = std::fs::write(path, text) {
+                        eprintln!("viewer: {}: {e}", path.display());
+                    }
+                }
+                over
+            }
             None => false,
         }
     }
@@ -1324,18 +1417,24 @@ impl Viewer {
             let shown = format!("{} / {}", clock(now), clock(end));
             ui.label(text::widget_text(&ctx, &shown, false, None, Look::Plain));
 
-            if let Some(sound) = &self.sound {
+            // Players through walls, a setting the app saves
+            let label = text::widget_text(
+                &ctx,
+                &catalog.text("viewer-see-through"),
+                rtl,
+                None,
+                Look::Plain,
+            );
+            ui.toggle_value(&mut self.settings.see_through, label)
+                .on_hover_text(catalog.text("settings-see-through-hint"));
+
+            // The volume is a setting, which the app saves
+            if self.sound.is_some() {
                 let label =
                     text::widget_text(&ctx, &catalog.text("viewer-volume"), rtl, None, Look::Plain);
                 ui.label(label);
-                let mut volume = sound.volume();
                 ui.spacing_mut().slider_width = 80.;
-                if ui
-                    .add(egui::Slider::new(&mut volume, 0. ..=1.).show_value(false))
-                    .changed()
-                {
-                    sound.set_volume(volume);
-                }
+                ui.add(egui::Slider::new(&mut self.settings.volume, 0. ..=1.).show_value(false));
             }
         });
         let mut at = now;
@@ -1362,6 +1461,8 @@ struct Drawn {
     model: ModelRef,
     weapon: Option<ModelRef>,
     pose: EntityPose,
+    /// A player's top colour, which teamplay sets by team
+    top_color: Option<u8>,
     /// What a sprite takes from its entity
     frame: f32,
     scale: f32,
@@ -1420,6 +1521,7 @@ fn drawn(frame: &PresentedFrame, models: &HashMap<ModelRef, Slot>) -> Vec<Drawn>
             continue;
         }
         out.push(Drawn {
+            top_color: player.and_then(|p| p.top_color),
             id: e.id,
             model,
             weapon,
@@ -1527,6 +1629,69 @@ fn variant(models: &HashMap<ModelRef, Slot>, first: ModelRef, body: i64, skin: i
         }
         (other, ..) => other,
     }
+}
+
+/// The file a sky is read from, as it is named in a list of missing files
+fn sky_file(name: &str) -> String {
+    format!("gfx/env/{name}*.tga")
+}
+
+/// The file a model is read from, as it is named in a list of missing
+/// files
+fn model_file(model: &ModelRef) -> String {
+    match model {
+        ModelRef::File(path) | ModelRef::Variant(path, ..) => path.clone(),
+        ModelRef::Player(name, ..) => format!("models/player/{name}/{name}.mdl"),
+    }
+}
+
+/// How much of a silhouette shows over what hides it
+const SILHOUETTE_ALPHA: f32 = 0.6;
+
+/// The colour other models than players show through walls in
+const ITEM_TINT: [f32; 3] = [1., 0.9, 0.4];
+
+/// A player's colour through walls, its top colour's hue at full
+/// brightness, white without one
+fn team_tint(top_color: Option<u8>) -> [f32; 3] {
+    let Some(top) = top_color else {
+        return [1.; 3];
+    };
+    // The hue around the wheel as the game's colours go, 0 to 255
+    let h = f32::from(top) / 255. * 6.;
+    let x = 1. - (h % 2. - 1.).abs();
+    let (r, g, b) = match h as u32 {
+        0 => (1., x, 0.),
+        1 => (x, 1., 0.),
+        2 => (0., 1., x),
+        3 => (0., x, 1.),
+        4 => (x, 0., 1.),
+        _ => (1., 0., x),
+    };
+    // Kept a little pale, so it reads over dark and bright walls alike
+    [r, g, b].map(|c| 0.25 + 0.75 * c)
+}
+
+/// A drawn model's silhouette, every vertex in `tint`
+fn silhouette(instance: &Instance, tint: [f32; 3]) -> Instance {
+    Instance {
+        vertices: instance
+            .vertices
+            .iter()
+            .map(|v| ModelVertex {
+                light: tint,
+                alpha: SILHOUETTE_ALPHA,
+                ..*v
+            })
+            .collect(),
+        ..instance.clone()
+    }
+}
+
+/// Where `LAMBDA_SLICER_SOUND_SKEW` asks the sound's skew to be written, and
+/// beside it the pictures' lag, in a timed play
+fn skew_path() -> Option<PathBuf> {
+    std::env::var_os("LAMBDA_SLICER_SOUND_SKEW").map(PathBuf::from)
 }
 
 /// Seconds the arrow keys move the playhead
@@ -1652,23 +1817,24 @@ fn brushes(frame: &PresentedFrame) -> Vec<Brush> {
 
 /// What the frame is seen from and when, with every light style's
 /// brightness at the client's time
-fn view(frame: &PresentedFrame, aspect: f32) -> View {
+fn view(frame: &PresentedFrame, aspect: f32, settings: &ViewerSettings) -> View {
     View {
-        view_projection: view_projection(frame, aspect),
+        view_projection: view_projection(frame, aspect, settings.fov),
         eye: frame.recorder.origin,
         angles: frame.recorder.angles,
         time: frame.client_time as f32,
         light_styles: light_styles(frame),
+        gamma: settings.gamma(),
     }
 }
 
 /// The recorder's view. The recorded field of view is across the screen's
 /// width, as the game's is
-fn view_projection(frame: &PresentedFrame, aspect: f32) -> Matrix {
+fn view_projection(frame: &PresentedFrame, aspect: f32, fov: Option<f32>) -> Matrix {
     let aspect = aspect.max(0.01);
-    let fov_x = frame
-        .recorder
-        .fov
+    // A field of view chosen in Settings, else the recorded one
+    let fov_x = fov
+        .or(frame.recorder.fov)
         .filter(|f| (1. ..179.).contains(f))
         .unwrap_or(DEFAULT_FOV);
     let fov_y = 2. * ((fov_x.to_radians() / 2.).tan() / aspect).atan();

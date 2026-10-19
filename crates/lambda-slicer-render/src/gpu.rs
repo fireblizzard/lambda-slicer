@@ -25,6 +25,7 @@ use wgpu::util::DeviceExt;
 
 use crate::Rgba;
 use crate::decal::{DecalBatch, DecalMesh};
+use crate::gamma::Gamma;
 use lambda_slicer_assets::sprite::{self, Orientation};
 
 use crate::camera::{Matrix, angle_vectors, entity_matrix};
@@ -53,11 +54,16 @@ const SPRITE_ATTRIBUTES: [wgpu::VertexAttribute; 3] =
 const STYLE_SLOTS: usize = FULL_BRIGHT as usize + 1;
 
 const SHADER: &str = r#"
+// The faces silhouettes leave out, those the shader calls front, as the
+// game's models wind their corners the other way round
+const SILHOUETTE_BACK: bool = true;
 struct Uniforms {
     view_projection: mat4x4<f32>,
-    // x brightness, y time in seconds
+    // y time in seconds
     params: vec4<f32>,
     styles: array<vec4<f32>, 17>,
+    // The game's gamma (Gamma::uniform)
+    gamma: array<vec4<f32>, 2>,
 }
 struct Object {
     model: mat4x4<f32>,
@@ -75,6 +81,36 @@ struct Object {
 
 fn style_value(s: u32) -> f32 {
     return u.styles[s / 4u][s % 4u];
+}
+
+// A texture colour through the game's texture gamma table
+fn tex_gamma(c: vec3<f32>) -> vec3<f32> {
+    return pow(max(c, vec3<f32>(0.0)), vec3<f32>(u.gamma[0].x));
+}
+
+// The game's light gamma table at x, 0 to 1 along it
+fn light_table(x: vec3<f32>) -> vec3<f32> {
+    var f = pow(max(x, vec3<f32>(0.0)), vec3<f32>(u.gamma[0].y));
+    if (u.gamma[1].x > 1.0) {
+        f = f * u.gamma[1].x;
+    }
+    let knee = u.gamma[0].w;
+    let low = f / knee * 0.125;
+    let high = (f - knee) / (1.0 - knee) * 0.875 + 0.125;
+    f = select(high, low, f <= vec3<f32>(knee));
+    return pow(max(f, vec3<f32>(0.0)), vec3<f32>(u.gamma[0].z));
+}
+
+// What a lightmap's light, 1 for 255 under a normal style, makes of a
+// texture's colour, raised before the table or doubled after it
+fn lightmap_light(l: vec3<f32>) -> vec3<f32> {
+    let index = min(l * 1020.0 * u.gamma[1].y, vec3<f32>(1023.0));
+    return light_table(index / 1023.0) * u.gamma[1].z;
+}
+
+// What a model's light, 0 to 1, makes of a texture's colour
+fn model_light(l: vec3<f32>) -> vec3<f32> {
+    return light_table(clamp(l, vec3<f32>(0.0), vec3<f32>(1.0)) * (1020.0 / 1023.0));
 }
 
 struct WorldOut {
@@ -121,8 +157,8 @@ fn world_fs(v: WorldOut) -> @location(0) vec4<f32> {
     if (mode == 1u) {
         return vec4<f32>(object.color.rgb, object.color.a);
     }
-        if (mode == 3u || mode == 5u) {
-        return vec4<f32>(a.rgb * object.color.a, 1.0);
+            if (mode == 3u || mode == 5u) {
+        return vec4<f32>(tex_gamma(a.rgb) * object.color.a, 1.0);
     }
     // Decals show as much as their texels say, over the face
     let decal = mode == 6u;
@@ -139,7 +175,9 @@ fn world_fs(v: WorldOut) -> @location(0) vec4<f32> {
         let offset = vec2<f32>(f32(k) * v.style_step, 0.0);
         light = light + textureSample(lightmap, lightmap_sampler, v.lightmap_uv + offset).rgb * style_value(s);
     }
-        let lit = min(a.rgb * light * u.params.x, vec3<f32>(1.0));
+                // A decal's colour is its own, without the texture table
+        let colour = select(tex_gamma(a.rgb), a.rgb, decal);
+        let lit = min(colour * lightmap_light(light), vec3<f32>(1.0));
     if (decal) {
         return vec4<f32>(lit, a.a);
     }
@@ -172,7 +210,22 @@ fn model_fs(v: ModelOut) -> @location(0) vec4<f32> {
     if (a.a < 0.5) {
         discard;
     }
-                return vec4<f32>(min(a.rgb * v.light * u.params.x, vec3<f32>(1.0)), v.alpha);
+                        return vec4<f32>(min(tex_gamma(a.rgb) * model_light(v.light), vec3<f32>(1.0)), v.alpha);
+}
+
+// A model behind something nearer, in one colour, its texture's cut-outs
+// kept. Faces turned away are left out, so a model in view is not tinted by
+// its own far side
+@fragment
+fn silhouette_fs(v: ModelOut, @builtin(front_facing) front: bool) -> @location(0) vec4<f32> {
+    if (front == SILHOUETTE_BACK) {
+        discard;
+    }
+    let a = textureSample(albedo, albedo_sampler, v.uv);
+    if (a.a < 0.5) {
+        discard;
+    }
+    return vec4<f32>(v.light, v.alpha);
 }
 
 struct SkyOut {
@@ -261,6 +314,7 @@ struct Uniforms {
     view_projection: Matrix,
     params: [f32; 4],
     styles: [f32; 68],
+    gamma: [[f32; 4]; 2],
 }
 
 /// One brush model's draw, at a dynamic offset in the object buffer
@@ -373,6 +427,8 @@ pub struct View {
     pub time: f32,
     /// Each light style's brightness, 1 for the game's `m`
     pub light_styles: [f32; 64],
+    /// The game's gamma settings
+    pub gamma: Gamma,
 }
 
 /// The render mode the world's shader takes for decals
@@ -520,6 +576,9 @@ pub struct DrawList {
     pub sprites: Vec<SpriteInstance>,
     /// The first-person weapon, drawn over everything
     pub viewmodel: Vec<Instance>,
+    /// Models drawn again where something nearer hides them, each vertex's
+    /// light its colour and its alpha how much it shows
+    pub silhouettes: Vec<Instance>,
     /// The decals on the world and brush entities, uploaded again when
     /// their revision changes
     pub decals: Option<Arc<DecalMesh>>,
@@ -741,6 +800,7 @@ struct Pipelines {
     model: wgpu::RenderPipeline,
     model_blend: wgpu::RenderPipeline,
     model_add: wgpu::RenderPipeline,
+    silhouette: wgpu::RenderPipeline,
     sky: wgpu::RenderPipeline,
     sprite_cut: wgpu::RenderPipeline,
     sprite_blend: wgpu::RenderPipeline,
@@ -1029,6 +1089,49 @@ impl Scene {
                 less,
             )
         };
+        // Only where something nearer was drawn
+        let silhouette_pipeline = {
+            let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("silhouette"),
+                bind_group_layouts: &[Some(&uniforms_layout), Some(&texture_layout)],
+                immediate_size: 0,
+            });
+            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some("silhouette"),
+                layout: Some(&layout),
+                vertex: wgpu::VertexState {
+                    module: &module,
+                    entry_point: Some("model_vs"),
+                    compilation_options: Default::default(),
+                    buffers: &[Some(wgpu::VertexBufferLayout {
+                        array_stride: std::mem::size_of::<ModelVertex>() as u64,
+                        step_mode: wgpu::VertexStepMode::Vertex,
+                        attributes: &MODEL_ATTRIBUTES,
+                    })],
+                },
+                primitive: wgpu::PrimitiveState::default(),
+                depth_stencil: Some(wgpu::DepthStencilState {
+                    format: DEPTH_FORMAT,
+                    depth_write_enabled: Some(false),
+                    depth_compare: Some(wgpu::CompareFunction::Greater),
+                    stencil: Default::default(),
+                    bias: Default::default(),
+                }),
+                multisample: Default::default(),
+                fragment: Some(wgpu::FragmentState {
+                    module: &module,
+                    entry_point: Some("silhouette_fs"),
+                    compilation_options: Default::default(),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: COLOR_FORMAT,
+                        blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                }),
+                multiview_mask: None,
+                cache: None,
+            })
+        };
         let pipelines = Pipelines {
             opaque: pipeline(
                 "world opaque",
@@ -1064,6 +1167,7 @@ impl Scene {
                 false,
             ),
             model_add: model_pipeline("model add", Some(added_by_alpha), false),
+            silhouette: silhouette_pipeline,
             sky: pipeline(
                 "sky",
                 "sky",
@@ -1661,18 +1765,21 @@ impl Scene {
         styles[STYLE_SLOTS - 1] = 1.;
         let uniforms = Uniforms {
             view_projection: view.view_projection,
-            params: [1.6, view.time, 0., 0.],
+            params: [0., view.time, 0., 0.],
             styles,
+            gamma: view.gamma.uniform(),
         };
         queue.write_buffer(&self.uniforms, 0, bytemuck::bytes_of(&uniforms));
         let models: Vec<Instance> = draw
             .instances
             .iter()
             .chain(&draw.viewmodel)
+            .chain(&draw.silhouettes)
             .cloned()
             .collect();
         let starts = self.upload_instances(device, queue, &models);
-        let (starts, viewmodel_starts) = starts.split_at(draw.instances.len());
+        let (starts, rest) = starts.split_at(draw.instances.len());
+        let (viewmodel_starts, silhouette_starts) = rest.split_at(draw.viewmodel.len());
         let instances = &draw.instances;
         if self.dot.is_none() && draw.streaks.iter().any(|s| s.sprite.is_none()) {
             self.dot = Some(self.texture(device, queue, &dot(), false));
@@ -1744,7 +1851,7 @@ impl Scene {
                     view: &targets.depth_view,
                     depth_ops: Some(wgpu::Operations {
                         load: wgpu::LoadOp::Clear(1.),
-                        store: wgpu::StoreOp::Discard,
+                        store: wgpu::StoreOp::Store,
                     }),
                     stencil_ops: None,
                 }),
@@ -1905,6 +2012,41 @@ impl Scene {
                         pass.draw(first..first + count, 0..1);
                     }
                 }
+            }
+        }
+
+        // Silhouettes over everything but the viewmodel, where hidden
+        if let Some(buffer) = &self.instances
+            && silhouette_starts.iter().any(Option::is_some)
+        {
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("silhouettes"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &targets.color_view,
+                    depth_slice: None,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Load,
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: &targets.depth_view,
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Load,
+                        store: wgpu::StoreOp::Store,
+                    }),
+                    stencil_ops: None,
+                }),
+                timestamp_writes: None,
+                occlusion_query_set: None,
+                multiview_mask: None,
+            });
+            pass.set_bind_group(0, &self.uniform_group, &[]);
+            pass.set_pipeline(&self.pipelines.silhouette);
+            pass.set_vertex_buffer(0, buffer.slice(..));
+            for (instance, start) in draw.silhouettes.iter().zip(silhouette_starts) {
+                self.draw_instance(&mut pass, instance, *start, Part::All);
             }
         }
 
@@ -2103,6 +2245,7 @@ mod tests {
             angles: [0.; 3],
             time: 0.,
             light_styles: [1.; 64],
+            gamma: Gamma::default(),
         }
     }
 

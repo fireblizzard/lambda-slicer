@@ -33,17 +33,18 @@ playdemo ls_9e_stalkx; startmovie ls9e_stalkx 10
 
 `startmovie` writes a frame for every tenth of a second of the game's clock into the mod's folder,
 loading screens included. After the demo ends, `endmovie` stops it. The same for `ls_9e_cross` and
-`ls_9e_run`. The game's `gamma`, `brightness` and `lightgamma` at the time are noted with the
-frames, as the viewer does not yet apply the game's gamma tables.
+`ls_9e_run`. The game's `gamma`, `brightness`, `texgamma`, `lightgamma` and `gl_overbright` at
+the time are noted with the frames, for the viewer to draw with the same (`--viewer-gamma`).
 
 ## Capturing the viewer's frames
 
 ```
-lambda-slicer-gui F:\SteamLibrary\steamapps\common\Half-Life\ag\ls_9e_stalkx.dem --game F:\SteamLibrary\steamapps\common\Half-Life --viewer-capture 0,0.1,0.2 FOLDER --viewer-size 1280x720
+lambda-slicer-gui F:\SteamLibrary\steamapps\common\Half-Life\ag\ls_9e_stalkx.dem --game F:\SteamLibrary\steamapps\common\Half-Life --viewer-gamma 2,2,2,2 --viewer-capture 0,0.1,0.2 FOLDER --viewer-size 1280x720
 ```
 
 saves the view at each time as `FOLDER/<seconds>.png`, waiting at each until the frame, its map
-and every model it draws are in. The game's frames are matched to the viewer's by finding, for
+and every model it draws are in, drawn with the game's `gamma`, `brightness`, `texgamma` and
+`lightgamma`, and `gl_overbright` when a fifth value is 1, for this run only. The game's frames are matched to the viewer's by finding, for
 each, the viewer frame that differs least, which also gives the offset between the game's clock
 and the clip's.
 
@@ -93,3 +94,43 @@ With additive and chrome model textures and everything else since (gibs, glows h
 distance, render modes, bodies and skins), captured again the same way on 2026-10-19, the pairs
 differ by 21.4 for `ls_9e_stalkx`, 19.4 for `ls_9e_cross` and 14.4 for `ls_9e_run`, against 24.5,
 23.6 and 15.0, at the same offsets. Most of it is the viewmodel, which covers much of each picture.
+
+With the game's gamma tables (11e), captured again on 2026-10-19 under four settings, the pairs
+differ as follows, the same offsets fitting every time:
+
+| Gamma settings | `ls_9e_stalkx` | `ls_9e_cross` | `ls_9e_run` |
+|---|---|---|---|
+| None, a fixed brightness of 1.6 as before | 21.4 | 19.4 | 14.4 |
+| The game's defaults (2.5, 0, 2.0, 2.5) | 20.9 | 19.4 | 13.6 |
+| As the game was set (2.0, 2.0, 2.0, 2.0) | 17.0 | 19.5 | 8.4 |
+| As set, with `gl_overbright` | 43.3 | 48.9 | 28.0 |
+
+The game's settings bring `ls_9e_run`, indoors under artificial light, from 14.4 to 8.4, and
+`ls_9e_stalkx` from 21.4 to 17.0. `ls_9e_cross` is mostly sky, which the tables leave alone, and
+does not change. Doubling after the light table is far off, so the game drew without
+`gl_overbright`, which is off unless set.
+
+## Recording the game's sound
+
+`startmovie` saves pictures only, so the game's sound is recorded from the sound card while it
+plays the clip, with a recorder that takes what the speakers play (Audacity with Windows WASAPI
+loopback, or OBS), as WAV at the device's rate:
+
+```
+playdemo ls_9e_stalkx
+```
+
+started after the recorder, and the recording stopped once the demo ends. Then
+
+```
+cargo run --release -p lambda-slicer-audio --example sound_compare -- F:\SteamLibrary\steamapps\common\Half-Life F:\SteamLibrary\steamapps\common\Half-Life\ag\ls_9e_stalkx.dem RECORDING.wav 1 10
+```
+
+mixes the clip from 1 s for 10 s as the viewer does, finds where that falls in the recording by
+the loudness of both in 10 ms windows, pairs the sounds that start in each within 60 ms, and
+reports how far apart the paired starts are and how much louder the recording is.
+
+Checked on the viewer's own sound tap of `stalkx_naz_248.dem` (2026-10-19): 21 s found 0.93 s
+into the tap, the loudness agreeing at 0.99, all 4 starts paired 0 to 10 ms apart, and the tap at
+0.55 of the mix, played at a volume of 0.5. The game's sound is not yet recorded, so the sound
+has not been compared with the game's.

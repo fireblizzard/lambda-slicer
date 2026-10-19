@@ -16,7 +16,7 @@ use crate::i18n::{Catalog, Locale};
 use crate::jobs::{Problem, ScanJob};
 use crate::layout;
 use crate::library::{LibraryView, parse_number};
-use crate::settings::{MAX_PADDING, Settings};
+use crate::settings::{FOV, MAX_PADDING, Settings, ViewerSettings};
 use crate::text::{self, Look};
 
 /// Save a screenshot after this many frames and close, for checking how a
@@ -53,6 +53,10 @@ pub struct Launch {
     pub viewer_capture: Option<crate::viewer::Capture>,
     /// Seconds the viewer plays with sound before the window closes
     pub viewer_play: Option<f64>,
+    /// Gamma settings for this run only, in place of the saved ones
+    pub viewer_gamma: Option<lambda_slicer_render::gamma::Gamma>,
+    /// Players shown through walls for this run
+    pub viewer_see_through: bool,
 }
 
 pub struct App {
@@ -89,6 +93,10 @@ pub struct App {
     viewer_bench: Option<crate::viewer::Bench>,
     viewer_capture: Option<crate::viewer::Capture>,
     viewer_play: Option<f64>,
+    viewer_gamma: Option<lambda_slicer_render::gamma::Gamma>,
+    viewer_see_through: bool,
+    /// The viewer changed a setting, saved once the pointer is let go
+    viewer_unsaved: bool,
     /// The window's GPU device, which the viewer draws with
     pub render_state: Option<eframe::egui_wgpu::RenderState>,
 }
@@ -186,6 +194,9 @@ impl App {
             viewer_bench: launch.viewer_bench,
             viewer_capture: launch.viewer_capture,
             viewer_play: launch.viewer_play,
+            viewer_gamma: launch.viewer_gamma,
+            viewer_see_through: launch.viewer_see_through,
+            viewer_unsaved: false,
             render_state: None,
         }
     }
@@ -202,6 +213,37 @@ impl App {
     /// A message as a heading
     fn strong(&self, ctx: &egui::Context, id: &str) -> WidgetText {
         text::widget_text(ctx, &self.catalog.text(id), self.rtl(), None, Look::Strong)
+    }
+
+    /// The demo view's viewer, from the game folder `--game` names or else
+    /// the one in Settings, opened again when that folder changes
+    fn open_viewer(&mut self, ctx: &egui::Context) {
+        let game = self
+            .game
+            .clone()
+            .or_else(|| self.settings.viewer.game.clone());
+        let (Some(d), Some(render_state)) = (&mut self.demo, &self.render_state) else {
+            return;
+        };
+        if d.viewer_game == game {
+            return;
+        }
+        d.viewer_game = game.clone();
+        d.viewer = game.map(|game| {
+            crate::viewer::Viewer::open(
+                render_state.clone(),
+                game,
+                d.path.clone(),
+                d.duration,
+                crate::viewer::Dev {
+                    start: self.viewer_at.take(),
+                    bench: self.viewer_bench.take(),
+                    capture: self.viewer_capture.take(),
+                    play: self.viewer_play.take(),
+                },
+                ctx,
+            )
+        });
     }
 
     fn save_settings(&self) {
@@ -651,6 +693,8 @@ impl App {
                     }
                     text::label(ui, &self.catalog.text("settings-export-hint"), rtl);
 
+                    self.viewer_settings(ui, rtl);
+
                     ui.add_space(8.);
                     ui.label(self.strong(ui.ctx(), "settings-folders"));
                     if self.settings.folders.is_empty() {
@@ -680,6 +724,100 @@ impl App {
                 });
             });
         self.show_settings = open;
+    }
+
+    /// The demo viewer's part of the settings window
+    fn viewer_settings(&mut self, ui: &mut egui::Ui, rtl: bool) {
+        let ctx = ui.ctx().clone();
+        let catalog = &self.catalog;
+        let t = |id: &str| text::widget_text(&ctx, &catalog.text(id), rtl, None, Look::Plain);
+        let mut viewer = self.settings.viewer.clone();
+
+        ui.add_space(8.);
+        ui.label(self.strong(&ctx, "settings-viewer"));
+        ui.label(t("settings-viewer-game"));
+        let folder = match &viewer.game {
+            Some(f) => f.display().to_string(),
+            None => catalog.text("settings-viewer-game-none"),
+        };
+        text::label(ui, &folder, rtl);
+        layout::row(ui, rtl, |ui| {
+            if ui.button(t("settings-export-choose")).clicked()
+                && let Some(f) = rfd::FileDialog::new().pick_folder()
+            {
+                viewer.game = Some(f);
+            }
+        });
+
+        // The game's gamma settings, at the game's steps
+        let number = |ui: &mut egui::Ui, id: &str, value: &mut f32, range| {
+            layout::row(ui, rtl, |ui| {
+                ui.label(t(id));
+                ui.add(
+                    egui::DragValue::new(value)
+                        .range(range)
+                        .speed(0.01)
+                        .custom_formatter(|v, _| catalog.number(v, 2))
+                        .custom_parser(parse_number),
+                );
+            });
+        };
+        number(ui, "settings-gamma", &mut viewer.gamma, 1.8..=3.);
+        number(ui, "settings-brightness", &mut viewer.brightness, 0. ..=3.);
+        number(ui, "settings-texgamma", &mut viewer.texgamma, 1.8..=3.);
+        number(ui, "settings-lightgamma", &mut viewer.lightgamma, 1.8..=3.);
+        layout::row(ui, rtl, |ui| {
+            ui.checkbox(&mut viewer.overbright, t("settings-overbright"));
+            if ui.button(t("settings-gamma-defaults")).clicked() {
+                let d = ViewerSettings::default();
+                (viewer.gamma, viewer.brightness) = (d.gamma, d.brightness);
+                (viewer.texgamma, viewer.lightgamma) = (d.texgamma, d.lightgamma);
+                viewer.overbright = d.overbright;
+            }
+        });
+        text::label(ui, &catalog.text("settings-gamma-hint"), rtl);
+
+        layout::row(ui, rtl, |ui| {
+            let mut recorded = viewer.fov.is_none();
+            if ui
+                .checkbox(&mut recorded, t("settings-fov-recorded"))
+                .changed()
+            {
+                viewer.fov = (!recorded).then_some(90.);
+            }
+            if let Some(fov) = &mut viewer.fov {
+                ui.label(t("settings-fov"));
+                ui.add(
+                    egui::DragValue::new(fov)
+                        .range(FOV.0..=FOV.1)
+                        .speed(0.5)
+                        .custom_formatter(|v, _| catalog.number(v, 0))
+                        .custom_parser(parse_number),
+                );
+            }
+        });
+        layout::row(ui, rtl, |ui| {
+            ui.checkbox(&mut viewer.viewmodel, t("settings-viewmodel"));
+        });
+        layout::row(ui, rtl, |ui| {
+            ui.label(t("viewer-volume"));
+            ui.add(egui::Slider::new(&mut viewer.volume, 0. ..=1.).show_value(false));
+        });
+        layout::row(ui, rtl, |ui| {
+            ui.checkbox(&mut viewer.see_through, t("settings-see-through"));
+        });
+        layout::row(ui, rtl, |ui| {
+            ui.checkbox(
+                &mut viewer.see_through_items,
+                t("settings-see-through-items"),
+            );
+        });
+        text::label(ui, &catalog.text("settings-see-through-hint"), rtl);
+
+        if viewer != self.settings.viewer {
+            self.settings.viewer = viewer;
+            self.save_settings();
+        }
     }
 
     fn take_screenshot(&mut self, ctx: &egui::Context) {
@@ -806,25 +944,11 @@ impl eframe::App for App {
                 d.export_on_load = std::mem::take(&mut self.export_on_open);
                 d.show_timeline = self.settings.show_timeline;
                 d.clips = self.clips.get(path);
-                if let (Some(game), Some(render_state)) = (&self.game, &self.render_state) {
-                    d.viewer = Some(crate::viewer::Viewer::open(
-                        render_state.clone(),
-                        game.clone(),
-                        path.clone(),
-                        *duration,
-                        crate::viewer::Dev {
-                            start: self.viewer_at.take(),
-                            bench: self.viewer_bench.take(),
-                            capture: self.viewer_capture.take(),
-                            play: self.viewer_play.take(),
-                        },
-                        &ctx,
-                    ));
-                }
                 self.demo = Some(d);
             }
             (None, _) => self.demo = None,
         }
+        self.open_viewer(&ctx);
 
         let compact = self.demo.is_some();
         let library = |app: &mut Self, ui: &mut egui::Ui| match &mut app.library {
@@ -856,9 +980,36 @@ impl eframe::App for App {
                 if let Some(d) = &mut self.demo {
                     d.padding = (self.settings.preroll, self.settings.postroll);
                     d.export_folder = self.settings.export_folder.clone();
+                    if let Some(v) = &mut d.viewer {
+                        v.settings = self.settings.viewer.clone();
+                        if let Some(g) = self.viewer_gamma {
+                            v.settings.gamma = g.gamma;
+                            v.settings.brightness = g.brightness;
+                            v.settings.texgamma = g.texgamma;
+                            v.settings.lightgamma = g.lightgamma;
+                            v.settings.overbright = g.overbright;
+                        }
+                        v.settings.see_through |= self.viewer_see_through;
+                    }
                     close = d.ui(ui, &self.catalog, rtl);
+                    // The viewer's volume slider and see-through button are
+                    // settings
+                    if let Some(v) = &d.viewer {
+                        let saved = &mut self.settings.viewer;
+                        // As the run's flag left it, which is not saved
+                        let shown = saved.see_through || self.viewer_see_through;
+                        if (v.settings.volume, v.settings.see_through) != (saved.volume, shown) {
+                            saved.volume = v.settings.volume;
+                            saved.see_through = v.settings.see_through;
+                            self.viewer_unsaved = true;
+                        }
+                    }
                 }
             });
+            if self.viewer_unsaved && !ui.input(|i| i.pointer.any_down()) {
+                self.viewer_unsaved = false;
+                self.save_settings();
+            }
             if let Some(d) = &mut self.demo
                 && d.clips_changed
             {

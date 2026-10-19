@@ -80,7 +80,8 @@ later.
 ## Viewer settings and see-through walls (M11)
 
 Asked for on 2026-10-19 after the comparison with the game ([viewer
-validation](viewer-validation.md)), to be done when M11 starts.
+validation](viewer-validation.md)), to be done when M11 starts. Both are done (11e and 11f,
+[viewer profile](viewer-profile.md), "Viewer settings" and "See-through walls").
 
 ### Viewer settings
 
@@ -110,3 +111,13 @@ over the world as silhouettes tinted by team, so they show through walls. It can
 the demo holds. Servers that hide players the recorder cannot see, as some anti-wallhack plugins
 do, leave nothing to show, which the mode's description and the viewer profile say. It changes
 only how the viewer draws a recording.
+
+## The game's sound (M10, M11)
+
+The M10 gate asks for the viewer's sound to be compared with the game's, and M11 left it for a
+recording of the game's sound, as `startmovie` saves none. `sound_compare` is ready for it
+([viewer validation](viewer-validation.md), "Recording the game's sound").
+
+**To do:** record the game's sound while it plays `ls_9e_stalkx`, run `sound_compare` on it and
+write down where the paired sounds start apart and how loud they are, then the README's M10 and
+M11 rows.

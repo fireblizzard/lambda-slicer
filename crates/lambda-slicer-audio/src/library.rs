@@ -32,6 +32,8 @@ pub struct Library {
     search: SearchPath,
     limits: Limits,
     sounds: Mutex<HashMap<Arc<str>, Option<Arc<Sound>>>>,
+    /// The sound files that could not be read, and why
+    missing_sounds: Mutex<std::collections::BTreeMap<String, String>>,
     sequences: Mutex<HashMap<String, Option<Arc<[Sequence]>>>>,
     hulls: Mutex<HashMap<String, Option<Arc<Hull>>>>,
     sprites: Mutex<HashMap<String, Option<u32>>>,
@@ -46,6 +48,7 @@ impl Library {
             search,
             limits,
             sounds: Mutex::new(HashMap::new()),
+            missing_sounds: Mutex::new(std::collections::BTreeMap::new()),
             sequences: Mutex::new(HashMap::new()),
             hulls: Mutex::new(HashMap::new()),
             sprites: Mutex::new(HashMap::new()),
@@ -92,15 +95,36 @@ impl Library {
         }
 
         let path = format!("sound/{}", file.trim_start_matches('*'));
-        let sound = self
+        let read = self
             .search
             .find(&path)
             .and_then(|found| self.search.read(&found))
-            .and_then(|bytes| wav::parse(&bytes, self.limits))
-            .ok()
-            .map(Arc::new);
+            .and_then(|bytes| wav::parse(&bytes, self.limits));
+        let sound = match read {
+            Ok(sound) => Some(Arc::new(sound)),
+            Err(e) => {
+                let mut missing = self
+                    .missing_sounds
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner());
+                missing.insert(path, e.to_string());
+                None
+            }
+        };
         sounds.insert(file.clone(), sound.clone());
         sound
+    }
+
+    /// The sound files asked for so far that could not be read, and why
+    pub fn missing_sounds(&self) -> Vec<(String, String)> {
+        let missing = self
+            .missing_sounds
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        missing
+            .iter()
+            .map(|(n, r)| (n.clone(), r.clone()))
+            .collect()
     }
 
     /// How long `name` plays, as its file says

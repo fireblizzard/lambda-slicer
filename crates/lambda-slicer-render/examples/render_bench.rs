@@ -130,6 +130,7 @@ fn main() {
             angles: camera.angles,
             time: t as f32,
             light_styles: [1.; 64],
+            gamma: Default::default(),
         };
         let (_, commands) = scene.render(
             &device,

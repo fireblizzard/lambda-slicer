@@ -5,7 +5,9 @@
 //! [--demo FILE [--window N] [--export DIR]]
 //! [--screenshot OUT.png [--frames N]]
 //! [--game DIR [--viewer-at SECONDS] [--viewer-bench SECONDS OUT.txt]
-//! [--viewer-capture TIMES FOLDER [--viewer-size WxH]] [--viewer-play SECONDS]]`
+//! [--viewer-capture TIMES FOLDER [--viewer-size WxH]] [--viewer-play SECONDS]
+//! [--viewer-gamma GAMMA,BRIGHTNESS,TEXGAMMA,LIGHTGAMMA[,OVERBRIGHT]]
+//! [--viewer-see-through]]`
 //!
 //! Demos and folders given as `PATH` are opened for this session. `--locale`
 //! overrides the saved language, `--cache` the library cache and `--clips`
@@ -25,7 +27,10 @@
 //! `--viewer-size` pixels (1280x720 unless given), and exits.
 //! `--viewer-play` plays for `SECONDS` with sound and exits, and with
 //! `LAMBDA_SLICER_SOUND_TAP` set to a file the sound sent to the device is
-//! written there as a WAV file
+//! written there as a WAV file. `--viewer-gamma` draws with the game's gamma
+//! settings for this run only, overbright when the fifth is 1, for comparing
+//! with frames the game recorded. `--viewer-see-through` shows players
+//! through walls for this run
 
 // A release build opens no console window beside the app
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
@@ -73,6 +78,8 @@ fn main() -> eframe::Result {
     let mut capture_times: Option<(Vec<f64>, PathBuf)> = None;
     let mut capture_size = [1280, 720];
     let mut viewer_play = None;
+    let mut viewer_gamma = None;
+    let mut viewer_see_through = false;
     let mut viewer_bench = None;
     while let Some(a) = args.next() {
         match a.as_str() {
@@ -112,6 +119,24 @@ fn main() -> eframe::Result {
                 }
             }
             "--viewer-play" => viewer_play = args.next().and_then(|s| s.parse().ok()),
+            "--viewer-see-through" => viewer_see_through = true,
+            "--viewer-gamma" => {
+                let values: Vec<f32> = args
+                    .next()
+                    .unwrap_or_default()
+                    .split(',')
+                    .filter_map(|v| v.trim().parse().ok())
+                    .collect();
+                if let [gamma, brightness, texgamma, lightgamma, ref rest @ ..] = values[..] {
+                    viewer_gamma = Some(lambda_slicer_render::gamma::Gamma {
+                        gamma,
+                        brightness,
+                        texgamma,
+                        lightgamma,
+                        overbright: rest.first() == Some(&1.),
+                    });
+                }
+            }
             "--viewer-size" => {
                 if let Some((w, h)) = args.next().as_deref().and_then(|s| s.split_once('x'))
                     && let (Ok(w), Ok(h)) = (w.parse(), h.parse())
@@ -197,6 +222,8 @@ fn main() -> eframe::Result {
                     viewer_at,
                     viewer_bench,
                     viewer_play,
+                    viewer_gamma,
+                    viewer_see_through,
                     viewer_capture: capture_times.map(|(times, folder)| viewer::Capture {
                         times,
                         folder,

@@ -10,6 +10,7 @@
 
 pub mod camera;
 pub mod decal;
+pub mod gamma;
 pub mod gpu;
 pub mod light;
 pub mod load;

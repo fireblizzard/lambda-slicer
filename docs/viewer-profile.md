@@ -268,6 +268,53 @@ checkpoint and playing forward from it. **Measured (2026-10-19)** on `naz_crossf
 the median and 35 ms at the 95th percentile, and from 300 s, 48 ms and 97 ms (209 ms at most).
 Backward playback shows 10 to 40 pictures a second, still at the right time for each.
 
+### Viewer settings (11e)
+
+The settings window has a section for the viewer, saved with the other settings and in all 14
+languages:
+
+| Setting | What it does |
+|---|---|
+| Half-Life folder | the folder holding `valve` that the viewer reads the game from. `--game` comes first. Changing it opens the viewer again for the demo shown |
+| Gamma, brightness, texture gamma, light gamma, overbright lighting | the game's `gamma`, `brightness`, `texgamma`, `lightgamma` and `gl_overbright`, defaulting to the game's own (2.5, 0, 2.0, 2.5 and off) and kept in the game's ranges. Applied as soon as they change |
+| Field of view as recorded, or a field of view | the recorded field of view, or one from 10 to 150 degrees across the view's width |
+| Show the weapon in view | the viewmodel and its muzzle flashes, as `r_drawviewmodel` does |
+| Volume | the sound's master volume, the same as the slider beside the time bar, saved once the pointer is let go |
+
+Gamma works as the game's tables do (`BuildGammaTable`, as Xash3D restates it), worked out in the
+shaders for each texel (`lambda-slicer-render`'s `gamma`):
+
+| Part | How |
+|---|---|
+| Textures | world and model textures raised to `texgamma / gamma`, as the game does to their palettes. Sprites, skies and decals keep their colours |
+| Light table | light taken to `lightgamma`, multiplied by a brightness over 1, its darkest part stretched by the brightness (up to 1/8 at 0, 1/20 from 1) and taken to `1 / gamma` |
+| Lightmaps | the light under the face's styles at four times its stored value, raised by the light gamma's root of two, through the light table. With overbright, not raised but doubled after the table |
+| Models | their light, 0 to 255, at four times its value through the light table |
+
+The tables match Xash3D's published entries for two settings to within a step. This replaces the
+fixed brightness of 1.6 the viewer drew with before.
+
+A list under the view, folded away under its count, names every file the viewer could not read
+and why: maps, models, sprites, skies and sounds. A capture now waits for a frame drawn before
+saving it, where it once skipped the first frame of a run.
+
+### See-through walls (11f)
+
+A mode, off by default, shows players behind walls. "Through walls" beside the controls turns it
+on and off, and Settings keeps it, with a second choice for every other model too, projectiles and
+items among them. `--viewer-see-through` turns it on for one run.
+
+| Part | How |
+|---|---|
+| Silhouettes | each chosen model, a player's weapon with it, drawn again after everything but the viewmodel in one colour at 0.6, only where something nearer was drawn (depth compared greater, nothing written) |
+| Colours | a player's top colour as a hue, kept a little pale, which team games set by team. White for a player without one, and a pale yellow for other models |
+| A model in view | not tinted, as the faces turned away from the eye are left out. Only where a model hides part of itself, as an arm across the body, does the part behind show (9 of 8,000 pixels over a player in view in `ls_9e_stalkx`) |
+
+It can only show what the demo holds. The server sends the players in the recorder's potentially
+visible set, which often holds players still behind a corner, and a server that hides the players
+the recorder cannot see, as some anti-wallhack plugins do, leaves nothing to show. The setting's
+description says so. It changes only how the viewer draws a recording.
+
 ### Clips in the viewer (11c)
 
 | Action | What the viewer does |
@@ -434,7 +481,7 @@ volume slider beside the controls. `lambda-slicer-audio`'s `device` feature hold
 | Part | How |
 |---|---|
 | Timing | a mixing thread keeps a playback of its own of the demo the worker has open, sharing the worker's checkpoints, and moves it to the end of each 10 ms block before mixing the channels it then has. Each block hears the sounds playing during it, whenever the window's frames come |
-| Clock | each block is placed where the playback clock will be once the blocks queued before it are heard, four of them. The mixer goes on from its own place unless a load or seek comes or it falls more than 40 ms from the clock |
+| Clock | each block is placed where the playback clock will be when it is heard: after the four blocks queued before it, half the block playing and the device's own latency, which the callback measures from the stream's timestamps (11g). The mixer goes on from its own place unless a load or seek comes or it falls more than 40 ms from the clock |
 | Silence | while paused, seeking, stepping or before the demo is open, and at the start of each new load |
 | Device | the callback copies finished blocks out and returns them to the mixer to be filled again, with no file read, no lock held for long and nothing freed |
 | Listener | the recorder's view at the end of the block, the entity it views from heard as its own |
@@ -458,6 +505,26 @@ compared with `mix_probe` at the same rate and a master volume of 0.7 against th
 Before the mixer had a playback of its own it mixed the channels of the frame last shown, and
 sounds shorter than a window frame came late or not at all (windows down to 0.17 of the expected
 level).
+
+#### Sound and picture in step (11g)
+
+`LAMBDA_SLICER_SOUND_SKEW=FILE` with `--viewer-play SECONDS` writes, for every block, how far the
+sound heard runs ahead of the playhead when the block begins to be heard, taken from the
+stream's timestamps, and beside it (`FILE` with `.video.txt`) how far each picture painted trails
+the playhead. The sound tap can be set too, so the device plays silence.
+
+**Measured (2026-10-19)** on Windows, `stalkx_naz_248.dem` played 12 s from 20 s, the first
+second left out (about 1,000 blocks and 2,600 pictures):
+
+| | Sound against the playhead | Device latency |
+|---|---|---|
+| Blocks placed four blocks ahead, as before | 56 ms behind, steady within a millisecond | 47 ms |
+| Placed with the measured latency, two runs | 3.9 and 4.6 ms behind, 9 ms at most | 42 and 47 ms |
+
+Pictures trail the playhead by 4.5 ms at the median and 33 ms at the 95th percentile, from the
+worker's answer to the paint, not counting the display's own delay. So sound and picture now
+agree within a few milliseconds where the sound came 50 ms late, inside the 40 ms the plan sets
+(implementation plan §13.9).
 
 ## Client events (10c)
 
