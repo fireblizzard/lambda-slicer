@@ -45,7 +45,29 @@
           "shotgun": 7
         }
       },
-      "notes": "Two-player crossfire match with recorder gauss use (1,100 local gauss.sc records) and opponent events via svc_event. Event counts are raw records. Shots follow the analysis profile: 1,145 gauss.sc records hold 550 shots (531 charged, 19 primary) and 595 stops."
+      "notes": "Two-player crossfire match with recorder gauss use (1,100 local gauss.sc records) and opponent events via svc_event. Event counts are raw records. Shots follow the analysis profile: 1,145 gauss.sc records hold 550 shots (531 charged, 19 primary) and 595 stops.",
+      "moments": [
+        {
+          "case": "kill",
+          "at": 14.21,
+          "note": "the recorder's gauss kills Paranoid in view, 228 units away"
+        },
+        {
+          "case": "gauss charging",
+          "at": 11.0,
+          "note": "the recorder's spin sound playing before that kill"
+        },
+        {
+          "case": "delayed event across a seek",
+          "at": 72.0,
+          "note": "a client event waiting for its delay"
+        },
+        {
+          "case": "reload",
+          "at": 5.0,
+          "note": "the recorder's reload, its viewmodel and sound"
+        }
+      ]
     },
     {
       "role": "campaign-map candidate, mode unverified",
@@ -135,7 +157,14 @@
         },
         "unattributed_shots": 0
       },
-      "notes": "Also has crowbar swings, egon starts and stops, 74 snark release attempts and 73 tripmine placement attempts, none of which are shots. Gauss: 2,716 shots against 4,014 stops."
+      "notes": "Also has crowbar swings, egon starts and stops, 74 snark release attempts and 73 tripmine placement attempts, none of which are shots. Gauss: 2,716 shots against 4,014 stops.",
+      "moments": [
+        {
+          "case": "sustained egon",
+          "at": 106.5,
+          "note": "an Egon's beams drawn"
+        }
+      ]
     },
     {
       "role": "singleplayer analysis",
@@ -154,7 +183,24 @@
         },
         "unattributed_shots": 0
       },
-      "notes": "Singleplayer speedrun. The player's shots arrive as network events, with no local demo events."
+      "notes": "Singleplayer speedrun. The player's shots arrive as network events, with no local demo events.",
+      "moments": [
+        {
+          "case": "ambient loop",
+          "at": 2.5,
+          "note": "static channels playing, singleplayer"
+        },
+        {
+          "case": "moving brush entity",
+          "at": 7.0,
+          "note": "a brush entity moving between snapshots"
+        },
+        {
+          "case": "singleplayer monster death",
+          "at": 19.5,
+          "note": "a monster's death sound starting"
+        }
+      ]
     },
     {
       "role": "unknown actors: out-of-view players on a 2018 server",
@@ -178,6 +224,27 @@
         "unattributed_shots": 1028
       },
       "notes": "Events of the out-of-view opponent carry a packet index equal to the count of entities numbered below 256 and no entindex, so they land on unrelated entities such as a laser beam. Their shooter is reported as unknown."
+    },
+    {
+      "role": "viewer: steady gauss duel, the first comparison clip's source",
+      "path": "F:/HLScreeniesDemos/05oct2019/stalkx_naz_248.dem",
+      "bytes": 71099934,
+      "blake3": "3391ca678bb4ba6a6e6af6a9ca88562afef5227155b848adc8eef47706c2944f",
+      "notes": "Sound output and A/V skew were measured on it from 20 s."
+    },
+    {
+      "role": "viewer: singleplayer clip compared with the game",
+      "path": "F:/SteamLibrary/steamapps/common/Half-Life/ag/ls_9e_run.dem",
+      "bytes": 2562087,
+      "blake3": "3b816cc1dc6955d7a60a817c8ef093c27892fd250d28fdd3708dcb9f8d7085cd",
+      "notes": "Recorded by the game frame by frame with startmovie for docs/viewer-validation.md.",
+      "moments": [
+        {
+          "case": "translucent sprite",
+          "at": 3.2,
+          "note": "glows and the beam entities' lightning"
+        }
+      ]
     }
   ]
 }

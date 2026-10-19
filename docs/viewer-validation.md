@@ -134,3 +134,35 @@ Checked on the viewer's own sound tap of `stalkx_naz_248.dem` (2026-10-19): 21 s
 into the tap, the loudness agreeing at 0.99, all 4 starts paired 0 to 10 ms apart, and the tap at
 0.55 of the mix, played at a volume of 0.5. The game's sound is not yet recorded, so the sound
 has not been compared with the game's.
+
+## Fixture matrix (12a)
+
+The cases implementation plan §13.9 names, each pinned to a moment of a demo in the local fixture
+manifest (`moments` on a fixture, `local-fixtures.example.json`). The moments were found with
+`examples/fixture_moments.rs` in `lambda-slicer-playback`, which plays a demo through in steps of a
+quarter or half second and notes when each case is under way: a gauss's spin sound on a player, the
+Egon's beams, a client event waiting for its delay, a reload or clip sound starting, a brush entity
+moving, a sprite in a render mode other than normal, a sound on a static channel, and a death
+sound starting on an entity that is not a player.
+
+| Case | Demo | Moment | What is there |
+|---|---|---|---|
+| Kill, killer and victim in view | `naz_crossfire_pb_01.dem` | 14.21 s | the recorder's gauss kills Paranoid 228 units away (`analyze --kills`) |
+| Gauss charging | `naz_crossfire_pb_01.dem` | 11.0 s | the recorder's spin sound, before that kill |
+| Delayed event across a seek | `naz_crossfire_pb_01.dem` | 72.0 s | a client event waiting for its delay |
+| Reload | `naz_crossfire_pb_01.dem` | 5.0 s | the recorder's reload, its viewmodel and sound |
+| Sustained Egon | `20230909_224143_stalkyard.dem` | 106.5 s | an Egon's beams drawn |
+| Ambient loop | `run_92.dem` | 2.5 s | sounds on static channels, singleplayer |
+| Moving brush entity | `run_92.dem` | 7.0 s | a brush entity moving between snapshots |
+| Singleplayer monster death | `run_92.dem` | 19.5 s | a monster's death sound starting |
+| Translucent sprite | `ls_9e_run.dem` | 3.2 s | glows and the beam entities' lightning, recorded by the game too |
+
+Not covered:
+
+- An expiring HUD notice. The viewer draws no HUD, so there is nothing to compare.
+- The killer and victim recording the plan asks for, a short controlled match with everyone in
+  view, recorded by the game for comparing. The crossfire kill stands in for it until it is
+  recorded.
+- The game's own sound, for comparing the mix (see "Recording the game's sound").
+
+12b reaches each moment every way playback can and compares what it holds.

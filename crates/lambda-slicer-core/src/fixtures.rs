@@ -34,6 +34,23 @@ pub struct Fixture {
     pub expect: Expectations,
     #[serde(default)]
     pub notes: String,
+    /// Moments in the demo for the viewer's fixture matrix (implementation
+    /// plan §13.9), each reached every way playback can reach a moment and
+    /// compared
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub moments: Vec<Moment>,
+}
+
+/// A moment in a fixture's playback that shows one case of the viewer's
+/// fixture matrix, such as a gauss charging or a monster dying
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Moment {
+    /// The case, as the fixture matrix names it
+    pub case: String,
+    /// Seconds of playback
+    pub at: f64,
+    #[serde(default)]
+    pub note: String,
 }
 
 /// Container-level expectations. Every field is optional, and only present
