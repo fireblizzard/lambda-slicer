@@ -1,7 +1,8 @@
 # Release
 
 The M7 gate (implementation plan §10) and the support matrix (§12), with what is proven and what
-still waits for a person to try it.
+still waits for a person to try it. What a release brings and lacks, the demo view's limits among
+it, is in the [release notes](release-notes.md).
 
 ## Building and checking
 

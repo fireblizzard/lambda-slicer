@@ -1,9 +1,9 @@
 Lambda Slicer
 =============
 
-Finds weapon use in Half-Life: Adrenaline Gamer demos and cuts clips from them
-that play on their own in the game. Nothing is installed: keep this folder
-anywhere and run lambda-slicer-gui.exe.
+Finds weapon use in Half-Life: Adrenaline Gamer demos, cuts clips from them
+that play on their own in the game, and plays demos with their sound. Nothing
+is installed: keep this folder anywhere and run lambda-slicer-gui.exe.
 
 Getting started
 ---------------
@@ -26,6 +26,22 @@ Getting started
 Settings and clips are kept in %APPDATA%\lambda-slicer, and the library cache
 in %LOCALAPPDATA%\lambda-slicer. The interface is in 14 languages, chosen in
 Settings.
+
+Watching demos
+--------------
+
+In Settings, choose the Half-Life folder, the one that holds valve. The
+selected demo then plays above its events, with the game's maps, models and
+sounds. Click the view or press Space to play or pause, J to rewind, comma and
+period to step one frame, and the arrows to jump five seconds. Choosing an
+event or a clip moves the view there. Settings also hold the game's gamma
+settings, the field of view and the weapon in view.
+
+The view shows only what the demo holds: other players while the server sent
+them to the recorder. It does not draw the HUD or play recorded voice, and some
+of the game's effects, such as dynamic lights and particles, are not drawn yet.
+Files the installation lacks are listed under the view. The release notes list
+the rest (docs/release-notes.md in the source).
 
 Command line
 ------------

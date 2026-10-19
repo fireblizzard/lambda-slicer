@@ -121,3 +121,13 @@ recording of the game's sound, as `startmovie` saves none. `sound_compare` is re
 **To do:** record the game's sound while it plays `ls_9e_stalkx`, run `sound_compare` on it and
 write down where the paired sounds start apart and how loud they are, then the README's M10 and
 M11 rows.
+
+## The fixture clips in the game (M12)
+
+The reference captures compare the viewer with the game's frames of a clip of each fixture case
+([viewer validation](viewer-validation.md), "Reference captures"). The clips are in the game's
+`ag` folder and the viewer's frames of them are taken, but the game's are not.
+
+**To do:** record the game's frames of the eight `ls_12d_*` clips with `startmovie`, and their
+sound in a second pass, run `scripts/viewer-references.ps1` and `sound_compare`, and write down
+what matches and what differs.
