@@ -8,19 +8,22 @@
 //! to judge.
 //!
 //! A seek, step or load sent while another is being answered stops that
-//! one between groups, unanswered, as does dropping the worker. Requests
-//! of the same stamp, as playing sends them, do not, so playback slower
-//! than the clock still shows frames.
+//! one between groups, unanswered, once it has run for [`GRACE`], so a
+//! drag that sends a seek every frame still sees frames while a long seek
+//! no one wants stops soon. Dropping the worker stops one at once.
+//! Requests of the same stamp, as playing sends them, stop nothing, so
+//! playback slower than the clock still shows frames.
 //!
 //! While no request waits, a second playback of the same demo plays ahead
 //! in short slices to add checkpoints, so later seeks start nearby. A new
 //! request waits for one slice at most
 
 use std::path::Path;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
+use std::time::{Duration, Instant};
 
 use lambda_slicer_core::container::Limits;
 
@@ -37,7 +40,11 @@ pub struct Worker {
     /// the worker's drop
     changes: Arc<AtomicU64>,
     last: Mutex<Option<Stamp>>,
+    closing: Arc<AtomicBool>,
 }
+
+/// How long a seek a newer one replaced may go on, to show its frame
+pub const GRACE: Duration = Duration::from_millis(100);
 
 /// The demo the worker has open, for another playback of it to share its
 /// checkpoints
@@ -68,6 +75,8 @@ impl Worker {
         let thread_loaded = loaded.clone();
         let changes = Arc::new(AtomicU64::new(0));
         let thread_changes = changes.clone();
+        let closing = Arc::new(AtomicBool::new(false));
+        let thread_closing = closing.clone();
         let (reply_tx, reply_rx) = mpsc::channel();
         let thread = std::thread::Builder::new()
             .name("playback".into())
@@ -77,6 +86,7 @@ impl Worker {
                     replies: reply_tx,
                     loaded: thread_loaded,
                     changes: thread_changes,
+                    closing: thread_closing,
                 };
                 run(limits, files, worker, notify)
             })
@@ -89,6 +99,7 @@ impl Worker {
             loaded,
             changes,
             last: Mutex::new(None),
+            closing,
         }
     }
 
@@ -130,6 +141,7 @@ impl Drop for Worker {
     fn drop(&mut self) {
         // Closing the request channel ends the worker's loop, once a seek
         // under way has stopped
+        self.closing.store(true, Ordering::SeqCst);
         self.changes.fetch_add(1, Ordering::SeqCst);
         self.requests = None;
         if let Some(thread) = self.thread.take() {
@@ -151,6 +163,7 @@ struct Thread {
     replies: Sender<Reply>,
     loaded: Arc<Mutex<Option<Loaded>>>,
     changes: Arc<AtomicU64>,
+    closing: Arc<AtomicBool>,
 }
 
 fn run(limits: Limits, files: Option<GameFiles>, worker: Thread, notify: impl Fn()) {
@@ -159,10 +172,23 @@ fn run(limits: Limits, files: Option<GameFiles>, worker: Thread, notify: impl Fn
         replies,
         loaded,
         changes,
+        closing,
     } = worker;
     // The count of changes the request being answered was sent with
     let taken = Arc::new(AtomicU64::new(0));
+    // When the request being answered began, in nanoseconds from `base`
+    let base = Instant::now();
+    let began = Arc::new(AtomicU64::new(0));
     let replaced = {
+        let (changes, taken, began) = (changes.clone(), taken.clone(), began.clone());
+        let closing = closing.clone();
+        move || {
+            let newer = changes.load(Ordering::SeqCst) != taken.load(Ordering::SeqCst);
+            let ran = base.elapsed().as_nanos() as u64 - began.load(Ordering::SeqCst);
+            closing.load(Ordering::SeqCst) || (newer && ran >= GRACE.as_nanos() as u64)
+        }
+    };
+    let superseded = {
         let (changes, taken) = (changes.clone(), taken.clone());
         move || changes.load(Ordering::SeqCst) != taken.load(Ordering::SeqCst)
     };
@@ -203,6 +229,7 @@ fn run(limits: Limits, files: Option<GameFiles>, worker: Thread, notify: impl Fn
             continue;
         };
         taken.store(count, Ordering::SeqCst);
+        began.store(base.elapsed().as_nanos() as u64, Ordering::SeqCst);
         let batch: Vec<Request> = batch.into_iter().map(|(_, r)| r).collect();
 
         let load = std::iter::once(&newest)
@@ -247,8 +274,9 @@ fn run(limits: Limits, files: Option<GameFiles>, worker: Thread, notify: impl Fn
                 .seek_group(group)
                 .map(|_| p.position().map_or(Default::default(), |at| at.time)),
         };
-        // A newer seek or load waits, and is answered instead
-        if replaced() {
+        // A seek stopped for a newer one is not answered. One that finished
+        // in its grace is, so a drag shows frames, and the newer one follows
+        if replaced() && superseded() {
             continue;
         }
         let reply = match reached {

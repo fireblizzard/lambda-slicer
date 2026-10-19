@@ -467,3 +467,43 @@ fn playing_backward_is_silent_wraps_loops_and_stops_at_the_start() {
     assert!(forward.audible);
     assert_eq!(controller.time(12.), SourceTime(1.));
 }
+
+#[test]
+fn scrubbing_holds_playback_silent_and_resumes_or_goes_back() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = demo(dir.path());
+    let mut controller = Controller::default();
+    controller.command(Command::Load(path), 0.).unwrap();
+    controller.command(Command::Play, 0.).unwrap();
+
+    // Playing at 1 s, a drag holds the playhead where it is dragged
+    let first = controller
+        .command(Command::Scrub(SourceTime(3.)), 1.)
+        .unwrap();
+    assert!(!first.audible && controller.scrubbing() && !controller.playing());
+    let second = controller
+        .command(Command::Scrub(SourceTime(2.5)), 1.5)
+        .unwrap();
+    assert!(second.stamp.revision > first.stamp.revision);
+    assert_eq!(controller.time(5.), SourceTime(2.5));
+
+    // Released, it plays on from there with sound
+    let resumed = controller
+        .command(Command::EndScrub { cancel: false }, 2.)
+        .unwrap();
+    assert_eq!(resumed.target, Target::Time(SourceTime(2.5)));
+    assert!(resumed.audible && controller.playing() && !controller.scrubbing());
+
+    // Cancelled, it goes back to where the drag began, here paused
+    assert_eq!(controller.command(Command::Pause, 2.5), None);
+    controller.command(Command::Scrub(SourceTime(0.5)), 3.);
+    let back = controller
+        .command(Command::EndScrub { cancel: true }, 3.5)
+        .unwrap();
+    assert_eq!(back.target, Target::Time(SourceTime(3.)));
+    assert!(!controller.playing());
+    assert_eq!(
+        controller.command(Command::EndScrub { cancel: false }, 4.),
+        None
+    );
+}

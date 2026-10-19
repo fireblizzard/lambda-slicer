@@ -61,6 +61,14 @@ pub enum Command {
         from: SourceTime,
         to: SourceTime,
     },
+    /// Drag the playhead to a time. The first holds playback still and
+    /// silent until the scrub ends
+    Scrub(SourceTime),
+    /// End a scrub where it is, or back where it began when cancelled,
+    /// playing on if it was playing before
+    EndScrub {
+        cancel: bool,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -111,6 +119,8 @@ pub struct Controller {
     failed: Option<Message>,
     /// Where playing a range pauses
     stop_at: Option<SourceTime>,
+    /// While scrubbing, where it began and whether it was playing
+    scrub: Option<(SourceTime, bool)>,
 }
 
 impl Controller {
@@ -120,6 +130,10 @@ impl Controller {
 
     pub fn playing(&self) -> bool {
         self.clock.playing()
+    }
+
+    pub fn scrubbing(&self) -> bool {
+        self.scrub.is_some()
     }
 
     /// The clock, for whatever follows the playhead on its own, such as
@@ -221,6 +235,30 @@ impl Controller {
                 self.clock.play(wall);
                 self.stop_at = Some(SourceTime(to.0.max(from.0)));
                 self.request(Target::Time(from), true)
+            }
+            Command::Scrub(time) => {
+                if self.scrub.is_none() {
+                    self.scrub = Some((self.clock.at(wall), self.clock.playing()));
+                    self.clock.pause(wall);
+                }
+                self.stop_at = None;
+                self.new_revision();
+                self.clock.set(time, wall);
+                self.request(Target::Time(time), false)
+            }
+            Command::EndScrub { cancel } => {
+                let (start, playing) = self.scrub.take()?;
+                let mut request = None;
+                if cancel {
+                    self.new_revision();
+                    self.clock.set(start, wall);
+                    request = self.request(Target::Time(start), false);
+                }
+                if playing {
+                    self.clock.play(wall);
+                    request = self.tick(wall);
+                }
+                request
             }
             Command::SeekTo(time) => {
                 self.stop_at = None;

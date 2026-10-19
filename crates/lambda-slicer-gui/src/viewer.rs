@@ -266,6 +266,8 @@ pub struct Viewer {
     worker: Worker,
     /// Sound output, none without a device or in a bench or capture run
     sound: Option<Device>,
+    /// A scrub Escape cancelled, whose drag goes on until it is let go
+    scrub_cancelled: bool,
     loader: Option<Loader>,
     frame: Option<Box<PresentedFrame>>,
     /// The map whose world is drawn, and the one being read
@@ -388,6 +390,7 @@ impl Viewer {
             controller,
             worker,
             sound,
+            scrub_cancelled: false,
 
             loader,
             frame: None,
@@ -456,6 +459,21 @@ impl Viewer {
     pub fn preview(&mut self, time: f32) {
         self.command(Command::Pause);
         self.seek(time);
+    }
+
+    /// Drag the playhead to `time`, playback held still and silent until
+    /// the drag ends. A drag Escape cancelled moves nothing
+    pub fn scrub(&mut self, time: f32) {
+        if !self.scrub_cancelled {
+            self.command(Command::Scrub(SourceTime(f64::from(time.max(0.)))));
+        }
+    }
+
+    /// The drag is let go, playback going on from where it was dragged to
+    pub fn end_scrub(&mut self) {
+        if !std::mem::take(&mut self.scrub_cancelled) {
+            self.command(Command::EndScrub { cancel: false });
+        }
     }
 
     /// The playhead, in seconds of playback
@@ -1155,7 +1173,11 @@ impl Viewer {
         let backward = clock.playing() && clock.backward();
         let pressed = |key: egui::Key| ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, key));
         let now = self.controller.time(self.wall()).0;
-        let command = if (!focused && pressed(egui::Key::Space)) || pressed(egui::Key::L) {
+        let command = if self.controller.scrubbing() && pressed(egui::Key::Escape) {
+            // Back to where the drag began
+            self.scrub_cancelled = true;
+            Some(Command::EndScrub { cancel: true })
+        } else if (!focused && pressed(egui::Key::Space)) || pressed(egui::Key::L) {
             Some(if forward {
                 Command::Pause
             } else {
@@ -1319,8 +1341,17 @@ impl Viewer {
         let mut at = now;
         ui.spacing_mut().slider_width = ui.available_width().max(40.);
         let slider = egui::Slider::new(&mut at, 0. ..=end.max(0.001)).show_value(false);
-        if ui.add(slider).changed() {
-            self.command(Command::SeekTo(SourceTime(at)));
+        let r = ui.add(slider);
+        // Dragging scrubs, a click seeks
+        if r.changed() {
+            if r.dragged() {
+                self.scrub(at as f32);
+            } else {
+                self.command(Command::SeekTo(SourceTime(at)));
+            }
+        }
+        if r.drag_stopped() {
+            self.end_scrub();
         }
     }
 }

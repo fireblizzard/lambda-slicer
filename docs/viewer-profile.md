@@ -119,7 +119,9 @@ for a seek no one wants (one cold seek took 7 s before checkpoints). The request
 each frame share a stamp and do not stop each other, so playback slower than the clock still shows
 frames. A seek stopped part way leaves playback at a group it reached, which the next request goes
 on from, and is tested to end where sequential playback does. Each request carries the count of
-changes sent up to it, so a change sent after the request being answered always stops it.
+changes sent up to it, so a change sent after the request being answered always stops it. A seek
+gets 100 ms before a newer one stops it, so dragging the playhead, which seeks every frame, still
+shows frames, and dropping the worker stops it at once.
 
 ### Scene
 
@@ -279,6 +281,28 @@ and the sound device drops every block it holds from before (10b, "Old blocks").
 mixes nothing from the loop's end, or a played range's end, on: it runs about 40 ms ahead of what
 is heard and would otherwise mix past the end before the window's next frame goes back. A block
 that starts before the end is mixed whole, so at most 10 ms past it can be heard.
+
+### Scrubbing (11d)
+
+Dragging the time bar, the timeline's ruler along its top, or the playhead line on the timeline
+scrubs: playback holds still and silent while the playhead follows the pointer, and when the drag
+is let go it plays on from there if it was playing, its sound starting from the state there with
+none of the sounds passed over. Escape during a drag goes back to where it began, and the rest of
+that drag moves nothing. A click on the time bar or the timeline seeks as before.
+
+**Measured (2026-10-19)** on `naz_crossfire_pb_01.dem`, release build, a drag sending a scrub
+every 16 ms for 2 s through 60 s of the demo, frames counted as the worker answered:
+
+| Drag | Frames | Longest wait between frames | Last frame after letting go |
+|---|---|---|---|
+| Indexed, 200 to 260 s | 125 | 50 ms | at once |
+| Indexed, 700 to 640 s, backward | 72 | 113 ms | 59 ms |
+| Before the index, 200 to 260 s | 51 | 1,256 ms, the first seek | 22 ms |
+| Before the index, 700 to 640 s | 50 | 665 ms | 29 ms |
+
+Before the index covers the demo, the first seek of a drag plays from the nearest checkpoint, the
+start at worst. A seek a newer one stops leaves playback where it got to, and the next goes on from
+there, so the drag still catches up.
 
 ### What is drawn (9a)
 

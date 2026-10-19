@@ -236,6 +236,8 @@ pub struct DemoView {
     pub viewer: Option<crate::viewer::Viewer>,
     /// The clip the viewer loops
     looping: Option<usize>,
+    /// The timeline's ruler or playhead is being dragged
+    scrubbing: bool,
 }
 
 impl DemoView {
@@ -268,6 +270,7 @@ impl DemoView {
             export_on_load: false,
             viewer: None,
             looping: None,
+            scrubbing: false,
         }
     }
 
@@ -649,6 +652,14 @@ impl DemoView {
                 .min_by(|x, y| x.2.total_cmp(&y.2))
                 .map(|(i, edge, _)| (i, edge))
         };
+        // The ruler along the top, or the playhead, drags the viewer's
+        // playhead
+        let playhead = self.viewer.as_ref().map(|v| v.time());
+        let scrubs_at = |p: Pos2| {
+            plot.contains(p)
+                && (p.y < plot.min.y + AXIS_HEIGHT
+                    || playhead.is_some_and(|t| ((at_pointer(p) - t) / per_px).abs() <= HIT_PIXELS))
+        };
         let pointer = ui.input(|i| i.pointer.hover_pos());
         if response.drag_started() {
             let origin = ui.input(|i| i.pointer.press_origin());
@@ -657,9 +668,28 @@ impl DemoView {
                 self.chosen_clip = Some(i);
                 self.typing = None;
             }
+            self.scrubbing =
+                self.dragging.is_none() && self.viewer.is_some() && origin.is_some_and(&scrubs_at);
         }
-        if self.dragging.is_some() || pointer.and_then(|p| edge_at(p, &self.clips)).is_some() {
+        let over_scrub = self.viewer.is_some() && pointer.is_some_and(scrubs_at);
+        if self.dragging.is_some()
+            || self.scrubbing
+            || over_scrub
+            || pointer.and_then(|p| edge_at(p, &self.clips)).is_some()
+        {
             ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
+        }
+        if self.scrubbing
+            && response.dragged()
+            && let (Some(p), Some(viewer)) = (pointer, &mut self.viewer)
+        {
+            viewer.scrub(at_pointer(p).max(0.));
+        }
+        if response.drag_stopped()
+            && std::mem::take(&mut self.scrubbing)
+            && let Some(viewer) = &mut self.viewer
+        {
+            viewer.end_scrub();
         }
         if let Some((i, edge)) = self.dragging
             && response.dragged()
@@ -700,7 +730,7 @@ impl DemoView {
                 b = a + new_span;
             }
         }
-        if response.dragged() && self.dragging.is_none() {
+        if response.dragged() && self.dragging.is_none() && !self.scrubbing {
             let dx = response.drag_delta().x * per_px;
             a -= dx;
             b -= dx;
