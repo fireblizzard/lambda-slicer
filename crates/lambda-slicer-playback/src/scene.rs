@@ -25,7 +25,7 @@
 
 use std::collections::VecDeque;
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use lambda_slicer_core::container::{ClientDataRecord, FrameBody, NetworkFrame};
@@ -33,6 +33,7 @@ use lambda_slicer_core::protocol::delta::DeltaSchema;
 use lambda_slicer_core::protocol::messages::{Message, ParsedMessage, resource_type};
 use lambda_slicer_core::state::{Decoder, EntityState, Snapshot};
 
+use crate::Table;
 use crate::animation::IN_EYE;
 use crate::time::{ServerTime, SourceTime};
 
@@ -277,22 +278,22 @@ pub struct Scene {
     pub revision: u64,
     /// The snapshot the entities were taken from
     snapshot: Option<Arc<Snapshot>>,
-    lives: HashMap<u16, Slot>,
+    lives: Table<u16, Slot>,
     /// Model names by precache index, and the resource count they were
     /// read from
-    models: Arc<HashMap<u16, Arc<str>>>,
+    models: Arc<Table<u16, Arc<str>>>,
     models_from: usize,
     /// Field positions per schema, and each entity as last converted with
     /// the state it came from, which snapshots share while it is unchanged
     tables: Vec<FieldTable>,
-    converted: HashMap<u16, (Arc<EntityState>, Entity)>,
+    converted: Table<u16, (Arc<EntityState>, Entity)>,
     /// The latest snapshots' entities by server time, oldest first
     recent: VecDeque<(f64, Arc<Vec<Entity>>)>,
     /// When the latest snapshot arrived, and its server time
     snapshot_at: SourceTime,
     server_time: f64,
     max_clients: u8,
-    gaits: HashMap<u16, GaitTrack>,
+    gaits: Table<u16, GaitTrack>,
     /// The last client frame the legs were stepped for
     last_frame: Option<SourceTime>,
 }
@@ -565,7 +566,7 @@ impl Scene {
                         Arc::from(String::from_utf8_lossy(&r.name).as_ref()),
                     )
                 })
-                .collect::<HashMap<_, _>>()
+                .collect::<Table<_, _>>()
                 .into();
             self.models_from = resources.len();
         }
@@ -591,8 +592,8 @@ impl Scene {
         entities: &[Arc<EntityState>],
         updated: ServerTime,
     ) {
-        let mut lives = HashMap::with_capacity(entities.len());
-        let mut converted = HashMap::with_capacity(entities.len());
+        let mut lives = Table::with_capacity(entities.len());
+        let mut converted = Table::with_capacity(entities.len());
         let mut out = Vec::with_capacity(entities.len());
         for e in entities {
             // The world is drawn from the map, not as an entity
@@ -756,7 +757,7 @@ impl Scene {
         self.last_frame = Some(at);
         let render = self.client_time(at) - INTERPOLATION;
 
-        let mut gaits = HashMap::with_capacity(self.gaits.len());
+        let mut gaits = Table::with_capacity(self.gaits.len());
         for e in self.entities.iter() {
             if !self.is_player(e.id.number) || e.gait_sequence == 0 {
                 continue;

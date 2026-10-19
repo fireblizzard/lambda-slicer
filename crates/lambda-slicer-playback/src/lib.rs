@@ -56,3 +56,58 @@ pub type SpriteFrames = std::sync::Arc<dyn Fn(&str) -> Option<u32> + Send + Sync
 /// `maps/crossfire.bsp`
 pub type MapHulls =
     std::sync::Arc<dyn Fn(&str) -> Option<std::sync::Arc<trace::Hull>> + Send + Sync>;
+
+/// A hash map whose `Debug` lists its entries by key, so two playbacks
+/// holding the same print the same, as the equivalence checks compare
+/// them as text
+#[derive(Clone)]
+pub(crate) struct Table<K, V>(std::collections::HashMap<K, V>);
+
+impl<K, V> Default for Table<K, V> {
+    fn default() -> Self {
+        Self(std::collections::HashMap::new())
+    }
+}
+
+impl<K, V> Table<K, V> {
+    pub(crate) fn with_capacity(capacity: usize) -> Self {
+        Self(std::collections::HashMap::with_capacity(capacity))
+    }
+}
+
+impl<K, V> std::ops::Deref for Table<K, V> {
+    type Target = std::collections::HashMap<K, V>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<K, V> std::ops::DerefMut for Table<K, V> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl<'a, K, V> IntoIterator for &'a Table<K, V> {
+    type Item = (&'a K, &'a V);
+    type IntoIter = std::collections::hash_map::Iter<'a, K, V>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter()
+    }
+}
+
+impl<K: Eq + std::hash::Hash, V> FromIterator<(K, V)> for Table<K, V> {
+    fn from_iter<I: IntoIterator<Item = (K, V)>>(entries: I) -> Self {
+        Self(entries.into_iter().collect())
+    }
+}
+
+impl<K: Ord + std::fmt::Debug, V: std::fmt::Debug> std::fmt::Debug for Table<K, V> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut entries: Vec<_> = self.0.iter().collect();
+        entries.sort_by(|a, b| a.0.cmp(b.0));
+        f.debug_map().entries(entries).finish()
+    }
+}

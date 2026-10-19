@@ -193,9 +193,15 @@ between runs is left for later.
 sequential playback that never uses a checkpoint: forward and backward seeks to 61 moments and on
 past each, 300 random seeks while checkpoints are still being added, group steps both ways, a clip
 looped three times in display-sized steps, and the worker's answers once its index is complete.
-The comparison covers the decoder's counters and latest snapshot, every entity, the camera, the
-viewmodel, light styles, sounds and the scene's and sound state's change counts. Two deliberately
-broken restores (a decoder counter changed, the source's read-ahead record lost) both fail it.
+The comparison covers playback's whole state (`Playback::fingerprint`), with the decoder's public
+state and latest snapshot, and the frame presented. A gauss shot every 1.5 s waits half a second for
+its delay, so some checkpoints are taken while it waits. Three deliberately broken restores (a
+decoder counter changed, the source's read-ahead record lost, the waiting events dropped) all fail
+it.
+
+`Playback::keep_checkpoint_at` keeps a checkpoint after a chosen group whatever the spacing, for a
+place to come back to. The equivalence harness uses it to restore while an event waits (see
+[viewer validation](viewer-validation.md), "Equivalence").
 
 **Measured (2026-10-18)** with `examples/seek_probe.rs`, release build: every checkpoint built as
 the worker builds them, then 60 seeks to random moments in random order, each compared with the

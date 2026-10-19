@@ -248,6 +248,34 @@ impl Playback {
         &self.state.decoder
     }
 
+    /// Everything playback holds between groups as text, for checking that
+    /// two ways of reaching a moment hold the same. Of the decoder only
+    /// its public state and latest snapshot, as checkpoints keep it whole
+    pub fn fingerprint(&self) -> String {
+        let s = &self.state;
+        let d = &s.decoder;
+        let decoder = (
+            (d.max_clients, d.player_num, d.hltv, d.time_bits),
+            (d.view_entity, &d.movevars, d.segment, &d.stats),
+            (&d.players, &d.name_history, d.resources().len()),
+            d.latest_snapshot(),
+        );
+        format!(
+            "{:?}",
+            (
+                decoder,
+                &s.scene,
+                &s.audio,
+                &s.events,
+                &s.animations,
+                &s.tempents,
+                &s.decals,
+                &s.beams,
+                (s.position, s.reach, s.exhausted, &s.stopped),
+            )
+        )
+    }
+
     /// The world of the session's map to trace temporary entities through
     fn world(&mut self) -> Option<Arc<Hull>> {
         let map = self.state.scene.map.as_deref()?;
@@ -439,34 +467,53 @@ impl Playback {
         self.state.reach = SourceTime(self.state.reach.0.max(time.0));
 
         if self.store().due(position) {
-            let entities = self.state.scene.entities.len() * size_of::<Entity>();
-            let sounds = size_of_val(self.state.audio.channels());
-            // The effects alive, the decals shared with the checkpoint
-            // before until one is made
-            let beams = &self.state.beams;
-            let effects = size_of_val(self.state.tempents.entities())
-                + size_of_val(beams.beams.as_slice())
-                + size_of_val(beams.tracers.as_slice())
-                + beams
-                    .trails
-                    .iter()
-                    .map(|t| {
-                        size_of::<Trail>() + t.points.len() * size_of::<([f32; 3], SourceTime)>()
-                    })
-                    .sum::<usize>();
-            let bytes = self.state.decoder.retained_bytes() + 2 * entities + sounds + effects;
-            let checkpoint = Checkpoint {
-                group: position.group,
-                segment: position.segment,
-                time,
-                reach: self.state.reach,
-                bytes: bytes as u64,
-                state: self.state.clone(),
-                cursor: self.source.cursor(),
-            };
+            let checkpoint = self.checkpoint(position);
             self.store().insert(checkpoint);
         }
         true
+    }
+
+    /// The state after `position`, the group just applied, to go on from
+    fn checkpoint(&self, position: Position) -> Checkpoint {
+        let entities = self.state.scene.entities.len() * size_of::<Entity>();
+        let sounds = size_of_val(self.state.audio.channels());
+        // The effects alive, the decals shared with the checkpoint before
+        // until one is made
+        let beams = &self.state.beams;
+        let effects = size_of_val(self.state.tempents.entities())
+            + size_of_val(beams.beams.as_slice())
+            + size_of_val(beams.tracers.as_slice())
+            + beams
+                .trails
+                .iter()
+                .map(|t| size_of::<Trail>() + t.points.len() * size_of::<([f32; 3], SourceTime)>())
+                .sum::<usize>();
+        let bytes = self.state.decoder.retained_bytes() + 2 * entities + sounds + effects;
+        Checkpoint {
+            group: position.group,
+            segment: position.segment,
+            time: position.time,
+            reach: self.state.reach,
+            bytes: bytes as u64,
+            state: self.state.clone(),
+            cursor: self.source.cursor(),
+        }
+    }
+
+    /// Seek to `group` and keep the state after it as a checkpoint,
+    /// whatever the spacing, for a place to come back to. False when the
+    /// demo ends first
+    pub fn keep_checkpoint_at(&mut self, group: u64) -> Result<bool, Message> {
+        self.seek_group(group)?;
+        // A seek stops once `group` is applied, before reading the next
+        match self.state.position {
+            Some(position) if position.group == group && self.next.is_none() => {
+                let checkpoint = self.checkpoint(position);
+                self.store().insert(checkpoint);
+                Ok(true)
+            }
+            _ => Ok(false),
+        }
     }
 
     /// Apply every group at or before `time`. Playback goes on from where it

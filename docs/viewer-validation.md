@@ -152,9 +152,9 @@ sound starting on an entity that is not a player.
 | Delayed event across a seek | `naz_crossfire_pb_01.dem` | 72.0 s | a client event waiting for its delay |
 | Reload | `naz_crossfire_pb_01.dem` | 5.0 s | the recorder's reload, its viewmodel and sound |
 | Sustained Egon | `20230909_224143_stalkyard.dem` | 106.5 s | an Egon's beams drawn |
-| Ambient loop | `run_92.dem` | 2.5 s | sounds on static channels, singleplayer |
+| Ambient loop | `run_92.dem` | 4.5 s | sounds on static channels, singleplayer |
 | Moving brush entity | `run_92.dem` | 7.0 s | a brush entity moving between snapshots |
-| Singleplayer monster death | `run_92.dem` | 19.5 s | a monster's death sound starting |
+| Singleplayer monster death | `run_92.dem` | 33.0 s | a monster's death sound starting, the monster out of view |
 | Translucent sprite | `ls_9e_run.dem` | 3.2 s | glows and the beam entities' lightning, recorded by the game too |
 
 Not covered:
@@ -165,4 +165,76 @@ Not covered:
   recorded.
 - The game's own sound, for comparing the mix (see "Recording the game's sound").
 
-12b reaches each moment every way playback can and compares what it holds.
+"Equivalence" below reaches each moment every way playback can and compares what it holds.
+
+## Equivalence (12b)
+
+`examples/fixture_equivalence.rs` in `lambda-slicer-audio` reaches each moment of the fixture
+matrix every way playback can, with the game's files, and compares what playback holds there with
+sequential playback that uses no checkpoint:
+
+```
+fixture_equivalence INSTALL local-fixtures.json [CASE...]
+```
+
+The ways:
+
+- The three seconds before the moment played in display frames.
+- A seek from checkpoints covering the whole demo, built as the worker builds them.
+- A seek back from 30 s later.
+- A seek from a checkpoint kept a second before the moment, and one from a checkpoint kept while a
+  client event waits for its delay, when one waits in the two seconds before.
+- Three drags of the playhead through the controller and the worker, from 20 s after the moment to
+  20 s before and back to it, a display frame apart, so that seeks are cut short and answered late
+  as in the viewer.
+- A clip from 2 s before the moment to 1 s after, looped through the controller in display frames,
+  at normal speed, then double, then half with a pause.
+
+Each way is compared on playback's whole state, the frame presented, and 0.5 s of sound mixed from
+there at 48 kHz, sample for sample. The state is the decoder's public state and latest snapshot, the
+scene with every entity slot, gait and interpolation sample, the sound channels, the events waiting
+with their seeds, the animations, the temporary entities, the decals and the beams. A drag gives
+only the worker's frame, and a clip's starts give no sound. Then a slice from 8 s before the moment
+to 4 s after is exported, from later in the moment's session when the export refuses that start,
+and the moment in it is checked the same way against sequential playback of the slice.
+
+Effects draw their random numbers from seeds each event takes from where it was recorded, and the
+seeds are part of the state compared. The viewer draws no HUD, so there is no notice's expiry to
+compare.
+
+**Measured (2026-10-19)**, release build: every way agreed with sequential playback at every
+moment, in the demos and in every slice exported.
+
+| Case | Moment | Event waiting before it | Slice |
+|---|---|---|---|
+| Kill, killer and victim in view | crossfire 14.21 s | the gauss's stop | from 6.2 s, agrees |
+| Gauss charging | crossfire 11.0 s | none | from 3.0 s, agrees |
+| Delayed event across a seek | crossfire 72.0 s | the gauss's stop | from 64.0 s, agrees |
+| Reload | crossfire 5.0 s | none | from 0.1 s, agrees |
+| Sustained Egon | stalkyard 106.5 s | none | from 98.5 s, agrees |
+| Ambient loop | run_92 4.5 s | none | from 2.5 s, agrees |
+| Moving brush entity | run_92 7.0 s | none | from 3.0 s, agrees |
+| Singleplayer monster death | run_92 33.0 s | none | from 25.0 s, agrees |
+| Translucent sprite | ls_9e_run 3.2 s | none | from 0.1 s, agrees |
+
+Each moment was also captured by the viewer three ways, as `--viewer-capture` seeks to its times
+in the order given: alone after loading, after a time 30 s later, and after 1.5, 1 and 0.5 s
+before. All 9 moments' three captures are the same pixel for pixel, at 1280x720.
+
+Found:
+
+- The scene, the sound state and the animations kept some tables in hash maps, whose order differs
+  between two playbacks, so their states printed differently although they held the same. Ordered
+  maps made seeks a quarter slower (indexed seeks in crossfire 27 ms at p50 against 35 ms), so the
+  hash maps stay and only print in key order.
+- In the five fixture demos every client event that waits for its delay is the gauss's stop of its
+  spin, sent 10 ms after the shot (387 in stalkyard, 740 in stalkx, none in the singleplayer ones).
+  The shot's sound has already replaced the spin on the weapon's channel, so the stop finds nothing
+  to stop. A deliberately broken restore that dropped the waiting events still agreed every way at
+  72 s, so these demos cannot show that a waiting event survives a restore. The synthetic seek
+  tests now carry a gauss shot that waits half a second across checkpoints, and the same broken
+  restore fails three of them (see the [viewer profile](viewer-profile.md), "Checkpoints").
+- The export refused slices round run_92's first moments for these two cases, the ambient loop at
+  2.5 s, as the session begins at 1.95 s and has no full update yet, and the monster death at
+  19.5 s, as a temporary entity is still moving at every start tried. Both moments agreed every way
+  in the demo itself. The cases moved to the moments above, whose slices export.

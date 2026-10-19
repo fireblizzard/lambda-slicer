@@ -19,7 +19,7 @@
 //! How long a sample lasts, and whether it loops, is in the sample file, so
 //! the length comes from the caller
 
-use std::collections::HashMap;
+use crate::Table;
 use std::sync::Arc;
 
 use lambda_slicer_core::container::{FrameBody, SoundRecord};
@@ -164,7 +164,7 @@ pub struct Audio {
     pub revision: u64,
     /// Sample names by precache index, and the resource count they were
     /// read from
-    sounds: Arc<HashMap<u16, Arc<str>>>,
+    sounds: Arc<Table<u16, Arc<str>>>,
     sounds_from: usize,
 }
 
@@ -206,7 +206,7 @@ impl Audio {
                         Arc::from(String::from_utf8_lossy(&r.name).as_ref()),
                     )
                 })
-                .collect::<HashMap<_, _>>()
+                .collect::<Table<_, _>>()
                 .into();
             self.sounds_from = resources.len();
         }

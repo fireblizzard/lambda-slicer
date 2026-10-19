@@ -7,7 +7,7 @@ mod common;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use common::stream::{self, SOUND_RESOURCE};
+use common::stream::{self, EVENT_RESOURCE, SOUND_RESOURCE};
 use common::{build, frame, network};
 use lambda_slicer_core::container::{DirectoryEntry, FrameBody, Limits, SoundRecord, tag};
 use lambda_slicer_core::protocol::bitwrite::BitWriter;
@@ -22,6 +22,7 @@ use lambda_slicer_playback::worker::Worker;
 const MODEL_RESOURCE: u32 = 2;
 const GAUSS: u32 = 1;
 const HUM: u32 = 2;
+const GAUSS_EVENT: u32 = 3;
 
 /// Playback groups, a quarter of a second apart
 const GROUPS: i32 = 48;
@@ -39,6 +40,18 @@ fn sound(flags: u16, channel: u32, entity: u32, index: u32, pitch: u8) -> Vec<u8
     w.bits(index, 8);
     w.bits(0, 3);
     w.bits(u32::from(pitch), 8);
+    w.align();
+    w.finish()
+}
+
+/// The player's gauss shot, fired half a second later, two groups on
+fn delayed_shot() -> Vec<u8> {
+    let mut w = BitWriter::new();
+    w.u8(svc::EVENT_RELIABLE);
+    w.bits(GAUSS_EVENT, 10);
+    stream::delta(&mut w, stream::EVENT, &[(0, 1), (1, 1)]);
+    w.bit(true);
+    w.bits(50, 16);
     w.align();
     w.finish()
 }
@@ -74,6 +87,7 @@ fn demo(dir: &Path) -> PathBuf {
     let resources = [
         (SOUND_RESOURCE, "weapons/gauss2.wav", GAUSS),
         (SOUND_RESOURCE, "ambience/hum.wav", HUM),
+        (EVENT_RESOURCE, "events/gauss.sc", GAUSS_EVENT),
         (MODEL_RESOURCE, "models/player.mdl", 2),
         (MODEL_RESOURCE, "models/w_gauss.mdl", 7),
         (MODEL_RESOURCE, "models/rpgrocket.mdl", 9),
@@ -114,7 +128,7 @@ fn demo(dir: &Path) -> PathBuf {
             .concat(),
             3 => sound(flags::CHANGE_PITCH, 2, 5, HUM, 150),
             4 => sound(0, 1, 1, HUM, 100),
-            5 => stop_sound(5, 2),
+            5 => [stop_sound(5, 2), delayed_shot()].concat(),
             _ => stream::model_update(base, 1, 2),
         };
         playback.push(network(tag::NETWORK, time, n, &payload));
@@ -171,8 +185,10 @@ fn sequential(path: &Path) -> Playback {
 }
 
 /// Everything that must agree however a moment was reached, the decoder's
-/// own counters and the change revisions included
+/// own counters, the change revisions and the whole playback state
+/// included
 fn digest(p: &mut Playback, at: SourceTime) -> String {
+    let state = p.fingerprint();
     let d = p.decoder();
     let decoder = format!(
         "{:?}",
@@ -188,7 +204,7 @@ fn digest(p: &mut Playback, at: SourceTime) -> String {
     );
     let f = p.present(Stamp::default(), at, CameraMode::Recorder, false);
     format!(
-        "{decoder} {:?}",
+        "{state} {decoder} {:?}",
         (
             f.position,
             f.at,
@@ -249,6 +265,22 @@ fn the_synthetic_demo_has_what_the_tests_rely_on() {
     assert_eq!(p.position().unwrap().time, SourceTime(3.));
     p.advance_to(SourceTime(3.4)).unwrap();
     assert_eq!(p.position().unwrap().time, SourceTime(3.125));
+
+    // A shot sent with group 5 waits for its delay through group 6 and
+    // fires with group 7, past a checkpoint half a second apart
+    let mut p = sequential(&demo(dir.path()));
+    p.advance_to(SourceTime(1.5)).unwrap();
+    assert_eq!(p.events().pending().len(), 1);
+    assert_eq!(p.events().pending()[0].time, SourceTime(1.75));
+    p.advance_to(SourceTime(1.75)).unwrap();
+    assert!(p.events().pending().is_empty());
+    let sample = |c: &lambda_slicer_playback::audio::Channel| format!("{:?}", c.sound);
+    assert!(
+        p.audio()
+            .channels()
+            .iter()
+            .any(|c| sample(c).contains("gauss2"))
+    );
 }
 
 #[test]

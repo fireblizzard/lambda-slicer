@@ -19,7 +19,7 @@
 //! soon after. Only models the game would draw fire events, so not the
 //! entity the recorder views from, which the viewmodel stands for
 
-use std::collections::HashMap;
+use crate::Table;
 use std::sync::Arc;
 
 use crate::events::mix;
@@ -148,7 +148,7 @@ fn window(sequence: &Sequence, begun: bool, fired_to: Option<f64>, end: f64, ste
 /// Where every model's animation was when time last moved on
 #[derive(Clone, Debug, Default)]
 pub struct Animations {
-    latched: HashMap<u16, Latched>,
+    latched: Table<u16, Latched>,
     /// When the viewmodel's animation began, and the frame its events have
     /// fired up to
     viewmodel: Option<(SourceTime, f64)>,
@@ -205,7 +205,7 @@ impl Animations {
 
         let view = camera.view_entity;
         let client_time = scene.client_time(at);
-        let mut latched = HashMap::with_capacity(self.latched.len());
+        let mut latched = Table::with_capacity(self.latched.len());
         for e in scene.entities.iter() {
             let hidden = Some(e.id.number) == view
                 || (camera.observer_mode == IN_EYE
