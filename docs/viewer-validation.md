@@ -83,7 +83,7 @@ apart.
 | Viewmodel's place | lower and smaller | higher, larger and further right | not known. The game may draw it at another field of view, or with the bob and lag the viewer leaves out |
 | Viewmodel through a player's eyes | the watched player's weapon, see-through | none | the client takes the watched player's weapon for the viewmodel, which the spectator's own client data does not name. Fixed: the viewer now draws the viewmodel of the watched player's weapon model, as `V_FindViewModelByWeaponModel` maps them, from its first animation when the weapon changes |
 | Players' colours on `ls_9e_cross` | dark models | flat blue and green | not looked into. The game's console says it could not load the models some players name |
-| A glow sprite on a building in `ls_9e_cross` | bright, a large white glow | barely there | not known, the glow's distance fading or its size |
+| A glow sprite on a building in `ls_9e_cross` | bright, a large white glow | barely there | likely its size. The game grows a glow by its distance over 200 so it keeps its size on screen, which the viewer did not. The viewer now does, not yet compared again |
 | Gauss balls and glows | gone by the next moment compared | some still in the air seconds after a shot | not known, the balls' life or their fading may be too long |
 
 After the two fixes the pairs of `ls_9e_cross` differ by 23.6 on average, against 27.8 before.

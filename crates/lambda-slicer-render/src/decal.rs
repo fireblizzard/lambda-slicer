@@ -44,11 +44,17 @@ pub fn decal_rgba(texture: &MipTexture) -> Rgba {
     }
 }
 
-/// The triangles of every decal, grouped by model and texture
+/// The triangles of every decal in the order they were made, so newer ones
+/// draw over older ones, with each run of decals on one model in one
+/// texture a batch
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct DecalMesh {
     /// Grows whenever the decals change
     pub revision: u64,
+    /// The revision this one adds to, when it only adds decals
+    pub previous: Option<u64>,
+    /// How many vertices at the start are the previous revision's
+    pub kept: usize,
     pub vertices: Vec<WorldVertex>,
     pub batches: Vec<DecalBatch>,
     /// Every decal texture the batches use, by its place in `decals.wad`

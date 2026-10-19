@@ -15,7 +15,7 @@ use std::sync::Arc;
 use lambda_slicer_assets::Limits as AssetLimits;
 use lambda_slicer_assets::search::{SearchOptions, SearchPath};
 use lambda_slicer_audio::library::Library;
-use lambda_slicer_audio::mixer::{Listener, Output, mix, write_wav};
+use lambda_slicer_audio::mixer::{Listener, Output, follow, mix, write_wav};
 use lambda_slicer_core::container::{Limits, read_header};
 use lambda_slicer_playback::audio::SoundName;
 use lambda_slicer_playback::playback::Playback;
@@ -91,8 +91,9 @@ fn main() {
             };
         }
         let sound = |name: &SoundName| library.sound(name);
+        let channels = follow(channels, playback.scene());
         samples.extend(mix(
-            channels,
+            &channels,
             &sound,
             &Listener::of(&playback),
             at,

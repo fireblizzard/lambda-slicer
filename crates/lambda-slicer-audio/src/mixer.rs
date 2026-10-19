@@ -19,6 +19,7 @@ use std::sync::Arc;
 use lambda_slicer_assets::wav::Sound;
 use lambda_slicer_playback::audio::{Channel, SoundName};
 use lambda_slicer_playback::playback::Playback;
+use lambda_slicer_playback::scene::Scene;
 use lambda_slicer_playback::time::SourceTime;
 
 /// The game's `sound_nominal_clip_dist`
@@ -56,6 +57,34 @@ pub fn right_of(angles: [f32; 3]) -> [f32; 3] {
     let (sy, cy) = y.sin_cos();
     let (sr, cr) = r.sin_cos();
     [-sr * sp * cy + cr * sy, -sr * sp * sy - cr * cy, -sr * cp]
+}
+
+/// The channels with each sound moved to where its entity is now, as the
+/// engine moves a dynamic sound with its entity while the latest packet
+/// holds the entity (`SND_Spatialize`). Static sounds stay where they
+/// started, and so do the world's and brush entities', which the engine
+/// places at the brush's centre
+pub fn follow(channels: &[Channel], scene: &Scene) -> Vec<Channel> {
+    channels
+        .iter()
+        .map(|c| {
+            let mut c = c.clone();
+            if c.is_static() || c.entity == 0 {
+                return c;
+            }
+            let found = scene
+                .entities
+                .binary_search_by_key(&c.entity, |e| e.id.number)
+                .ok()
+                .map(|i| &scene.entities[i]);
+            if let Some(e) = found
+                && !e.model.as_deref().is_some_and(|m| m.starts_with('*'))
+            {
+                c.origin = e.origin;
+            }
+            c
+        })
+        .collect()
 }
 
 /// A channel's left and right gains for this listener
@@ -215,6 +244,35 @@ mod tests {
             started: SourceTime(started),
             pitches: vec![(SourceTime(started), 100)],
         }
+    }
+
+    #[test]
+    fn a_sound_moves_with_its_entity_unless_static_or_on_a_brush() {
+        use lambda_slicer_playback::scene::{Entity, EntityId};
+        let entity = |number: u16, model: &str| Entity {
+            id: EntityId {
+                number,
+                ..EntityId::default()
+            },
+            model: Some(Arc::from(model)),
+            origin: [100., 0., 0.],
+            ..Entity::default()
+        };
+        let mut scene = Scene::default();
+        scene.entities = Arc::new(vec![entity(3, "models/rpgrocket.mdl"), entity(4, "*2")]);
+        let mut fixed = channel(3, [0.; 3], 0.);
+        fixed.channel = lambda_slicer_playback::audio::CHAN_STATIC;
+        let moved = follow(
+            &[
+                channel(3, [0.; 3], 0.),
+                channel(4, [5.; 3], 0.),
+                fixed,
+                channel(9, [7.; 3], 0.),
+            ],
+            &scene,
+        );
+        let origins: Vec<[f32; 3]> = moved.iter().map(|c| c.origin).collect();
+        assert_eq!(origins, [[100., 0., 0.], [5.; 3], [0.; 3], [7.; 3]]);
     }
 
     /// A ramp from 0 up by 1/16 of full scale a frame, at 10 frames a second

@@ -134,7 +134,7 @@ impl GaitTrack {
 }
 
 /// Which entity, across sessions and slot reuse
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct EntityId {
     pub segment: u32,
     pub number: u16,
@@ -143,7 +143,7 @@ pub struct EntityId {
 
 /// One entity as the newest snapshot holding it left it. Fields a session's
 /// schema does not send are 0
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Entity {
     pub id: EntityId,
     pub model_index: i64,

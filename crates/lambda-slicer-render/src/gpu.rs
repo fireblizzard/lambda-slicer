@@ -373,6 +373,8 @@ const DECAL_MODE: f32 = 6.;
 struct DecalGpu {
     revision: u64,
     vertices: wgpu::Buffer,
+    /// Vertices the buffer has room for
+    capacity: usize,
     batches: Vec<DecalBatch>,
     bytes: u64,
 }
@@ -606,12 +608,17 @@ fn sprite_quad(
         }
     };
 
-    let scale = if s.scale > 0. { s.scale } else { 1. };
+    let distance = (to[0] * to[0] + to[1] * to[1] + to[2] * to[2]).sqrt();
+    let mut scale = if s.scale > 0. { s.scale } else { 1. };
+    if s.mode == RenderMode::Glow && !s.steady {
+        // A glow keeps its size on screen, growing with its distance
+        // (`R_SpriteGlowBlend`)
+        scale *= distance / 200.;
+    }
     let down = (frame_origin[1] - frame_size[1] as i32) as f32 * scale;
     let top = frame_origin[1] as f32 * scale;
     let left = frame_origin[0] as f32 * scale;
     let far_right = (frame_origin[0] + frame_size[0] as i32) as f32 * scale;
-    let distance = (to[0] * to[0] + to[1] * to[1] + to[2] * to[2]).sqrt();
 
     // Every mode takes the render colour, black meaning none
     let tint = if s.color == [0.; 3] { [1.; 3] } else { s.color };
@@ -1495,22 +1502,42 @@ impl Scene {
                 self.decal_textures.insert(*index, group);
             }
         }
+        // Only the decals made since are sent when the buffer has room
+        if let Some(gpu) = &mut self.decals
+            && mesh.previous == Some(gpu.revision)
+            && mesh.vertices.len() <= gpu.capacity
+        {
+            let stride = std::mem::size_of::<WorldVertex>();
+            let added = &mesh.vertices[mesh.kept.min(mesh.vertices.len())..];
+            if !added.is_empty() {
+                let offset = (mesh.kept * stride) as u64;
+                queue.write_buffer(&gpu.vertices, offset, bytemuck::cast_slice(added));
+            }
+            gpu.revision = mesh.revision;
+            gpu.batches = mesh.batches.clone();
+            return;
+        }
         if let Some(old) = self.decals.take() {
             self.gpu_bytes -= old.bytes;
         }
         if mesh.vertices.is_empty() {
             return;
         }
-        let vertices = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        // Room to grow, so the decals made next go in without a new buffer
+        let capacity = mesh.vertices.len().next_power_of_two().max(1024);
+        let bytes = (capacity * std::mem::size_of::<WorldVertex>()) as u64;
+        let vertices = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("decal vertices"),
-            contents: bytemuck::cast_slice(&mesh.vertices),
-            usage: wgpu::BufferUsages::VERTEX,
+            size: bytes,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
         });
-        let bytes = std::mem::size_of_val(mesh.vertices.as_slice()) as u64;
+        queue.write_buffer(&vertices, 0, bytemuck::cast_slice(&mesh.vertices));
         self.gpu_bytes += bytes;
         self.decals = Some(DecalGpu {
             revision: mesh.revision,
             vertices,
+            capacity,
             batches: mesh.batches.clone(),
             bytes,
         });

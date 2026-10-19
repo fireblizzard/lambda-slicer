@@ -60,6 +60,12 @@ pub enum Bounce {
     Shell,
     /// `TE_BOUNCE_SHOTSHELL`
     ShotShell,
+    /// A breakable's gibs, by its material (`BOUNCE_GLASS` and the rest)
+    Glass,
+    Metal,
+    Flesh,
+    Wood,
+    Concrete,
 }
 
 /// A sprite's colour
@@ -502,6 +508,7 @@ pub mod kind {
     pub const SPARKS: u8 = 9;
     pub const SPRITE: u8 = 17;
     pub const MODEL: u8 = 106;
+    pub const BREAK_MODEL: u8 = 108;
     pub const GUNSHOT_DECAL: u8 = 109;
     pub const SPRITE_SPRAY: u8 = 110;
     pub const ARMOR_RICOCHET: u8 = 111;
@@ -542,6 +549,8 @@ pub(crate) struct Lookup<'a> {
     pub model: &'a dyn Fn(i16) -> Option<Arc<str>>,
     /// A sprite's frame count by its path
     pub frames: &'a dyn Fn(&str) -> Option<u32>,
+    /// The map, where gibs are not put inside solid
+    pub world: Option<&'a Hull>,
 }
 
 impl TempEntities {
@@ -643,6 +652,31 @@ impl TempEntities {
                     self.model(&model, origin, velocity, yaw, life, bounce, now, seed);
                 }
             }
+            kind::BREAK_MODEL => {
+                let origin = b.vector();
+                let size = b.vector();
+                let velocity = b.vector();
+                let spread = f32::from(b.byte()) * 10.;
+                let index = b.short();
+                let count = b.byte();
+                let life = f32::from(b.byte()) * 0.1;
+                let flags = b.byte();
+                if let Some(model) = (lookup.model)(index) {
+                    let frames = (lookup.frames)(&model).unwrap_or(1);
+                    let gibs = Gibs {
+                        model: &model,
+                        frames,
+                        origin,
+                        size,
+                        velocity,
+                        spread,
+                        count,
+                        life,
+                        flags,
+                    };
+                    self.break_model(&gibs, lookup.world, now, random.next());
+                }
+            }
             kind::GUNSHOT_DECAL => {
                 // The decal is laid with the others and the dust is not
                 // drawn yet. Half the shots ricochet
@@ -687,6 +721,66 @@ impl TempEntities {
             _ => {}
         }
         sounds
+    }
+
+    /// `R_BreakModel`, a breakable's pieces scattered through its box,
+    /// flying out, bouncing and fading, see-through for glass
+    fn break_model(&mut self, gibs: &Gibs, world: Option<&Hull>, now: SourceTime, seed: u64) {
+        // Enough to cover the box's faces when the message gives none
+        let [x, y, z] = gibs.size;
+        let count = match gibs.count {
+            0 => ((x * y + y * z + z * x) / (3. * SHARD * SHARD)) as u32,
+            n => u32::from(n),
+        }
+        .min(100);
+        let kind = gibs.flags & 0x4f;
+        let bounce = match kind {
+            0x01 => Some(Bounce::Glass),
+            0x02 => Some(Bounce::Metal),
+            0x04 => Some(Bounce::Flesh),
+            0x08 => Some(Bounce::Wood),
+            0x40 => Some(Bounce::Concrete),
+            _ => None,
+        };
+        let see_through = kind == 0x01 || gibs.flags & 0x20 != 0;
+        let mut random = Random(seed);
+        for _ in 0..count {
+            // A spot in the box out of the solid, after four tries
+            let spot = (0..4).find_map(|_| {
+                let spot =
+                    [0, 1, 2].map(|k| gibs.origin[k] + random.float(-0.5, 0.5) * gibs.size[k]);
+                world
+                    .is_none_or(|w| w.contents(spot) != crate::trace::SOLID)
+                    .then_some(spot)
+            });
+            let Some(spot) = spot else {
+                continue;
+            };
+            let Some(e) = self.alloc(Some(gibs.model), spot, now) else {
+                return;
+            };
+            e.bounce = bounce;
+            e.frame = random.long(0, gibs.frames as i32 - 1).max(0) as f32;
+            e.flags = flag::COLLIDE | flag::FADE | flag::SLOW_GRAVITY;
+            if random.long(0, 255) < 200 {
+                e.flags |= flag::ROTATE;
+                e.spin = [0; 3].map(|_| random.float(-256., 255.));
+            }
+            (e.render_mode, e.render_amount) = if see_through {
+                (render::TEXTURE, 128.)
+            } else {
+                (render::NORMAL, 255.)
+            };
+            e.base_amount = e.render_amount;
+            let r = gibs.spread;
+            e.velocity = [
+                gibs.velocity[0] + random.float(-r, r),
+                gibs.velocity[1] + random.float(-r, r),
+                gibs.velocity[2] + random.float(0., r),
+            ];
+            e.die = SourceTime(now.0 + f64::from(gibs.life + random.float(0., 1.)));
+            e.random = random.next();
+        }
     }
 
     /// `R_Sprite_Spray`, sprites flying out along a direction with some
@@ -775,6 +869,23 @@ impl TempEntities {
     }
 }
 
+/// The side of a cube a gib stands for when a breakable gives no count
+/// (`SHARD_VOLUME`)
+const SHARD: f32 = 12.;
+
+/// A breakable's pieces, as `TE_BREAKMODEL` gives them
+struct Gibs<'a> {
+    model: &'a str,
+    frames: u32,
+    origin: [f32; 3],
+    size: [f32; 3],
+    velocity: [f32; 3],
+    spread: f32,
+    count: u8,
+    life: f32,
+    flags: u8,
+}
+
 /// A sprite spray's sprite and how it flies
 struct Spray<'a> {
     model: &'a str,
@@ -820,17 +931,32 @@ pub(crate) const RICOCHET: &str = "sprites/richo1.spr";
 fn bounce_sound(e: &mut TempEntity, damp: f32) -> Option<SoundCall> {
     let bounce = e.bounce?;
     let mut random = Random(e.random);
-    let n = random.long(1, 3);
-    let sample = match (bounce, n) {
-        (Bounce::Shell, 1) => "player/pl_shell1.wav",
-        (Bounce::Shell, 2) => "player/pl_shell2.wav",
-        (Bounce::Shell, _) => "player/pl_shell3.wav",
-        (Bounce::ShotShell, 1) => "weapons/sshell1.wav",
-        (Bounce::ShotShell, 2) => "weapons/sshell2.wav",
-        (Bounce::ShotShell, _) => "weapons/sshell3.wav",
+    let (name, count) = match bounce {
+        Bounce::Shell => ("player/pl_shell", 3),
+        Bounce::ShotShell => ("weapons/sshell", 3),
+        Bounce::Glass => ("debris/glass", 4),
+        Bounce::Metal => ("debris/metal", 6),
+        Bounce::Flesh => ("debris/flesh", 7),
+        Bounce::Wood => ("debris/wood", 4),
+        Bounce::Concrete => ("debris/concrete", 3),
     };
+    let sample = format!("{name}{}.wav", random.long(1, count));
+    let shell = matches!(bounce, Bounce::Shell | Bounce::ShotShell);
     let fall = e.velocity[2].abs().trunc();
-    let quiet = fall < 200. && random.long(0, 3) != 0;
+    // A shell's first bounce falling fast and one in four after, and
+    // one in six of anything else's
+    let quiet = if shell {
+        fall < 200. && random.long(0, 3) != 0
+    } else {
+        random.long(0, 5) != 0
+    };
+    let (volume, pitch) = if shell {
+        ((fall / 350.).min(1.), PITCH_NORM)
+    } else if random.long(0, 3) == 0 {
+        ((fall / 450.).min(1.), random.long(95, 105) as u8)
+    } else {
+        ((fall / 450.).min(1.), PITCH_NORM)
+    };
     e.random = random.0;
     if quiet || damp <= 0. {
         return None;
@@ -839,10 +965,10 @@ fn bounce_sound(e: &mut TempEntity, damp: f32) -> Option<SoundCall> {
         entity: 0,
         channel: CHAN_AUTO,
         sample: Arc::from(sample),
-        volume: (fall / 350.).min(1.),
+        volume,
         attenuation: ATTN_NORM,
         flags: 0,
-        pitch: PITCH_NORM,
+        pitch,
         origin: e.origin,
     })
 }
@@ -954,5 +1080,35 @@ mod tests {
         // Between 5 and 15 showers a tenth of a second apart, none left
         assert!((5..=16).contains(&glints), "{glints}");
         assert!(t.entities().is_empty());
+    }
+
+    #[test]
+    fn a_window_breaks_into_see_through_shards_out_of_the_floor() {
+        let world = floor();
+        let mut t = TempEntities::default();
+        t.step(SourceTime(0.), Some(&world), 800.);
+        // A 48 by 4 by 48 pane half sunk in the floor, with no count given
+        let gibs = Gibs {
+            model: "models/glassgibs.mdl",
+            frames: 1,
+            origin: [0., 0., 0.],
+            size: [48., 4., 48.],
+            velocity: [0., 0., 50.],
+            spread: 20.,
+            count: 0,
+            life: 2.5,
+            flags: 0x01,
+        };
+        t.break_model(&gibs, Some(&world), SourceTime(0.), 5);
+        let shards = t.entities();
+        // (48*4 + 4*48 + 48*48) / (3*12*12) is 6, fewer when four tries
+        // all land in the floor
+        assert!((1..=6).contains(&shards.len()), "{}", shards.len());
+        for s in shards {
+            assert!(s.origin[2] >= 0.);
+            assert_eq!(s.bounce, Some(Bounce::Glass));
+            assert_eq!((s.render_mode, s.render_amount), (render::TEXTURE, 128.));
+            assert!((2.5..3.5).contains(&s.die.0));
+        }
     }
 }

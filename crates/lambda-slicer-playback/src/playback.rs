@@ -347,6 +347,7 @@ impl Playback {
                                 let lookup = Lookup {
                                     model: &model,
                                     frames,
+                                    world: world.as_deref(),
                                 };
                                 let view = view_entity(d);
                                 for call in tempents.message(*kind, body, time, &lookup) {

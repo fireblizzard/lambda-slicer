@@ -29,7 +29,7 @@ use lambda_slicer_playback::time::{Clock, SourceTime};
 use lambda_slicer_playback::worker::Loaded;
 
 use crate::library::Library;
-use crate::mixer::{Listener, Output, mix, write_wav};
+use crate::mixer::{Listener, Output, follow, mix, write_wav};
 
 /// How far the mixer may drift from the clock before it starts again
 pub const DRIFT: f64 = 0.04;
@@ -268,9 +268,9 @@ fn run(
                 speed,
                 volume: f32::from_bits(volume.load(Ordering::Relaxed)),
             };
-            let channels = playback.audio().channels();
+            let channels = follow(playback.audio().channels(), playback.scene());
             buffer.extend(mix(
-                channels,
+                &channels,
                 &sound,
                 &Listener::of(playback),
                 from,

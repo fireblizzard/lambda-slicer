@@ -76,3 +76,37 @@ later.
   ([gui-text](gui-text.md)).
 - **Linux fonts.** CJK and Arabic glyphs come from the system fonts eframe finds on Windows.
   Linux font discovery is checked in M7.
+
+## Viewer settings and see-through walls (M11)
+
+Asked for on 2026-10-19 after the comparison with the game ([viewer
+validation](viewer-validation.md)), to be done when M11 starts.
+
+### Viewer settings
+
+The viewer takes the Half-Life folder only from `--game` and draws with no gamma at all, while the
+game applies its gamma tables to every texture and lightmap. The comparison's game ran with
+`gamma`, `brightness` and `lightgamma` at 2.0, so the viewer cannot match its brightness.
+
+**Fix:** a viewer section in the settings window (`gui/src/settings.rs`, saved with the other
+settings), every label in all 14 languages:
+
+- Brightness, gamma, light gamma and texture gamma, the game's `brightness`, `gamma`,
+  `lightgamma` and `texgamma`, defaulting to the game's own (0, 2.5, 2.5 and 2.0). The renderer
+  builds the game's texture and light gamma tables from them and applies them to textures and
+  lightmaps. Then the comparison runs again with the recorded values.
+- Field of view, as recorded by default, or a fixed value.
+- The Half-Life folder, in place of `--game`.
+- Drawing the viewmodel, on by default.
+- The sound volume, which is now a slider beside the time bar only.
+
+### See-through walls
+
+The server sends every entity in the recorder's potentially visible set, which often holds
+players still behind a corner or a wall. Someone studying a demo may want to see them.
+
+**Fix:** a mode, off by default, that draws players, and optionally projectiles and items, again
+over the world as silhouettes tinted by team, so they show through walls. It can only show what
+the demo holds. Servers that hide players the recorder cannot see, as some anti-wallhack plugins
+do, leave nothing to show, which the mode's description and the viewer profile say. It changes
+only how the viewer draws a recording.

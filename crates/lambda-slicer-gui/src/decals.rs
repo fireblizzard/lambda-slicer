@@ -2,7 +2,8 @@
 //!
 //! Each decal is laid on the map's faces once, when it first appears, and
 //! kept by its id until playback drops it, so a new decal costs only its
-//! own faces. The textures come from `decals.wad`, read once, each decoded
+//! own faces. They are drawn in the order they were made, and while decals
+//! are only added the renderer is sent only the new ones. The textures come from `decals.wad`, read once, each decoded
 //! when a decal first uses it
 
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
@@ -30,6 +31,12 @@ pub struct DecalCache {
     seen: Option<u64>,
     mesh: Option<Arc<DecalMesh>>,
     revision: u64,
+    /// The decals drawn, in the order they were made, their triangles,
+    /// their batches and the textures they use
+    order: Vec<u64>,
+    vertices: Vec<WorldVertex>,
+    batches: Vec<DecalBatch>,
+    textures: BTreeMap<u16, Rgba>,
 }
 
 impl DecalCache {
@@ -42,6 +49,10 @@ impl DecalCache {
             seen: None,
             mesh: None,
             revision: 0,
+            order: Vec::new(),
+            vertices: Vec::new(),
+            batches: Vec::new(),
+            textures: BTreeMap::new(),
         }
     }
 
@@ -50,6 +61,7 @@ impl DecalCache {
         self.world = Some(world);
         self.laid.clear();
         self.seen = None;
+        self.mesh = None;
     }
 
     /// What the renderer draws
@@ -110,40 +122,54 @@ impl DecalCache {
         let alive: HashSet<u64> = decals.iter().map(|d| d.id).collect();
         self.laid.retain(|id, _| alive.contains(id));
 
-        // Grouped by model and texture, each group in the order the decals
-        // were made
-        let mut groups: BTreeMap<(usize, u16), Vec<WorldVertex>> = BTreeMap::new();
-        for decal in decals {
-            if let Some(laid) = self.laid.get(&decal.id)
-                && !laid.triangles.is_empty()
-            {
-                groups
-                    .entry((laid.model, laid.texture))
-                    .or_default()
-                    .extend_from_slice(&laid.triangles);
+        // When the decals drawn so far are still the first ones, the new
+        // ones go on the end and only they are sent to the GPU
+        let ids: Vec<u64> = decals.iter().map(|d| d.id).collect();
+        let only_added = ids.starts_with(&self.order) && self.mesh.is_some();
+        if !only_added {
+            self.order.clear();
+            self.vertices.clear();
+            self.batches.clear();
+        }
+        let kept = self.vertices.len();
+        let previous = self
+            .mesh
+            .as_ref()
+            .map(|m| m.revision)
+            .filter(|_| only_added);
+        for decal in decals.iter().skip(self.order.len()) {
+            self.order.push(decal.id);
+            let Some(laid) = self.laid.get(&decal.id).filter(|l| !l.triangles.is_empty()) else {
+                continue;
+            };
+            let first = self.vertices.len() as u32;
+            let count = laid.triangles.len() as u32;
+            self.vertices.extend_from_slice(&laid.triangles);
+            match self.batches.last_mut() {
+                // A run of decals on one model in one texture is one batch
+                Some(b) if b.model == laid.model && b.texture == laid.texture => b.count += count,
+                _ => self.batches.push(DecalBatch {
+                    model: laid.model,
+                    texture: laid.texture,
+                    first,
+                    count,
+                }),
+            }
+            if let Some(Some(image)) = self.images.get(&laid.texture) {
+                self.textures
+                    .entry(laid.texture)
+                    .or_insert_with(|| image.clone());
             }
         }
-        let mut vertices = Vec::new();
-        let mut batches = Vec::new();
-        let mut textures = BTreeMap::new();
-        for ((model, texture), triangles) in groups {
-            if let Some(Some(image)) = self.images.get(&texture) {
-                textures.insert(texture, image.clone());
-            }
-            batches.push(DecalBatch {
-                model,
-                texture,
-                first: vertices.len() as u32,
-                count: triangles.len() as u32,
-            });
-            vertices.extend(triangles);
-        }
+
         self.revision += 1;
         self.mesh = Some(Arc::new(DecalMesh {
             revision: self.revision,
-            vertices,
-            batches,
-            textures: Arc::new(textures),
+            previous,
+            kept,
+            vertices: self.vertices.clone(),
+            batches: self.batches.clone(),
+            textures: Arc::new(self.textures.clone()),
         }));
     }
 }

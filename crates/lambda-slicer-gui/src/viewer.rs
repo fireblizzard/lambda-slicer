@@ -39,6 +39,7 @@ use lambda_slicer_playback::controller::{Command, Controller, Reply, Stamp};
 use lambda_slicer_playback::scene::EntityId;
 use lambda_slicer_playback::tempents::Tint;
 use lambda_slicer_playback::time::SourceTime;
+use lambda_slicer_playback::trace::Hull;
 use lambda_slicer_playback::worker::Worker;
 use lambda_slicer_render::Rgba;
 use lambda_slicer_render::camera::{Camera, Matrix};
@@ -278,6 +279,8 @@ pub struct Viewer {
     /// The game's palette, for blood's colours
     palette: Vec<[u8; 3]>,
     decals: DecalCache,
+    /// The game's files, for the map's hull that hides glows
+    library: Option<Arc<Library>>,
 }
 
 /// The demo's game folder, from its header
@@ -347,6 +350,7 @@ impl Viewer {
             .and_then(|l| l.read("decals.wad"))
             .and_then(|bytes| Wad::parse(bytes, AssetLimits::default()).ok());
         let quiet = bench.is_some() || capture.is_some();
+        let glow_library = library.clone();
         let sound = library.filter(|_| !quiet).and_then(|l| {
             let tap = std::env::var_os("LAMBDA_SLICER_SOUND_TAP").map(PathBuf::from);
             Device::open(l, tap)
@@ -391,6 +395,7 @@ impl Viewer {
             flashes_to: f64::NEG_INFINITY,
             palette,
             decals: DecalCache::new(decal_wad),
+            library: glow_library,
         }
     }
 
@@ -689,6 +694,16 @@ impl Viewer {
                     steady: false,
                 });
             }
+        }
+
+        // A glow the eye cannot see is not drawn (`R_SpriteGlowBlend`)
+        let world = frame
+            .map
+            .as_deref()
+            .and_then(|map| self.library.as_ref()?.hull(map));
+        if let Some(world) = world {
+            let eye = frame.recorder.origin;
+            sprites.retain(|s| s.mode != RenderMode::Glow || !hidden_glow(&world, eye, s.origin));
         }
 
         DrawList {
@@ -1194,6 +1209,16 @@ const TRACER_WIDTH: f32 = 1.5;
 /// How long a muzzle flash lasts, as the game's temporary entity does
 /// (`R_MuzzleFlash`), though it is drawn at least once
 const FLASH_LIFE: f64 = 0.01;
+
+/// Whether the world hides a glow at `at` from the eye at `eye`, the line
+/// between them stopping more than 8 units short of it. Brush entities and
+/// models do not hide one here
+fn hidden_glow(world: &Hull, eye: [f32; 3], at: [f32; 3]) -> bool {
+    let trace = world.trace(eye, at);
+    let d = [0, 1, 2].map(|k| at[k] - eye[k]);
+    let distance = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt();
+    (1. - trace.fraction) * distance > 8.
+}
 
 /// The model whose first attachment a beam from entity `number`'s gun
 /// starts at, the viewmodel when the view is through that entity

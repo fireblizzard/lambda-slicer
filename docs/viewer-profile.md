@@ -287,10 +287,9 @@ textures, and the sky's light on models.
 | Sprites | `IDSP` version 2, single frames and frame groups, in normal, additive, index-alpha and alpha-tested formats. Every sprite in the surveyed install reads (268, AG's sprite items included) |
 | Sprite entities | an entity whose model is a `.spr`, or one of AG's sprites under a `.mdl` name, at its frame and scale (0 meaning 1) |
 | Orientation | facing the view, facing the view upright, facing the camera's position upright, turned by the entity's angles, or facing the view rolled by the entity, as the five `SPR_` types say |
-| Render modes | normal and alpha modes cut out at half alpha, texture and colour modes blended by the render amount, additive mode added, and glow added without depth, fading as 19000 over the squared distance between 0.05 and 1. Every mode takes the render colour, white when it is black, as Xash3D says the engine's sprite drawing does (until 10d only additive and glowing sprites did). Drawn after translucent brushes, the furthest first |
+| Render modes | normal and alpha modes cut out at half alpha, texture and colour modes blended by the render amount, additive mode added, and glow added without depth, fading as 19000 over the squared distance between 0.05 and 1, and grown by its distance over 200 to keep its size on screen unless it is steady. A glow the world hides from the eye, the line to it stopping more than 8 units short, is not drawn, brush entities and models hiding none (`R_SpriteGlowBlend`). Every mode takes the render colour, white when it is black, as Xash3D says the engine's sprite drawing does (until 10d only additive and glowing sprites did). Drawn after translucent brushes, the furthest first |
 
-Not drawn yet: the viewmodel's body groups and the bob and lag the game adds to it, glow sprites'
-check for what hides them, and the sprites of temporary effects, which come with M10.
+Not drawn yet: the viewmodel's body groups and the bob and lag the game adds to it.
 
 **Measured (2026-10-18)** with `--viewer-bench 10`, playing from 20 s in a 1920 by 1080 window with
 the view 1098 by 950 pixels, while the library scan ran:
@@ -330,8 +329,7 @@ recorder's view:
 | `ray_vs_alex_cross.dem`, spectator | 15 to 30 s | 0.23 s | 22 | 1,437 of 1.4 million |
 | `run_92.dem`, singleplayer | 6 to 22 s | 0.40 s | 90 | 12,581 of 1.5 million |
 
-Not yet: sentences, sounds that follow their entity as it moves (each stays where it started),
-room effects, and the sounds the game's client makes itself for weapon events (10c).
+Not yet: sentences and room effects.
 
 ## Sound output (10b)
 
@@ -346,6 +344,7 @@ volume slider beside the controls. `lambda-slicer-audio`'s `device` feature hold
 | Silence | while paused, seeking, stepping or before the demo is open, and at the start of each new load |
 | Device | the callback copies finished blocks out and returns them to the mixer to be filled again, with no file read, no lock held for long and nothing freed |
 | Listener | the recorder's view at the end of the block, the entity it views from heard as its own |
+| Moving sounds | a sound from an entity plays from where the entity is at the end of each block, so it moves with it. The world's sounds, ambient sounds and a brush entity's stay where they started |
 
 `LAMBDA_SLICER_SOUND_TAP=FILE` with `--viewer-play SECONDS` writes every block from the first heard
 on to a WAV file, the device playing silence at the same pace, for comparing with
@@ -459,6 +458,7 @@ SDK's `HUD_TempEntUpdate`, not yet compared with the game:
 | Armour ricochet | the glint and one of `weapons/ric1.wav` to `5` |
 | Gunshot decal | one of the ricochets for half of them, and the decal (below). Its dust is not drawn yet |
 | Model | a studio model thrown out and bouncing as a shell does, for its given life, with a shell's or shotgun shell's sounds when the message names one |
+| Breakable | the message's count of pieces of its model, or when it gives none one for each 144 square units of the box's mean face, at most 100 (`TE_BREAKMODEL`). Each starts at a random spot in the box outside the world's solid, four tries, and flies out at the message's velocity plus up to its random speed sideways and upward, under half gravity, bouncing off the world, most of them spinning, fading after the message's life and up to a second more. Glass and see-through pieces are blended at amount 128. One bounce in six makes the material's sound (`debris/glass1.wav` and the rest), louder the faster it falls |
 
 A new session clears them all. Sprites take their colours from the game's palette
 (`gfx/palette.lmp`) where the message gives an index. `mix_probe` counts the temporary entities
@@ -470,6 +470,10 @@ it makes, by model.
 |---|---|---|
 | `naz_crossfire_pb_01.dem` | 0 to 300 s | 7 explosions (`zerogxplode.spr`) with their sounds, 6 smoke puffs, 78 blood splashes with 1,651 drops, 101 spark showers with 1,104 glints, 28 shells. 300 s mix in 3.7 s, against 3.2 s before |
 | `run_92.dem`, singleplayer | 0 to 100 s | 7 explosions, 61 blood splashes with 766 drops, 163 spark showers with 1,739 glints, 63 `muz1.spr` sprites, 35 `tinyspit.spr` sprays, 108 shells, and all five ricochets heard |
+| `run_92.dem`, singleplayer | 0 to 400 s | 223 pieces of breakables, 88 of wood, 78 of metal plate, 30 of machinery, 16 of concrete and 11 of glass, with the wood, metal, concrete and glass sounds heard |
+
+The pieces of a breakable all show the first body of its model, and glass pieces are drawn solid,
+as models made by the client do not yet take a body or a render mode.
 
 ### Decals
 
@@ -488,12 +492,13 @@ palette's last entry, from white at index 0, and every texel's index is how much
 | Keeping | the newest 4096, oldest dropped first, cleared by a new session, kept in playback's state so a seek finds the same ones |
 | Brush entities | a decal on a door or other brush entity is kept in the brush's own space, so it moves with it. One aimed at any other entity is dropped, as the engine puts decals only on brushes |
 | Placement | the texture at one unit a texel, centred where it was aimed, right along each face's texture s axis and down along its t axis within the face's plane, on every face whose plane is within 4 units of the point (`DECAL_DISTANCE`). Each face is cut to the decal's square. Turbulent faces take none |
-| Drawing | over the face a tenth of a unit off it, blended by the texels' coverage, lit by the face's lightmaps and light styles, after the opaque world and brushes |
+| Drawing | over the face a tenth of a unit off it, blended by the texels' coverage, lit by the face's lightmaps and light styles, after the opaque world and brushes, in the order they were made so a newer one covers an older |
 
 Each decal is laid on the map once, when it first appears, and kept until playback drops it. After a
 seek far into the 32-player `20230909_224143_stalkyard.dem` the full 4096 are laid in 107 ms, once,
-and one new decal takes about 60 microseconds. The window sends all decals' triangles to the GPU
-again whenever one is made (55,000 vertices for 4096 decals).
+and one new decal takes about 60 microseconds. While decals are only added, the window sends the
+GPU the new ones' triangles alone, into a buffer with room to grow. A seek, a dropped decal or a
+full buffer sends them all again (55,000 vertices for 4096 decals).
 
 ### Bullet impacts
 
@@ -518,7 +523,7 @@ leave 23 shot decals (`{SHOT1` to `{SHOT5`, 179 to 183 in `decals.wad`) and play
 
 Not yet: hitboxes, as the game traces players through their models' hitboxes where its prediction
 has them, so a shot past a model but inside its box meets the box here; brush entities turned by
-their angles; the crossbow's bolts; player sprays (`TE_PLAYERDECAL`); the gibs of `TE_BREAKMODEL`;
+their angles; the crossbow's bolts; player sprays (`TE_PLAYERDECAL`);
 particles (the sparks' streaks, the explosions' flicker and an impact's dust); and dynamic lights.
 
 ### Beams and tracers
