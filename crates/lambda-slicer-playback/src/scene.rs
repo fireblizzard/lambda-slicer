@@ -29,7 +29,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use lambda_slicer_core::container::{ClientDataRecord, FrameBody, NetworkFrame};
-use lambda_slicer_core::protocol::delta::DeltaSchema;
+use lambda_slicer_core::protocol::delta::{DeltaSchema, convert};
 use lambda_slicer_core::protocol::messages::{Message, ParsedMessage, resource_type};
 use lambda_slicer_core::state::{Decoder, EntityState, Snapshot};
 
@@ -278,15 +278,17 @@ pub struct Scene {
     pub revision: u64,
     /// The snapshot the entities were taken from
     snapshot: Option<Arc<Snapshot>>,
-    lives: Table<u16, Slot>,
+    /// Each slot's current or last life, by entity number
+    lives: Vec<Option<Slot>>,
     /// Model names by precache index, and the resource count they were
     /// read from
     models: Arc<Table<u16, Arc<str>>>,
     models_from: usize,
-    /// Field positions per schema, and each entity as last converted with
-    /// the state it came from, which snapshots share while it is unchanged
+    /// Field positions per schema
     tables: Vec<FieldTable>,
-    converted: Table<u16, (Arc<EntityState>, Entity)>,
+    /// The state each of `entities` was converted from, in the same order,
+    /// which snapshots share while the entity is unchanged
+    sources: Vec<Arc<EntityState>>,
     /// The latest snapshots' entities by server time, oldest first
     recent: VecDeque<(f64, Arc<Vec<Entity>>)>,
     /// When the latest snapshot arrived, and its server time
@@ -303,7 +305,6 @@ pub struct Scene {
 struct Slot {
     life: u32,
     model: i64,
-    present: bool,
 }
 
 /// The entity fields the scene reads, in this order
@@ -347,24 +348,44 @@ const FIELDS: [&str; 33] = [
 #[derive(Clone, Debug)]
 struct FieldTable {
     schema: Arc<DeltaSchema>,
-    at: [Option<usize>; FIELDS.len()],
+    /// The offset of each field the schema sends and its place in
+    /// [`FIELDS`], ordered by offset as a state's values are
+    at: Vec<(u32, usize)>,
 }
 
 impl FieldTable {
     fn new(schema: Arc<DeltaSchema>) -> Self {
-        let at = FIELDS.map(|name| schema.field_index(name));
+        let mut at = Vec::new();
+        for (slot, name) in FIELDS.iter().enumerate() {
+            if let Some(index) = schema.field_index(name) {
+                at.push((schema.fields[index].offset, slot));
+            }
+        }
+        at.sort_unstable();
+
         Self { schema, at }
     }
 
-    /// Every field's value, 0 when the schema does not send it
+    /// Every field's value, 0 when the schema does not send it or the state
+    /// has none, read in one pass over the state's values
     fn read(&self, e: &EntityState) -> [f64; FIELDS.len()] {
         let mut values = [0.; FIELDS.len()];
-        for (value, at) in values.iter_mut().zip(self.at) {
-            *value = at
-                .and_then(|i| e.fields.value_at(&self.schema, i))
-                .and_then(|v| v.as_f64())
-                .unwrap_or(0.);
+
+        // Both lists are ordered by offset, so one walk finds every match
+        let mut next = 0;
+        for (field, wire) in e.fields.iter() {
+            while next < self.at.len() && self.at[next].0 < field.offset {
+                next += 1;
+            }
+            let Some(&(offset, slot)) = self.at.get(next) else {
+                break;
+            };
+            if offset == field.offset {
+                values[slot] = convert(field, wire).as_f64().unwrap_or(0.);
+                next += 1;
+            }
         }
+
         values
     }
 }
@@ -592,24 +613,41 @@ impl Scene {
         entities: &[Arc<EntityState>],
         updated: ServerTime,
     ) {
-        let mut lives = Table::with_capacity(entities.len());
-        let mut converted = Table::with_capacity(entities.len());
+        // The packet before's entities and the states they came from,
+        // ordered by number as these are. One that left the packet is not
+        // among them, so its slot's next occupant starts a new life
+        let before = self.entities.clone();
+        let before_sources = std::mem::take(&mut self.sources);
+        let mut next_before = 0;
+
         let mut out = Vec::with_capacity(entities.len());
+        let mut sources = Vec::with_capacity(entities.len());
         for e in entities {
             // The world is drawn from the map, not as an entity
             if e.number == 0 {
                 continue;
             }
 
+            // The entity with this number in the packet before, if any
+            while next_before < before.len() && before[next_before].id.number < e.number {
+                next_before += 1;
+            }
+            let previous = match before.get(next_before) {
+                Some(entity) if entity.id.number == e.number => {
+                    Some((entity, &before_sources[next_before]))
+                }
+                _ => None,
+            };
+
             // An unchanged state converts to the same entity
-            if let Some((state, entity)) = self.converted.remove(&e.number)
-                && Arc::ptr_eq(&state, e)
-                && self.lives.get(&e.number).is_some_and(|s| s.present)
+            if let Some((entity, source)) = previous
+                && Arc::ptr_eq(source, e)
             {
-                let entity = Entity { updated, ..entity };
-                lives.insert(e.number, self.lives[&e.number]);
-                converted.insert(e.number, (state, entity.clone()));
-                out.push(entity);
+                out.push(Entity {
+                    updated,
+                    ..entity.clone()
+                });
+                sources.push(e.clone());
                 continue;
             }
 
@@ -618,21 +656,24 @@ impl Scene {
             };
             let v = self.tables[table].read(e);
             let model_index = v[0] as i64;
-            let life = match self.lives.get(&e.number) {
-                Some(slot) if slot.present && slot.model == model_index => slot.life,
+
+            // A slot keeps its life while it stays in the packet with the
+            // same model
+            let n = usize::from(e.number);
+            if self.lives.len() <= n {
+                self.lives.resize(n + 1, None);
+            }
+            let life = match self.lives[n] {
+                Some(slot) if previous.is_some() && slot.model == model_index => slot.life,
                 Some(slot) => slot.life + 1,
                 None => 0,
             };
-            lives.insert(
-                e.number,
-                Slot {
-                    life,
-                    model: model_index,
-                    present: true,
-                },
-            );
+            self.lives[n] = Some(Slot {
+                life,
+                model: model_index,
+            });
 
-            let entity = Entity {
+            out.push(Entity {
                 beam: e.custom,
                 id: EntityId {
                     segment: self.segment,
@@ -666,22 +707,12 @@ impl Scene {
                 weapon: self.model_name(decoder, v[32] as i64),
                 gait: None,
                 updated,
-            };
-            converted.insert(e.number, (e.clone(), entity.clone()));
-            out.push(entity);
+            });
+            sources.push(e.clone());
         }
 
-        // A slot that left the packet keeps its count, so its next
-        // occupant starts a new life
-        for (number, slot) in &self.lives {
-            lives.entry(*number).or_insert(Slot {
-                present: false,
-                ..*slot
-            });
-        }
-        self.lives = lives;
-        self.converted = converted;
         self.entities = Arc::new(out);
+        self.sources = sources;
     }
 
     /// The client's clock at source time `at`, the latest snapshot's server

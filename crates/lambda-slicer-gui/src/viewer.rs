@@ -72,10 +72,28 @@ const DEFAULT_FOV: f32 = 90.;
 const OBS_IN_EYE: i64 = 4;
 
 /// Time frames for this many seconds once playback runs, write what was
-/// measured to `out` and close the window
+/// measured to `out` and close the window. The view is drawn `size` pixels
+/// when given, whatever room the window has for it
 pub struct Bench {
     pub seconds: f64,
     pub out: PathBuf,
+    pub size: Option<[u32; 2]>,
+}
+
+/// A bench run under way
+struct Benching {
+    bench: Bench,
+    /// When the viewer opened the demo
+    opened: Instant,
+    /// When timing began, after a second of playback
+    begin: Option<Instant>,
+    /// Milliseconds between frames
+    times: Vec<f64>,
+    /// Milliseconds after opening until the first picture, until every
+    /// model it wanted was in, and until the checkpoints covered the demo
+    picture: Option<f64>,
+    complete: Option<f64>,
+    indexed: Option<f64>,
 }
 
 /// Save the view at each of `times` as `<folder>/<seconds>.png`, `size`
@@ -292,7 +310,7 @@ pub struct Viewer {
     clock: Instant,
     /// The demo's length, when the library knows it
     duration: f64,
-    bench: Option<(Bench, Option<Instant>, Vec<f64>)>,
+    bench: Option<Benching>,
     capturing: Option<Capturing>,
     /// Seconds to play for, and when playing began
     play: Option<(f64, Option<Instant>)>,
@@ -421,7 +439,15 @@ impl Viewer {
             light: None,
             clock: Instant::now(),
             duration: f64::from(duration),
-            bench: bench.map(|b| (b, None, Vec::new())),
+            bench: bench.map(|bench| Benching {
+                bench,
+                opened: Instant::now(),
+                begin: None,
+                times: Vec::new(),
+                picture: None,
+                complete: None,
+                indexed: None,
+            }),
             play: play.map(|seconds| (seconds, None)),
             capturing: capture.map(|capture| Capturing {
                 capture,
@@ -974,28 +1000,42 @@ impl Viewer {
         }
         let gpu_bytes = self.gpu_bytes();
         let adapter = self.render_state.adapter.get_info();
-        let Some((bench, begin, times)) = &mut self.bench else {
+        let complete = self.ready(self.controller.stamp());
+        let indexed = self.frame.as_ref().is_some_and(|f| f.indexed.1);
+        let Some(run) = &mut self.bench else {
             return false;
         };
+        let since = (now - run.opened).as_secs_f64() * 1000.;
+        run.picture.get_or_insert(since);
+        if complete {
+            run.complete.get_or_insert(since);
+        }
+        if indexed {
+            run.indexed.get_or_insert(since);
+        }
 
         // A second of playback to settle before timing
         if self.frame.as_ref().is_none_or(|f| f.at.0 < 1.) {
             return false;
         }
-        let begin = *begin.get_or_insert(now);
+        let begin = *run.begin.get_or_insert(now);
         if let Some(dt) = dt {
-            times.push(dt);
+            run.times.push(dt);
         }
-        if (now - begin).as_secs_f64() < bench.seconds || times.is_empty() {
+        if (now - begin).as_secs_f64() < run.bench.seconds || run.times.is_empty() {
             return false;
         }
 
-        let mut sorted = times.clone();
+        let mut sorted = run.times.clone();
         sorted.sort_by(f64::total_cmp);
         let at = |p: f64| sorted[((sorted.len() - 1) as f64 * p).round() as usize];
         let mean = sorted.iter().sum::<f64>() / sorted.len() as f64;
+        let after = |ms: Option<f64>| match ms {
+            Some(ms) => format!("{ms:.0} ms"),
+            None => "not yet".to_owned(),
+        };
         let report = format!(
-            "{} ({:?}), view {}x{} pixels, {drawn} models drawn, {} frames, mean {mean:.3} ms ({:.0} fps), p50 {:.3}, p95 {:.3}, p99 {:.3}, max {:.3} ms, scene {:.1} MiB on the GPU\n",
+            "{} ({:?}), view {}x{} pixels, {drawn} models drawn, {} frames, mean {mean:.3} ms ({:.0} fps), p50 {:.3}, p95 {:.3}, p99 {:.3}, max {:.3} ms, scene {:.1} MiB on the GPU, first picture after {}, every model in after {}, checkpoints for the whole demo after {}\n",
             adapter.name,
             adapter.backend,
             pixels[0],
@@ -1007,8 +1047,11 @@ impl Viewer {
             at(0.99),
             sorted[sorted.len() - 1],
             gpu_bytes as f64 / 1048576.,
+            after(run.picture),
+            after(run.complete),
+            after(run.indexed),
         );
-        if let Err(e) = std::fs::write(&bench.out, report) {
+        if let Err(e) = std::fs::write(&run.bench.out, report) {
             eprintln!("viewer: {e}");
         }
         true
@@ -1201,7 +1244,8 @@ impl Viewer {
         } else {
             match (&self.frame, &self.map) {
                 (Some(frame), Some(_)) => {
-                    let pixels = capture_size.unwrap_or([
+                    let bench_size = self.bench.as_ref().and_then(|b| b.bench.size);
+                    let pixels = capture_size.or(bench_size).unwrap_or([
                         (rect.width() * ui.pixels_per_point()).round().max(1.) as u32,
                         (rect.height() * ui.pixels_per_point()).round().max(1.) as u32,
                     ]);
@@ -1265,6 +1309,14 @@ impl Viewer {
             }
             Some(began) => {
                 let over = began.elapsed().as_secs_f64() >= seconds;
+                if over {
+                    // Said once, as the window closes a frame later
+                    self.play = None;
+                    if let Some(sound) = &self.sound {
+                        let underruns = sound.underruns();
+                        eprintln!("sound: {underruns} underruns in {seconds} s of playing");
+                    }
+                }
                 if over && let Some((path, lags)) = &self.video_lag {
                     let lines: Vec<String> = lags
                         .iter()

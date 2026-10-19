@@ -99,6 +99,7 @@ pub struct Device {
     mixer: Option<JoinHandle<()>>,
     /// Writes the measured skew out when the device closes
     skew_log: Option<JoinHandle<()>>,
+    underruns: Arc<AtomicU64>,
 }
 
 impl Device {
@@ -139,6 +140,13 @@ impl Device {
         let live = mark.clone();
         let mut current: Option<Block> = None;
         let mut read = 0;
+
+        // The mark of the last block heard, and whether the device has gone
+        // without one since
+        let mut served = None;
+        let mut dry = false;
+        let underruns = Arc::new(AtomicU64::new(0));
+        let counted = underruns.clone();
         let stream = device
             .build_output_stream(
                 config.config(),
@@ -167,6 +175,22 @@ impl Device {
                                 }
                             };
                             read = 0;
+
+                            // A gap in the blocks of a feed already heard,
+                            // not the wait for a new feed's first block
+                            match &current {
+                                Some(b) => {
+                                    served = Some(b.mark);
+                                    dry = false;
+                                }
+                                None => {
+                                    if !dry && served == Some(now) {
+                                        counted.fetch_add(1, Ordering::Relaxed);
+                                    }
+                                    dry = true;
+                                }
+                            }
+
                             // When this block's first sample is heard
                             if let (Some(tx), Some(timing)) =
                                 (&skew_tx, current.as_ref().and_then(|b| b.timing))
@@ -260,7 +284,14 @@ impl Device {
             stop,
             mixer: Some(mixer),
             skew_log,
+            underruns,
         })
+    }
+
+    /// How many times the device found no block ready while the feed it
+    /// was playing went on, each heard as a gap
+    pub fn underruns(&self) -> u64 {
+        self.underruns.load(Ordering::Relaxed)
     }
 
     /// Publish what is playing now

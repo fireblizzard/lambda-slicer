@@ -5,7 +5,7 @@
 //! [--demo FILE [--window N] [--export DIR]]
 //! [--screenshot OUT.png [--frames N]]
 //! [--game DIR [--viewer-at SECONDS] [--viewer-bench SECONDS OUT.txt]
-//! [--viewer-capture TIMES FOLDER [--viewer-size WxH]] [--viewer-play SECONDS]
+//! [--viewer-capture TIMES FOLDER] [--viewer-size WxH] [--viewer-play SECONDS]
 //! [--viewer-gamma GAMMA,BRIGHTNESS,TEXGAMMA,LIGHTGAMMA[,OVERBRIGHT]]
 //! [--viewer-see-through]]`
 //!
@@ -22,15 +22,17 @@
 //! installation folder, the one that holds `valve`, and plays the demo in
 //! the demo view, from `--viewer-at` seconds if given. `--viewer-bench`
 //! turns vsync off, plays and times the view's frames for `SECONDS`, writes
-//! the times to `OUT.txt` and exits. `--viewer-capture` saves the view at
-//! each of the comma-separated `TIMES` into `FOLDER` as `<seconds>.png`,
-//! `--viewer-size` pixels (1280x720 unless given), and exits.
-//! `--viewer-play` plays for `SECONDS` with sound and exits, and with
-//! `LAMBDA_SLICER_SOUND_TAP` set to a file the sound sent to the device is
-//! written there as a WAV file. `--viewer-gamma` draws with the game's gamma
-//! settings for this run only, overbright when the fifth is 1, for comparing
-//! with frames the game recorded. `--viewer-see-through` shows players
-//! through walls for this run
+//! the times and how long loading took to `OUT.txt` and exits.
+//! `--viewer-capture` saves the view at each of the comma-separated `TIMES`
+//! into `FOLDER` as `<seconds>.png` and exits. Both draw the view
+//! `--viewer-size` pixels, a capture 1280x720 and a bench the room the
+//! window gives unless it is given. `--viewer-play` plays for `SECONDS` with
+//! sound, says how often the sound device went without sound to play, and
+//! exits, and with `LAMBDA_SLICER_SOUND_TAP` set to a file the sound sent
+//! to the device is written there as a WAV file. `--viewer-gamma` draws
+//! with the game's gamma settings for this run only, overbright when the
+//! fifth is 1, for comparing with frames the game recorded.
+//! `--viewer-see-through` shows players through walls for this run
 
 // A release build opens no console window beside the app
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
@@ -76,7 +78,7 @@ fn main() -> eframe::Result {
     let mut game = None;
     let mut viewer_at = None;
     let mut capture_times: Option<(Vec<f64>, PathBuf)> = None;
-    let mut capture_size = [1280, 720];
+    let mut viewer_size = None;
     let mut viewer_play = None;
     let mut viewer_gamma = None;
     let mut viewer_see_through = false;
@@ -141,7 +143,7 @@ fn main() -> eframe::Result {
                 if let Some((w, h)) = args.next().as_deref().and_then(|s| s.split_once('x'))
                     && let (Ok(w), Ok(h)) = (w.parse(), h.parse())
                 {
-                    capture_size = [w, h];
+                    viewer_size = Some([w, h]);
                 }
             }
             "--viewer-bench" => {
@@ -151,12 +153,17 @@ fn main() -> eframe::Result {
                     viewer_bench = Some(viewer::Bench {
                         seconds,
                         out: PathBuf::from(out),
+                        size: None,
                     });
                 }
             }
             flag if flag.starts_with("--") => eprintln!("ignoring argument {flag}"),
             path => open.push(PathBuf::from(path)),
         }
+    }
+
+    if let Some(bench) = &mut viewer_bench {
+        bench.size = viewer_size;
     }
 
     let settings_path = settings::path();
@@ -227,7 +234,7 @@ fn main() -> eframe::Result {
                     viewer_capture: capture_times.map(|(times, folder)| viewer::Capture {
                         times,
                         folder,
-                        size: capture_size,
+                        size: viewer_size.unwrap_or([1280, 720]),
                     }),
                 },
             );

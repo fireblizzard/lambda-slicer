@@ -9,10 +9,12 @@
 //! At each the sound channels with their pitches, the queued events, the
 //! animations' client events, the temporary entities, decals, beams,
 //! trails and tracers are compared with what one sequential pass has at
-//! the same moment
+//! the same moment. It says how long building the checkpoints took and
+//! each seek's time at the median and 95th percentile
 
 use std::path::Path;
 use std::sync::Arc;
+use std::time::Instant;
 
 use lambda_slicer_assets::Limits as AssetLimits;
 use lambda_slicer_assets::search::{SearchOptions, SearchPath};
@@ -68,7 +70,9 @@ fn check(install: &Path, path: &Path) -> Result<bool, String> {
 
     let store = Checkpoints::shared(SPACING, BUDGET);
     let mut indexer = open(store.clone())?;
+    let indexing = Instant::now();
     while !indexer.index(1000) {}
+    let indexed = indexing.elapsed().as_secs_f64();
     let end = indexer.position().map_or(0., |p| p.time.0);
     drop(indexer);
 
@@ -90,23 +94,33 @@ fn check(install: &Path, path: &Path) -> Result<bool, String> {
         expected.push(digest(&mut sequential, SourceTime(t)));
     }
 
-    let mut p = open(store)?;
+    let mut p = open(store.clone())?;
     let mut order: Vec<usize> = (0..SEEKS).collect();
     for i in (1..order.len()).rev() {
         order.swap(i, random() as usize % (i + 1));
     }
     let mut differing = Vec::new();
+    let mut times = Vec::new();
     for i in order {
         let at = SourceTime(targets[i]);
+        let seeking = Instant::now();
         p.advance_to(at).map_err(|m| m.text)?;
+        times.push(seeking.elapsed().as_secs_f64() * 1000.);
         if digest(&mut p, at) != expected[i] {
             differing.push(at.0);
         }
     }
     differing.sort_by(f64::total_cmp);
+
+    times.sort_by(f64::total_cmp);
+    let percentile = |q: f64| times[((times.len() - 1) as f64 * q).round() as usize];
+    let spacing = store.lock().map_or(0., |s| s.spacing());
     println!(
-        "{}: {end:.0} s, {SEEKS} seeks, {} differing from sequential playback{}",
+        "{}: {end:.0} s, checkpoints {spacing:.0} s apart built in {indexed:.1} s, {SEEKS} seeks p50 {:.1}, p95 {:.1}, max {:.1} ms, {} differing from sequential playback{}",
         path.display(),
+        percentile(0.5),
+        percentile(0.95),
+        times[times.len() - 1],
         differing.len(),
         if differing.is_empty() {
             String::new()

@@ -175,26 +175,28 @@ fn observe(p: &mut Playback, at: SourceTime) -> (String, String) {
 /// Where two texts first differ, with what comes just before, which names
 /// the field
 fn difference(a: &str, b: &str) -> Option<String> {
-    let at = a
-        .bytes()
-        .zip(b.bytes())
-        .position(|(x, y)| x != y)
-        .or_else(|| (a.len() != b.len()).then(|| a.len().min(b.len())))?;
-    let boundary = |s: &str, mut i: usize| {
-        i = i.min(s.len());
+    // The first byte that differs, or where the shorter text ends
+    let at = match a.bytes().zip(b.bytes()).position(|(x, y)| x != y) {
+        Some(at) => at,
+        None if a.len() != b.len() => a.len().min(b.len()),
+        None => return None,
+    };
+
+    // A byte position moved back to the start of its character
+    let boundary = |s: &str, i: usize| {
+        let mut i = i.min(s.len());
         while !s.is_char_boundary(i) {
             i -= 1;
         }
         i
     };
     let piece = |s: &str| {
-        let (from, to) = (boundary(s, at.saturating_sub(160)), boundary(s, at + 80));
-        format!(
-            "…{}⟨{}⟩",
-            &s[from..boundary(s, at)],
-            &s[boundary(s, at)..to]
-        )
+        let from = boundary(s, at.saturating_sub(160));
+        let split = boundary(s, at);
+        let to = boundary(s, at + 80);
+        format!("…{}⟨{}⟩", &s[from..split], &s[split..to])
     };
+
     Some(format!(
         "\n      got  {}\n      want {}",
         piece(a),

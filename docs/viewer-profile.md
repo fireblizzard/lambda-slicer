@@ -184,7 +184,8 @@ between checkpoints.
 Playback takes a checkpoint when a session begins and then every 2 s of source time. While no
 request waits, the worker plays a second copy of the demo ahead in slices of 1,000 groups (a few
 tens of milliseconds) to fill the same store. A checkpoint keeps the decoder's last 64 snapshots,
-any of which a later packet may take as its delta base, so in a busy game it weighs 1.5 to 2 MiB.
+any of which a later packet may take as its delta base, so in a busy game it weighs about 1 MiB, and
+3 MiB with 32 players (see "Performance").
 When a demo's checkpoints pass 256 MiB by the decoder's estimate, every other one is dropped and the
 spacing doubles. Checkpoints live in memory for the selected demo only. Keeping them on disk
 between runs is left for later.
@@ -203,7 +204,8 @@ it.
 place to come back to. The equivalence harness uses it to restore while an event waits (see
 [viewer validation](viewer-validation.md), "Equivalence").
 
-**Measured (2026-10-18)** with `examples/seek_probe.rs`, release build: every checkpoint built as
+**Measured (2026-10-18)**, before the scene's entities were converted faster (see "Performance"),
+with `examples/seek_probe.rs`, release build: every checkpoint built as
 the worker builds them, then 60 seeks to random moments in random order, each compared with the
 state one sequential pass has there. Memory is the growth in private bytes while building, which
 keeps what thinning freed, next to the store's own estimate.
@@ -790,3 +792,82 @@ The first run found every seek in `naz_crossfire_pb_01.dem` after 150 s differen
 count of each shooter's bullets was a hash map, whose order differs between two playbacks, so the
 comparison failed although the counts were the same. It is an ordered map now.
 
+## Performance (12c)
+
+The plan's targets (implementation plan §13.9), measured on 2026-10-19 on the development machine,
+an AMD Ryzen 5 3600X with 32 GB and an NVIDIA GeForce RTX 3070 drawn through Vulkan, Windows 10,
+release build:
+
+| Target | Result |
+|---|---|
+| 60 FPS sustained at 1080p | met, 129 to 333 fps on average, the 99th percentile 12.4 ms at most, single frames up to 30 ms |
+| Warm indexed seeks within 200 ms at p95 | met in all 8 demos, with the game's files 115 ms at most |
+| Input feedback within 100 ms | the playhead moves on the frame of the input, and an indexed drag shows a picture every 68 ms at most ("Scrubbing") |
+| Sound and picture within 40 ms | 4 to 5 ms ("Sound and picture in step") |
+
+`scripts/viewer-perf.ps1` runs the viewer's bench, with the view drawn 1920 by 1080 pixels whatever
+room the window gives it (`--viewer-size`) and vsync off, playing 10 s after a second to settle. It
+samples the process every 100 ms for its private bytes and the GPU's count of its dedicated memory.
+The bench says how long after opening the demo the first picture came, every model it wanted was
+in, and the checkpoints covered the demo, the worker indexing while it plays.
+
+| Demo, from | Models drawn | Mean, p50, p95, p99, max | First picture, every model in | Checkpoints for the demo | Peak private bytes, working set |
+|---|---|---|---|---|---|
+| `stalkx_naz_248.dem`, 20 s | 40 | 4.1, 3.9, 5.8, 7.7, 30.3 ms (243 fps) | 274, 279 ms | 5.5 s | 781, 580 MiB |
+| `20230909_224143_stalkyard.dem`, 32 players, 100 s | 128 | 7.8, 7.5, 10.5, 12.4, 19.1 ms (129 fps) | 899, 921 ms | 8.1 s | 882, 613 MiB |
+| `naz_crossfire_pb_01.dem`, 8 s | 30 | 4.4, 4.3, 5.7, 7.1, 10.4 ms (228 fps) | 229, 235 ms | 6.9 s | 818, 601 MiB |
+| `run_92.dem`, singleplayer, 15 s | 14 | 3.0, 2.9, 4.6, 5.7, 8.8 ms (333 fps) | 303, 332 ms | 0.5 s | 489, 320 MiB |
+| `20220319_194739_fastrun.dem`, 415 MB, 3000 s | 0 | 3.1, 3.0, 4.3, 5.3, 8.2 ms (324 fps) | 5.1, 5.1 s | 9.1 s | 803, 550 MiB |
+
+The first picture comes after a seek from the start to where the bench begins, so fastrun's is a
+cold seek through 3,000 s. Frame times vary by a millisecond or so between runs. The GPU's count of
+dedicated memory is 248 MiB in every run, the driver's blocks rather than what is in them. The
+scene's own buffers and textures are 19 to 34 MiB.
+
+### Seeks
+
+Indexed seeks, from checkpoints covering the demo as the worker builds them, to 60 moments at
+random with `examples/seek_probe.rs`, and to 100 with `examples/effects_seek.rs` in
+`lambda-slicer-audio`, which plays with the game's files as the worker does: bullets and temporary
+entities traced through the map, models' events, sounds' lengths. Every seek agreed with sequential
+playback. Memory is the growth in private bytes while building the checkpoints, next to the
+store's own estimate, which the budget of 256 MiB holds.
+
+| Demo | Length | Checkpoints | Memory, measured and estimated | Seek with none, to 3/4 | Indexed p50, p95 | With the game's files, p50, p95 |
+|---|---|---|---|---|---|---|
+| `stalkx_naz_248.dem` | 1,216 s | 152, 8 s apart | 357, 163 MiB | 1.6 s | 6.4, 13.7 ms | 11.7, 23.3 ms |
+| `20210418_004941_vengeance.dem` | 2,506 s | 157, 16 s apart | 379, 229 MiB | 5.4 s | 24.8, 51.7 ms | 18.0, 51.9 ms |
+| `naz_crossfire_pb_01.dem` | 1,206 s | 151, 8 s apart | 373, 169 MiB | 2.3 s | 10.6, 19.9 ms | 14.3, 35.0 ms |
+| `dblcross_salchi_naz.dem` | 1,314 s | 166, 8 s apart | 335, 206 MiB | 3.0 s | 7.9, 34.1 ms | 9.8, 35.1 ms |
+| `run_92.dem`, singleplayer | 104 s | 54, 2 s apart | 64, 46 MiB | 0.3 s | 3.8, 12.4 ms | 2.4, 11.1 ms |
+| `ray_vs_alex_cross.dem`, spectator | 103 s | 51, 2 s apart | 31, 59 MiB | 0.1 s | 0.5, 4.1 ms | 0.4, 4.2 ms |
+| `20230909_224143_stalkyard.dem`, 32 players | 937 s | 59, 16 s apart | 282, 193 MiB | 2.7 s | 28.9, 54.4 ms | 53.0, 114.8 ms |
+| `20220319_194739_fastrun.dem`, 415 MB | 6,079 s | 191, 32 s apart | 333, 184 MiB | 5.8 s | 17.0, 41.6 ms | 18.6, 40.3 ms |
+
+Found:
+
+- Converting the scene's entities took longer than decoding them. Each packet rebuilt two hash maps
+  holding every entity and copied each entity twice, and read each changed entity's 33 fields one
+  by one by binary search, for about 8 million entities in a probe of stalkyard, 6 million of them
+  changed. Now the entities of the packet before, in number order beside the states they came from,
+  say which are unchanged, and a changed state's fields are read in one pass. The scene's share of
+  that probe fell from 6.7 s to 1.9 s.
+- Stalkyard first missed the seek target, at 231 ms at the median and 471 ms at the 95th percentile
+  with the game's files. Its checkpoints weighed about 9 MiB each, so the budget kept them 64 s
+  apart, and replaying a second of it takes about 7 ms, half of it moving some 400 temporary
+  entities. Each entity state the decoder keeps had room for every field of its schema, where a
+  player's state holds about 25 of them, a third. Each now has room for what it holds, so a
+  checkpoint of stalkyard keeps 3.2 MiB of the decoder's snapshots where it kept 8.2 MiB, the
+  budget keeps its checkpoints 16 s apart, and its seeks take 53 ms at the median and 115 ms at the
+  95th percentile. The other demos keep checkpoints twice as close as before for the same budget.
+- Together, indexed seeks without the game's files went from 23 to 6 ms at the median in stalkx,
+  from 23 to 11 ms in crossfire and from 51 to 25 ms in vengeance, against the table in
+  "Checkpoints" (measured before).
+
+### Sound underruns
+
+`--viewer-play` now says how many times the sound device found no block ready while the sound it
+was playing went on, each heard as a gap. A new feed's first block after a seek is not counted.
+Played for 20 s with the sound tap set, so the device plays silence at the same pace: none in
+stalkyard from 100 s, stalkx from 20 s or fastrun from 3,000 s, two runs each. A mixer slowed on
+purpose to 15 ms for each 10 ms block gave 192 in 5 s.

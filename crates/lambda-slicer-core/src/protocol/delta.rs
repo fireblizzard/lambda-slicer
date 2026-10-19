@@ -408,6 +408,9 @@ impl StructState {
 
         entries.sort_by_key(|e| e.0);
         entries.dedup_by_key(|e| e.0);
+        // Room for every field of the schema, where a state usually holds a
+        // third of them, and snapshots keep many states
+        entries.shrink_to_fit();
 
         StructState { entries }
     }
