@@ -716,8 +716,23 @@ particles (the sparks' streaks, the explosions' flicker and an impact's dust); a
 (`sprites/laserbeam.spr` in 179, 39, 14 and 255, 128, 0 at half brightness, the SDK's hornet
 colours), and at 13.7 s two beams of `sprites/lgtning.spr` cross the room.
 
-Not yet: beams between entities (`TE_BEAMENTS`, `TE_BEAMENTPOINT`), rings, disks and cylinders, beam
-noise, and beams drawn by entities, such as a tripmine's laser.
+Beams the server draws as entities, as `env_beam` and `env_laser` do, are custom entities, which
+playback marks. Their sprites were once drawn as plain sprites in their render mode, which for
+such an entity is its beam type, so `ls_9e_run` showed dark green squares where lightning should
+be. They are now drawn as the client does (`R_BeamDrawCustomEntity`):
+
+| Part | How |
+|---|---|
+| Ends | from the entity's origin, or the entity its sequence's low 12 bits name, to the point its angles hold, or the entity its skin names, as the beam type in its render mode's low four bits says. A beam's angles are not turned between snapshots, being a point |
+| Look | its sprite at its frame, its scale its width either side, its render colour by its render amount, added, scrolling at its animation time's rate |
+| Noise | with a body, its amplitude a hundredth of it, a point every 4 units, or 16 under half an amplitude, no closer than its width allows and 64 at most, pushed aside by fractal noise made again each frame, across the view, or by a sine wave round the beam with the sine flag (`R_DrawSegs`). Its far end moves aside too, as the engine's does |
+
+An entity's glow with `kRenderFxNoDissipation` (14) keeps its brightness and size at any distance,
+as the temporary entities' steady glows already did.
+
+Not yet: beams between entities as messages (`TE_BEAMENTS`, `TE_BEAMENTPOINT`), rings, disks and
+cylinders, the noise of the beams messages make, and the start and end attachments of entity
+beams.
 
 ### Gauss and Egon (10e)
 

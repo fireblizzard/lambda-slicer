@@ -146,6 +146,11 @@ pub struct EntityId {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Entity {
     pub id: EntityId,
+    /// A beam the server draws (a custom entity, `env_beam` and the like),
+    /// running from its origin to the point its angles hold, its render
+    /// mode its beam type, its sequence and skin naming the entities it
+    /// may start and end at, its body its noise and its scale its width
+    pub beam: bool,
     pub model_index: i64,
     /// The precached model's name, none when the resource list lacks it
     pub model: Option<Arc<str>>,
@@ -627,6 +632,7 @@ impl Scene {
             );
 
             let entity = Entity {
+                beam: e.custom,
                 id: EntityId {
                     segment: self.segment,
                     number: e.number,
@@ -725,7 +731,10 @@ impl Scene {
             .iter()
             .map(|e| {
                 let mut e = e.clone();
-                if let Some((origin, angles)) = self.position_at(e.id, render) {
+                // A beam's angles are a point, not turned the short way round
+                if !e.beam
+                    && let Some((origin, angles)) = self.position_at(e.id, render)
+                {
                     e.origin = origin;
                     e.angles = angles;
                 }
@@ -840,6 +849,7 @@ mod tests {
 
     fn entity(number: u16, life: u32, x: f32, yaw: f32) -> Entity {
         Entity {
+            beam: false,
             id: EntityId {
                 segment: 1,
                 number,
@@ -885,6 +895,10 @@ mod tests {
                 entity(1, 0, 0., 350.),
                 entity(2, 0, 0., 0.),
                 entity(3, 0, 0., 0.),
+                Entity {
+                    beam: true,
+                    ..entity(4, 0, 0., 300.)
+                },
             ],
         ));
         scene.recent.push_back(at(
@@ -893,6 +907,10 @@ mod tests {
                 entity(1, 0, 10., 10.),
                 entity(2, 0, 500., 0.),
                 entity(3, 1, 20., 0.),
+                Entity {
+                    beam: true,
+                    ..entity(4, 0, 10., 20.)
+                },
             ],
         ));
         scene.entities = scene.recent.back().unwrap().1.clone();
@@ -907,6 +925,9 @@ mod tests {
         // A jump and a new life are drawn where the latest snapshot has them
         assert_eq!(drawn[1].origin[0], 500.);
         assert_eq!(drawn[2].origin[0], 20.);
+        // A beam's angles are its end point, drawn as the latest snapshot
+        // has it, never turned
+        assert_eq!((drawn[3].origin[0], drawn[3].angles[1]), (10., 20.));
 
         // Past the latest snapshot nothing is extrapolated
         let late = scene.presented(5.);

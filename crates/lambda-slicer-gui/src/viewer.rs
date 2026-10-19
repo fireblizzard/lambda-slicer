@@ -36,7 +36,7 @@ use lambda_slicer_core::timeline::time::DemoTime;
 use lambda_slicer_playback::PresentedFrame;
 use lambda_slicer_playback::animation::{Flash, Holder};
 use lambda_slicer_playback::controller::{Command, Controller, LoopRange, Reply, Stamp};
-use lambda_slicer_playback::scene::EntityId;
+use lambda_slicer_playback::scene::{Entity, EntityId};
 use lambda_slicer_playback::tempents::Tint;
 use lambda_slicer_playback::time::{Rate, SourceTime};
 use lambda_slicer_playback::trace::Hull;
@@ -690,7 +690,8 @@ impl Viewer {
                     mode: drawn.mode,
                     amount: drawn.amount,
                     color: drawn.color,
-                    steady: false,
+                    // `kRenderFxNoDissipation`
+                    steady: drawn.fx == 14,
                 });
                 continue;
             }
@@ -913,6 +914,12 @@ impl Viewer {
                 ],
                 width: beam.width,
             });
+        }
+        for e in frame.entities.iter().filter(|e| e.beam) {
+            let model = e.model.as_deref().unwrap_or_default();
+            if let Some(sprite) = sprite(model, e.frame.max(0.) as usize) {
+                out.push(entity_beam(frame, e, sprite));
+            }
         }
         for tracer in &frame.beams.tracers {
             let (tail, head) = tracer.streak(at);
@@ -1485,6 +1492,8 @@ struct Drawn {
     pose: EntityPose,
     /// A player's top colour, which teamplay sets by team
     top_color: Option<u8>,
+    /// The render effect
+    fx: i64,
     /// What a sprite takes from its entity
     frame: f32,
     scale: f32,
@@ -1506,7 +1515,12 @@ fn drawn(frame: &PresentedFrame, models: &HashMap<ModelRef, Slot>) -> Vec<Drawn>
     let mut out = Vec::new();
     for e in frame.entities.iter() {
         let number = e.id.number;
-        if number == viewer || observed == Some(i64::from(number)) || e.effects & NO_DRAW != 0 {
+        // Beams are drawn as strips, not as their sprite
+        if e.beam
+            || number == viewer
+            || observed == Some(i64::from(number))
+            || e.effects & NO_DRAW != 0
+        {
             continue;
         }
 
@@ -1544,6 +1558,7 @@ fn drawn(frame: &PresentedFrame, models: &HashMap<ModelRef, Slot>) -> Vec<Drawn>
         }
         out.push(Drawn {
             top_color: player.and_then(|p| p.top_color),
+            fx: e.render_fx,
             id: e.id,
             model,
             weapon,
@@ -1585,12 +1600,18 @@ fn wanted(frame: &PresentedFrame, models: &HashMap<ModelRef, Slot>) -> Vec<Model
         Some(studio_ref(models, path, i64::from(e.body), 0))
     });
     let beams = &frame.beams;
+    let entity_beams = frame
+        .entities
+        .iter()
+        .filter(|e| e.beam)
+        .filter_map(|e| e.model.as_deref());
     let beam_sprites = beams
         .trails
         .iter()
-        .map(|t| &t.sprite)
-        .chain(beams.beams.iter().map(|b| &b.sprite))
-        .map(|s| ModelRef::File(s.to_string()));
+        .map(|t| &*t.sprite)
+        .chain(beams.beams.iter().map(|b| &*b.sprite))
+        .chain(entity_beams)
+        .map(|s| ModelRef::File(s.to_owned()));
     drawn
         .chain(viewmodel_ref(frame, models))
         .chain(flashes)
@@ -1650,6 +1671,172 @@ fn variant(models: &HashMap<ModelRef, Slot>, first: ModelRef, body: i64, skin: i
             ModelRef::Player(name, colours, body, skin)
         }
         (other, ..) => other,
+    }
+}
+
+/// A beam the server draws as an entity (`R_BeamDrawCustomEntity`), from
+/// its origin, or the entity its sequence names, to the point its angles
+/// hold, or the entity its skin names, as its render mode's low four bits
+/// say. Its width is its scale, its colour its render colour by its render
+/// amount, its sprite frame its frame, and it scrolls at its animation
+/// time's rate. With a body its points are pushed aside by noise made
+/// again each frame, as lightning flickers (`R_DrawSegs`)
+fn entity_beam(frame: &PresentedFrame, e: &Entity, sprite: (SpriteHandle, usize)) -> Streak {
+    // An entity's place by the number in a sequence or skin's low 12 bits
+    let place = |field: i64| {
+        let number = u16::try_from(field & 0x0fff).ok()?;
+        frame
+            .entities
+            .iter()
+            .find(|o| o.id.number == number)
+            .map(|o| o.origin)
+    };
+    let (start_entity, end_entity) = match e.render_mode & 0x0f {
+        // An entity to a point, either end an entity when it names one
+        1 => (e.sequence != 0, e.skin != 0),
+        2 => (true, true),
+        _ => (false, false),
+    };
+    let start = start_entity
+        .then(|| place(e.sequence))
+        .flatten()
+        .unwrap_or(e.origin);
+    let end = end_entity
+        .then(|| place(e.skin))
+        .flatten()
+        .unwrap_or(e.angles);
+    let brightness = e.render_amount.clamp(0, 255) as f32 / 255.;
+    let color = e.render_color.map(|c| f32::from(c) / 255. * brightness);
+    let v = (frame.client_time as f32 * e.animtime).fract();
+    let seed = frame.client_time.to_bits() ^ u64::from(e.id.number).rotate_left(32);
+    let noise = BeamNoise {
+        amplitude: e.body as f32 / 100.,
+        sine: e.render_mode & 0x10 != 0,
+        seed,
+        time: frame.client_time as f32,
+    };
+    let points = beam_points(start, end, e.scale, v, &noise, frame.recorder.angles)
+        .into_iter()
+        .map(|(position, v)| StreakPoint { position, v, color })
+        .collect();
+    Streak {
+        sprite: Some(sprite),
+        points,
+        width: e.scale,
+    }
+}
+
+/// How a beam's points are pushed aside
+struct BeamNoise {
+    /// The body over 100, none when 0
+    amplitude: f32,
+    /// A sine wave turned round the beam, not fractal noise
+    sine: bool,
+    seed: u64,
+    time: f32,
+}
+
+/// The engine's noise table's divisions
+const NOISE_DIVISIONS: usize = 64;
+
+/// A beam's points from `start` to `end` with their texture coordinate
+/// along it, from `v`, a straight beam its two ends. A noisy one has a
+/// point every 4 units, or every 16 under half an amplitude, no closer than
+/// its width allows and 64 at most, each pushed aside by the noise
+/// (`R_DrawSegs`, the fractal noise across the view, the sine noise round
+/// the beam)
+fn beam_points(
+    start: [f32; 3],
+    end: [f32; 3],
+    width: f32,
+    v: f32,
+    noise: &BeamNoise,
+    view_angles: [f32; 3],
+) -> Vec<([f32; 3], f32)> {
+    let delta = [0, 1, 2].map(|k| end[k] - start[k]);
+    let length = (delta[0] * delta[0] + delta[1] * delta[1] + delta[2] * delta[2]).sqrt();
+    if noise.amplitude == 0. || length < 0.1 {
+        return vec![(start, v), (end, v + length * 0.01)];
+    }
+    let mut segments = if noise.amplitude >= 0.5 {
+        length * 0.25 + 3.
+    } else {
+        length * 0.075 + 3.
+    } as usize;
+    let widest = width * 0.5 * 1.414;
+    if length / ((segments.max(2) - 1) as f32) < widest {
+        segments = ((length / widest) as usize + 1).max(2);
+    }
+    segments = segments.clamp(2, NOISE_DIVISIONS);
+    if noise.sine {
+        segments = segments.max(16);
+    }
+    let div = 1. / (segments - 1) as f32;
+    let v_step = length * 0.01 * div;
+
+    // The table, ends at 0, made again each frame
+    let mut table = [0f32; NOISE_DIVISIONS + 1];
+    if noise.sine {
+        let step = std::f32::consts::PI / NOISE_DIVISIONS as f32;
+        for (i, n) in table.iter_mut().take(NOISE_DIVISIONS).enumerate() {
+            *n = (i as f32 * step).sin();
+        }
+    } else {
+        let mut random = noise.seed | 1;
+        fractal_noise(&mut table, &mut random);
+    }
+    let (scale, wave) = if noise.sine {
+        (noise.amplitude * 100., segments as f32 * 0.1)
+    } else {
+        (noise.amplitude * length * 0.01 * 2., 0.)
+    };
+
+    let (forward, right, up) = lambda_slicer_render::camera::angle_vectors(view_angles);
+    let dir = delta.map(|c| c / length);
+    let cross = [
+        forward[1] * dir[2] - forward[2] * dir[1],
+        forward[2] * dir[0] - forward[0] * dir[2],
+        forward[0] * dir[1] - forward[1] * dir[0],
+    ];
+    let size = (cross[0] * cross[0] + cross[1] * cross[1] + cross[2] * cross[2])
+        .sqrt()
+        .max(1e-6);
+    let across = cross.map(|c| c / size);
+
+    (0..segments)
+        .map(|i| {
+            let fraction = i as f32 * div;
+            let index = (i * (NOISE_DIVISIONS - 1)) / (segments - 1);
+            let factor = table[index] * scale;
+            let mut p = [0, 1, 2].map(|k| start[k] + fraction * delta[k]);
+            if noise.sine {
+                let (s, c) = (fraction * std::f32::consts::PI * wave + noise.time).sin_cos();
+                p = [0, 1, 2].map(|k| p[k] + factor * s * up[k] + factor * c * right[k]);
+            } else {
+                p = [0, 1, 2].map(|k| p[k] + factor * across[k]);
+            }
+            (p, v + i as f32 * v_step)
+        })
+        .collect()
+}
+
+/// Midpoint noise between a table's two ends, half the span a step at
+/// most, normalised to about one (`FracNoise`)
+fn fractal_noise(table: &mut [f32], random: &mut u64) {
+    let divs = table.len() - 1;
+    if divs < 2 {
+        return;
+    }
+    let half = divs / 2;
+    // xorshift, any uniform numbers will do
+    *random ^= *random << 13;
+    *random ^= *random >> 7;
+    *random ^= *random << 17;
+    let unit = (*random >> 11) as f32 / (1u64 << 53) as f32;
+    table[half] = (table[0] + table[divs]) * 0.5 + divs as f32 * (unit * 0.25 - 0.125);
+    if half > 1 {
+        fractal_noise(&mut table[half..], random);
+        fractal_noise(&mut table[..=half], random);
     }
 }
 
@@ -1909,5 +2096,45 @@ impl CallbackTrait for Frame {
         {
             r.blit.paint(pass, group);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn noisy_beams_keep_their_length_and_stay_near_their_line() {
+        let (start, end) = ([0.; 3], [200., 0., 0.]);
+        let still = BeamNoise {
+            amplitude: 0.,
+            sine: false,
+            seed: 7,
+            time: 0.,
+        };
+        assert_eq!(beam_points(start, end, 3., 0., &still, [0.; 3]).len(), 2);
+
+        // Looking down at a beam along x, the noise pushes it along y
+        let noisy = BeamNoise {
+            amplitude: 0.6,
+            ..still
+        };
+        let points = beam_points(start, end, 3., 0., &noisy, [90., 0., 0.]);
+        // One every 4 units, 64 at most
+        assert_eq!(points.len(), 53);
+        // The start stays, the far end only moves aside, as the engine
+        // reads the table's second last entry for it
+        assert_eq!(points[0].0, start);
+        assert!((points[52].0[0] - 200.).abs() < 1e-3);
+        // Pushed no further than the amplitude times twice the length in
+        // hundreds, times the table's reach, 64 over 8 for its middle and
+        // as much again from its halves and quarters
+        let reach = 0.6 * 200. * 0.02 * 64. / 4.;
+        assert!(
+            points
+                .iter()
+                .all(|(p, _)| p[1].abs() <= reach && p[2].abs() < 1e-3)
+        );
+        assert!(points.iter().any(|(p, _)| p[1].abs() > 0.01));
     }
 }
