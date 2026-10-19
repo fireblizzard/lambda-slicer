@@ -871,3 +871,33 @@ was playing went on, each heard as a gap. A new feed's first block after a seek 
 Played for 20 s with the sound tap set, so the device plays silence at the same pace: none in
 stalkyard from 100 s, stalkx from 20 s or fastrun from 3,000 s, two runs each. A mixer slowed on
 purpose to 15 ms for each 10 ms block gave 192 in 5 s.
+
+## Linux (12e)
+
+Checked on 2026-10-19 under WSL 1 on the development machine, Ubuntu 26.04.1 with Rust 1.98.1. WSL
+1 has no display, no sound device and no GPU, so Mesa's llvmpipe draws through software Vulkan.
+The game's install and the demos were read from the Windows drive through `/mnt/f`, where names
+match case-sensitively, as they would on a Linux install.
+
+| Check | Result |
+|---|---|
+| `scripts\check.ps1 -Linux`, clippy with warnings as errors, every test and a release build | passed, the same tests as on Windows and one more, that two game files whose names differ only in case are ambiguous, which only Linux can have |
+| `examples/seek_probe.rs` on stalkx, run_92 and crossfire | indexed seeks 5.2, 3.1 and 10.3 ms at the median, none differing from sequential playback |
+| `examples/effects_seek.rs` with the game's files, the same demos | 11.1, 1.9 and 14.4 ms at the median, none differing |
+| `examples/fixture_equivalence.rs` with the manifest's paths moved to `/mnt/f` | every moment reached every way agreed, 112 comparisons of state, frame and mixed sound, and every slice exported |
+| `examples/render_bench.rs` on stalkx with a player model | drawn at 1920 by 1080 in 103 ms a frame on the CPU, every texture found. Against the same frame from the RTX 3070 on Windows, 7 pixels differ by more than 2 grey levels of 255, and the mean difference is 0.2 |
+| The viewer's window under Xvfb (`xvfb-run`), its bench on stalkx from 20 s at 1920 by 1080 | the window opens on X11 and plays, 40 models drawn as on Windows, the first picture after 589 ms, at 13 fps, which is llvmpipe's speed on the CPU and says nothing of a GPU's |
+| The viewer's captures of `ls_9e_run.dem` every 0.5 s at 640 by 480 with the game's gamma, against the same on Windows, both with default settings | the 33 pairs differ by 0.22 grey levels on average. A few pixels a picture differ by more than 16, along the edges of alpha-tested textures far off, where the two rasterizers choose texels differently |
+| `--viewer-play` with no sound device | ALSA finds no device, the viewer says so and plays on without sound |
+
+Xvfb and `libxkbcommon-x11-0`, which winit needs on X11, were installed in WSL for this.
+
+Not tried, so not claimed for Linux:
+
+- A Linux desktop, Wayland or X11 with a GPU: the viewer's speed there, and its window's
+  behaviour beyond opening, playing and closing.
+- Sound through ALSA on a device. The mix itself is checked above.
+- Whether a moment's state is the same on both systems, as each is compared only with itself.
+
+These wait for a Linux desktop, as the rest of the app's window does ([release](release.md),
+"Linux").

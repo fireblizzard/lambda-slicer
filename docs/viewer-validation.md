@@ -238,3 +238,59 @@ Found:
   2.5 s, as the session begins at 1.95 s and has no full update yet, and the monster death at
   19.5 s, as a temporary entity is still moving at every start tried. Both moments agreed every way
   in the demo itself. The cases moved to the moments above, whose slices export.
+
+## Reference captures (12d)
+
+A clip of each moment of the fixture matrix, cut with `lambda-slicer slice` into the game's `ag`
+folder, so the game and the viewer play the very same files, as in 9e. Each runs 6 s, the moment
+2 or 3 s in. The translucent sprite's moment is in `ls_9e_run.dem`, which the game has recorded
+already.
+
+| Clip | Source | Cut | The moment in the clip |
+|---|---|---|---|
+| `ls_12d_kill.dem` | `naz_crossfire_pb_01.dem` | 11.21 to 17.21 s | 3.0 s, the gauss kill, with the shot, the death and after |
+| `ls_12d_gauss.dem` | `naz_crossfire_pb_01.dem` | 8 to 14 s | 3.0 s, the gauss charging |
+| `ls_12d_delayed.dem` | `naz_crossfire_pb_01.dem` | 69 to 75 s | 3.0 s, the gauss's stop waiting for its delay |
+| `ls_12d_reload.dem` | `naz_crossfire_pb_01.dem` | 2 to 8 s | 3.0 s, the reload |
+| `ls_12d_egon.dem` | `20230909_224143_stalkyard.dem` | 103.5 to 109.5 s | 3.0 s, an Egon's beams in a 32-player fight |
+| `ls_12d_ambient.dem` | `run_92.dem` | 2.5 to 8.5 s | 2.0 s, ambient loops |
+| `ls_12d_brush.dem` | `run_92.dem` | 4 to 10 s | 3.0 s, a brush entity moving |
+| `ls_12d_death.dem` | `run_92.dem` | 30 to 36 s | 3.0 s, a monster's death sound |
+
+**Recording the game's frames**, as in "Recording the game's frames", one clip at a time, windowed
+at 1280 by 720 or any size, with the game's gamma settings noted:
+
+```
+hud_draw 0; crosshair 0; net_graph 0; cl_showfps 0; r_drawviewmodel 1
+playdemo ls_12d_kill; startmovie ls12d_kill 10
+```
+
+and `endmovie` once the demo has ended, the movie named as the clip without its first underscore.
+Then the same for the other seven. **Recording the game's sound**, as in "Recording the game's
+sound", in a second pass without `startmovie`, which slows the game: the loopback recorder started,
+`playdemo ls_12d_kill`, the recording saved as a WAV file, for
+
+```
+cargo run --release -p lambda-slicer-audio --example sound_compare -- F:\SteamLibrary\steamapps\common\Half-Life F:\SteamLibrary\steamapps\common\Half-Life\ag\ls_12d_kill.dem ls12d_kill.wav 0.5 5
+```
+
+**Comparing.** `scripts/viewer-references.ps1 -Game DIR -Out FOLDER` captures the viewer's frames
+of every clip, at 640 by 480 every 0.05 s for 7 s with the game's gamma settings (`-Gamma`,
+2,2,2,2 unless given). For each clip whose game frames are in `ag`, it then runs
+`examples/frame_compare.rs` in `lambda-slicer-gui` and writes a contact sheet of every tenth pair
+to `FOLDER\<clip>.png`, the game's frame on the left. `frame_compare` takes as the demo the
+longest run of the game's frames that change from one to the next, still for half a second at
+most, cuts both sides to the 4:3 scene and makes grey 160 by 120 thumbnails, the speedometer left
+out. It finds the offset between the game's clock and the clip's within 2 s, and says how much the
+pairs differ against frames a second apart and which differ most.
+
+**Checked (2026-10-19)** on `ls_9e_run.dem` and the game's frames of 9e (`-Clips ls_9e_run
+-Seconds 16`): frames 2 to 166 of the game's taken as the demo and an offset of -0.40 s, as found
+by hand in 9e, and pairs differing by 9.4 against 24.0 for frames a second apart (8.4 in 9e,
+before the beam entities and steady glows changed this clip). It reads the game's frames until
+they stay still for 3 s after the demo, in 12 s here. The pairs differing most are at 4.4 to 4.9 s,
+where a crate breaks. The viewer's wooden gibs are larger and nearer the camera than the game's,
+not yet looked into.
+
+**Status:** the clips and the viewer's frames of them are ready. The game's frames and sound of
+the eight new clips are not recorded yet, so nothing of them is compared.

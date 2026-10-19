@@ -65,11 +65,18 @@ need a new login to refresh their icon cache. Linux desktop appearance remains u
 
 The workspace builds and every test passes on Linux x86_64 (Ubuntu in WSL, 2026-10-17), and CI
 repeats that. Building the GUI needs the ALSA development package for sound output
-(`libasound2-dev` on Debian and Ubuntu) and `pkg-config`. At run time it needs ALSA, xkbcommon, a
-Vulkan or OpenGL driver, an XDG desktop portal for the file dialogs, and fontconfig fonts for CJK
+(`libasound2-dev` on Debian and Ubuntu) and `pkg-config`. At run time it needs ALSA, xkbcommon (with
+`libxkbcommon-x11-0` on X11), a Vulkan or OpenGL driver, an XDG desktop portal for the file dialogs, and fontconfig fonts for CJK
 and Arabic text. **Pending** until tried on a Linux desktop: the GUI's rendering,
 file dialogs, drag and drop, system font discovery, and playback of exported demos in the Linux
 game.
+
+The demo viewer was checked on Linux in WSL on 2026-10-19, against real demos and the game's
+files: every seek and every way of reaching the fixture moments agreed with sequential playback,
+its window opened and played under Xvfb (which needs `libxkbcommon-x11-0` on X11), and its
+pictures drawn in software matched the Windows ones ([viewer profile](viewer-profile.md),
+"Linux"). Its sound output and its speed on a Linux desktop with a GPU are pending with the rest
+of the desktop.
 
 ## Support matrix
 
@@ -87,6 +94,8 @@ game.
 | Windows GUI | built and screen-checked, interactive smoke test pending | checklist below |
 | Interface languages | complete catalogs, screens checked, native review pending | [languages](i18n.md) |
 | Linux | builds and tests pass, desktop and game pending | above |
+| Demo viewer on Windows | supported and measured, its picture compared with the game's in three clips, its sound not yet | [viewer profile](viewer-profile.md), [viewer validation](viewer-validation.md) |
+| Demo viewer on Linux | playback, seeking, mixing and drawing checked in WSL, the window under Xvfb, a desktop with a GPU and sound pending | above |
 
 ## Interactive smoke test (Windows)
 
