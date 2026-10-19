@@ -212,13 +212,17 @@ impl Controller {
                 })
             }
             Command::Play => {
+                // Playing on from a step is no longer stepping, whose
+                // answers move the playhead to the group reached
                 self.stop_at = None;
+                self.stepping_to = None;
                 self.clock.set_backward(false, wall);
                 self.clock.play(wall);
                 self.tick(wall)
             }
             Command::PlayBackward => {
                 self.stop_at = None;
+                self.stepping_to = None;
                 self.clock.set_backward(true, wall);
                 self.clock.play(wall);
                 self.tick(wall)

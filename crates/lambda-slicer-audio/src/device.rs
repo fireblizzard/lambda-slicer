@@ -197,7 +197,7 @@ impl Device {
         stream.play().map_err(|e| e.to_string())?;
 
         let feed = Arc::new(Mutex::new(None));
-        let volume = Arc::new(AtomicU32::new(0.5f32.to_bits()));
+        let volume = Arc::new(AtomicU32::new(0.1f32.to_bits()));
         let stop = Arc::new(AtomicBool::new(false));
         let mixer = {
             let shared = Shared {

@@ -68,7 +68,7 @@ impl Default for ViewerSettings {
             overbright: g.overbright,
             fov: None,
             viewmodel: true,
-            volume: 0.5,
+            volume: 0.1,
             see_through: false,
             see_through_items: false,
         }

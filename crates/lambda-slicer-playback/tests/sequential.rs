@@ -507,3 +507,38 @@ fn scrubbing_holds_playback_silent_and_resumes_or_goes_back() {
         None
     );
 }
+
+#[test]
+fn playing_after_a_step_runs_on_from_the_group_reached() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = demo(dir.path());
+    let mut controller = Controller::default();
+    controller.command(Command::Load(path.clone()), 0.).unwrap();
+    let mut p = open(&path);
+    let answer = |controller: &mut Controller, p: &mut Playback, stamp, at, wall| {
+        let frame = p.present(stamp, at, CameraMode::Recorder, false);
+        assert!(controller.accept(&Reply::Frame(Box::new(frame)), wall));
+    };
+
+    let seek = controller
+        .command(Command::SeekTo(SourceTime(1.)), 0.)
+        .unwrap();
+    p.advance_to(SourceTime(1.)).unwrap();
+    answer(&mut controller, &mut p, seek.stamp, SourceTime(1.), 0.);
+
+    // A step pauses at the next group, its answer moving the playhead there
+    let step = controller.command(Command::StepGroup(1), 1.).unwrap();
+    let Target::Group(group) = step.target else {
+        panic!("a step asks for a group");
+    };
+    p.seek_group(group).unwrap();
+    let reached = p.position().unwrap().time;
+    answer(&mut controller, &mut p, step.stamp, reached, 1.);
+    assert_eq!(controller.time(2.), reached);
+
+    // Played, the answers to its requests leave the clock running
+    let play = controller.command(Command::Play, 2.).unwrap();
+    answer(&mut controller, &mut p, play.stamp, reached, 2.5);
+    assert_eq!(controller.time(3.), SourceTime(reached.0 + 1.));
+    assert!(controller.playing());
+}

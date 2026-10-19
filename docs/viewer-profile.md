@@ -252,9 +252,9 @@ change what it shows.
 | Control | Key | What it does |
 |---|---|---|
 | Play, Pause | Space, L | plays forward at the chosen rate, with sound, or pauses |
-| Play backward | J | plays toward the start at the chosen rate, without sound, pausing at the start. Past a loop's start it goes on from the loop's end |
+| Rewind | J | plays toward the start at the chosen rate, without sound, pausing at the start. Past a loop's start it goes on from the loop's end |
 | Pause | K | pauses either way |
-| Step back, Step forward | comma, period | moves one recorded group, pausing |
+| Previous frame, Next frame | comma, period | moves one recorded group, pausing |
 | Rate | | 0.25×, 0.5×, 1×, 2× or 4×, for either direction, the playhead staying where it is |
 | Time bar | left and right arrows | seeks, the arrows five seconds back or forward |
 
@@ -279,7 +279,7 @@ languages:
 | Gamma, brightness, texture gamma, light gamma, overbright lighting | the game's `gamma`, `brightness`, `texgamma`, `lightgamma` and `gl_overbright`, defaulting to the game's own (2.5, 0, 2.0, 2.5 and off) and kept in the game's ranges. Applied as soon as they change |
 | Field of view as recorded, or a field of view | the recorded field of view, or one from 10 to 150 degrees across the view's width |
 | Show the weapon in view | the viewmodel and its muzzle flashes, as `r_drawviewmodel` does |
-| Volume | the sound's master volume, the same as the slider beside the time bar, saved once the pointer is let go |
+| Volume | the sound's master volume, 0.1 by default, the same as the slider beside the time bar, saved once the pointer is let go |
 
 Gamma works as the game's tables do (`BuildGammaTable`, as Xash3D restates it), worked out in the
 shaders for each texel (`lambda-slicer-render`'s `gamma`):
@@ -300,7 +300,7 @@ saving it, where it once skipped the first frame of a run.
 
 ### See-through walls (11f)
 
-A mode, off by default, shows players behind walls. "Through walls" beside the controls turns it
+A mode, off by default, shows players behind walls. "See through walls" beside the controls turns it
 on and off, and Settings keeps it, with a second choice for every other model too, projectiles and
 items among them. `--viewer-see-through` turns it on for one run.
 
