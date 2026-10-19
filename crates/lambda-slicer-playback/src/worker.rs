@@ -29,7 +29,7 @@ use crate::controller::{Reply, Request, Stamp, Target};
 use crate::playback::Playback;
 
 pub struct Worker {
-    requests: Option<Sender<Request>>,
+    requests: Option<Sender<Counted>>,
     replies: Receiver<Reply>,
     thread: Option<JoinHandle<()>>,
     loaded: Arc<Mutex<Option<Loaded>>>,
@@ -63,7 +63,7 @@ impl Worker {
         files: Option<GameFiles>,
         notify: impl Fn() + Send + 'static,
     ) -> Self {
-        let (request_tx, request_rx) = mpsc::channel::<Request>();
+        let (request_tx, request_rx) = mpsc::channel::<Counted>();
         let loaded = Arc::new(Mutex::new(None));
         let thread_loaded = loaded.clone();
         let changes = Arc::new(AtomicU64::new(0));
@@ -96,14 +96,15 @@ impl Worker {
         let Some(tx) = &self.requests else {
             return;
         };
-        // Counted before it is sent, so the worker never stops for a
-        // request it has already taken
+        // Sent with the count it makes, so the worker stops only for a
+        // change after the request it answers
         let mut last = self.last.lock().unwrap_or_else(|e| e.into_inner());
         if *last != Some(request.stamp) {
             *last = Some(request.stamp);
             self.changes.fetch_add(1, Ordering::SeqCst);
         }
-        let _ = tx.send(request);
+        let count = self.changes.load(Ordering::SeqCst);
+        let _ = tx.send((count, request));
     }
 
     /// The demo open now and its checkpoints
@@ -141,9 +142,12 @@ impl Drop for Worker {
 /// tens of milliseconds
 const INDEX_SLICE: usize = 1000;
 
+/// A request and the count of changes once it was sent
+type Counted = (u64, Request);
+
 /// The worker thread's ends of what it shares with the [`Worker`]
 struct Thread {
-    requests: Receiver<Request>,
+    requests: Receiver<Counted>,
     replies: Sender<Reply>,
     loaded: Arc<Mutex<Option<Loaded>>>,
     changes: Arc<AtomicU64>,
@@ -156,7 +160,7 @@ fn run(limits: Limits, files: Option<GameFiles>, worker: Thread, notify: impl Fn
         loaded,
         changes,
     } = worker;
-    // The count of changes when the batch being answered was taken
+    // The count of changes the request being answered was sent with
     let taken = Arc::new(AtomicU64::new(0));
     let replaced = {
         let (changes, taken) = (changes.clone(), taken.clone());
@@ -195,10 +199,11 @@ fn run(limits: Limits, files: Option<GameFiles>, worker: Thread, notify: impl Fn
         };
         let mut batch = vec![first];
         batch.extend(requests.try_iter());
-        taken.store(changes.load(Ordering::SeqCst), Ordering::SeqCst);
-        let Some(newest) = batch.pop() else {
+        let Some((count, newest)) = batch.pop() else {
             continue;
         };
+        taken.store(count, Ordering::SeqCst);
+        let batch: Vec<Request> = batch.into_iter().map(|(_, r)| r).collect();
 
         let load = std::iter::once(&newest)
             .chain(batch.iter().rev())

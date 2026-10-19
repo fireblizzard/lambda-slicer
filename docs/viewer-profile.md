@@ -118,7 +118,8 @@ groups, unanswered, and dropping the worker stops it the same way, so changing d
 for a seek no one wants (one cold seek took 7 s before checkpoints). The requests playing sends
 each frame share a stamp and do not stop each other, so playback slower than the clock still shows
 frames. A seek stopped part way leaves playback at a group it reached, which the next request goes
-on from, and is tested to end where sequential playback does.
+on from, and is tested to end where sequential playback does. Each request carries the count of
+changes sent up to it, so a change sent after the request being answered always stops it.
 
 ### Scene
 
@@ -220,7 +221,8 @@ The demo view plays the demo when a game folder is given with `--game DIR` (impl
 §13.8). A map that cannot be read is named in place of the view with the reason, nothing of the map
 before it drawn, and is not asked for again. Playback that stops before the demo's end, because a
 part of it could not be decoded, says why under the view. `--viewer-capture` saves its frames at chosen times for comparing with the game
-([viewer validation](viewer-validation.md)). It keeps a playback controller and worker per demo, and a thread that reads the session's
+([viewer validation](viewer-validation.md)), each once the map, the server's sky and every model
+and sprite the frame draws are in, effects included. It keeps a playback controller and worker per demo, and a thread that reads the session's
 map and the studio models its entities use. Play, pause and a time bar drive the controller, and
 `--viewer-at SECONDS` seeks there once the demo is loaded. The asset folder setting and the rest
 of the viewer's controls come with M11.
@@ -271,8 +273,8 @@ compared with the game (9e):
 | Aim | a player with a gait sequence aims through its first blend from its pitch (`StudioPlayerBlend`), the rest of the pitch turning the model. One without keeps its controllers centred |
 | Held weapons | the player's `weaponmodel`, its bones named as the player's taking the player's transforms (`StudioMergeBones`), the rest posed with the player's sequence |
 | Lighting | the colour under the model from a line 2048 units down through the BSP tree to the first lit face, its lightmaps weighed by their styles (`R_LightPoint`). Its brightest channel is the ambient level up to 128 and the light from above up to 192, softened by a lambert of 1.5. Where nothing is under a model it is lit at 128 and 64 |
-| Body and skin | each entity's body and skin choose the submodel of each body part (`(body / base) % models`) and the skin family, as `StudioSetupModel` does. A body past the model's own is the first's, and each combination is read once, after the model's first body is in. The viewmodel takes the body of its last animation |
-| Render modes | normal models solid. Colour, texture and alpha modes blended by the render amount, glow and additive modes added by it, each lit as a solid model and without the render colour, which the game's studio drawing takes only for its glow shell. Translucent models are drawn after the sky and before translucent brushes, the furthest first, and one at amount 0 is not drawn. A player's weapon is drawn as the player is |
+| Body and skin | each entity's body and skin choose the submodel of each body part (`(body / base) % models`) and the skin family, as `StudioSetupModel` does. A body past the model's own is the first's, and each combination is read once, after the model's first body is in. Players' models take theirs in their team colours, from the stock model when theirs is not installed. The viewmodel takes the body of its last animation |
+| Render modes | normal models solid. Colour, texture and alpha modes blended by the render amount, glow and additive modes added by it, each lit as a solid model and without the render colour, which the game's studio drawing takes only for its glow shell. Translucent models are drawn after the sky together with translucent brushes and sprites, all from the furthest in, and one at amount 0 is not drawn. A player's weapon is drawn as the player is |
 | Team colours | a player model's `DM_Base` textures with palette entries 160 to 191 turned to the top colour's hue and 80 to 111 to the bottom colour's, each keeping its brightness and saturation, as the game's `PaletteHueReplace` does. The surveyed AG install's own player models have no such textures |
 
 The leg state lives in playback's scene, so checkpoints keep it and a seek reaches the same legs as
@@ -299,7 +301,7 @@ textures, render effects such as the glow shell, and the sky's light on models.
 | Sprites | `IDSP` version 2, single frames and frame groups, in normal, additive, index-alpha and alpha-tested formats. Every sprite in the surveyed install reads (268, AG's sprite items included) |
 | Sprite entities | an entity whose model is a `.spr`, or one of AG's sprites under a `.mdl` name, at its frame and scale (0 meaning 1) |
 | Orientation | facing the view, facing the view upright, facing the camera's position upright, turned by the entity's angles, or facing the view rolled by the entity, as the five `SPR_` types say |
-| Render modes | normal and alpha modes cut out at half alpha, texture and colour modes blended by the render amount, additive mode added, and glow added without depth, fading as 19000 over the squared distance between 0.05 and 1, and grown by its distance over 200 to keep its size on screen unless it is steady. A glow the world hides from the eye, the line to it stopping more than 8 units short, is not drawn, brush entities and models hiding none (`R_SpriteGlowBlend`). Every mode takes the render colour, white when it is black, as Xash3D says the engine's sprite drawing does (until 10d only additive and glowing sprites did). Drawn after translucent brushes, the furthest first |
+| Render modes | normal and alpha modes cut out at half alpha, texture and colour modes blended by the render amount, additive mode added, and glow added without depth, fading as 19000 over the squared distance between 0.05 and 1, and grown by its distance over 200 to keep its size on screen unless it is steady. A glow the world hides from the eye, the line to it stopping more than 8 units short, is not drawn, brush entities and models hiding none (`R_SpriteGlowBlend`). Every mode takes the render colour, white when it is black, as Xash3D says the engine's sprite drawing does (until 10d only additive and glowing sprites did). Drawn together with translucent models and brushes, all from the furthest in |
 
 Not drawn yet: the bob and lag the game adds to the viewmodel.
 

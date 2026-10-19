@@ -10,7 +10,7 @@
 //!
 //! A frame draws the opaque world and brush entities, then studio models,
 //! then the sky wherever nothing was drawn, then translucent studio models,
-//! brush entities and sprites, each from the furthest in. The viewmodel
+//! brush entities and sprites together from the furthest in. The viewmodel
 //! comes last, in a pass of its own with the depth cleared, so it never
 //! sinks into a wall. Each BSP model is drawn
 //! with its entity's transform and render mode, every lightmap weighed by
@@ -601,6 +601,23 @@ enum SpritePass {
     Blend,
     Add,
     Glow,
+}
+
+/// A translucent thing to draw, by its place in its own list
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Translucent {
+    Model(usize),
+    Brush(usize),
+    Sprite(usize),
+}
+
+/// Translucent models, brushes and sprites, each with its squared distance
+/// from the eye, in the order they are drawn, the furthest first. Equally
+/// far ones keep the order given
+fn translucent_order(items: impl Iterator<Item = (f32, Translucent)>) -> Vec<Translucent> {
+    let mut items: Vec<(f32, Translucent)> = items.collect();
+    items.sort_by(|a, b| b.0.total_cmp(&a.0));
+    items.into_iter().map(|(_, item)| item).collect()
 }
 
 /// How bright a glowing sprite is at `distance`, as the game fades them
@@ -1645,7 +1662,8 @@ impl Scene {
         self.upload_objects(device, queue, brushes);
         self.upload_decals(device, queue, draw.decals.as_deref());
 
-        // Translucent brushes from the furthest in
+        // Translucent models, brushes and sprites together, from the
+        // furthest in, as the game sorts its translucent entities
         let distance = |b: &Brush| {
             let centre = self
                 .world
@@ -1656,21 +1674,21 @@ impl Scene {
             let p = [0, 1, 2].map(|k| centre[k] + b.origin[k] - view.eye[k]);
             p[0] * p[0] + p[1] * p[1] + p[2] * p[2]
         };
-        let mut translucent: Vec<usize> = (0..brushes.len())
-            .filter(|&i| brushes[i].mode.pass() != Pass::Opaque)
-            .collect();
-        translucent.sort_by(|&a, &b| distance(&brushes[b]).total_cmp(&distance(&brushes[a])));
-        let model_distance = |instance: &Instance| {
-            let p = instance.centre();
+        let from_eye = |p: [f32; 3]| {
             let d = [0, 1, 2].map(|k| p[k] - view.eye[k]);
             d[0] * d[0] + d[1] * d[1] + d[2] * d[2]
         };
-        let mut translucent_models: Vec<usize> = (0..instances.len())
+        let models = (0..instances.len())
             .filter(|&i| instances[i].pass() != Pass::Opaque)
-            .collect();
-        translucent_models.sort_by(|&a, &b| {
-            model_distance(&instances[b]).total_cmp(&model_distance(&instances[a]))
-        });
+            .map(|i| (from_eye(instances[i].centre()), Translucent::Model(i)));
+        let translucent_brushes = (0..brushes.len())
+            .filter(|&i| brushes[i].mode.pass() != Pass::Opaque)
+            .map(|i| (distance(&brushes[i]), Translucent::Brush(i)));
+        let sprite_items = sprites
+            .iter()
+            .enumerate()
+            .map(|(k, &(i, ..))| (from_eye(draw.sprites[i].origin), Translucent::Sprite(k)));
+        let translucent = translucent_order(models.chain(translucent_brushes).chain(sprite_items));
 
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("viewer"),
@@ -1773,49 +1791,60 @@ impl Scene {
                 }
             }
 
-            // Translucent models from the furthest in
-            if let Some(buffer) = &self.instances
-                && !translucent_models.is_empty()
-            {
-                pass.set_vertex_buffer(0, buffer.slice(..));
-                for &i in &translucent_models {
-                    let instance = &instances[i];
-                    pass.set_pipeline(match instance.pass() {
-                        Pass::Add => &self.pipelines.model_add,
-                        _ => &self.pipelines.model_blend,
-                    });
-                    self.draw_instance(&mut pass, instance, starts[i]);
-                }
-            }
-
-            if let Some(world) = &self.world {
-                bind_world(&mut pass, world);
-                for &i in &translucent {
-                    let pipeline = match brushes[i].mode.pass() {
-                        Pass::Add => &self.pipelines.add,
-                        _ => &self.pipelines.blend,
-                    };
-                    pass.set_pipeline(pipeline);
-                    draw_brush(&mut pass, world, i);
-                }
-            }
-
-            if let Some(buffer) = &self.sprite_vertices
-                && !sprites.is_empty()
-            {
-                pass.set_vertex_buffer(0, buffer.slice(..));
-                for &(i, kind, first) in &sprites {
-                    let s = &draw.sprites[i];
-                    let gpu = &self.sprites[s.sprite.0];
-                    let frame = &gpu.frames[s.frame % gpu.frames.len()];
-                    pass.set_pipeline(match kind {
-                        SpritePass::Cut => &self.pipelines.sprite_cut,
-                        SpritePass::Blend => &self.pipelines.sprite_blend,
-                        SpritePass::Add => &self.pipelines.sprite_add,
-                        SpritePass::Glow => &self.pipelines.sprite_glow,
-                    });
-                    pass.set_bind_group(1, &frame.texture, &[]);
-                    pass.draw(first..first + 6, 0..1);
+            // Each kind's vertices are bound again when the kind changes
+            let mut bound = None;
+            for &item in &translucent {
+                let kind = std::mem::discriminant(&item);
+                let rebind = bound != Some(kind);
+                bound = Some(kind);
+                match item {
+                    Translucent::Model(i) => {
+                        let Some(buffer) = &self.instances else {
+                            continue;
+                        };
+                        if rebind {
+                            pass.set_vertex_buffer(0, buffer.slice(..));
+                        }
+                        let instance = &instances[i];
+                        pass.set_pipeline(match instance.pass() {
+                            Pass::Add => &self.pipelines.model_add,
+                            _ => &self.pipelines.model_blend,
+                        });
+                        self.draw_instance(&mut pass, instance, starts[i]);
+                    }
+                    Translucent::Brush(i) => {
+                        let Some(world) = &self.world else {
+                            continue;
+                        };
+                        if rebind {
+                            bind_world(&mut pass, world);
+                        }
+                        pass.set_pipeline(match brushes[i].mode.pass() {
+                            Pass::Add => &self.pipelines.add,
+                            _ => &self.pipelines.blend,
+                        });
+                        draw_brush(&mut pass, world, i);
+                    }
+                    Translucent::Sprite(k) => {
+                        let Some(buffer) = &self.sprite_vertices else {
+                            continue;
+                        };
+                        if rebind {
+                            pass.set_vertex_buffer(0, buffer.slice(..));
+                        }
+                        let (i, kind, first) = sprites[k];
+                        let s = &draw.sprites[i];
+                        let gpu = &self.sprites[s.sprite.0];
+                        let frame = &gpu.frames[s.frame % gpu.frames.len()];
+                        pass.set_pipeline(match kind {
+                            SpritePass::Cut => &self.pipelines.sprite_cut,
+                            SpritePass::Blend => &self.pipelines.sprite_blend,
+                            SpritePass::Add => &self.pipelines.sprite_add,
+                            SpritePass::Glow => &self.pipelines.sprite_glow,
+                        });
+                        pass.set_bind_group(1, &frame.texture, &[]);
+                        pass.draw(first..first + 6, 0..1);
+                    }
                 }
             }
             if let Some(buffer) = &self.sprite_vertices
@@ -1979,6 +2008,27 @@ impl Blit {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn translucent_models_brushes_and_sprites_are_drawn_together_furthest_first() {
+        // A glass gib in front of a window, with a sprite between them and
+        // another behind both
+        let items = [
+            (100., Translucent::Model(0)),
+            (900., Translucent::Brush(3)),
+            (400., Translucent::Sprite(1)),
+            (1600., Translucent::Sprite(0)),
+        ];
+        assert_eq!(
+            translucent_order(items.into_iter()),
+            [
+                Translucent::Sprite(0),
+                Translucent::Brush(3),
+                Translucent::Sprite(1),
+                Translucent::Model(0),
+            ]
+        );
+    }
+
     use super::*;
 
     fn view() -> View {

@@ -114,8 +114,9 @@ enum ModelRef {
     /// A model by path, such as `models/w_gauss.mdl`
     File(String),
     /// A player model by the name userinfo gives, the stock player model
-    /// when it is not installed, in the player's top and bottom colours
-    Player(String, [u8; 2]),
+    /// when it is not installed, in the player's top and bottom colours,
+    /// body and skin
+    Player(String, [u8; 2], u32, usize),
     /// A studio model in another body and skin than its first, the body
     /// reduced to the submodels it selects
     Variant(String, u32, usize),
@@ -187,12 +188,12 @@ impl Loader {
                                         m.mesh = ModelMesh::build(&m.asset, *body, *skin);
                                         m
                                     }),
-                                ModelRef::Player(name, colours) => {
+                                ModelRef::Player(name, colours, body, skin) => {
                                     load::player(search, name).map(|mut m| {
                                         m.mesh = ModelMesh::build_coloured(
                                             &m.asset,
-                                            0,
-                                            0,
+                                            *body,
+                                            *skin,
                                             Some(*colours),
                                         );
                                         m
@@ -529,29 +530,7 @@ impl Viewer {
             self.sky_loading = Some(sky.to_owned());
         }
 
-        let viewmodel = viewmodel_ref(frame, &self.models);
-        let drawn = drawn(frame, &self.models)
-            .into_iter()
-            .flat_map(|d| std::iter::once(d.model).chain(d.weapon));
-        let flashes = frame.flashes.iter().map(|f| flash_sprite(f.sprite));
-        let temp = frame.temp_entities.iter().filter_map(|e| {
-            let path = e.model.as_deref()?;
-            Some(studio_ref(&self.models, path, i64::from(e.body), 0))
-        });
-        let temp: Vec<ModelRef> = temp.collect();
-        let beams = &frame.beams;
-        let beam_sprites = beams
-            .trails
-            .iter()
-            .map(|t| &t.sprite)
-            .chain(beams.beams.iter().map(|b| &b.sprite))
-            .map(|s| ModelRef::File(s.to_string()));
-        for model in drawn
-            .chain(viewmodel)
-            .chain(flashes)
-            .chain(temp)
-            .chain(beam_sprites)
-        {
+        for model in wanted(frame, &self.models) {
             if let Entry::Vacant(slot) = self.models.entry(model) {
                 let _ = loader.requests.send(Asset::Model(slot.key().clone()));
                 slot.insert(Slot::Loading);
@@ -926,13 +905,16 @@ impl Viewer {
             return false;
         };
         let map = frame.map.as_deref().map(map_name);
-        let viewmodel = viewmodel_ref(frame, &self.models);
-        let loading = drawn(frame, &self.models)
+        let loading = wanted(frame, &self.models)
             .into_iter()
-            .flat_map(|d| std::iter::once(d.model).chain(d.weapon))
-            .chain(viewmodel)
             .any(|m| matches!(self.models.get(&m), None | Some(Slot::Loading)));
-        frame.stamp == stamp && map.is_some() && self.map == map && !loading
+        // The sky the server names, once it is in or could not be read
+        let sky = frame.sky.as_deref().is_none_or(|sky| {
+            self.sky
+                .as_deref()
+                .is_some_and(|drawn| drawn.eq_ignore_ascii_case(sky))
+        });
+        frame.stamp == stamp && map.is_some() && self.map == map && !loading && sky
     }
 
     /// The map the frame is on, and why, when it could not be loaded
@@ -1213,7 +1195,8 @@ fn drawn(frame: &PresentedFrame, models: &HashMap<ModelRef, Slot>) -> Vec<Drawn>
                 let colours = player.map_or([0; 2], |p| {
                     [p.top_color.unwrap_or(0), p.bottom_color.unwrap_or(0)]
                 });
-                ModelRef::Player(name.to_owned(), colours)
+                let first = ModelRef::Player(name.to_owned(), colours, 0, 0);
+                variant(models, first, e.body, e.skin)
             }
             (None, Some(path)) if path.ends_with(".mdl") || path.ends_with(".spr") => {
                 studio_ref(models, path, e.body, e.skin)
@@ -1267,6 +1250,33 @@ fn drawn(frame: &PresentedFrame, models: &HashMap<ModelRef, Slot>) -> Vec<Drawn>
     out
 }
 
+/// Every model and sprite `frame` draws, entities, held weapons, the
+/// viewmodel, muzzle flashes, temporary entities and beams, as the models
+/// in `models` say their variations
+fn wanted(frame: &PresentedFrame, models: &HashMap<ModelRef, Slot>) -> Vec<ModelRef> {
+    let drawn = drawn(frame, models)
+        .into_iter()
+        .flat_map(|d| std::iter::once(d.model).chain(d.weapon));
+    let flashes = frame.flashes.iter().map(|f| flash_sprite(f.sprite));
+    let temp = frame.temp_entities.iter().filter_map(|e| {
+        let path = e.model.as_deref()?;
+        Some(studio_ref(models, path, i64::from(e.body), 0))
+    });
+    let beams = &frame.beams;
+    let beam_sprites = beams
+        .trails
+        .iter()
+        .map(|t| &t.sprite)
+        .chain(beams.beams.iter().map(|b| &b.sprite))
+        .map(|s| ModelRef::File(s.to_string()));
+    drawn
+        .chain(viewmodel_ref(frame, models))
+        .chain(flashes)
+        .chain(temp)
+        .chain(beam_sprites)
+        .collect()
+}
+
 /// The viewmodel to draw, in the body its last animation gave
 fn viewmodel_ref(frame: &PresentedFrame, models: &HashMap<ModelRef, Slot>) -> Option<ModelRef> {
     let (path, _) = viewmodel_pose(frame)?;
@@ -1279,11 +1289,23 @@ fn viewmodel_ref(frame: &PresentedFrame, models: &HashMap<ModelRef, Slot>) -> Op
 /// a body or skin past them is the first's. Any other model is its file
 fn studio_ref(models: &HashMap<ModelRef, Slot>, path: &str, body: i64, skin: i64) -> ModelRef {
     let file = ModelRef::File(path.to_owned());
-    if !path.ends_with(".mdl") || (body == 0 && skin == 0) {
+    if !path.ends_with(".mdl") {
         return file;
     }
-    let Some(Slot::Ready(model, _)) = models.get(&file) else {
-        return file;
+    variant(models, file, body, skin)
+}
+
+/// `first`, a studio model or player model in its first body and skin, in
+/// `body` and `skin` instead once it is in. The body is reduced to the
+/// submodels it selects and a skin past the model's families is the
+/// first, so each look is read once. A player model that is not installed
+/// takes them from the stock model it falls back to
+fn variant(models: &HashMap<ModelRef, Slot>, first: ModelRef, body: i64, skin: i64) -> ModelRef {
+    if body == 0 && skin == 0 {
+        return first;
+    }
+    let Some(Slot::Ready(model, _)) = models.get(&first) else {
+        return first;
     };
     let asset = &model.asset;
     let value = u32::try_from(body).unwrap_or(0);
@@ -1294,13 +1316,18 @@ fn studio_ref(models: &HashMap<ModelRef, Slot>, path: &str, body: i64, skin: i64
         .filter(|(_, part)| !part.models.is_empty())
         .map(|(p, part)| asset.submodel(p, value) * part.base)
         .sum::<usize>();
+    let body = u32::try_from(body).unwrap_or(0);
     let skin = usize::try_from(skin)
         .ok()
         .filter(|&s| s < asset.skin_families().len())
         .unwrap_or(0);
-    match (u32::try_from(body).unwrap_or(0), skin) {
-        (0, 0) => file,
-        (body, skin) => ModelRef::Variant(path.to_owned(), body, skin),
+    match (first, body, skin) {
+        (first, 0, 0) => first,
+        (ModelRef::File(path), body, skin) => ModelRef::Variant(path, body, skin),
+        (ModelRef::Player(name, colours, ..), body, skin) => {
+            ModelRef::Player(name, colours, body, skin)
+        }
+        (other, ..) => other,
     }
 }
 
