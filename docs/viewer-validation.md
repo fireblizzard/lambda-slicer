@@ -79,7 +79,7 @@ apart.
 | What | Game | Viewer | Cause |
 |---|---|---|---|
 | Sky | `dusk` on `ls_9e_cross`, `morning` on `ls_9e_stalkx` | the worldspawn's sky name | the game draws the sky the server's movement variables name (`sv_skyname`), which the demos carry. Fixed: the viewer now draws that sky, the map's own when the server names none |
-| Viewmodel's look | added over the scene, the weapon see-through and its black arms gone, for every weapon and player | drawn solid | not in the demos' data, where every player's render mode, amount and effects are normal, nor a setting the recording player knows of. Not known |
+| Viewmodel's look | added over the scene, the weapon see-through and its black arms gone, for every weapon and player | drawn solid | not in the demos' data, where every player's render mode, amount and effects are normal. The install's AG viewmodels (`ag/models/v_*.mdl`) mark every texture additive (`STUDIO_NF_ADDITIVE`), some chrome too, and the game adds such textures over the scene, where black adds nothing. Fixed: the viewer now adds additive model textures over the scene and gives chrome ones their coordinates from the view, and the gauss and other weapons show see-through in the game's colours |
 | Viewmodel's place | lower and smaller | higher, larger and further right | not known. The game may draw it at another field of view, or with the bob and lag the viewer leaves out |
 | Viewmodel through a player's eyes | the watched player's weapon, see-through | none | the client takes the watched player's weapon for the viewmodel, which the spectator's own client data does not name. Fixed: the viewer now draws the viewmodel of the watched player's weapon model, as `V_FindViewModelByWeaponModel` maps them, from its first animation when the weapon changes |
 | Players' colours on `ls_9e_cross` | dark models | flat blue and green | not looked into. The game's console says it could not load the models some players name |
@@ -88,3 +88,8 @@ apart.
 
 After the two fixes the pairs of `ls_9e_cross` differ by 23.6 on average, against 27.8 before.
 `ls_9e_stalkx` stays at 24.5, as its map already names the sky the server does.
+
+With additive and chrome model textures and everything else since (gibs, glows hidden and grown by
+distance, render modes, bodies and skins), captured again the same way on 2026-10-19, the pairs
+differ by 21.4 for `ls_9e_stalkx`, 19.4 for `ls_9e_cross` and 14.4 for `ls_9e_run`, against 24.5,
+23.6 and 15.0, at the same offsets. Most of it is the viewmodel, which covers much of each picture.

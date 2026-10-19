@@ -10,7 +10,8 @@
 //!
 //! A frame draws the opaque world and brush entities, then studio models,
 //! then the sky wherever nothing was drawn, then translucent studio models,
-//! brush entities and sprites together from the furthest in. The viewmodel
+//! the additive textures of solid ones, brush entities and sprites together
+//! from the furthest in. The viewmodel
 //! comes last, in a pass of its own with the depth cleared, so it never
 //! sinks into a wall. Each BSP model is drawn
 //! with its entity's transform and render mode, every lightmap weighed by
@@ -417,8 +418,20 @@ impl WorldGpu {
 
 struct ModelGpu {
     batches: Vec<Batch>,
+    /// By batch, whether its texture is added over the scene
+    additive: Vec<bool>,
     textures: Vec<wgpu::BindGroup>,
     corners: usize,
+}
+
+/// Which of an instance's batches to draw
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Part {
+    /// Those of textures drawn solid
+    Solid,
+    /// Those of additive textures
+    Additive,
+    All,
 }
 
 /// A model uploaded once with [`Scene::add_model`], drawn as any number of
@@ -607,6 +620,8 @@ enum SpritePass {
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum Translucent {
     Model(usize),
+    /// The additive textures of a model drawn solid
+    Additive(usize),
     Brush(usize),
     Sprite(usize),
 }
@@ -1270,6 +1285,11 @@ impl Scene {
             .collect();
         self.models.push(ModelGpu {
             batches: mesh.batches.clone(),
+            additive: mesh
+                .batches
+                .iter()
+                .map(|b| mesh.additive(b.texture))
+                .collect(),
             textures,
             corners: mesh.corner_count(),
         });
@@ -1678,9 +1698,18 @@ impl Scene {
             let d = [0, 1, 2].map(|k| p[k] - view.eye[k]);
             d[0] * d[0] + d[1] * d[1] + d[2] * d[2]
         };
-        let models = (0..instances.len())
-            .filter(|&i| instances[i].pass() != Pass::Opaque)
-            .map(|i| (from_eye(instances[i].centre()), Translucent::Model(i)));
+        // A solid model's additive textures are added with the translucent
+        // things, as they write no depth
+        let models = (0..instances.len()).filter_map(|i| {
+            let item = if instances[i].pass() != Pass::Opaque {
+                Translucent::Model(i)
+            } else if self.has_additive(&instances[i]) {
+                Translucent::Additive(i)
+            } else {
+                return None;
+            };
+            Some((from_eye(instances[i].centre()), item))
+        });
         let translucent_brushes = (0..brushes.len())
             .filter(|&i| brushes[i].mode.pass() != Pass::Opaque)
             .map(|i| (distance(&brushes[i]), Translucent::Brush(i)));
@@ -1776,7 +1805,7 @@ impl Scene {
                 pass.set_vertex_buffer(0, buffer.slice(..));
                 for (instance, start) in instances.iter().zip(starts) {
                     if instance.pass() == Pass::Opaque {
-                        self.draw_instance(&mut pass, instance, *start);
+                        self.draw_instance(&mut pass, instance, *start, Part::Solid);
                     }
                 }
             }
@@ -1810,7 +1839,17 @@ impl Scene {
                             Pass::Add => &self.pipelines.model_add,
                             _ => &self.pipelines.model_blend,
                         });
-                        self.draw_instance(&mut pass, instance, starts[i]);
+                        self.draw_instance(&mut pass, instance, starts[i], Part::All);
+                    }
+                    Translucent::Additive(i) => {
+                        let Some(buffer) = &self.instances else {
+                            continue;
+                        };
+                        if rebind {
+                            pass.set_vertex_buffer(0, buffer.slice(..));
+                        }
+                        pass.set_pipeline(&self.pipelines.model_add);
+                        self.draw_instance(&mut pass, &instances[i], starts[i], Part::Additive);
                     }
                     Translucent::Brush(i) => {
                         let Some(world) = &self.world else {
@@ -1899,30 +1938,56 @@ impl Scene {
             pass.set_bind_group(0, &self.uniform_group, &[]);
             pass.set_vertex_buffer(0, buffer.slice(..));
             for (instance, start) in draw.viewmodel.iter().zip(viewmodel_starts) {
-                pass.set_pipeline(match instance.pass() {
-                    Pass::Opaque => &self.pipelines.model,
-                    Pass::Blend => &self.pipelines.model_blend,
-                    Pass::Add => &self.pipelines.model_add,
-                });
-                self.draw_instance(&mut pass, instance, *start);
+                match instance.pass() {
+                    Pass::Opaque => {
+                        pass.set_pipeline(&self.pipelines.model);
+                        self.draw_instance(&mut pass, instance, *start, Part::Solid);
+                        pass.set_pipeline(&self.pipelines.model_add);
+                        self.draw_instance(&mut pass, instance, *start, Part::Additive);
+                    }
+                    Pass::Blend => {
+                        pass.set_pipeline(&self.pipelines.model_blend);
+                        self.draw_instance(&mut pass, instance, *start, Part::All);
+                    }
+                    Pass::Add => {
+                        pass.set_pipeline(&self.pipelines.model_add);
+                        self.draw_instance(&mut pass, instance, *start, Part::All);
+                    }
+                }
             }
         }
         (resized, encoder.finish())
     }
 
-    /// One uploaded instance's batches, the pipeline and its vertex buffer
-    /// already set
+    /// Whether any of an instance's textures is additive
+    fn has_additive(&self, instance: &Instance) -> bool {
+        self.models
+            .get(instance.model.0)
+            .is_some_and(|m| m.additive.contains(&true))
+    }
+
+    /// One uploaded instance's batches of `part`, the pipeline and its
+    /// vertex buffer already set
     fn draw_instance(
         &self,
         pass: &mut wgpu::RenderPass<'_>,
         instance: &Instance,
         start: Option<u32>,
+        part: Part,
     ) {
         let Some(start) = start else {
             return;
         };
         let model = &self.models[instance.model.0];
-        for b in &model.batches {
+        for (b, &additive) in model.batches.iter().zip(&model.additive) {
+            let wanted = match part {
+                Part::Solid => !additive,
+                Part::Additive => additive,
+                Part::All => true,
+            };
+            if !wanted {
+                continue;
+            }
             if let Some(texture) = model.textures.get(b.texture) {
                 pass.set_bind_group(1, texture, &[]);
                 pass.draw(start + b.first..start + b.first + b.count, 0..1);

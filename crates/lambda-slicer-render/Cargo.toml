@@ -12,6 +12,7 @@ thiserror = "2.0.21"
 wgpu = { version = "30.0.1", default-features = false, features = ["wgsl"] }
 
 [dev-dependencies]
+lambda-slicer-assets = { workspace = true, features = ["fixtures"] }
 image = { version = "0.25.10", default-features = false, features = ["png"] }
 pollster = "0.4.0"
 wgpu = "30.0.1"

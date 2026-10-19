@@ -49,7 +49,7 @@ use lambda_slicer_render::gpu::{
 };
 use lambda_slicer_render::light::{LightTree, ModelLight};
 use lambda_slicer_render::load::{self, EntityPose, GaitPose, LoadError, LoadedModel};
-use lambda_slicer_render::model::ModelMesh;
+use lambda_slicer_render::model::{Eye, ModelMesh};
 use lambda_slicer_render::world::{self, WorldMesh};
 
 use crate::decals::DecalCache;
@@ -550,6 +550,8 @@ impl Viewer {
                 .and_then(|tree| tree.at(point, &styles))
                 .map_or(ModelLight::UNLIT, ModelLight::from_point)
         };
+        // Chrome reflects the view the scene is drawn from
+        let eye = Eye::new(frame.recorder.origin, frame.recorder.angles);
         let mut instances = Vec::new();
         let mut sprites = Vec::new();
         let since = if self.flashes_to > frame.at.0 {
@@ -608,7 +610,7 @@ impl Viewer {
             let light = light_at(drawn.pose.origin);
             instances.push(Instance {
                 model: *handle,
-                vertices: model.mesh.skin(&bones, &light),
+                vertices: model.mesh.skin(&bones, &light, &eye),
                 mode: drawn.mode,
                 amount: drawn.amount,
             });
@@ -621,7 +623,7 @@ impl Viewer {
             {
                 instances.push(Instance {
                     model: *weapon_handle,
-                    vertices: weapon.mesh.skin(&weapon_bones, &light),
+                    vertices: weapon.mesh.skin(&weapon_bones, &light, &eye),
                     mode: drawn.mode,
                     amount: drawn.amount,
                 });
@@ -669,7 +671,7 @@ impl Viewer {
             if let Some(bones) = model.pose(&pose) {
                 instances.push(Instance {
                     model: *handle,
-                    vertices: model.mesh.skin(&bones, &light_at(m.origin)),
+                    vertices: model.mesh.skin(&bones, &light_at(m.origin), &eye),
                     mode: RenderMode::from_game(m.render_mode),
                     amount: (m.render_amount / 255.).clamp(0., 1.),
                 });
@@ -686,7 +688,7 @@ impl Viewer {
             let light = light_at(pose.origin);
             viewmodel.push(Instance {
                 model: *handle,
-                vertices: model.mesh.skin(&bones, &light),
+                vertices: model.mesh.skin(&bones, &light, &eye),
                 mode: RenderMode::Normal,
                 amount: 1.,
             });

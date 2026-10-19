@@ -15,6 +15,7 @@ use lambda_slicer_assets::search::{SearchOptions, SearchPath};
 use lambda_slicer_render::camera::Camera;
 use lambda_slicer_render::gpu::{Brush, COLOR_FORMAT, DrawList, Instance, RenderMode, Scene, View};
 use lambda_slicer_render::light::ModelLight;
+use lambda_slicer_render::model::Eye;
 use lambda_slicer_render::{load, world};
 
 const SIZE: [u32; 2] = [1920, 1080];
@@ -116,7 +117,9 @@ fn main() {
         let bones = player.bones_at(sequence, t, spawn, yaw).unwrap_or_default();
         let instance = Instance {
             model,
-            vertices: player.mesh.skin(&bones, &light),
+            vertices: player
+                .mesh
+                .skin(&bones, &light, &Eye::new(eye, camera.angles)),
             mode: RenderMode::Normal,
             amount: 1.,
         };

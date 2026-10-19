@@ -256,6 +256,13 @@ impl ModelLight {
         let level = illum.clamp(0., 255.) / 255.;
         self.color.map(|c| c * level)
     }
+
+    /// A flat-shaded vertex's light, the ambient level and 0.8 of the shade
+    /// whatever its normal (`STUDIO_NF_FLATSHADE`)
+    pub fn flat(&self) -> [f32; 3] {
+        let level = (self.ambient + self.shade * 0.8).clamp(0., 255.) / 255.;
+        self.color.map(|c| c * level)
+    }
 }
 
 #[cfg(test)]

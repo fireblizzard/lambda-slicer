@@ -239,7 +239,9 @@ of the viewer's controls come with M11.
 
 **Observed:** AG ships some item models as sprites under a `.mdl` name (`ag/models/w_357.mdl`
 starts with `IDSP`). The game tells a model's kind by its header, and so does the viewer, which
-leaves those items for the sprites (9d).
+leaves those items for the sprites (9d). They are index-alpha icons in one flat colour each, the
+palette's last (magenta for the .357 and its ammunition, yellow for the 9 mm weapons, green for the
+crossbow), and an ammunition box's icon is a box outline round a bullet.
 
 ### World (9b)
 
@@ -273,6 +275,7 @@ compared with the game (9e):
 | Aim | a player with a gait sequence aims through its first blend from its pitch (`StudioPlayerBlend`), the rest of the pitch turning the model. One without keeps its controllers centred |
 | Held weapons | the player's `weaponmodel`, its bones named as the player's taking the player's transforms (`StudioMergeBones`), the rest posed with the player's sequence |
 | Lighting | the colour under the model from a line 2048 units down through the BSP tree to the first lit face, its lightmaps weighed by their styles (`R_LightPoint`). Its brightest channel is the ambient level up to 128 and the light from above up to 192, softened by a lambert of 1.5. Where nothing is under a model it is lit at 128 and 64 |
+| Texture flags | as the engine's studio renderer draws them: an additive texture of a solid model added over the scene with the translucent things, writing no depth, a chrome one's coordinates from its normal against two vectors square to the line from the eye to its bone (`R_StudioSetupChrome`), and a flat-shaded one lit by the ambient level and 0.8 of the shade whatever its normal. AG's viewmodels in the surveyed install mark every texture additive, so they show see-through as in the game |
 | Body and skin | each entity's body and skin choose the submodel of each body part (`(body / base) % models`) and the skin family, as `StudioSetupModel` does. A body past the model's own is the first's, and each combination is read once, after the model's first body is in. Players' models take theirs in their team colours, from the stock model when theirs is not installed. The viewmodel takes the body of its last animation |
 | Render modes | normal models solid. Colour, texture and alpha modes blended by the render amount, glow and additive modes added by it, each lit as a solid model and without the render colour, which the game's studio drawing takes only for its glow shell. Translucent models are drawn after the sky together with translucent brushes and sprites, all from the furthest in, and one at amount 0 is not drawn. A player's weapon is drawn as the player is |
 | Team colours | a player model's `DM_Base` textures with palette entries 160 to 191 turned to the top colour's hue and 80 to 111 to the bottom colour's, each keeping its brightness and saturation, as the game's `PaletteHueReplace` does. The surveyed AG install's own player models have no such textures |
@@ -286,8 +289,8 @@ to running, for example.
 **Observed:** AG's `w_weaponbox.mdl`, the box a player drops on death, has a black and white
 texture, so it looks like the checker drawn for a missing texture.
 
-Not drawn yet: `remap` textures, sequence transitions, mouth movement, chrome and additive model
-textures, render effects such as the glow shell, and the sky's light on models.
+Not drawn yet: `remap` textures, sequence transitions, mouth movement, render effects such as the
+glow shell, and the sky's light on models.
 
 ### Viewmodel and sprites (9d)
 

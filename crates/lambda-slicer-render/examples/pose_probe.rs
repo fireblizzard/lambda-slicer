@@ -8,6 +8,7 @@ use lambda_slicer_assets::Limits;
 use lambda_slicer_assets::search::{SearchOptions, SearchPath};
 use lambda_slicer_render::light::ModelLight;
 use lambda_slicer_render::load::{self, EntityPose, GaitPose};
+use lambda_slicer_render::model::Eye;
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -71,7 +72,8 @@ fn main() {
     let started = Instant::now();
     let bones = holder.pose(&pose).expect("player pose");
     println!("player posed in {:?}", started.elapsed());
-    let vertices = holder.mesh.skin(&bones, &ModelLight::UNLIT);
+    let eye = Eye::new([0.; 3], [0.; 3]);
+    let vertices = holder.mesh.skin(&bones, &ModelLight::UNLIT, &eye);
     println!(
         "player skinned, {} corners, in {:?}",
         vertices.len(),
@@ -82,7 +84,7 @@ fn main() {
             .merged_pose(&pose, &holder, &bones)
             .expect("weapon pose");
         println!("weapon posed in {:?}", started.elapsed());
-        let vertices = held.mesh.skin(&merged, &ModelLight::UNLIT);
+        let vertices = held.mesh.skin(&merged, &ModelLight::UNLIT, &eye);
         println!(
             "weapon skinned, {} corners, in {:?}",
             vertices.len(),
