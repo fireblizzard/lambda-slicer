@@ -238,10 +238,12 @@ impl LoadedModel {
         Some((inputs, placement))
     }
 
-    /// The bones of a model a player holds, such as a `p_` weapon. Each bone
-    /// named as one of the player's takes that bone's transform, as
-    /// `StudioMergeBones` does, and the rest are posed with the player's
-    /// sequence and frame
+    /// The bones of a model a player holds, such as a `p_` weapon, as
+    /// `StudioMergeBones` makes them. A bone named as one of the player's,
+    /// ignoring case, takes that bone's transform. Any other is posed with
+    /// the player's sequence and frame and goes on from its parent as merged,
+    /// so a weapon's own bones follow the player's hand even where its arm's
+    /// bones are named otherwise, as AG's `p_` models name them
     pub fn merged_pose(
         &self,
         entity: &EntityPose,
@@ -255,14 +257,28 @@ impl LoadedModel {
             angles: placement.angles.map(|a| a as f32),
             ..*entity
         };
-        let mut bones = self.pose(&own)?;
+        let own_bones = self.pose(&own)?;
         let names = holder.model.bones();
+
+        // Bones come after their parents, so a parent is merged first
+        let mut bones: Vec<BoneTransform> = Vec::with_capacity(own_bones.len());
         for (i, bone) in self.model.bones().iter().enumerate() {
-            if let Some(j) = names.iter().position(|b| b.name == bone.name)
-                && let (Some(to), Some(from)) = (bones.get_mut(i), holder_bones.get(j))
-            {
-                *to = *from;
-            }
+            let matched = names
+                .iter()
+                .position(|b| b.name.eq_ignore_ascii_case(&bone.name))
+                .and_then(|j| holder_bones.get(j));
+            let own_transform = *own_bones.get(i)?;
+            let transform = match (matched, bone.parent) {
+                (Some(from), _) => *from,
+                // Where the bone sits from its parent in its own pose,
+                // carried by the parent as merged
+                (None, Some(parent)) => {
+                    let local = concat(&inverse(own_bones.get(parent)?), &own_transform);
+                    concat(bones.get(parent)?, &local)
+                }
+                (None, None) => own_transform,
+            };
+            bones.push(transform);
         }
         Some(bones)
     }
@@ -353,8 +369,133 @@ pub fn model(search: &SearchPath, path: &str) -> Result<LoadedModel, LoadError> 
     })
 }
 
+/// `first` applied after `second`, as the engine's `ConcatTransforms`
+fn concat(first: &BoneTransform, second: &BoneTransform) -> BoneTransform {
+    let mut out = [[0.; 4]; 3];
+    for row in 0..3 {
+        for column in 0..4 {
+            let carried = first[row][0] * second[0][column]
+                + first[row][1] * second[1][column]
+                + first[row][2] * second[2][column];
+            out[row][column] = if column == 3 {
+                carried + first[row][3]
+            } else {
+                carried
+            };
+        }
+    }
+    out
+}
+
+/// The transform undoing `m`, a bone's rotation and translation, whose
+/// rotation's inverse is its transpose
+fn inverse(m: &BoneTransform) -> BoneTransform {
+    let mut out = [[0.; 4]; 3];
+    for row in 0..3 {
+        for column in 0..3 {
+            out[row][column] = m[column][row];
+        }
+    }
+    // The translation undone through the inverse rotation
+    for row in &mut out {
+        row[3] = -(row[0] * m[0][3] + row[1] * m[1][3] + row[2] * m[2][3]);
+    }
+    out
+}
+
 /// The player model `name`, or the stock one when it cannot be read
 pub fn player(search: &SearchPath, name: &str) -> Result<LoadedModel, LoadError> {
     model(search, &format!("models/player/{name}/{name}.mdl"))
         .or_else(|_| model(search, "models/player.mdl"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use lambda_slicer_assets::xenoxide::studio::fixture::{
+        BodyPart, Fixture, Mesh, Submodel, Texture,
+    };
+
+    /// The standard test model, a root, a spine and a head, with bones
+    /// renamed by `rename` and the spine `spine` units above the root
+    fn loaded(
+        rename: impl Fn(&mut Vec<lambda_slicer_assets::xenoxide::studio::fixture::Bone>),
+        spine: f32,
+    ) -> LoadedModel {
+        let mut fixture = Fixture::standard();
+        fixture.bones[1].value[2] = spine;
+        // A texture and a triangle, so the model has what drawing it needs
+        fixture.texture_data = vec![Texture::solid("plain.bmp", 4, 4, 1, [128, 128, 128])];
+        fixture.skins = vec![vec![0]];
+        fixture.body_parts = vec![BodyPart {
+            name: "body",
+            base: 1,
+            models: vec![Submodel {
+                name: "plate",
+                vertices: vec![([0., 0., 0.], 2), ([0., 1., 0.], 2), ([0., 0., 1.], 2)],
+                normals: vec![([-1., 0., 0.], 2)],
+                meshes: vec![Mesh {
+                    skin_reference: 0,
+                    commands: vec![(3, vec![[0, 0, 0, 0], [1, 0, 4, 0], [2, 0, 0, 4]])],
+                    declared: None,
+                }],
+            }],
+        }];
+        rename(&mut fixture.bones);
+        let built = fixture.build();
+        let model = StudioModel::parse(&built.bytes)
+            .unwrap()
+            .resolve(&[])
+            .unwrap();
+        let asset = StudioRenderAsset::parse(&model, &built.bytes, None).unwrap();
+        LoadedModel {
+            mesh: ModelMesh::build(&asset, 0, 0),
+            asset,
+            model,
+            path: "fixture.mdl".to_owned(),
+        }
+    }
+
+    #[test]
+    fn a_held_models_own_bones_follow_its_holders_matching_bones() {
+        // The holder's spine stands 40 units above its root, the weapon's
+        // 10, and the weapon names its spine in capitals and has a mesh bone
+        // of its own where the holder has a head
+        let holder = loaded(|_| {}, 40.);
+        let weapon = loaded(
+            |bones| {
+                bones[1].name = "BIP01 SPINE";
+                bones[2].name = "Weapon Mesh";
+            },
+            10.,
+        );
+        let entity = EntityPose {
+            sequence: 0,
+            cycle: 0.,
+            elapsed: 0.,
+            framerate: 1.,
+            controllers: [127.5; 4],
+            blending: [0.; 2],
+            origin: [0.; 3],
+            angles: [0.; 3],
+            player: false,
+            gait: None,
+        };
+        let holder_bones = holder.pose(&entity).unwrap();
+        let own = weapon.pose(&entity).unwrap();
+        let merged = weapon.merged_pose(&entity, &holder, &holder_bones).unwrap();
+
+        // The spine is the holder's, matched whatever the case
+        assert_eq!(merged[1], holder_bones[1]);
+
+        // The mesh bone keeps its place from the spine, so it moves with the
+        // holder's spine
+        let offset = |bones: &[BoneTransform]| [0, 1, 2].map(|k| bones[2][k][3] - bones[1][k][3]);
+        let (want, got) = (offset(&own), offset(&merged));
+        for k in 0..3 {
+            assert!((want[k] - got[k]).abs() < 1e-6, "{want:?} against {got:?}");
+        }
+        assert!((merged[2][2][3] - own[2][2][3] - 30.).abs() < 1e-6);
+    }
 }
