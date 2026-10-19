@@ -251,7 +251,7 @@ change what it shows.
 
 | Control | Key | What it does |
 |---|---|---|
-| Play, Pause | Space, L | plays forward at the chosen rate, with sound, or pauses |
+| Play, Pause | Space, L, or a click on the view | plays forward at the chosen rate, with sound, or pauses, playing backward too. A click plays on the way playback went last, so it rewinds again after pausing a rewind, and plays forward from the start once a rewind reached it |
 | Rewind | J | plays toward the start at the chosen rate, without sound, pausing at the start. Past a loop's start it goes on from the loop's end |
 | Pause | K | pauses either way |
 | Previous frame, Next frame | comma, period | moves one recorded group, pausing |

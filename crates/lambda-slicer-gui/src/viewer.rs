@@ -1170,7 +1170,23 @@ impl Viewer {
             None => height,
         };
         let size = egui::vec2(ui.available_width(), height.max(1.));
-        let (rect, _) = ui.allocate_exact_size(size, Sense::hover());
+        let (rect, clicked) = ui.allocate_exact_size(size, Sense::click());
+        // A click on the view pauses, or plays on the way it went last,
+        // rewinding again after a pause while rewinding, unless the rewind
+        // reached the start
+        if clicked.clicked() {
+            let clock = self.controller.clock();
+            let at_start = self.controller.time(self.wall()).0 <= 0.;
+            let command = if clock.playing() {
+                Command::Pause
+            } else if clock.backward() && !at_start {
+                Command::PlayBackward
+            } else {
+                Command::Play
+            };
+            self.command(command);
+            ctx.request_repaint();
+        }
         let mut drawn = 0;
         let mut drawn_at = None;
         if let Some((map, error)) = self.failed_map() {
