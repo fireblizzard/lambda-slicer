@@ -13,7 +13,7 @@ use std::time::{Duration, Instant};
 use lambda_slicer_assets::Limits;
 use lambda_slicer_assets::search::{SearchOptions, SearchPath};
 use lambda_slicer_render::camera::Camera;
-use lambda_slicer_render::gpu::{Brush, COLOR_FORMAT, DrawList, Instance, Scene, View};
+use lambda_slicer_render::gpu::{Brush, COLOR_FORMAT, DrawList, Instance, RenderMode, Scene, View};
 use lambda_slicer_render::light::ModelLight;
 use lambda_slicer_render::{load, world};
 
@@ -117,6 +117,8 @@ fn main() {
         let instance = Instance {
             model,
             vertices: player.mesh.skin(&bones, &light),
+            mode: RenderMode::Normal,
+            amount: 1.,
         };
         let view_projection = camera.view_projection(size[0] as f32 / size[1] as f32, 4., 8192.);
         let view = View {

@@ -113,6 +113,13 @@ and the controller shows a reply only when it answers the current generation and
 than the current one. Tested on a synthetic demo with two seeks in a row and a load over a pending
 seek.
 
+A seek, step or load sent while the worker is still answering another stops that one between
+groups, unanswered, and dropping the worker stops it the same way, so changing demos never waits
+for a seek no one wants (one cold seek took 7 s before checkpoints). The requests playing sends
+each frame share a stamp and do not stop each other, so playback slower than the clock still shows
+frames. A seek stopped part way leaves playback at a group it reached, which the next request goes
+on from, and is tested to end where sequential playback does.
+
 ### Scene
 
 Entities come from the decoder's newest stored snapshot, so a packet the client rejected never
@@ -135,7 +142,8 @@ compared with the game:
 - `svc_stopsound` stops the dynamic channel whatever it plays
 - A sound record carries no entity, so it plays on the entity the recorder views from
 - A sound's position in its sample is integrated over its pitch history
-- A new session silences everything
+- A new session silences everything, and its sounds' names are read again from its own resource
+  list
 
 - A sound that is not static takes one of the engine's eight dynamic channels. When all are busy
   it takes the one with the least time left, except that another entity's sound never takes one of
@@ -209,7 +217,9 @@ demo.
 ## Viewer
 
 The demo view plays the demo when a game folder is given with `--game DIR` (implementation plan
-§13.8). `--viewer-capture` saves its frames at chosen times for comparing with the game
+§13.8). A map that cannot be read is named in place of the view with the reason, nothing of the map
+before it drawn, and is not asked for again. Playback that stops before the demo's end, because a
+part of it could not be decoded, says why under the view. `--viewer-capture` saves its frames at chosen times for comparing with the game
 ([viewer validation](viewer-validation.md)). It keeps a playback controller and worker per demo, and a thread that reads the session's
 map and the studio models its entities use. Play, pause and a time bar drive the controller, and
 `--viewer-at SECONDS` seeks there once the demo is loaded. The asset folder setting and the rest
@@ -245,7 +255,7 @@ game (9e):
 | Sky | the sky the server's movement variables name (`sv_skyname`), and until it names one the `worldspawn` `skyname`, `desert` by default, from `gfx/env/<name>{rt,lf,bk,ft,up,dn}.tga` in the sky box's layout, drawn wherever nothing else was. Confirmed against the game, where the two differ, in `ls_9e_cross` ([viewer validation](viewer-validation.md)) |
 
 Not drawn yet: visibility and frustum culling (the whole world is drawn every frame), random tiling
-textures (`-0` names), scrolling conveyors, and decals. Sprites and the viewmodel come with 9d.
+textures (`-0` names) and scrolling conveyors.
 
 ### Models (9c)
 
@@ -261,6 +271,8 @@ compared with the game (9e):
 | Aim | a player with a gait sequence aims through its first blend from its pitch (`StudioPlayerBlend`), the rest of the pitch turning the model. One without keeps its controllers centred |
 | Held weapons | the player's `weaponmodel`, its bones named as the player's taking the player's transforms (`StudioMergeBones`), the rest posed with the player's sequence |
 | Lighting | the colour under the model from a line 2048 units down through the BSP tree to the first lit face, its lightmaps weighed by their styles (`R_LightPoint`). Its brightest channel is the ambient level up to 128 and the light from above up to 192, softened by a lambert of 1.5. Where nothing is under a model it is lit at 128 and 64 |
+| Body and skin | each entity's body and skin choose the submodel of each body part (`(body / base) % models`) and the skin family, as `StudioSetupModel` does. A body past the model's own is the first's, and each combination is read once, after the model's first body is in. The viewmodel takes the body of its last animation |
+| Render modes | normal models solid. Colour, texture and alpha modes blended by the render amount, glow and additive modes added by it, each lit as a solid model and without the render colour, which the game's studio drawing takes only for its glow shell. Translucent models are drawn after the sky and before translucent brushes, the furthest first, and one at amount 0 is not drawn. A player's weapon is drawn as the player is |
 | Team colours | a player model's `DM_Base` textures with palette entries 160 to 191 turned to the top colour's hue and 80 to 111 to the bottom colour's, each keeping its brightness and saturation, as the game's `PaletteHueReplace` does. The surveyed AG install's own player models have no such textures |
 
 The leg state lives in playback's scene, so checkpoints keep it and a seek reaches the same legs as
@@ -273,7 +285,7 @@ to running, for example.
 texture, so it looks like the checker drawn for a missing texture.
 
 Not drawn yet: `remap` textures, sequence transitions, mouth movement, chrome and additive model
-textures, and the sky's light on models.
+textures, render effects such as the glow shell, and the sky's light on models.
 
 ### Viewmodel and sprites (9d)
 
@@ -289,7 +301,7 @@ textures, and the sky's light on models.
 | Orientation | facing the view, facing the view upright, facing the camera's position upright, turned by the entity's angles, or facing the view rolled by the entity, as the five `SPR_` types say |
 | Render modes | normal and alpha modes cut out at half alpha, texture and colour modes blended by the render amount, additive mode added, and glow added without depth, fading as 19000 over the squared distance between 0.05 and 1, and grown by its distance over 200 to keep its size on screen unless it is steady. A glow the world hides from the eye, the line to it stopping more than 8 units short, is not drawn, brush entities and models hiding none (`R_SpriteGlowBlend`). Every mode takes the render colour, white when it is black, as Xash3D says the engine's sprite drawing does (until 10d only additive and glowing sprites did). Drawn after translucent brushes, the furthest first |
 
-Not drawn yet: the viewmodel's body groups and the bob and lag the game adds to it.
+Not drawn yet: the bob and lag the game adds to the viewmodel.
 
 **Measured (2026-10-18)** with `--viewer-bench 10`, playing from 20 s in a 1920 by 1080 window with
 the view 1098 by 950 pixels, while the library scan ran:
@@ -344,6 +356,8 @@ volume slider beside the controls. `lambda-slicer-audio`'s `device` feature hold
 | Silence | while paused, seeking, stepping or before the demo is open, and at the start of each new load |
 | Device | the callback copies finished blocks out and returns them to the mixer to be filled again, with no file read, no lock held for long and nothing freed |
 | Listener | the recorder's view at the end of the block, the entity it views from heard as its own |
+| Old blocks | each block is marked with what was playing when it was mixed. A seek, load, pause or resume changes the mark at once and the device drops every block queued under the old one, so nothing from before plays after it. A seek the mixer is making stops when the mark changes |
+| Closing | the stream is released before the mixer is waited for, and the mixer gives up a block the device does not take once the device closes, so a lost device never holds up closing or changing demos |
 | Moving sounds | a sound from an entity plays from where the entity is at the end of each block, so it moves with it. The world's sounds, ambient sounds and a brush entity's stay where they started |
 
 `LAMBDA_SLICER_SOUND_TAP=FILE` with `--viewer-play SECONDS` writes every block from the first heard
@@ -393,7 +407,7 @@ Xash3D restates it, not yet compared with the game:
 
 | Part | How |
 |---|---|
-| Events | event records, `svc_event` and `svc_event_reliable`, each run through its handler when it arrives, or queued until its delay has passed. The gauss's stop takes back the spin events queued for its player (`EV_KillEvents`) |
+| Events | event records, `svc_event` and `svc_event_reliable`, each run through its handler when it arrives, or queued until its delay has passed. The gauss's stop takes back the spin events queued for its player (`EV_KillEvents`), and a new session drops them all (`CL_ResetEvents`) |
 | Sounds | the glock, shotgun, MP5 and its grenade, python, crowbar, crossbow, RPG, hornet gun, gauss shot and charge, Egon start, run and stop, and the train, with the handlers' samples, channels, volumes and pitches. The gauss's charge changes its pitch as each spin event comes, and its stop silences it |
 | Random choices | each event draws its own from a seed made of where it was recorded, the record, the message and the event's index, as the client's generator is not recorded. A seek makes the same choices |
 | Place | the event's origin and angles. An event that gives none, as the server's events from an entity in the same packet do, takes its entity's origin and angles, a player's pitch turned back from the model's third of it to the view's. The recorder's own take its view, as a singleplayer recording can leave the player's entity where it spawned (`run_92.dem` holds it 2788 units away) |
@@ -429,8 +443,7 @@ matches `mix_probe`: 150 windows of 50 ms with sound, ratio 0.714 at the median,
 With shells, the first 300 s of `naz_crossfire_pb_01.dem` throw out 28, one for each glock shot,
 the recorder's and the opponent's. None falls more than 200 units, and the 300 s still mix in 3.2 s.
 
-Not yet: bullet impacts with their decals and ricochets (10d), the gauss's and Egon's beams (10e),
-the tripmine's and snark's handlers, which trace first, the view's punch, sparks (event 5002), and
+Not yet: the tripmine's and snark's handlers, which trace first, the view's punch, sparks (event 5002), and
 the lights of muzzle flashes and `EF_MUZZLEFLASH`.
 
 ## Temporary entities (10d)
@@ -472,8 +485,8 @@ it makes, by model.
 | `run_92.dem`, singleplayer | 0 to 100 s | 7 explosions, 61 blood splashes with 766 drops, 163 spark showers with 1,739 glints, 63 `muz1.spr` sprites, 35 `tinyspit.spr` sprays, 108 shells, and all five ricochets heard |
 | `run_92.dem`, singleplayer | 0 to 400 s | 223 pieces of breakables, 88 of wood, 78 of metal plate, 30 of machinery, 16 of concrete and 11 of glass, with the wood, metal, concrete and glass sounds heard |
 
-The pieces of a breakable all show the first body of its model, and glass pieces are drawn solid,
-as models made by the client do not yet take a body or a render mode.
+Each piece of a breakable shows one of its model's bodies at random, as the engine chooses among
+them.
 
 ### Decals
 
@@ -555,7 +568,7 @@ not yet compared with the game:
 |---|---|
 | Gauss shot | traced from the eye along the aim, as a beam of `sprites/smoke.spr` for a tenth of a second, 1 unit either side for a primary shot and 2.5 for a charged one, the first from the gun's first attachment (the viewmodel's when the view is through the shooter) |
 | Gauss reflection | a brush met less than 60 degrees off its plane reflects the shot, which loses that share of its energy, leaving a glow of `sprites/hotglow.spr` and three balls |
-| Gauss impact | a brush met more squarely takes a shot decal, sometimes a ricochet, and a glow. A charged shot then punches through once, when the wall is thinner than its energy, losing that much, with balls, a decal and a glow on the far side. A primary shot stops with a smaller glow and eight balls. The shot goes on through players, and ends when its energy is 10 or less or after ten hits |
+| Gauss impact | a brush met more squarely takes a shot decal, sometimes a ricochet, and a glow. A charged shot then punches through once, when the wall is thinner than its energy, losing that much, with balls, a decal and a glow on the far side. A primary shot stops with a smaller glow and eight balls. The shot goes on through players, the next trace passing the one it went through as the server's does, and ends when its energy is 10 or less or after ten hits |
 | Glows and balls | steady glows, fading after their life (`R_TempSprite`). Balls fly out at 100 or 200 units a second with spread, cycling their frames at ten a second, bouncing under half gravity, fading after their life and up to four seconds more (`R_Sprite_Trail`) |
 | Egon | for the local player only, as only the local player's are the client's own, two beams of `sprites/xbeam1.spr` from the gun, 3.5 and 5 units either side, their textures sliding at 55 and 25 a second, aimed each group from the eye along the view to 2048 units or what they meet, and ended by the Egon's stop. Other players' Egon beams are the server's beam entities, not drawn yet |
 | Colours | a handler's colour times its brightness, at most full. This draws the gauss's primary beam yellow, its charged beam white and the Egon's pale blue, the only reading under which both handlers' numbers make sense, as one gives colours out of 255 and the other under 1 |

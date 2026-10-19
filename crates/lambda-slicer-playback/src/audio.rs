@@ -229,6 +229,10 @@ impl Audio {
             Message::ServerInfo(_) => {
                 self.channels.clear();
                 self.revision += 1;
+                // The new session's sounds are read again, even when it
+                // has as many resources as the last
+                self.sounds = Arc::default();
+                self.sounds_from = usize::MAX;
             }
             Message::Sound(sound) => {
                 let request = self.network(decoder, sound);

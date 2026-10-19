@@ -78,7 +78,8 @@ pub(crate) enum Hit {
         render_mode: i64,
         normal: [f32; 3],
     },
-    Player,
+    /// A player, by entity number
+    Player(u16),
 }
 
 /// How far along the line from `start` to `end` it enters the box, if it
@@ -103,11 +104,12 @@ fn enter_box(start: [f32; 3], end: [f32; 3], min: [f32; 3], max: [f32; 3]) -> Op
     Some(near)
 }
 
-/// The first thing the line from `start` to `end` meets, past the shooter
+/// The first thing the line from `start` to `end` meets, past the players
+/// in `skip`, the shooter and any it has already gone through
 pub(crate) fn trace(
     start: [f32; 3],
     end: [f32; 3],
-    shooter: u16,
+    skip: &[u16],
     max_clients: u8,
     scene: &Scene,
     world: Option<&Hull>,
@@ -136,14 +138,14 @@ pub(crate) fn trace(
         let number = e.id.number;
         let player = (1..=u16::from(max_clients)).contains(&number);
         if player {
-            if number == shooter || e.solid == 0 || e.iuser1 != 0 {
+            if skip.contains(&number) || e.solid == 0 || e.iuser1 != 0 {
                 continue;
             }
             let min = [0, 1, 2].map(|k| e.origin[k] + PLAYER_MIN[k]);
             let max = [0, 1, 2].map(|k| e.origin[k] + PLAYER_MAX[k]);
             if let Some(f) = enter_box(start, end, min, max) {
                 let at = [0, 1, 2].map(|k| start[k] + (end[k] - start[k]) * f);
-                offer(f, at, Hit::Player);
+                offer(f, at, Hit::Player(number));
             }
         } else if e.solid == SOLID_BSP
             && let Some(world) = world
@@ -302,7 +304,7 @@ pub(crate) fn fire(
         // A gun that draws every bullet's tracer still leaves its impacts
         let tracer = drawn && volley.tracer_every != 1;
 
-        let met = trace(volley.source, end, shooter, max_clients, scene, world);
+        let met = trace(volley.source, end, &[shooter], max_clients, scene, world);
         if drawn {
             // A player's tracer starts a little below, right of and ahead of
             // the eye
@@ -323,7 +325,7 @@ pub(crate) fn fire(
         let material = match (volley.kind, tracer) {
             (Bullet::Buckshot, _) | (Bullet::Mp5, true) => None,
             _ => Some(match hit {
-                Hit::Player => b'F',
+                Hit::Player(_) => b'F',
                 Hit::Brush { material, .. } => material.unwrap_or(b'C'),
             }),
         };

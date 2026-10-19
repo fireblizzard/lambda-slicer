@@ -112,6 +112,8 @@ pub struct Playback {
     decal_index: DecalIndex,
     /// The map traced through and its world, once read
     hull: Option<(String, Option<Arc<Hull>>)>,
+    /// True when the caller no longer wants the seek under way
+    interrupt: Box<dyn Fn() -> bool + Send>,
 }
 
 impl Playback {
@@ -162,7 +164,15 @@ impl Playback {
             sprite_frames: Box::new(|_| None),
             decal_index: Box::new(|_| None),
             hull: None,
+            interrupt: Box::new(|| false),
         })
+    }
+
+    /// Stop [`Playback::advance_to`] and [`Playback::seek_group`] between
+    /// groups once `interrupt` says so, leaving playback at the group it
+    /// reached, for a seek a newer one replaced
+    pub fn set_interrupt(&mut self, interrupt: impl Fn() -> bool + Send + 'static) {
+        self.interrupt = Box::new(interrupt);
     }
 
     pub fn path(&self) -> &Path {
@@ -331,6 +341,7 @@ impl Playback {
                     let tempents = &mut *effects.tempents;
                     let decals = &mut *effects.decals;
                     let beams = &mut *effects.beams;
+                    let events = &mut *effects.events;
                     let applied = decoder.network_frame(record.location, frame, |d, m| {
                         scene.on_message(d, m, time);
                         audio.on_message(d, m, time, lengths);
@@ -339,6 +350,7 @@ impl Playback {
                                 tempents.clear();
                                 decals.clear();
                                 beams.clear();
+                                events.clear();
                             }
                             protocol::Message::TempEntity { kind, body } => {
                                 let model = |index: i16| precached_model(d, index);
@@ -472,6 +484,9 @@ impl Playback {
         }
 
         while self.peek().is_some_and(|g| g.time <= time) {
+            if (self.interrupt)() {
+                break;
+            }
             self.apply_next();
         }
         Ok(())
@@ -489,7 +504,7 @@ impl Playback {
         }
 
         while self.state.position.is_none_or(|p| p.group < group) {
-            if !self.apply_next() {
+            if (self.interrupt)() || !self.apply_next() {
                 break;
             }
         }
@@ -598,7 +613,7 @@ fn egon_end(scene: &Scene, decoder: &Decoder, world: Option<&Hull>) -> [f32; 3] 
     let [forward, ..] = angle_vectors(scene.camera.angles);
     let end = [0, 1, 2].map(|k| eye[k] + forward[k] * 2048.);
     let shooter = view_entity(decoder);
-    bullets::trace(eye, end, shooter, decoder.max_clients, scene, world)
+    bullets::trace(eye, end, &[shooter], decoder.max_clients, scene, world)
         .map_or(end, |(_, at, _)| at)
 }
 

@@ -9,8 +9,8 @@
 //! counted in [`Scene::gpu_bytes`] for the backend measurement.
 //!
 //! A frame draws the opaque world and brush entities, then studio models,
-//! then the sky wherever nothing was drawn, then translucent brush entities
-//! and sprites from the furthest in, as the game orders them. The viewmodel
+//! then the sky wherever nothing was drawn, then translucent studio models,
+//! brush entities and sprites, each from the furthest in. The viewmodel
 //! comes last, in a pass of its own with the depth cleared, so it never
 //! sinks into a wall. Each BSP model is drawn
 //! with its entity's transform and render mode, every lightmap weighed by
@@ -37,6 +37,11 @@ pub const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 /// styles and flags
 const WORLD_ATTRIBUTES: [wgpu::VertexAttribute; 6] = wgpu::vertex_attr_array![
     0 => Float32x3, 1 => Float32x2, 2 => Float32x2, 3 => Float32, 4 => Uint8x4, 5 => Uint32
+];
+
+/// A model vertex's position, normal, texture coordinates, light and alpha
+const MODEL_ATTRIBUTES: [wgpu::VertexAttribute; 5] = wgpu::vertex_attr_array![
+    0 => Float32x3, 1 => Float32x3, 2 => Float32x2, 3 => Float32x3, 4 => Float32
 ];
 
 /// A sprite vertex's position, texture coordinates and colour
@@ -147,14 +152,16 @@ struct ModelOut {
     @builtin(position) clip: vec4<f32>,
     @location(0) uv: vec2<f32>,
     @location(1) light: vec3<f32>,
+    @location(2) alpha: f32,
 }
 
 @vertex
-fn model_vs(@location(0) position: vec3<f32>, @location(1) normal: vec3<f32>, @location(2) uv: vec2<f32>, @location(3) light: vec3<f32>) -> ModelOut {
+fn model_vs(@location(0) position: vec3<f32>, @location(1) normal: vec3<f32>, @location(2) uv: vec2<f32>, @location(3) light: vec3<f32>, @location(4) alpha: f32) -> ModelOut {
     var out: ModelOut;
     out.clip = u.view_projection * vec4<f32>(position, 1.0);
     out.uv = uv;
     out.light = light;
+    out.alpha = alpha;
     return out;
 }
 
@@ -164,7 +171,7 @@ fn model_fs(v: ModelOut) -> @location(0) vec4<f32> {
     if (a.a < 0.5) {
         discard;
     }
-        return vec4<f32>(min(a.rgb * v.light * u.params.x, vec3<f32>(1.0)), 1.0);
+                return vec4<f32>(min(a.rgb * v.light * u.params.x, vec3<f32>(1.0)), v.alpha);
 }
 
 struct SkyOut {
@@ -424,6 +431,37 @@ pub struct ModelHandle(usize);
 pub struct Instance {
     pub model: ModelHandle,
     pub vertices: Vec<ModelVertex>,
+    /// Its entity's render mode and amount, 0 to 1. A model takes no render
+    /// colour, as the game's studio drawing takes none
+    pub mode: RenderMode,
+    pub amount: f32,
+}
+
+impl Instance {
+    /// How the game draws a studio model in its entity's render mode,
+    /// blended by the amount in the colour, texture and alpha modes and
+    /// added by it in the glow and additive modes
+    fn pass(&self) -> Pass {
+        match self.mode {
+            RenderMode::Normal => Pass::Opaque,
+            RenderMode::Color | RenderMode::Texture | RenderMode::Alpha => Pass::Blend,
+            RenderMode::Glow | RenderMode::Additive => Pass::Add,
+        }
+    }
+
+    /// The middle of its corners, for drawing translucent ones from the
+    /// furthest in
+    fn centre(&self) -> [f32; 3] {
+        let n = self.vertices.len().max(1) as f32;
+        let sum = self.vertices.iter().fold([0.; 3], |s, v| {
+            [
+                s[0] + v.position[0],
+                s[1] + v.position[1],
+                s[2] + v.position[2],
+            ]
+        });
+        sum.map(|c| c / n)
+    }
 }
 
 struct SpriteFrame {
@@ -669,6 +707,8 @@ struct Pipelines {
     blend: wgpu::RenderPipeline,
     add: wgpu::RenderPipeline,
     model: wgpu::RenderPipeline,
+    model_blend: wgpu::RenderPipeline,
+    model_add: wgpu::RenderPipeline,
     sky: wgpu::RenderPipeline,
     sprite_cut: wgpu::RenderPipeline,
     sprite_blend: wgpu::RenderPipeline,
@@ -942,6 +982,21 @@ impl Scene {
                 compare,
             )
         };
+        let model_pipeline = |name: &str, blend, write| {
+            pipeline(
+                name,
+                "model",
+                &[Some(&uniforms_layout), Some(&texture_layout)],
+                wgpu::VertexBufferLayout {
+                    array_stride: std::mem::size_of::<ModelVertex>() as u64,
+                    step_mode: wgpu::VertexStepMode::Vertex,
+                    attributes: &MODEL_ATTRIBUTES,
+                },
+                blend,
+                write,
+                less,
+            )
+        };
         let pipelines = Pipelines {
             opaque: pipeline(
                 "world opaque",
@@ -970,19 +1025,13 @@ impl Scene {
                 false,
                 less,
             ),
-            model: pipeline(
-                "model",
-                "model",
-                &[Some(&uniforms_layout), Some(&texture_layout)],
-                wgpu::VertexBufferLayout {
-                    array_stride: std::mem::size_of::<ModelVertex>() as u64,
-                    step_mode: wgpu::VertexStepMode::Vertex,
-                    attributes: &wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3, 2 => Float32x2, 3 => Float32x3],
-                },
-                None,
-                true,
-                less,
+            model: model_pipeline("model", None, true),
+            model_blend: model_pipeline(
+                "model blend",
+                Some(wgpu::BlendState::ALPHA_BLENDING),
+                false,
             ),
+            model_add: model_pipeline("model add", Some(added_by_alpha), false),
             sky: pipeline(
                 "sky",
                 "sky",
@@ -1414,7 +1463,19 @@ impl Scene {
                 continue;
             }
             starts.push(Some(corners));
-            bytes.extend_from_slice(bytemuck::cast_slice(&instance.vertices));
+            if instance.pass() == Pass::Opaque {
+                bytes.extend_from_slice(bytemuck::cast_slice(&instance.vertices));
+            } else {
+                let faded: Vec<ModelVertex> = instance
+                    .vertices
+                    .iter()
+                    .map(|v| ModelVertex {
+                        alpha: instance.amount,
+                        ..*v
+                    })
+                    .collect();
+                bytes.extend_from_slice(bytemuck::cast_slice(&faded));
+            }
             corners += instance.vertices.len() as u32;
         }
         if bytes.is_empty() {
@@ -1599,6 +1660,17 @@ impl Scene {
             .filter(|&i| brushes[i].mode.pass() != Pass::Opaque)
             .collect();
         translucent.sort_by(|&a, &b| distance(&brushes[b]).total_cmp(&distance(&brushes[a])));
+        let model_distance = |instance: &Instance| {
+            let p = instance.centre();
+            let d = [0, 1, 2].map(|k| p[k] - view.eye[k]);
+            d[0] * d[0] + d[1] * d[1] + d[2] * d[2]
+        };
+        let mut translucent_models: Vec<usize> = (0..instances.len())
+            .filter(|&i| instances[i].pass() != Pass::Opaque)
+            .collect();
+        translucent_models.sort_by(|&a, &b| {
+            model_distance(&instances[b]).total_cmp(&model_distance(&instances[a]))
+        });
 
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("viewer"),
@@ -1685,15 +1757,8 @@ impl Scene {
                 pass.set_pipeline(&self.pipelines.model);
                 pass.set_vertex_buffer(0, buffer.slice(..));
                 for (instance, start) in instances.iter().zip(starts) {
-                    let Some(start) = *start else {
-                        continue;
-                    };
-                    let model = &self.models[instance.model.0];
-                    for b in &model.batches {
-                        if let Some(texture) = model.textures.get(b.texture) {
-                            pass.set_bind_group(1, texture, &[]);
-                            pass.draw(start + b.first..start + b.first + b.count, 0..1);
-                        }
+                    if instance.pass() == Pass::Opaque {
+                        self.draw_instance(&mut pass, instance, *start);
                     }
                 }
             }
@@ -1705,6 +1770,21 @@ impl Scene {
                     pass.set_bind_group(1, group, &[]);
                     let first = face as u32 * 6;
                     pass.draw(first..first + 6, 0..1);
+                }
+            }
+
+            // Translucent models from the furthest in
+            if let Some(buffer) = &self.instances
+                && !translucent_models.is_empty()
+            {
+                pass.set_vertex_buffer(0, buffer.slice(..));
+                for &i in &translucent_models {
+                    let instance = &instances[i];
+                    pass.set_pipeline(match instance.pass() {
+                        Pass::Add => &self.pipelines.model_add,
+                        _ => &self.pipelines.model_blend,
+                    });
+                    self.draw_instance(&mut pass, instance, starts[i]);
                 }
             }
 
@@ -1788,22 +1868,37 @@ impl Scene {
                 multiview_mask: None,
             });
             pass.set_bind_group(0, &self.uniform_group, &[]);
-            pass.set_pipeline(&self.pipelines.model);
             pass.set_vertex_buffer(0, buffer.slice(..));
             for (instance, start) in draw.viewmodel.iter().zip(viewmodel_starts) {
-                let Some(start) = *start else {
-                    continue;
-                };
-                let model = &self.models[instance.model.0];
-                for b in &model.batches {
-                    if let Some(texture) = model.textures.get(b.texture) {
-                        pass.set_bind_group(1, texture, &[]);
-                        pass.draw(start + b.first..start + b.first + b.count, 0..1);
-                    }
-                }
+                pass.set_pipeline(match instance.pass() {
+                    Pass::Opaque => &self.pipelines.model,
+                    Pass::Blend => &self.pipelines.model_blend,
+                    Pass::Add => &self.pipelines.model_add,
+                });
+                self.draw_instance(&mut pass, instance, *start);
             }
         }
         (resized, encoder.finish())
+    }
+
+    /// One uploaded instance's batches, the pipeline and its vertex buffer
+    /// already set
+    fn draw_instance(
+        &self,
+        pass: &mut wgpu::RenderPass<'_>,
+        instance: &Instance,
+        start: Option<u32>,
+    ) {
+        let Some(start) = start else {
+            return;
+        };
+        let model = &self.models[instance.model.0];
+        for b in &model.batches {
+            if let Some(texture) = model.textures.get(b.texture) {
+                pass.set_bind_group(1, texture, &[]);
+                pass.draw(start + b.first..start + b.first + b.count, 0..1);
+            }
+        }
     }
 }
 

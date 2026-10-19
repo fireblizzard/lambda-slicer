@@ -101,6 +101,9 @@ pub struct TempEntity {
     pub angles: [f32; 3],
     /// The sprite's frame
     pub frame: f32,
+    /// A studio model's body, which the drawing takes modulo the model's
+    /// body variations
+    pub body: u32,
     /// 0 for the sprite's own size
     pub scale: f32,
     /// The game's render mode and amount, 0 to 255
@@ -133,6 +136,7 @@ impl TempEntity {
         Self {
             id,
             model: model.map(Arc::from),
+            body: 0,
             origin,
             angles: [0.; 3],
             frame: 0.,
@@ -761,6 +765,8 @@ impl TempEntities {
             };
             e.bounce = bounce;
             e.frame = random.long(0, gibs.frames as i32 - 1).max(0) as f32;
+            // A random piece of a studio model's (`R_BreakModel`)
+            e.body = random.long(0, 255) as u32;
             e.flags = flag::COLLIDE | flag::FADE | flag::SLOW_GRAVITY;
             if random.long(0, 255) < 200 {
                 e.flags |= flag::ROTATE;

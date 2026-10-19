@@ -20,6 +20,8 @@ pub struct ModelVertex {
     pub uv: [f32; 2],
     /// The vertex's light, from [`ModelLight::vertex`]
     pub light: [f32; 3],
+    /// How much of it shows, 1 but for a translucent entity's
+    pub alpha: f32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -232,6 +234,7 @@ impl ModelMesh {
                     normal,
                     uv: c.uv,
                     light: light.vertex(normal),
+                    alpha: 1.,
                 }
             })
             .collect()

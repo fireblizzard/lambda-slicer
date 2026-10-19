@@ -116,6 +116,9 @@ enum ModelRef {
     /// A player model by the name userinfo gives, the stock player model
     /// when it is not installed, in the player's top and bottom colours
     Player(String, [u8; 2]),
+    /// A studio model in another body and skin than its first, the body
+    /// reduced to the submodels it selects
+    Variant(String, u32, usize),
 }
 
 enum Asset {
@@ -179,6 +182,11 @@ impl Loader {
                                     Err(LoadError::Sprite { name: path.clone() })
                                 }
                                 ModelRef::File(path) => load::model(search, path),
+                                ModelRef::Variant(path, body, skin) => load::model(search, path)
+                                    .map(|mut m| {
+                                        m.mesh = ModelMesh::build(&m.asset, *body, *skin);
+                                        m
+                                    }),
                                 ModelRef::Player(name, colours) => {
                                     load::player(search, name).map(|mut m| {
                                         m.mesh = ModelMesh::build_coloured(
@@ -259,6 +267,9 @@ pub struct Viewer {
     /// The map whose world is drawn, and the one being read
     map: Option<String>,
     map_loading: Option<String>,
+    /// A map that could not be loaded and why, shown in place of the view
+    /// and not asked for again
+    map_failed: Option<(String, String)>,
     /// The sky drawn and the one being read
     sky: Option<String>,
     sky_loading: Option<String>,
@@ -378,6 +389,7 @@ impl Viewer {
             frame: None,
             map: None,
             map_loading: None,
+            map_failed: None,
             sky: None,
             sky_loading: None,
             models: HashMap::new(),
@@ -451,10 +463,13 @@ impl Viewer {
                     self.map = Some(name);
                     self.map_loading = None;
                 }
-                Loaded::Map(name, Err(e)) => {
+                Loaded::Map(name, Err(e)) if self.map_loading.as_ref() == Some(&name) => {
                     eprintln!("viewer: map {name}, {e}");
-                    self.map = Some(name);
+                    // Nothing of the map drawn before is kept for this one
+                    self.map = None;
+                    self.light = None;
                     self.map_loading = None;
+                    self.map_failed = Some((name, e));
                 }
                 Loaded::Map(..) => {}
                 Loaded::Sky(name, sky) => {
@@ -492,6 +507,10 @@ impl Viewer {
         if let Some(map) = frame.map.as_deref().map(map_name)
             && self.map.as_ref() != Some(&map)
             && self.map_loading.as_ref() != Some(&map)
+            && self
+                .map_failed
+                .as_ref()
+                .is_none_or(|(name, _)| *name != map)
         {
             let _ = loader.requests.send(Asset::Map(map.clone()));
             self.map_loading = Some(map);
@@ -510,15 +529,16 @@ impl Viewer {
             self.sky_loading = Some(sky.to_owned());
         }
 
-        let viewmodel = viewmodel_pose(frame).map(|(path, _)| ModelRef::File(path));
-        let drawn = drawn(frame)
+        let viewmodel = viewmodel_ref(frame, &self.models);
+        let drawn = drawn(frame, &self.models)
             .into_iter()
             .flat_map(|d| std::iter::once(d.model).chain(d.weapon));
         let flashes = frame.flashes.iter().map(|f| flash_sprite(f.sprite));
-        let temp = frame
-            .temp_entities
-            .iter()
-            .filter_map(|e| e.model.as_deref().map(|m| ModelRef::File(m.to_owned())));
+        let temp = frame.temp_entities.iter().filter_map(|e| {
+            let path = e.model.as_deref()?;
+            Some(studio_ref(&self.models, path, i64::from(e.body), 0))
+        });
+        let temp: Vec<ModelRef> = temp.collect();
         let beams = &frame.beams;
         let beam_sprites = beams
             .trails
@@ -585,7 +605,7 @@ impl Viewer {
                 guns.insert(holder, at);
             }
         };
-        for drawn in drawn(frame) {
+        for drawn in drawn(frame, &self.models) {
             if let Some(Slot::Sprite(handle)) = self.models.get(&drawn.model) {
                 sprites.push(SpriteInstance {
                     sprite: *handle,
@@ -610,9 +630,12 @@ impl Viewer {
             instances.push(Instance {
                 model: *handle,
                 vertices: model.mesh.skin(&bones, &light),
+                mode: drawn.mode,
+                amount: drawn.amount,
             });
             place(Holder::Entity(drawn.id), model, &bones);
 
+            // The weapon is drawn as its holder is
             if let Some(Slot::Ready(weapon, weapon_handle)) =
                 drawn.weapon.as_ref().and_then(|w| self.models.get(w))
                 && let Some(weapon_bones) = weapon.merged_pose(&drawn.pose, model, &bones)
@@ -620,6 +643,8 @@ impl Viewer {
                 instances.push(Instance {
                     model: *weapon_handle,
                     vertices: weapon.mesh.skin(&weapon_bones, &light),
+                    mode: drawn.mode,
+                    amount: drawn.amount,
                 });
             }
         }
@@ -630,7 +655,9 @@ impl Viewer {
             let Some(path) = m.model.as_deref() else {
                 continue;
             };
-            let slot = self.models.get(&ModelRef::File(path.to_owned()));
+            let slot = self
+                .models
+                .get(&studio_ref(&self.models, path, i64::from(m.body), 0));
             if let Some(Slot::Sprite(handle)) = slot {
                 sprites.push(SpriteInstance {
                     sprite: *handle,
@@ -664,19 +691,25 @@ impl Viewer {
                 instances.push(Instance {
                     model: *handle,
                     vertices: model.mesh.skin(&bones, &light_at(m.origin)),
+                    mode: RenderMode::from_game(m.render_mode),
+                    amount: (m.render_amount / 255.).clamp(0., 1.),
                 });
             }
         }
 
         let mut viewmodel = Vec::new();
-        if let Some((path, pose)) = viewmodel_pose(frame)
-            && let Some(Slot::Ready(model, handle)) = self.models.get(&ModelRef::File(path))
+        if let Some((_, pose)) = viewmodel_pose(frame)
+            && let Some(Slot::Ready(model, handle)) = viewmodel_ref(frame, &self.models)
+                .as_ref()
+                .and_then(|m| self.models.get(m))
             && let Some(bones) = model.pose(&pose)
         {
             let light = light_at(pose.origin);
             viewmodel.push(Instance {
                 model: *handle,
                 vertices: model.mesh.skin(&bones, &light),
+                mode: RenderMode::Normal,
+                amount: 1.,
             });
             place(Holder::Viewmodel, model, &bones);
         }
@@ -893,13 +926,19 @@ impl Viewer {
             return false;
         };
         let map = frame.map.as_deref().map(map_name);
-        let viewmodel = viewmodel_pose(frame).map(|(path, _)| ModelRef::File(path));
-        let loading = drawn(frame)
+        let viewmodel = viewmodel_ref(frame, &self.models);
+        let loading = drawn(frame, &self.models)
             .into_iter()
             .flat_map(|d| std::iter::once(d.model).chain(d.weapon))
             .chain(viewmodel)
             .any(|m| matches!(self.models.get(&m), None | Some(Slot::Loading)));
         frame.stamp == stamp && map.is_some() && self.map == map && !loading
+    }
+
+    /// The map the frame is on, and why, when it could not be loaded
+    fn failed_map(&self) -> Option<&(String, String)> {
+        let map = self.frame.as_ref()?.map.as_deref().map(map_name)?;
+        self.map_failed.as_ref().filter(|(name, _)| *name == map)
     }
 
     /// Step a capture run, and the size to draw at while it lasts. True in
@@ -921,6 +960,10 @@ impl Viewer {
                 }
             }
             CapturePhase::Wait(stamp) => {
+                if let Some((map, _)) = self.failed_map() {
+                    eprintln!("capture: the map {map} could not be loaded");
+                    return (Some(size), true);
+                }
                 if self.ready(stamp)
                     && let Some(c) = &mut self.capturing
                 {
@@ -990,29 +1033,48 @@ impl Viewer {
         let (rect, _) = ui.allocate_exact_size(size, Sense::hover());
         let mut drawn = 0;
         let mut drawn_at = None;
-        match (&self.frame, &self.map) {
-            (Some(frame), Some(_)) => {
-                let pixels = capture_size.unwrap_or([
-                    (rect.width() * ui.pixels_per_point()).round().max(1.) as u32,
-                    (rect.height() * ui.pixels_per_point()).round().max(1.) as u32,
-                ]);
-                let draw = self.draw_list();
-                drawn_at = Some(frame.at.0);
-                drawn = draw.instances.len() + draw.sprites.len() + draw.viewmodel.len();
-                let callback = Frame {
-                    pixels,
-                    view: view(frame, pixels[0] as f32 / pixels[1] as f32),
-                    draw,
-                };
-                ui.painter()
-                    .add(egui_wgpu::Callback::new_paint_callback(rect, callback));
-                if self.time_frame(pixels, drawn) {
-                    ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+        if let Some((map, error)) = self.failed_map() {
+            let message = catalog.text_with("viewer-map-failed", &[("map", map.clone().into())]);
+            ui.put(rect, |ui: &mut egui::Ui| {
+                ui.vertical_centered(|ui| {
+                    text::label(ui, &message, rtl);
+                    text::label(ui, error, rtl);
+                })
+                .response
+            });
+        } else {
+            match (&self.frame, &self.map) {
+                (Some(frame), Some(_)) => {
+                    let pixels = capture_size.unwrap_or([
+                        (rect.width() * ui.pixels_per_point()).round().max(1.) as u32,
+                        (rect.height() * ui.pixels_per_point()).round().max(1.) as u32,
+                    ]);
+                    let draw = self.draw_list();
+                    drawn_at = Some(frame.at.0);
+                    drawn = draw.instances.len() + draw.sprites.len() + draw.viewmodel.len();
+                    let callback = Frame {
+                        pixels,
+                        view: view(frame, pixels[0] as f32 / pixels[1] as f32),
+                        draw,
+                    };
+                    ui.painter()
+                        .add(egui_wgpu::Callback::new_paint_callback(rect, callback));
+                    if self.time_frame(pixels, drawn) {
+                        ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                    }
+                }
+                _ => {
+                    ui.put(rect, egui::Spinner::new());
                 }
             }
-            _ => {
-                ui.put(rect, egui::Spinner::new());
-            }
+        }
+        if let Some(stopped) = self.frame.as_ref().and_then(|f| f.stopped.as_ref()) {
+            let reason = catalog.message(stopped);
+            text::label(
+                ui,
+                &catalog.text_with("viewer-stopped", &[("reason", reason.into())]),
+                rtl,
+            );
         }
         if let Some(at) = drawn_at {
             self.flashes_to = at;
@@ -1132,7 +1194,7 @@ struct Drawn {
 /// model their userinfo names, upright as the game draws them. The entity
 /// the recorder views from is left out, and so is the player a spectator
 /// sees through the eyes of
-fn drawn(frame: &PresentedFrame) -> Vec<Drawn> {
+fn drawn(frame: &PresentedFrame, models: &HashMap<ModelRef, Slot>) -> Vec<Drawn> {
     let viewer = frame.recorder.view_entity.unwrap_or(frame.local_entity);
     let observed =
         (frame.recorder.observer_mode == OBS_IN_EYE).then_some(frame.recorder.observer_target);
@@ -1154,7 +1216,7 @@ fn drawn(frame: &PresentedFrame) -> Vec<Drawn> {
                 ModelRef::Player(name.to_owned(), colours)
             }
             (None, Some(path)) if path.ends_with(".mdl") || path.ends_with(".spr") => {
-                ModelRef::File(path.to_owned())
+                studio_ref(models, path, e.body, e.skin)
             }
             _ => continue,
         };
@@ -1172,6 +1234,10 @@ fn drawn(frame: &PresentedFrame) -> Vec<Drawn> {
             .filter(|w| is_player && w.ends_with(".mdl"))
             .map(|w| ModelRef::File(w.to_owned()));
         let mode = RenderMode::from_game(e.render_mode);
+        // A translucent one at amount 0 is not drawn, as the game skips it
+        if mode != RenderMode::Normal && e.render_amount <= 0 {
+            continue;
+        }
         out.push(Drawn {
             id: e.id,
             model,
@@ -1199,6 +1265,43 @@ fn drawn(frame: &PresentedFrame) -> Vec<Drawn> {
         });
     }
     out
+}
+
+/// The viewmodel to draw, in the body its last animation gave
+fn viewmodel_ref(frame: &PresentedFrame, models: &HashMap<ModelRef, Slot>) -> Option<ModelRef> {
+    let (path, _) = viewmodel_pose(frame)?;
+    let body = frame.viewmodel.map_or(0, |a| i64::from(a.body));
+    Some(studio_ref(models, &path, body, 0))
+}
+
+/// The model to draw for a studio model in `body` and `skin`, the first
+/// body and skin's own until the model is in and its variations known, as
+/// a body or skin past them is the first's. Any other model is its file
+fn studio_ref(models: &HashMap<ModelRef, Slot>, path: &str, body: i64, skin: i64) -> ModelRef {
+    let file = ModelRef::File(path.to_owned());
+    if !path.ends_with(".mdl") || (body == 0 && skin == 0) {
+        return file;
+    }
+    let Some(Slot::Ready(model, _)) = models.get(&file) else {
+        return file;
+    };
+    let asset = &model.asset;
+    let value = u32::try_from(body).unwrap_or(0);
+    let body = asset
+        .body_parts()
+        .iter()
+        .enumerate()
+        .filter(|(_, part)| !part.models.is_empty())
+        .map(|(p, part)| asset.submodel(p, value) * part.base)
+        .sum::<usize>();
+    let skin = usize::try_from(skin)
+        .ok()
+        .filter(|&s| s < asset.skin_families().len())
+        .unwrap_or(0);
+    match (u32::try_from(body).unwrap_or(0), skin) {
+        (0, 0) => file,
+        (body, skin) => ModelRef::Variant(path.to_owned(), body, skin),
+    }
 }
 
 /// A tracer's colour, `tracerred`, `tracergreen` and `tracerblue` at their

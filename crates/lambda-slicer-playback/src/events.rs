@@ -170,6 +170,12 @@ impl Events {
         &self.pending
     }
 
+    /// Drop the queued events, as a new session does (`CL_ResetEvents`).
+    /// The counts the client's handlers keep live on, as the game's do
+    pub(crate) fn clear(&mut self) {
+        self.pending.clear();
+    }
+
     /// The crowbar's count of swings, for its handler
     pub fn swings(&mut self) -> &mut u32 {
         &mut self.swings

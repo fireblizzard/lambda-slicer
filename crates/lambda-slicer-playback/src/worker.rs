@@ -7,11 +7,17 @@
 //! they answer, for [`Controller::accept`](crate::controller::Controller::accept)
 //! to judge.
 //!
+//! A seek, step or load sent while another is being answered stops that
+//! one between groups, unanswered, as does dropping the worker. Requests
+//! of the same stamp, as playing sends them, do not, so playback slower
+//! than the clock still shows frames.
+//!
 //! While no request waits, a second playback of the same demo plays ahead
 //! in short slices to add checkpoints, so later seeks start nearby. A new
 //! request waits for one slice at most
 
 use std::path::Path;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
@@ -19,7 +25,7 @@ use std::thread::JoinHandle;
 use lambda_slicer_core::container::Limits;
 
 use crate::GameFiles;
-use crate::controller::{Reply, Request, Target};
+use crate::controller::{Reply, Request, Stamp, Target};
 use crate::playback::Playback;
 
 pub struct Worker {
@@ -27,6 +33,10 @@ pub struct Worker {
     replies: Receiver<Reply>,
     thread: Option<JoinHandle<()>>,
     loaded: Arc<Mutex<Option<Loaded>>>,
+    /// Counts each request with a stamp other than the one before, and
+    /// the worker's drop
+    changes: Arc<AtomicU64>,
+    last: Mutex<Option<Stamp>>,
 }
 
 /// The demo the worker has open, for another playback of it to share its
@@ -56,10 +66,20 @@ impl Worker {
         let (request_tx, request_rx) = mpsc::channel::<Request>();
         let loaded = Arc::new(Mutex::new(None));
         let thread_loaded = loaded.clone();
+        let changes = Arc::new(AtomicU64::new(0));
+        let thread_changes = changes.clone();
         let (reply_tx, reply_rx) = mpsc::channel();
         let thread = std::thread::Builder::new()
             .name("playback".into())
-            .spawn(move || run(limits, files, request_rx, reply_tx, thread_loaded, notify))
+            .spawn(move || {
+                let worker = Thread {
+                    requests: request_rx,
+                    replies: reply_tx,
+                    loaded: thread_loaded,
+                    changes: thread_changes,
+                };
+                run(limits, files, worker, notify)
+            })
             .expect("spawn playback worker");
 
         Self {
@@ -67,13 +87,23 @@ impl Worker {
             replies: reply_rx,
             thread: Some(thread),
             loaded,
+            changes,
+            last: Mutex::new(None),
         }
     }
 
     pub fn send(&self, request: Request) {
-        if let Some(tx) = &self.requests {
-            let _ = tx.send(request);
+        let Some(tx) = &self.requests else {
+            return;
+        };
+        // Counted before it is sent, so the worker never stops for a
+        // request it has already taken
+        let mut last = self.last.lock().unwrap_or_else(|e| e.into_inner());
+        if *last != Some(request.stamp) {
+            *last = Some(request.stamp);
+            self.changes.fetch_add(1, Ordering::SeqCst);
         }
+        let _ = tx.send(request);
     }
 
     /// The demo open now and its checkpoints
@@ -97,7 +127,9 @@ impl Worker {
 
 impl Drop for Worker {
     fn drop(&mut self) {
-        // Closing the request channel ends the worker's loop
+        // Closing the request channel ends the worker's loop, once a seek
+        // under way has stopped
+        self.changes.fetch_add(1, Ordering::SeqCst);
         self.requests = None;
         if let Some(thread) = self.thread.take() {
             let _ = thread.join();
@@ -109,14 +141,27 @@ impl Drop for Worker {
 /// tens of milliseconds
 const INDEX_SLICE: usize = 1000;
 
-fn run(
-    limits: Limits,
-    files: Option<GameFiles>,
+/// The worker thread's ends of what it shares with the [`Worker`]
+struct Thread {
     requests: Receiver<Request>,
     replies: Sender<Reply>,
     loaded: Arc<Mutex<Option<Loaded>>>,
-    notify: impl Fn(),
-) {
+    changes: Arc<AtomicU64>,
+}
+
+fn run(limits: Limits, files: Option<GameFiles>, worker: Thread, notify: impl Fn()) {
+    let Thread {
+        requests,
+        replies,
+        loaded,
+        changes,
+    } = worker;
+    // The count of changes when the batch being answered was taken
+    let taken = Arc::new(AtomicU64::new(0));
+    let replaced = {
+        let (changes, taken) = (changes.clone(), taken.clone());
+        move || changes.load(Ordering::SeqCst) != taken.load(Ordering::SeqCst)
+    };
     let open = |path: &std::path::Path, store: Option<crate::checkpoint::Shared>| {
         let mut p = match store {
             Some(store) => Playback::open_with(path, limits, store),
@@ -125,6 +170,7 @@ fn run(
         if let Some(files) = &files {
             p.set_game_files(files);
         }
+        p.set_interrupt(replaced.clone());
         Ok::<_, lambda_slicer_core::message::Message>(p)
     };
     let mut playback: Option<(u64, Playback)> = None;
@@ -149,6 +195,7 @@ fn run(
         };
         let mut batch = vec![first];
         batch.extend(requests.try_iter());
+        taken.store(changes.load(Ordering::SeqCst), Ordering::SeqCst);
         let Some(newest) = batch.pop() else {
             continue;
         };
@@ -195,6 +242,10 @@ fn run(
                 .seek_group(group)
                 .map(|_| p.position().map_or(Default::default(), |at| at.time)),
         };
+        // A newer seek or load waits, and is answered instead
+        if replaced() {
+            continue;
+        }
         let reply = match reached {
             Ok(at) => Reply::Frame(Box::new(p.present(
                 newest.stamp,

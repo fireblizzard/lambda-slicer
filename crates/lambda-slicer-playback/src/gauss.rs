@@ -111,6 +111,9 @@ pub(crate) fn fire(
     let mut dest = add(source, forward, 8192.);
     let mut punched = false;
     let mut first = true;
+    // The player the shot last went through, which the next trace passes
+    // as the server's does (`pentIgnore`), as it starts inside its box
+    let mut passed: Option<u16> = None;
     // Orange at brightness 128 for a primary shot, white at the shot's
     // energy for a charged one
     let (width, color) = if shot.primary {
@@ -138,7 +141,8 @@ pub(crate) fn fire(
         if world.is_some_and(|w| w.trace(source, dest).all_solid) {
             break;
         }
-        let met = trace(source, dest, shooter, max_clients, scene, world);
+        let skip: Vec<u16> = std::iter::once(shooter).chain(passed).collect();
+        let met = trace(source, dest, &skip, max_clients, scene, world);
         let end = met.map_or(dest, |(_, at, _)| at);
         out.beams.push(ShotBeam {
             start: source,
@@ -151,17 +155,21 @@ pub(crate) fn fire(
         let Some((_, at, hit)) = met else {
             break;
         };
-        let Hit::Brush {
-            entity,
-            render_mode,
-            normal,
-            ..
-        } = hit
-        else {
-            // On through a player
-            source = add(at, forward, 1.);
-            continue;
+        let (entity, render_mode, normal) = match hit {
+            Hit::Brush {
+                entity,
+                render_mode,
+                normal,
+                ..
+            } => (entity, render_mode, normal),
+            Hit::Player(number) => {
+                // On through the player
+                source = add(at, forward, 1.);
+                passed = Some(number);
+                continue;
+            }
         };
+        passed = None;
 
         let n = -(normal[0] * forward[0] + normal[1] * forward[1] + normal[2] * forward[2]);
         if n < 0.5 {
@@ -362,5 +370,27 @@ mod tests {
         assert_eq!(primary.impacts.decals.len(), 1);
         assert_eq!(primary.beams.len(), 1);
         assert_eq!(primary.balls.last().unwrap().count, 8);
+    }
+
+    #[test]
+    fn a_shot_goes_through_a_player_to_the_wall_behind() {
+        let hull = thin_wall();
+        let player = crate::scene::Entity {
+            id: crate::scene::EntityId {
+                number: 2,
+                ..Default::default()
+            },
+            origin: [50., 0., 50.],
+            solid: 3,
+            ..Default::default()
+        };
+        let mut scene = Scene::default();
+        scene.entities = std::sync::Arc::new(vec![player]);
+        let out = fire(&shot([1., 0., 0.], 200., true), 1, 32, &scene, Some(&hull));
+        // Into the player's box, then on from inside it to the wall
+        assert_eq!(out.beams.len(), 2);
+        assert!((out.beams[0].end[0] - 34.).abs() < 0.1);
+        assert!((out.beams[1].end[0] - 100.).abs() < 0.1);
+        assert_eq!(out.impacts.decals.len(), 1);
     }
 }

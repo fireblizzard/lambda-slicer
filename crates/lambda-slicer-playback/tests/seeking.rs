@@ -407,3 +407,29 @@ fn the_worker_indexes_while_idle_and_seeks_answer_the_same() {
         let _ = reference.at(at);
     }
 }
+
+#[test]
+fn an_interrupted_seek_stops_between_groups_and_a_later_one_finishes_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = demo(dir.path());
+    let mut p = Playback::open(&path, Limits::default()).unwrap();
+    let asked = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let counter = asked.clone();
+    p.set_interrupt(move || counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst) >= 5);
+    let end = SourceTime(12.);
+    p.advance_to(end).unwrap();
+    // Stopped after five groups, well short of the end
+    let reached = p.position().unwrap().group;
+    assert!(reached < 10, "{reached}");
+
+    p.set_interrupt(|| false);
+    p.advance_to(end).unwrap();
+    let stamp = Stamp::default();
+    let finished = p.present(stamp, end, CameraMode::Recorder, false);
+    let mut fresh = sequential(&path);
+    fresh.advance_to(end).unwrap();
+    let mut expected = fresh.present(stamp, end, CameraMode::Recorder, false);
+    // How far each store's checkpoints reach differs, as in the test above
+    expected.indexed = finished.indexed;
+    assert_eq!(format!("{finished:?}"), format!("{expected:?}"));
+}

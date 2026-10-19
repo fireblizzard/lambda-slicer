@@ -13,11 +13,18 @@
 //! The mixer keeps its own place in source time and follows the clock,
 //! starting again from it after a seek, a load, a pause or when it falls
 //! more than [`DRIFT`] away. While paused, seeking or stepping it plays
-//! silence, and the device's own latency comes on top
+//! silence, and the device's own latency comes on top.
+//!
+//! Each block is marked with the feed it was mixed for. A seek, load, pause
+//! or resume changes the feed's mark at once, and the callback drops every
+//! block queued under the old one, as does the mixer for a block it was
+//! still mixing. A seek the mixer is making stops when the feed changes or
+//! the device closes. Closing releases the stream first, so a mixer waiting
+//! on a device that stopped taking blocks ends
 
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
-use std::sync::mpsc::{self, Receiver, SyncSender, TryRecvError};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
+use std::sync::mpsc::{self, Receiver, SyncSender, TryRecvError, TrySendError};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
@@ -50,10 +57,16 @@ pub struct Feed {
     pub audible: bool,
 }
 
+/// A block of samples and the mark of the feed it was mixed for
+type Block = (u64, Vec<[f32; 2]>);
+
 /// Sound playing on the default output device until dropped
 pub struct Device {
-    _stream: cpal::Stream,
+    stream: Option<cpal::Stream>,
     feed: Arc<Mutex<Option<Feed>>>,
+    /// Grows whenever the feed's stamp changes or it starts or stops being
+    /// heard
+    mark: Arc<AtomicU64>,
     volume: Arc<AtomicU32>,
     stop: Arc<AtomicBool>,
     mixer: Option<JoinHandle<()>>,
@@ -74,30 +87,45 @@ impl Device {
         let channels = usize::from(config.channels());
         let block = (rate / 100).max(1) as usize;
 
-        let (filled_tx, filled_rx) = mpsc::sync_channel::<Vec<[f32; 2]>>(QUEUED);
+        let (filled_tx, filled_rx) = mpsc::sync_channel::<Block>(QUEUED);
         let (empty_tx, empty_rx) = mpsc::sync_channel::<Vec<[f32; 2]>>(QUEUED + 2);
         for _ in 0..QUEUED + 2 {
             let _ = empty_tx.try_send(Vec::with_capacity(block));
         }
 
         let muted = tap.is_some();
-        let mut current: Option<Vec<[f32; 2]>> = None;
+        let mark = Arc::new(AtomicU64::new(0));
+        let live = mark.clone();
+        let mut current: Option<Block> = None;
         let mut read = 0;
         let stream = device
             .build_output_stream(
                 config.config(),
                 move |out: &mut [f32], _| {
+                    let now = live.load(Ordering::SeqCst);
                     for frame in out.chunks_mut(channels) {
-                        if current.as_ref().is_none_or(|b| read >= b.len()) {
-                            if let Some(done) = current.take() {
+                        if current
+                            .as_ref()
+                            .is_none_or(|(m, b)| read >= b.len() || *m != now)
+                        {
+                            if let Some((_, done)) = current.take() {
                                 let _ = empty_tx.try_send(done);
                             }
-                            current = filled_rx.try_recv().ok();
+                            // Blocks mixed for an older feed are not heard
+                            current = loop {
+                                match filled_rx.try_recv() {
+                                    Ok((m, stale)) if m != now => {
+                                        let _ = empty_tx.try_send(stale);
+                                    }
+                                    Ok(fresh) => break Some(fresh),
+                                    Err(_) => break None,
+                                }
+                            };
                             read = 0;
                         }
                         let sample = current
                             .as_ref()
-                            .and_then(|b| b.get(read))
+                            .and_then(|(_, b)| b.get(read))
                             .copied()
                             .unwrap_or([0.; 2]);
                         read += 1;
@@ -116,15 +144,18 @@ impl Device {
         let volume = Arc::new(AtomicU32::new(0.5f32.to_bits()));
         let stop = Arc::new(AtomicBool::new(false));
         let mixer = {
-            let (feed, volume, stop) = (feed.clone(), volume.clone(), stop.clone());
+            let shared = Shared {
+                feed: feed.clone(),
+                mark: mark.clone(),
+                volume: volume.clone(),
+                stop: stop.clone(),
+            };
             std::thread::Builder::new()
                 .name("sound mixer".into())
                 .spawn(move || {
                     let tapped = run(
                         library,
-                        feed,
-                        volume,
-                        stop,
+                        shared,
                         rate,
                         block,
                         filled_tx,
@@ -141,8 +172,9 @@ impl Device {
         };
 
         Ok(Self {
-            _stream: stream,
+            stream: Some(stream),
             feed,
+            mark,
             volume,
             stop,
             mixer: Some(mixer),
@@ -151,7 +183,12 @@ impl Device {
 
     /// Publish what is playing now
     pub fn feed(&self, feed: Feed) {
-        *self.feed.lock().unwrap_or_else(|e| e.into_inner()) = Some(feed);
+        let mut slot = self.feed.lock().unwrap_or_else(|e| e.into_inner());
+        let key = |f: &Feed| (f.stamp, f.audible && f.clock.playing());
+        if slot.as_ref().map(key) != Some(key(&feed)) {
+            self.mark.fetch_add(1, Ordering::SeqCst);
+        }
+        *slot = Some(feed);
     }
 
     /// The master volume, 0 to 1
@@ -167,7 +204,10 @@ impl Device {
 
 impl Drop for Device {
     fn drop(&mut self) {
-        self.stop.store(true, Ordering::Relaxed);
+        self.stop.store(true, Ordering::SeqCst);
+        // The stream's callback holds the queue's receiving end, so the
+        // mixer's next send fails even if the device stopped taking blocks
+        drop(self.stream.take());
         if let Some(mixer) = self.mixer.take() {
             let _ = mixer.join();
         }
@@ -192,6 +232,14 @@ fn clock_at(feed: &Feed, instant: Instant) -> SourceTime {
     feed.clock.at(wall)
 }
 
+/// What the mixer shares with the [`Device`]
+struct Shared {
+    feed: Arc<Mutex<Option<Feed>>>,
+    mark: Arc<AtomicU64>,
+    volume: Arc<AtomicU32>,
+    stop: Arc<AtomicBool>,
+}
+
 /// The mixer's own playback, for one load generation. None when the demo
 /// could not be opened
 type Own = Option<(u64, Option<Playback>)>;
@@ -203,6 +251,7 @@ fn advance<'a>(
     demo: &Loaded,
     library: &Arc<Library>,
     time: SourceTime,
+    interrupt: impl Fn() -> bool + Send + 'static,
 ) -> Option<&'a Playback> {
     if own
         .as_ref()
@@ -213,6 +262,7 @@ fn advance<'a>(
             .ok()
             .map(|mut playback| {
                 playback.set_game_files(&library.game_files());
+                playback.set_interrupt(interrupt);
                 playback
             });
         *own = Some((demo.generation, opened));
@@ -222,18 +272,31 @@ fn advance<'a>(
     Some(playback)
 }
 
-#[allow(clippy::too_many_arguments)]
 fn run(
     library: Arc<Library>,
-    feed: Arc<Mutex<Option<Feed>>>,
-    volume: Arc<AtomicU32>,
-    stop: Arc<AtomicBool>,
+    shared: Shared,
     rate: u32,
     block: usize,
-    filled: SyncSender<Vec<[f32; 2]>>,
+    filled: SyncSender<Block>,
     empty: Receiver<Vec<[f32; 2]>>,
     tapping: bool,
 ) -> Vec<[f32; 2]> {
+    let Shared {
+        feed,
+        mark,
+        volume,
+        stop,
+    } = shared;
+    // The mark of the feed being mixed, which a seek stops for once the
+    // feed's changes or the device closes
+    let serving = Arc::new(AtomicU64::new(0));
+    let interrupt = {
+        let (mark, serving, stop) = (mark.clone(), serving.clone(), stop.clone());
+        move || {
+            stop.load(Ordering::SeqCst)
+                || mark.load(Ordering::SeqCst) != serving.load(Ordering::SeqCst)
+        }
+    };
     let mut tapped = Vec::new();
     // Where the mixer is in source time, for which load and seek, none
     // while silent
@@ -252,7 +315,11 @@ fn run(
         };
         buffer.clear();
 
-        let now = feed.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        let (now, tag) = {
+            let feed = feed.lock().unwrap_or_else(|e| e.into_inner());
+            (feed.clone(), mark.load(Ordering::SeqCst))
+        };
+        serving.store(tag, Ordering::SeqCst);
         let playing = now
             .filter(|f| f.audible && f.clock.playing() && f.demo.generation == f.stamp.generation);
         let mixed = playing.and_then(|f| {
@@ -262,7 +329,7 @@ fn run(
             let from = block_start(place, f.stamp, clock_at(&f, heard));
             let speed = f.clock.rate().factor();
             let to = SourceTime(from.0 + block as f64 * speed / f64::from(rate));
-            let playback = advance(&mut own, &f.demo, &library, to)?;
+            let playback = advance(&mut own, &f.demo, &library, to, interrupt.clone())?;
             let output = Output {
                 rate,
                 speed,
@@ -279,7 +346,9 @@ fn run(
             ));
             Some((f.stamp, to))
         });
-        place = mixed;
+        // A block whose feed changed while it was mixed is not heard, and
+        // the next starts at the clock
+        place = mixed.filter(|_| mark.load(Ordering::SeqCst) == tag);
         if place.is_none() {
             buffer.clear();
             buffer.resize(block, [0.; 2]);
@@ -287,11 +356,29 @@ fn run(
         if tapping && (place.is_some() || !tapped.is_empty()) {
             tapped.extend_from_slice(&buffer);
         }
-        if filled.send(buffer).is_err() {
+        if !send(&filled, (tag, buffer), &stop) {
             break;
         }
     }
     tapped
+}
+
+/// Queue `block` for the device, false once the device closed or the
+/// stream is gone
+fn send(filled: &SyncSender<Block>, mut block: Block, stop: &AtomicBool) -> bool {
+    loop {
+        match filled.try_send(block) {
+            Ok(()) => return true,
+            Err(TrySendError::Disconnected(_)) => return false,
+            Err(TrySendError::Full(back)) => {
+                if stop.load(Ordering::SeqCst) {
+                    return false;
+                }
+                block = back;
+                std::thread::sleep(Duration::from_millis(2));
+            }
+        }
+    }
 }
 
 #[cfg(test)]
