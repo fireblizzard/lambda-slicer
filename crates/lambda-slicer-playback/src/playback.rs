@@ -248,6 +248,12 @@ impl Playback {
         &self.state.decoder
     }
 
+    /// Why playback stopped before the end of the demo, none while it can
+    /// go on or once it reached the end
+    pub fn stopped(&self) -> Option<&Message> {
+        self.state.stopped.as_ref()
+    }
+
     /// Everything playback holds between groups as text, for checking that
     /// two ways of reaching a moment hold the same. Of the decoder only
     /// its public state and latest snapshot, as checkpoints keep it whole

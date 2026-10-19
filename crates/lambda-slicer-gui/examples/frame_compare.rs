@@ -1,14 +1,21 @@
 //! Compares the game's frames of a clip with the viewer's
 //! (docs/viewer-validation.md, "Reference captures")
 //!
-//! `frame_compare GAME_FRAMES VIEWER_FOLDER [SHEET.png]`
+//! `frame_compare GAME_FRAMES VIEWER_FOLDER [--frames FIRST-LAST | --seconds S]
+//! [--sheet SHEET.png]`
 //!
 //! `GAME_FRAMES` is the name `startmovie` wrote the game's frames under,
 //! such as `.../ag/ls12d_kill`, a 24-bit BMP for every tenth of a second
-//! numbered from 1. The demo's frames are the longest run in which each
-//! differs from the one before, as loading screens and the menu stay still.
-//! `VIEWER_FOLDER` holds the viewer's frames of the same clip as
-//! `--viewer-capture` writes them, `<seconds>.png`, every 0.05 s.
+//! numbered from 1. `VIEWER_FOLDER` holds the viewer's frames of the same
+//! clip as `--viewer-capture` writes them, `<seconds>.png`, every 0.05 s.
+//!
+//! The demo's frames among the game's, which loading screens and the menu
+//! surround, are the frames numbered `FIRST` to `LAST`, or `S` seconds from
+//! the first frame that differs from the one before, the demo's first after
+//! the loading screen. Without either they are guessed as the longest run of
+//! frames that differ from the one before, still for 3 s at most, which a
+//! longer pause in the demo would cut short. It says which frames it took
+//! and how many of them found a viewer frame to pair with.
 //!
 //! Both are cut to the 4:3 scene in their middle, as the game draws 4:3
 //! between black bars, and made into grey 160 by 120 thumbnails, with AG's
@@ -17,8 +24,8 @@
 //! makes the pairs differ least. It prints that offset, how much the pairs
 //! differ on average (the mean absolute difference of grey levels out of
 //! 255), the same for frames a second apart, and the pairs that differ
-//! most. With `SHEET.png` it writes every tenth pair side by side, the
-//! game's on the left
+//! most. With `--sheet` it writes every tenth pair side by side, the game's
+//! on the left
 
 use std::path::{Path, PathBuf};
 
@@ -31,12 +38,12 @@ const THUMB_HEIGHT: usize = 120;
 const GAME_RATE: f64 = 10.;
 /// How much a frame differs from the one before when the picture moved
 const MOVED: f32 = 0.5;
-/// Frames the demo's run may stay still for, half a second
-const STILL: usize = 5;
-/// Frames of movement, and then of stillness, after which the game's
-/// frames are taken to be past the demo
+/// Frames a guessed run may stay still for, 3 s
+const STILL: usize = 30;
+/// Frames of movement, and then of stillness, after which a guess takes
+/// the game's frames to be past the demo, 10 s still
 const PLAYED: usize = 20;
-const DONE: usize = 30;
+const DONE: usize = 100;
 /// How far apart in seconds two frames may be to make a pair
 const PAIRED: f64 = 0.03;
 /// The pictures on the contact sheet
@@ -156,13 +163,30 @@ fn read_frame(path: &Path) -> Option<RgbImage> {
     image::open(path).ok().map(|image| image.to_rgb8())
 }
 
-/// The game's frames under `prefix`, in order, from `prefix00001.bmp` on.
-/// Reading stops once the frames stay still for [`DONE`] after
-/// [`PLAYED`] frames of movement, the demo over and the menu showing
-fn game_frames(prefix: &Path) -> Vec<Frame> {
+/// Which of the game's frames are the demo's
+#[derive(Clone, Copy, Debug)]
+enum Interval {
+    /// The frames numbered from the first to the last, both included
+    Frames(usize, usize),
+    /// This many seconds from the first frame that differs from the one
+    /// before
+    Seconds(f64),
+    /// The longest run of frames that differ from the one before
+    Guessed,
+}
+
+/// The index of the first frame that differs from the one before
+fn first_change(frames: &[Frame]) -> Option<usize> {
+    (1..frames.len()).find(|&i| difference(&frames[i].thumb, &frames[i - 1].thumb) > MOVED)
+}
+
+/// The game's frames under `prefix`, in order, from `prefix00001.bmp` on,
+/// read as far as `interval` needs
+fn game_frames(prefix: &Path, interval: Interval) -> Vec<Frame> {
     let mut frames: Vec<Frame> = Vec::new();
     let mut moved = 0;
     let mut still = 0;
+    let mut first = None;
     for number in 1.. {
         let mut name = prefix.as_os_str().to_owned();
         name.push(format!("{number:05}.bmp"));
@@ -172,20 +196,46 @@ fn game_frames(prefix: &Path) -> Vec<Frame> {
         };
         let thumb = thumbnail(&scene(&image));
 
-        if let Some(last) = frames.last() {
-            if difference(&thumb, &last.thumb) > MOVED {
-                moved += 1;
-                still = 0;
-            } else {
-                still += 1;
-            }
+        let changed = frames
+            .last()
+            .is_some_and(|last| difference(&thumb, &last.thumb) > MOVED);
+        if changed {
+            moved += 1;
+            still = 0;
+            first.get_or_insert(frames.len());
+        } else if !frames.is_empty() {
+            still += 1;
         }
         frames.push(Frame { thumb, path });
-        if moved >= PLAYED && still >= DONE {
+
+        let enough = match interval {
+            Interval::Frames(_, last) => frames.len() >= last,
+            Interval::Seconds(seconds) => {
+                let wanted = (seconds * GAME_RATE) as usize;
+                first.is_some_and(|f| frames.len() >= f + wanted)
+            }
+            Interval::Guessed => moved >= PLAYED && still >= DONE,
+        };
+        if enough {
             break;
         }
     }
     frames
+}
+
+/// The demo's frames among the game's, as a range of indices
+fn demo_frames(frames: &[Frame], interval: Interval) -> std::ops::Range<usize> {
+    match interval {
+        Interval::Frames(first, last) => (first - 1).min(frames.len())..last.min(frames.len()),
+        Interval::Seconds(seconds) => {
+            let Some(first) = first_change(frames) else {
+                return 0..0;
+            };
+            let end = first + (seconds * GAME_RATE) as usize;
+            first..end.min(frames.len())
+        }
+        Interval::Guessed => longest_run(frames),
+    }
 }
 
 /// The viewer's frames in `folder` with their times, in time order
@@ -216,10 +266,10 @@ fn viewer_frames(folder: &Path) -> Vec<(f64, Frame)> {
     frames
 }
 
-/// The longest run of frames that differ from the one before, the demo
-/// playing, as a range of indices. A run may stay still for [`STILL`]
-/// frames, as loading screens and the menu stay still longer
-fn demo_run(frames: &[Frame]) -> std::ops::Range<usize> {
+/// The longest run of frames that differ from the one before, as a range
+/// of indices. A run may stay still for [`STILL`] frames, as loading
+/// screens and the menu stay still longer
+fn longest_run(frames: &[Frame]) -> std::ops::Range<usize> {
     let mut best = 0..0;
     let mut run: Option<std::ops::Range<usize>> = None;
     for i in 1..frames.len() {
@@ -316,31 +366,67 @@ fn write_sheet(path: &Path, game: &[Frame], viewer: &[(f64, Frame)], offset: f64
     }
 }
 
-fn main() {
-    let args: Vec<String> = std::env::args().skip(1).collect();
-    let (game_prefix, viewer_folder, sheet) = match args.as_slice() {
-        [game, viewer] => (game, viewer, None),
-        [game, viewer, sheet] => (game, viewer, Some(PathBuf::from(sheet))),
-        _ => {
-            eprintln!("usage: frame_compare GAME_FRAMES VIEWER_FOLDER [SHEET.png]");
-            std::process::exit(2);
-        }
-    };
+/// The command line's frames, `FIRST-LAST`
+fn parse_frames(text: &str) -> Option<Interval> {
+    let (first, last) = text.split_once('-')?;
+    let (first, last) = (first.parse().ok()?, last.parse().ok()?);
+    if first < 1 || last < first {
+        return None;
+    }
+    Some(Interval::Frames(first, last))
+}
 
-    let all = game_frames(Path::new(game_prefix));
-    let run = demo_run(&all);
+/// The command line's seconds, more than none
+fn parse_seconds(text: &str) -> Option<Interval> {
+    let seconds: f64 = text.parse().ok()?;
+    if seconds <= 0. {
+        return None;
+    }
+    Some(Interval::Seconds(seconds))
+}
+
+fn main() {
+    let usage = "usage: frame_compare GAME_FRAMES VIEWER_FOLDER [--frames FIRST-LAST | --seconds S] [--sheet SHEET.png]";
+    let mut args = std::env::args().skip(1);
+    let (Some(game_prefix), Some(viewer_folder)) = (args.next(), args.next()) else {
+        eprintln!("{usage}");
+        std::process::exit(2);
+    };
+    let mut interval = Interval::Guessed;
+    let mut sheet = None;
+    while let Some(flag) = args.next() {
+        let value = args.next().unwrap_or_default();
+        match flag.as_str() {
+            "--frames" if let Some(given) = parse_frames(&value) => interval = given,
+            "--seconds" if let Some(given) = parse_seconds(&value) => interval = given,
+            "--sheet" if !value.is_empty() => sheet = Some(PathBuf::from(value)),
+            _ => {
+                eprintln!("{usage}");
+                std::process::exit(2);
+            }
+        }
+    }
+
+    let all = game_frames(Path::new(&game_prefix), interval);
+    let run = demo_frames(&all, interval);
     let game = &all[run.clone()];
-    let viewer = viewer_frames(Path::new(viewer_folder));
+    let viewer = viewer_frames(Path::new(&viewer_folder));
     if game.is_empty() || viewer.is_empty() {
         eprintln!(
-            "{} game frames and {} viewer frames",
+            "{} of the game's frames taken as the demo, of {} read, and {} viewer frames",
+            game.len(),
             all.len(),
             viewer.len()
         );
         std::process::exit(1);
     }
+    let how = match interval {
+        Interval::Frames(..) => "as given".to_owned(),
+        Interval::Seconds(seconds) => format!("{seconds} s from the first change"),
+        Interval::Guessed => "guessed from the movement".to_owned(),
+    };
     println!(
-        "game frames {} to {} of {}, the demo playing, and {} viewer frames from {:.2} to {:.2} s",
+        "game frames {} to {} of {} read, {how}, and {} viewer frames from {:.2} to {:.2} s",
         run.start + 1,
         run.end,
         all.len(),
@@ -371,9 +457,16 @@ fn main() {
     let found = pairs(game, &viewer, offset);
     let apart = mean(found.iter().filter_map(|(_, _, a)| *a));
     println!(
-        "offset {offset:+.2} s, {} pairs differing by {score:.1} on average, against {apart:.1} for frames a second apart",
-        found.len()
+        "offset {offset:+.2} s, {} of {} game frames paired, differing by {score:.1} on average, against {apart:.1} for frames a second apart",
+        found.len(),
+        game.len()
     );
+    let unpaired = game.len() - found.len();
+    if unpaired > 0 {
+        println!(
+            "{unpaired} of the demo's frames found no viewer frame within {PAIRED} s, their clip times before or after the viewer's capture"
+        );
+    }
     let mut worst = found.clone();
     worst.sort_by(|a, b| b.1.total_cmp(&a.1));
     let listed: Vec<String> = worst

@@ -84,6 +84,12 @@ fn group_time(k: i32) -> f32 {
 }
 
 fn demo(dir: &Path) -> PathBuf {
+    demo_broken_at(dir, None)
+}
+
+/// The synthetic demo, with a message no decoder knows in group `broken`
+/// when given
+fn demo_broken_at(dir: &Path, broken: Option<i32>) -> PathBuf {
     let resources = [
         (SOUND_RESOURCE, "weapons/gauss2.wav", GAUSS),
         (SOUND_RESOURCE, "ambience/hum.wav", HUM),
@@ -130,6 +136,11 @@ fn demo(dir: &Path) -> PathBuf {
             4 => sound(0, 1, 1, HUM, 100),
             5 => [stop_sound(5, 2), delayed_shot()].concat(),
             _ => stream::model_update(base, 1, 2),
+        };
+        let payload = if broken == Some(k) {
+            vec![0xFF; 8]
+        } else {
+            payload
         };
         playback.push(network(tag::NETWORK, time, n, &payload));
         if k % 6 == 0 {
@@ -247,6 +258,27 @@ fn times() -> Vec<SourceTime> {
     // Between groups, and on both sides of the step back
     times.extend([0.1, 3.0625, 3.1, 3.2, 3.4, 6.2, 9.9, 100.].map(SourceTime));
     times
+}
+
+#[test]
+fn indexing_a_demo_that_stops_decoding_says_where_and_why() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = demo_broken_at(dir.path(), Some(20));
+
+    // Indexing ends at the broken group, which counts as applied, and
+    // says why, where a complete demo ends with nothing to say
+    let mut p = Playback::open(&path, Limits::default()).unwrap();
+    while !p.index(7) {}
+    let reached = p.position().map_or(0., |q| q.time.0);
+    assert!(
+        p.stopped().is_some(),
+        "reached {reached} s without an error"
+    );
+    assert_eq!(reached, f64::from(group_time(20)));
+
+    let mut whole = Playback::open(&demo(dir.path()), Limits::default()).unwrap();
+    while !whole.index(7) {}
+    assert!(whole.stopped().is_none());
 }
 
 #[test]

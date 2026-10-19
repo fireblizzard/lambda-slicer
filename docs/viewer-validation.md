@@ -154,7 +154,7 @@ sound starting on an entity that is not a player.
 | Sustained Egon | `20230909_224143_stalkyard.dem` | 106.5 s | an Egon's beams drawn |
 | Ambient loop | `run_92.dem` | 4.5 s | sounds on static channels, singleplayer |
 | Moving brush entity | `run_92.dem` | 7.0 s | a brush entity moving between snapshots |
-| Singleplayer monster death | `run_92.dem` | 33.0 s | a monster's death sound starting, the monster out of view |
+| Singleplayer monster death | `run_92.dem` | 57.0 s | an alien grunt shot dead in front of the recorder |
 | Translucent sprite | `ls_9e_run.dem` | 3.2 s | glows and the beam entities' lightning, recorded by the game too |
 
 Not covered:
@@ -198,6 +198,11 @@ only the worker's frame, and a clip's starts give no sound. Then a slice from 8 
 to 4 s after is exported, from later in the moment's session when the export refuses that start,
 and the moment in it is checked the same way against sequential playback of the slice.
 
+A demo whose playback stops on a decode error before its end is refused, with where and why, as
+every way of reaching a moment would agree on the same broken state. So is a moment past where the
+demo ends, and a case no fixture has, so a misspelt case cannot pass by checking nothing. Each fails
+the run.
+
 Effects draw their random numbers from seeds each event takes from where it was recorded, and the
 seeds are part of the state compared. The viewer draws no HUD, so there is no notice's expiry to
 compare.
@@ -214,7 +219,7 @@ moment, in the demos and in every slice exported.
 | Sustained Egon | stalkyard 106.5 s | none | from 98.5 s, agrees |
 | Ambient loop | run_92 4.5 s | none | from 2.5 s, agrees |
 | Moving brush entity | run_92 7.0 s | none | from 3.0 s, agrees |
-| Singleplayer monster death | run_92 33.0 s | none | from 25.0 s, agrees |
+| Singleplayer monster death | run_92 57.0 s | none | from 53.0 s, agrees |
 | Translucent sprite | ls_9e_run 3.2 s | none | from 0.1 s, agrees |
 
 Each moment was also captured by the viewer three ways, as `--viewer-capture` seeks to its times
@@ -237,7 +242,10 @@ Found:
 - The export refused slices round run_92's first moments for these two cases, the ambient loop at
   2.5 s, as the session begins at 1.95 s and has no full update yet, and the monster death at
   19.5 s, as a temporary entity is still moving at every start tried. Both moments agreed every way
-  in the demo itself. The cases moved to the moments above, whose slices export.
+  in the demo itself. The cases moved to the moments above, whose slices export. The monster
+  death moved once more, from 33 s, where the death sound starts with the monster out of view, to
+  57 s, where an alien grunt dies in front of the recorder. That moment too agrees every way and
+  is captured the same three ways.
 
 ## Reference captures (12d)
 
@@ -255,7 +263,7 @@ already.
 | `ls_12d_egon.dem` | `20230909_224143_stalkyard.dem` | 103.5 to 109.5 s | 3.0 s, an Egon's beams in a 32-player fight |
 | `ls_12d_ambient.dem` | `run_92.dem` | 2.5 to 8.5 s | 2.0 s, ambient loops |
 | `ls_12d_brush.dem` | `run_92.dem` | 4 to 10 s | 3.0 s, a brush entity moving |
-| `ls_12d_death.dem` | `run_92.dem` | 30 to 36 s | 3.0 s, a monster's death sound |
+| `ls_12d_monster.dem` | `run_92.dem` | 54 to 60 s | 3.0 s, an alien grunt shot dead in view |
 
 **Recording the game's frames**, as in "Recording the game's frames", one clip at a time, windowed
 at 1280 by 720 or any size, with the game's gamma settings noted:
@@ -275,20 +283,26 @@ cargo run --release -p lambda-slicer-audio --example sound_compare -- F:\SteamLi
 ```
 
 **Comparing.** `scripts/viewer-references.ps1 -Game DIR -Out FOLDER` captures the viewer's frames
-of every clip, at 640 by 480 every 0.05 s for 7 s with the game's gamma settings (`-Gamma`,
-2,2,2,2 unless given). For each clip whose game frames are in `ag`, it then runs
-`examples/frame_compare.rs` in `lambda-slicer-gui` and writes a contact sheet of every tenth pair
-to `FOLDER\<clip>.png`, the game's frame on the left. `frame_compare` takes as the demo the
-longest run of the game's frames that change from one to the next, still for half a second at
-most, cuts both sides to the 4:3 scene and makes grey 160 by 120 thumbnails, the speedometer left
-out. It finds the offset between the game's clock and the clip's within 2 s, and says how much the
-pairs differ against frames a second apart and which differ most.
+of every clip, at 640 by 480 every 0.05 s through the clip's length and a second more (`-Length`,
+6 s unless given), with the game's gamma settings (`-Gamma`, 2,2,2,2 unless given). For each clip
+whose game frames are in `ag`, it then runs `examples/frame_compare.rs` in `lambda-slicer-gui` and
+writes a contact sheet of every tenth pair to `FOLDER\<clip>.png`, the game's frame on the left.
+
+`frame_compare` takes as the demo the game's frames for the clip's length from the first that
+differs from the one before, the demo's first after the loading screen (`--seconds`), or the
+frames numbered as given (`--frames FIRST-LAST`). Without either it guesses them as the longest
+run of changing frames, still for 3 s at most, which a longer pause in the demo would cut short,
+so the script always gives the length. It cuts both sides to the 4:3 scene and makes grey 160 by
+120 thumbnails, the speedometer left out, finds the offset between the game's clock and the
+clip's within 2 s, and says how many of the demo's frames found a pair, how much the pairs differ
+against frames a second apart, and which differ most.
 
 **Checked (2026-10-19)** on `ls_9e_run.dem` and the game's frames of 9e (`-Clips ls_9e_run
--Seconds 16`): frames 2 to 166 of the game's taken as the demo and an offset of -0.40 s, as found
-by hand in 9e, and pairs differing by 9.4 against 24.0 for frames a second apart (8.4 in 9e,
-before the beam entities and steady glows changed this clip). It reads the game's frames until
-they stay still for 3 s after the demo, in 12 s here. The pairs differing most are at 4.4 to 4.9 s,
+-Length 16`): frames 2 to 161 of the game's taken as the demo and an offset of -0.40 s, as found
+by hand in 9e, 156 of the 160 paired (the first four fall before the clip's start at that offset),
+and the pairs differing by 9.4 against 23.9 for frames a second apart (8.4 in 9e, before the beam
+entities and steady glows changed this clip). Given frames 2 to 166, the frames 9e took, and with
+the frames guessed from the movement, it finds the same offset and difference. The pairs differing most are at 4.4 to 4.9 s,
 where a crate breaks. The viewer's wooden gibs are larger and nearer the camera than the game's,
 not yet looked into.
 

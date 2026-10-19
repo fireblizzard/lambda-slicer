@@ -85,7 +85,10 @@ struct Benching {
     bench: Bench,
     /// When the viewer opened the demo
     opened: Instant,
-    /// When timing began, after a second of playback
+    /// The source time of the first frame drawn, a second of playback
+    /// after which timing begins
+    settle_from: Option<f64>,
+    /// When timing began
     begin: Option<Instant>,
     /// Milliseconds between frames
     times: Vec<f64>,
@@ -442,6 +445,7 @@ impl Viewer {
             bench: bench.map(|bench| Benching {
                 bench,
                 opened: Instant::now(),
+                settle_from: None,
                 begin: None,
                 times: Vec::new(),
                 picture: None,
@@ -1014,8 +1018,13 @@ impl Viewer {
             run.indexed.get_or_insert(since);
         }
 
-        // A second of playback to settle before timing
-        if self.frame.as_ref().is_none_or(|f| f.at.0 < 1.) {
+        // A second of playback to settle before timing, from wherever the
+        // bench starts in the demo
+        let Some(at) = self.frame.as_ref().map(|f| f.at.0) else {
+            return false;
+        };
+        let settle_from = *run.settle_from.get_or_insert(at);
+        if at - settle_from < 1. {
             return false;
         }
         let begin = *run.begin.get_or_insert(now);

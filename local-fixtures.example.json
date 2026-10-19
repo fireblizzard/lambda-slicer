@@ -197,8 +197,8 @@
         },
         {
           "case": "singleplayer monster death",
-          "at": 33.0,
-          "note": "a monster's death sound starting"
+          "at": 57.0,
+          "note": "an alien grunt shot dead in view"
         }
       ]
     },

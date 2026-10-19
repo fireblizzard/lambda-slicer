@@ -105,12 +105,18 @@ impl Demo {
     }
 
     /// Checkpoints for the whole demo, as the worker builds them, and
-    /// where it ends
+    /// where it ends. A demo that stops decoding before its end is refused,
+    /// as every way of reaching a moment would agree on the same broken
+    /// state
     fn index(&self) -> Result<(Shared, f64), String> {
         let store = Checkpoints::shared(SPACING, BUDGET);
         let mut indexer = self.playback(store.clone())?;
         while !indexer.index(1000) {}
+
         let end = indexer.position().map_or(0., |p| p.time.0);
+        if let Some(stopped) = indexer.stopped() {
+            return Err(format!("playback stopped at {end:.3} s, {}", stopped.text));
+        }
         Ok((store, end))
     }
 
@@ -458,6 +464,10 @@ fn check(demo: &Demo, at: SourceTime) -> Result<bool, String> {
     let begun = Instant::now();
     let (store, end) = demo.index()?;
     let indexed = begun.elapsed().as_secs_f64();
+    if at.0 > end {
+        return Err(format!("the moment is past the demo's end at {end:.3} s"));
+    }
+
     let want = demo.reference(at)?;
     let mut same = true;
     same &= report("played in frames", &compare(&played(demo, at)?, &want));
@@ -551,6 +561,23 @@ fn main() {
         eprintln!("{e}");
         std::process::exit(2);
     });
+
+    // A case no fixture has, misspelt perhaps, would check nothing and pass
+    let known: Vec<&String> = manifest
+        .fixtures
+        .iter()
+        .flat_map(|f| f.moments.iter().map(|m| &m.case))
+        .collect();
+    let unknown: Vec<&String> = cases.iter().filter(|c| !known.contains(c)).collect();
+    if !unknown.is_empty() {
+        eprintln!("no fixture has the cases {unknown:?}");
+        std::process::exit(2);
+    }
+    if known.is_empty() {
+        eprintln!("no fixture has moments to check");
+        std::process::exit(2);
+    }
+
     let folder =
         std::env::temp_dir().join(format!("lambda-slicer-equivalence-{}", std::process::id()));
     std::fs::create_dir_all(&folder).expect("scratch folder");

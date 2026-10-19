@@ -34,7 +34,7 @@ and at the fixture cases' moments also the same picture and sound, however the m
 | HLTV | not tried in the view | |
 | Other protocols and mods | refused, as for analysis | |
 
-**Speed** on the development machine (Windows 10, RTX 3070): 129 to 333 pictures a second at 1920
+**Speed** on the development machine (Windows 10, RTX 3070): 139 to 324 pictures a second at 1920
 by 1080, seeks within 115 ms in 95 of 100 even in a 32-player game, sound within 5 ms of the
 picture ([viewer profile](viewer-profile.md), "Performance"). On Linux the view was checked in WSL,
 its window under Xvfb, and a Linux desktop with a GPU and a sound device has not been tried

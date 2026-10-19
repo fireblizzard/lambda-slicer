@@ -800,7 +800,7 @@ release build:
 
 | Target | Result |
 |---|---|
-| 60 FPS sustained at 1080p | met, 129 to 333 fps on average, the 99th percentile 12.4 ms at most, single frames up to 30 ms |
+| 60 FPS sustained at 1080p | met, 139 to 324 fps on average, the 99th percentile 11.8 ms at most, the slowest frame 18 ms |
 | Warm indexed seeks within 200 ms at p95 | met in all 8 demos, with the game's files 115 ms at most |
 | Input feedback within 100 ms | the playhead moves on the frame of the input, and an indexed drag shows a picture every 68 ms at most ("Scrubbing") |
 | Sound and picture within 40 ms | 4 to 5 ms ("Sound and picture in step") |
@@ -813,14 +813,17 @@ in, and the checkpoints covered the demo, the worker indexing while it plays.
 
 | Demo, from | Models drawn | Mean, p50, p95, p99, max | First picture, every model in | Checkpoints for the demo | Peak private bytes, working set |
 |---|---|---|---|---|---|
-| `stalkx_naz_248.dem`, 20 s | 40 | 4.1, 3.9, 5.8, 7.7, 30.3 ms (243 fps) | 274, 279 ms | 5.5 s | 781, 580 MiB |
-| `20230909_224143_stalkyard.dem`, 32 players, 100 s | 128 | 7.8, 7.5, 10.5, 12.4, 19.1 ms (129 fps) | 899, 921 ms | 8.1 s | 882, 613 MiB |
-| `naz_crossfire_pb_01.dem`, 8 s | 30 | 4.4, 4.3, 5.7, 7.1, 10.4 ms (228 fps) | 229, 235 ms | 6.9 s | 818, 601 MiB |
-| `run_92.dem`, singleplayer, 15 s | 14 | 3.0, 2.9, 4.6, 5.7, 8.8 ms (333 fps) | 303, 332 ms | 0.5 s | 489, 320 MiB |
-| `20220319_194739_fastrun.dem`, 415 MB, 3000 s | 0 | 3.1, 3.0, 4.3, 5.3, 8.2 ms (324 fps) | 5.1, 5.1 s | 9.1 s | 803, 550 MiB |
+| `stalkx_naz_248.dem`, 20 s | 60 | 3.4, 3.3, 4.8, 5.7, 7.7 ms (292 fps) | 227, 233 ms | 4.8 s | 784, 580 MiB |
+| `20230909_224143_stalkyard.dem`, 32 players, 100 s | 159 | 7.2, 6.8, 10.2, 11.8, 18.0 ms (139 fps) | 895, 916 ms | 7.9 s | 889, 619 MiB |
+| `naz_crossfire_pb_01.dem`, 8 s | 19 | 4.4, 4.3, 5.9, 7.1, 14.4 ms (229 fps) | 189, 195 ms | 6.4 s | 818, 602 MiB |
+| `run_92.dem`, singleplayer, 15 s | 11 | 3.4, 3.3, 4.5, 5.1, 8.5 ms (296 fps) | 327, 344 ms | 0.6 s | 493, 320 MiB |
+| `20220319_194739_fastrun.dem`, 415 MB, 3000 s | 0 | 3.1, 3.0, 4.0, 4.6, 6.3 ms (324 fps) | 5.4, 5.4 s | 9.2 s | 785, 542 MiB |
 
 The first picture comes after a seek from the start to where the bench begins, so fastrun's is a
-cold seek through 3,000 s. Frame times vary by a millisecond or so between runs. The GPU's count of
+cold seek through 3,000 s. The models drawn are those of the last frame timed. Timing begins after
+a second of playback from wherever the bench starts, which an earlier version counted from the
+demo's start, so it timed from the first frame when starting later. Measured again with the
+second to settle, the figures moved by a few percent. Frame times vary by a millisecond or so between runs. The GPU's count of
 dedicated memory is 248 MiB in every run, the driver's blocks rather than what is in them. The
 scene's own buffers and textures are 19 to 34 MiB.
 
