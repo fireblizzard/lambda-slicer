@@ -65,6 +65,7 @@ pub struct App {
     catalog: Catalog,
     title: Option<Locale>,
     show_settings: bool,
+    settings_tab: SettingsTab,
     show_problems: bool,
     screenshot: Option<Screenshot>,
     /// A screenshot was asked for and its image has not come back
@@ -176,6 +177,7 @@ impl App {
             catalog,
             title: None,
             show_settings: launch.show_settings,
+            settings_tab: SettingsTab::default(),
             show_problems: false,
             screenshot: launch.screenshot,
             screenshot_requested: false,
@@ -208,11 +210,6 @@ impl App {
     /// A message as widget text, ordered for the interface's direction
     fn t(&self, ctx: &egui::Context, id: &str) -> WidgetText {
         text::widget_text(ctx, &self.catalog.text(id), self.rtl(), None, Look::Plain)
-    }
-
-    /// A message as a heading
-    fn strong(&self, ctx: &egui::Context, id: &str) -> WidgetText {
-        text::widget_text(ctx, &self.catalog.text(id), self.rtl(), None, Look::Strong)
     }
 
     /// The demo view's viewer, from the game folder `--game` names or else
@@ -576,6 +573,13 @@ impl App {
         let mut open = self.show_settings;
         let rtl = self.rtl();
         let title = self.t(ctx, "settings-title");
+        let tabs = [
+            (SettingsTab::General, self.t(ctx, "settings-tab-general")),
+            (SettingsTab::Viewer, self.t(ctx, "settings-viewer")),
+        ];
+        // No taller than the app's window below the toolbar, scrolling
+        // whatever does not fit
+        let max_height = (ctx.content_rect().height() - 140.).max(160.);
         egui::Window::new(title)
             .open(&mut open)
             .resizable(false)
@@ -589,170 +593,252 @@ impl App {
                 egui::vec2(if rtl { 16. } else { -16. }, 48.),
             )
             .show(ctx, |ui| {
-                layout::column(ui, self.rtl(), |ui| {
-                    ui.label(self.strong(ui.ctx(), "settings-language"));
-                    let current = self.catalog.locale;
-                    let mut chosen = None;
-                    egui::ComboBox::from_id_salt("language")
-                        .selected_text(current.native_name())
-                        .show_ui(ui, |ui| {
-                            for l in Locale::ALL {
-                                let name = text::widget_text(
-                                    ui.ctx(),
-                                    l.native_name(),
-                                    false,
-                                    None,
-                                    Look::Plain,
-                                );
-                                if ui.selectable_label(l == current, name).clicked() {
-                                    chosen = Some(l);
-                                }
-                            }
-                        });
-                    if let Some(l) = chosen
-                        && l != current
-                    {
-                        self.set_locale(Some(l));
+                layout::row(ui, rtl, |ui| {
+                    for (tab, label) in tabs {
+                        ui.selectable_value(&mut self.settings_tab, tab, label);
                     }
-                    if !self.catalog.locale.reviewed() {
-                        text::label(ui, &self.catalog.text("settings-unreviewed"), rtl);
-                    }
-
-                    ui.add_space(8.);
-                    ui.label(self.strong(ui.ctx(), "settings-workers"));
-                    let mut workers = self.settings.workers;
-                    if ui.add(egui::Slider::new(&mut workers, 1..=4)).changed() {
-                        self.settings.workers = workers;
-                        self.save_settings();
-                    }
-                    text::label(ui, &self.catalog.text("settings-workers-hint"), rtl);
-
-                    // How much a clip made around an event keeps on each side
-                    ui.add_space(8.);
-                    ui.label(self.strong(ui.ctx(), "settings-clip-padding"));
-                    let catalog = &self.catalog;
-                    let mut padding = [self.settings.preroll, self.settings.postroll];
-                    let mut changed = false;
-                    for (id, value) in ["settings-preroll", "settings-postroll"]
-                        .into_iter()
-                        .zip(&mut padding)
-                    {
-                        layout::row(ui, rtl, |ui| {
-                            let label = text::widget_text(
-                                ui.ctx(),
-                                &catalog.text(id),
-                                rtl,
-                                None,
-                                Look::Plain,
-                            );
-                            ui.label(label);
-                            changed |= ui
-                                .add(
-                                    egui::DragValue::new(value)
-                                        .range(0.0..=MAX_PADDING)
-                                        .speed(0.1)
-                                        .custom_formatter(|v, _| catalog.number(v, 1))
-                                        .custom_parser(parse_number),
-                                )
-                                .changed();
-                        });
-                    }
-                    if changed {
-                        [self.settings.preroll, self.settings.postroll] = padding;
-                        self.save_settings();
-                    }
-
-                    // Where exported clips go
-                    ui.add_space(8.);
-                    ui.label(self.strong(ui.ctx(), "settings-export-folder"));
-                    let folder = match &self.settings.export_folder {
-                        Some(f) => f.display().to_string(),
-                        None => self.catalog.text("settings-export-beside"),
-                    };
-                    ui.label(text::widget_text(ui.ctx(), &folder, rtl, None, Look::Plain));
-                    let mut chosen = None;
-                    layout::row(ui, rtl, |ui| {
-                        if ui
-                            .button(self.t(ui.ctx(), "settings-export-choose"))
-                            .clicked()
-                            && let Some(f) = rfd::FileDialog::new().pick_folder()
-                        {
-                            chosen = Some(Some(f));
-                        }
-                        if self.settings.export_folder.is_some()
-                            && ui
-                                .button(self.t(ui.ctx(), "settings-export-beside"))
-                                .clicked()
-                        {
-                            chosen = Some(None);
-                        }
-                    });
-                    if let Some(f) = chosen {
-                        self.settings.export_folder = f;
-                        self.save_settings();
-                    }
-                    text::label(ui, &self.catalog.text("settings-export-hint"), rtl);
-
-                    self.viewer_settings(ui, rtl);
-
-                    ui.add_space(8.);
-                    ui.label(self.strong(ui.ctx(), "settings-folders"));
-                    if self.settings.folders.is_empty() {
-                        ui.label(self.t(ui.ctx(), "settings-folders-empty"));
-                    }
-                    let mut remove = None;
-                    for (i, f) in self.settings.folders.iter().enumerate() {
-                        layout::row(ui, self.rtl(), |ui| {
-                            ui.label(f.display().to_string());
-                            if ui
-                                .small_button(self.t(ui.ctx(), "settings-remove"))
-                                .clicked()
-                            {
-                                remove = Some(i);
-                            }
-                        });
-                    }
-                    if let Some(i) = remove {
-                        self.settings.folders.remove(i);
-                        self.save_settings();
-                    }
-
-                    ui.add_space(8.);
-                    ui.label(self.strong(ui.ctx(), "settings-cache"));
-                    let cache = self.cache_path.as_ref().map(|p| p.display().to_string());
-                    ui.label(RichText::new(cache.unwrap_or_default()).monospace());
                 });
+                ui.separator();
+                egui::ScrollArea::vertical()
+                    .max_height(max_height)
+                    .min_scrolled_height(max_height)
+                    .auto_shrink([false, true])
+                    .show(ui, |ui| {
+                        layout::column(ui, rtl, |ui| match self.settings_tab {
+                            SettingsTab::General => self.general_settings(ui, rtl),
+                            SettingsTab::Viewer => self.viewer_settings(ui, rtl),
+                        });
+                    });
             });
         self.show_settings = open;
     }
 
-    /// The demo viewer's part of the settings window
+    /// The settings window's general tab, every folder first
+    fn general_settings(&mut self, ui: &mut egui::Ui, rtl: bool) {
+        let ctx = ui.ctx().clone();
+
+        heading(
+            ui,
+            &self.catalog,
+            "settings-section-folders",
+            None,
+            rtl,
+            true,
+        );
+        let mut game = self.settings.viewer.game.clone();
+        labelled(
+            ui,
+            &self.catalog,
+            "settings-viewer-game",
+            Some("settings-viewer-game-hint"),
+            rtl,
+        );
+        let shown = match &game {
+            Some(f) => f.display().to_string(),
+            None => self.catalog.text("settings-viewer-game-none"),
+        };
+        path(ui, &shown, rtl);
+        layout::row(ui, rtl, |ui| {
+            if ui.button(self.t(&ctx, "settings-export-choose")).clicked()
+                && let Some(f) = rfd::FileDialog::new().pick_folder()
+            {
+                game = Some(f);
+            }
+        });
+        if game != self.settings.viewer.game {
+            self.settings.viewer.game = game;
+            self.save_settings();
+        }
+
+        ui.add_space(6.);
+        labelled(
+            ui,
+            &self.catalog,
+            "settings-folders",
+            Some("settings-folders-hint"),
+            rtl,
+        );
+        if self.settings.folders.is_empty() {
+            path(ui, &self.catalog.text("settings-folders-empty"), rtl);
+        }
+        let mut remove = None;
+        for (i, f) in self.settings.folders.iter().enumerate() {
+            layout::row(ui, rtl, |ui| {
+                ui.label(text::widget_text(
+                    ui.ctx(),
+                    &f.display().to_string(),
+                    rtl,
+                    None,
+                    Look::Weak,
+                ));
+                if ui
+                    .small_button(self.t(ui.ctx(), "settings-remove"))
+                    .clicked()
+                {
+                    remove = Some(i);
+                }
+            });
+        }
+        if let Some(i) = remove {
+            self.settings.folders.remove(i);
+            self.save_settings();
+        }
+        let add = layout::row(ui, rtl, |ui| {
+            ui.button(self.t(&ctx, "toolbar-add-folder")).clicked()
+        });
+        if add && let Some(folders) = rfd::FileDialog::new().pick_folders() {
+            self.add_folders(&ctx, folders);
+        }
+
+        ui.add_space(6.);
+        labelled(
+            ui,
+            &self.catalog,
+            "settings-export-folder",
+            Some("settings-export-hint"),
+            rtl,
+        );
+        let shown = match &self.settings.export_folder {
+            Some(f) => f.display().to_string(),
+            None => self.catalog.text("settings-export-beside"),
+        };
+        path(ui, &shown, rtl);
+        let mut chosen = None;
+        layout::row(ui, rtl, |ui| {
+            if ui.button(self.t(&ctx, "settings-export-choose")).clicked()
+                && let Some(f) = rfd::FileDialog::new().pick_folder()
+            {
+                chosen = Some(Some(f));
+            }
+            if self.settings.export_folder.is_some()
+                && ui.button(self.t(&ctx, "settings-export-beside")).clicked()
+            {
+                chosen = Some(None);
+            }
+        });
+        if let Some(f) = chosen {
+            self.settings.export_folder = f;
+            self.save_settings();
+        }
+
+        ui.add_space(6.);
+        labelled(ui, &self.catalog, "settings-cache", None, rtl);
+        let cache = self.cache_path.as_ref().map(|p| p.display().to_string());
+        path(ui, &cache.unwrap_or_default(), rtl);
+
+        // A draft translation says so beside the heading
+        let unreviewed = (!self.catalog.locale.reviewed()).then_some("settings-unreviewed");
+        heading(
+            ui,
+            &self.catalog,
+            "settings-language",
+            unreviewed,
+            rtl,
+            false,
+        );
+        let current = self.catalog.locale;
+        let mut chosen = None;
+        layout::row(ui, rtl, |ui| {
+            egui::ComboBox::from_id_salt("language")
+                .selected_text(current.native_name())
+                .show_ui(ui, |ui| {
+                    for l in Locale::ALL {
+                        let name =
+                            text::widget_text(ui.ctx(), l.native_name(), false, None, Look::Plain);
+                        if ui.selectable_label(l == current, name).clicked() {
+                            chosen = Some(l);
+                        }
+                    }
+                });
+        });
+        if let Some(l) = chosen
+            && l != current
+        {
+            self.set_locale(Some(l));
+        }
+
+        heading(
+            ui,
+            &self.catalog,
+            "settings-workers",
+            Some("settings-workers-hint"),
+            rtl,
+            false,
+        );
+        let mut workers = self.settings.workers;
+        let moved = layout::row(ui, rtl, |ui| {
+            ui.add(egui::Slider::new(&mut workers, 1..=4)).changed()
+        });
+        if moved {
+            self.settings.workers = workers;
+            self.save_settings();
+        }
+
+        // How much a clip made around an event keeps on each side
+        heading(
+            ui,
+            &self.catalog,
+            "settings-clip-padding",
+            Some("settings-clip-padding-hint"),
+            rtl,
+            false,
+        );
+        let catalog = &self.catalog;
+        let ids = ["settings-preroll", "settings-postroll"];
+        let width = label_width(ui, catalog, &ids, rtl);
+        let mut padding = [self.settings.preroll, self.settings.postroll];
+        let mut changed = false;
+        for (id, value) in ids.into_iter().zip(&mut padding) {
+            field(ui, catalog, id, width, rtl, |ui| {
+                changed |= ui
+                    .add(
+                        egui::DragValue::new(value)
+                            .range(0.0..=MAX_PADDING)
+                            .speed(0.1)
+                            .custom_formatter(|v, _| catalog.number(v, 1))
+                            .custom_parser(parse_number),
+                    )
+                    .changed();
+            });
+        }
+        if changed {
+            [self.settings.preroll, self.settings.postroll] = padding;
+            self.save_settings();
+        }
+    }
+
+    /// The settings window's tab for the demo viewer, every setting that
+    /// changes only how it shows and plays a demo
     fn viewer_settings(&mut self, ui: &mut egui::Ui, rtl: bool) {
         let ctx = ui.ctx().clone();
         let catalog = &self.catalog;
         let t = |id: &str| text::widget_text(&ctx, &catalog.text(id), rtl, None, Look::Plain);
         let mut viewer = self.settings.viewer.clone();
 
-        ui.add_space(8.);
-        ui.label(self.strong(&ctx, "settings-viewer"));
-        ui.label(t("settings-viewer-game"));
-        let folder = match &viewer.game {
-            Some(f) => f.display().to_string(),
-            None => catalog.text("settings-viewer-game-none"),
-        };
-        text::label(ui, &folder, rtl);
-        layout::row(ui, rtl, |ui| {
-            if ui.button(t("settings-export-choose")).clicked()
-                && let Some(f) = rfd::FileDialog::new().pick_folder()
-            {
-                viewer.game = Some(f);
-            }
-        });
-
         // The game's gamma settings, at the game's steps
-        let number = |ui: &mut egui::Ui, id: &str, value: &mut f32, range| {
-            layout::row(ui, rtl, |ui| {
-                ui.label(t(id));
+        heading(
+            ui,
+            catalog,
+            "settings-section-picture",
+            Some("settings-gamma-hint"),
+            rtl,
+            true,
+        );
+        let ids = [
+            "settings-gamma",
+            "settings-brightness",
+            "settings-texgamma",
+            "settings-lightgamma",
+        ];
+        let width = label_width(ui, catalog, &ids, rtl);
+        let values = [
+            (&mut viewer.gamma, 1.8..=3.),
+            (&mut viewer.brightness, 0. ..=3.),
+            (&mut viewer.texgamma, 1.8..=3.),
+            (&mut viewer.lightgamma, 1.8..=3.),
+        ];
+        for (id, (value, range)) in ids.into_iter().zip(values) {
+            field(ui, catalog, id, width, rtl, |ui| {
                 ui.add(
                     egui::DragValue::new(value)
                         .range(range)
@@ -761,13 +847,11 @@ impl App {
                         .custom_parser(parse_number),
                 );
             });
-        };
-        number(ui, "settings-gamma", &mut viewer.gamma, 1.8..=3.);
-        number(ui, "settings-brightness", &mut viewer.brightness, 0. ..=3.);
-        number(ui, "settings-texgamma", &mut viewer.texgamma, 1.8..=3.);
-        number(ui, "settings-lightgamma", &mut viewer.lightgamma, 1.8..=3.);
+        }
         layout::row(ui, rtl, |ui| {
             ui.checkbox(&mut viewer.overbright, t("settings-overbright"));
+        });
+        layout::row(ui, rtl, |ui| {
             if ui.button(t("settings-gamma-defaults")).clicked() {
                 let d = ViewerSettings::default();
                 (viewer.gamma, viewer.brightness) = (d.gamma, d.brightness);
@@ -775,8 +859,8 @@ impl App {
                 viewer.overbright = d.overbright;
             }
         });
-        text::label(ui, &catalog.text("settings-gamma-hint"), rtl);
 
+        ui.add_space(6.);
         layout::row(ui, rtl, |ui| {
             let mut recorded = viewer.fov.is_none();
             if ui
@@ -799,10 +883,15 @@ impl App {
         layout::row(ui, rtl, |ui| {
             ui.checkbox(&mut viewer.viewmodel, t("settings-viewmodel"));
         });
-        layout::row(ui, rtl, |ui| {
-            ui.label(t("viewer-volume"));
-            ui.add(egui::Slider::new(&mut viewer.volume, 0. ..=1.).show_value(false));
-        });
+
+        heading(
+            ui,
+            catalog,
+            "viewer-see-through",
+            Some("settings-see-through-hint"),
+            rtl,
+            false,
+        );
         layout::row(ui, rtl, |ui| {
             ui.checkbox(&mut viewer.see_through, t("settings-see-through"));
         });
@@ -812,7 +901,12 @@ impl App {
                 t("settings-see-through-items"),
             );
         });
-        text::label(ui, &catalog.text("settings-see-through-hint"), rtl);
+
+        heading(ui, catalog, "settings-section-sound", None, rtl, false);
+        layout::row(ui, rtl, |ui| {
+            ui.label(t("viewer-volume"));
+            ui.add(egui::Slider::new(&mut viewer.volume, 0. ..=1.).show_value(false));
+        });
 
         if viewer != self.settings.viewer {
             self.settings.viewer = viewer;
@@ -1061,4 +1155,112 @@ impl eframe::App for App {
         self.problems_window(&ctx);
         self.take_screenshot(&ctx);
     }
+}
+
+/// The settings window's tabs
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum SettingsTab {
+    #[default]
+    General,
+    /// What changes only how the demo viewer shows and plays a demo
+    Viewer,
+}
+
+/// A section's heading, with space above it unless it is the first, and a
+/// `(?)` showing `hint` when there is one
+fn heading(
+    ui: &mut egui::Ui,
+    catalog: &Catalog,
+    id: &str,
+    hint: Option<&str>,
+    rtl: bool,
+    first: bool,
+) {
+    if !first {
+        ui.add_space(10.);
+    }
+    layout::row(ui, rtl, |ui| {
+        ui.label(text::widget_text(
+            ui.ctx(),
+            &catalog.text(id),
+            rtl,
+            None,
+            Look::Strong,
+        ));
+        if let Some(hint) = hint {
+            help(ui, &catalog.text(hint), rtl);
+        }
+    });
+}
+
+/// A setting's label, with a `(?)` showing `hint` when there is one
+fn labelled(ui: &mut egui::Ui, catalog: &Catalog, id: &str, hint: Option<&str>, rtl: bool) {
+    layout::row(ui, rtl, |ui| {
+        ui.label(text::widget_text(
+            ui.ctx(),
+            &catalog.text(id),
+            rtl,
+            None,
+            Look::Plain,
+        ));
+        if let Some(hint) = hint {
+            help(ui, &catalog.text(hint), rtl);
+        }
+    });
+}
+
+/// A `(?)` that explains what is beside it when hovered
+fn help(ui: &mut egui::Ui, hint: &str, rtl: bool) {
+    let icon = text::widget_text(ui.ctx(), "(?)", false, None, Look::Weak);
+    ui.label(icon)
+        .on_hover_cursor(egui::CursorIcon::Help)
+        .on_hover_ui(|ui| {
+            ui.set_max_width(320.);
+            text::label(ui, hint, rtl);
+        });
+}
+
+/// A folder or file the settings name, or what stands in for one
+fn path(ui: &mut egui::Ui, shown: &str, rtl: bool) {
+    ui.label(text::widget_text(ui.ctx(), shown, rtl, None, Look::Weak));
+}
+
+/// The width of the widest of these labels, for their fields to line up
+fn label_width(ui: &egui::Ui, catalog: &Catalog, ids: &[&str], rtl: bool) -> f32 {
+    let mut widest: f32 = 0.;
+    for id in ids {
+        let label = text::widget_text(ui.ctx(), &catalog.text(id), rtl, None, Look::Plain);
+        let galley = label.into_galley(
+            ui,
+            Some(egui::TextWrapMode::Extend),
+            f32::INFINITY,
+            egui::TextStyle::Body,
+        );
+        widest = widest.max(galley.size().x);
+    }
+    widest
+}
+
+/// A row with a label `width` wide and its field after it, so the fields of
+/// rows one under another line up
+fn field(
+    ui: &mut egui::Ui,
+    catalog: &Catalog,
+    id: &str,
+    width: f32,
+    rtl: bool,
+    add: impl FnOnce(&mut egui::Ui),
+) {
+    layout::row(ui, rtl, |ui| {
+        layout::cell(ui, rtl, width, |ui| {
+            ui.label(text::widget_text(
+                ui.ctx(),
+                &catalog.text(id),
+                rtl,
+                None,
+                Look::Plain,
+            ));
+        });
+        add(ui);
+    });
 }

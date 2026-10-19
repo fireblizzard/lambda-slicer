@@ -279,8 +279,9 @@ Backward playback shows 10 to 40 pictures a second, still at the right time for 
 
 ### Viewer settings (11e)
 
-The settings window has a section for the viewer, saved with the other settings and in all 14
-languages:
+The settings window has a tab for the viewer, saved with the other settings and in all 14
+languages. The Half-Life folder sits with the other folders on the general tab ([GUI](gui.md),
+"Settings"):
 
 | Setting | What it does |
 |---|---|

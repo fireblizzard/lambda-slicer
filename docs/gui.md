@@ -132,6 +132,21 @@ columns run right to left.
 
 ![Arabic](images/demo-ar.png)
 
+## Settings
+
+The settings window has two tabs, and keeps below the toolbar, scrolling what does not fit when
+the app's window is short.
+
+- **General.** The folders first, one after another: the Half-Life folder the demo viewer reads
+  the game from, the library's folders with Add folder and Remove, the export folder, and the
+  library cache's file. Then the language, the analysis workers and the clip padding.
+- **Demo viewer.** Everything that changes only how the viewer shows and plays a demo: the
+  picture (the game's gamma settings, the field of view, the weapon in view), seeing through
+  walls, and the sound's volume. The game's gamma fields line up under one another.
+
+A setting that needs explaining has a `(?)` beside its label, and the explanation shows when the
+pointer rests on it, as does the notice that a translation is a draft, beside Language.
+
 ## Measured (2026-10-16)
 
 `stlakfa.dem`, a 20 minute 5 against 5 match with 7,997 shots and 503 kills, opens with its

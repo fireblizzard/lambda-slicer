@@ -27,6 +27,17 @@ pub fn wrapping_row<R>(ui: &mut Ui, rtl: bool, add: impl FnOnce(&mut Ui) -> R) -
         .inner
 }
 
+/// A cell `width` wide at least within a row, so cells of the same width
+/// in rows one under another line up
+pub fn cell<R>(ui: &mut Ui, rtl: bool, width: f32, add: impl FnOnce(&mut Ui) -> R) -> R {
+    let size = egui::vec2(width, ui.spacing().interact_size.y);
+    ui.allocate_ui_with_layout(size, row_layout(rtl), |ui| {
+        ui.set_min_width(width);
+        add(ui)
+    })
+    .inner
+}
+
 /// A column aligned to the interface's leading side
 pub fn column<R>(ui: &mut Ui, rtl: bool, add: impl FnOnce(&mut Ui) -> R) -> R {
     let layout = Layout::top_down(if rtl { Align::Max } else { Align::Min });
