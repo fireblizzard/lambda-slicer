@@ -382,6 +382,8 @@ fn playing_follows_the_clock_and_loops() {
         })),
         11.5,
     );
+    // Sound is mixed no further than the loop's end
+    assert_eq!(controller.until(), Some(SourceTime(2.)));
     let wrapped = controller.tick(12.).unwrap();
     assert_eq!(wrapped.target, Target::Time(SourceTime(0.5)));
     assert!(wrapped.stamp.revision > tick.stamp.revision);
@@ -389,4 +391,79 @@ fn playing_follows_the_clock_and_loops() {
     controller.command(Command::Pause, 12.25);
     assert_eq!(controller.tick(20.), None);
     assert_eq!(controller.time(20.), SourceTime(0.75));
+}
+
+#[test]
+fn playing_a_range_pauses_at_its_end_unless_the_playhead_moves() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = demo(dir.path());
+    let mut controller = Controller::default();
+    controller.command(Command::Load(path), 0.).unwrap();
+
+    let range = Command::PlayRange {
+        from: SourceTime(0.5),
+        to: SourceTime(1.),
+    };
+    let start = controller.command(range.clone(), 0.).unwrap();
+    assert_eq!(start.target, Target::Time(SourceTime(0.5)));
+    assert!(start.audible);
+    let during = controller.tick(0.3).unwrap();
+    assert_eq!(during.target, Target::Time(SourceTime(0.8)));
+    assert_eq!(controller.until(), Some(SourceTime(1.)));
+
+    // Past the end it stops there, paused, with one last frame asked for
+    let end = controller.tick(0.6).unwrap();
+    assert_eq!(end.target, Target::Time(SourceTime(1.)));
+    assert!(!end.audible && !controller.playing());
+    assert_eq!(controller.tick(1.), None);
+    assert_eq!(controller.time(5.), SourceTime(1.));
+
+    // A seek during the range forgets its end
+    controller.command(range, 10.).unwrap();
+    controller
+        .command(Command::SeekTo(SourceTime(2.)), 10.5)
+        .unwrap();
+    let on = controller.tick(11.).unwrap();
+    assert_eq!(on.target, Target::Time(SourceTime(2.5)));
+    assert!(controller.playing());
+}
+
+#[test]
+fn playing_backward_is_silent_wraps_loops_and_stops_at_the_start() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = demo(dir.path());
+    let mut controller = Controller::default();
+    controller.command(Command::Load(path), 0.).unwrap();
+    controller
+        .command(Command::SeekTo(SourceTime(2.)), 0.)
+        .unwrap();
+
+    let back = controller.command(Command::PlayBackward, 1.).unwrap();
+    assert_eq!(back.target, Target::Time(SourceTime(2.)));
+    assert!(!back.audible);
+    let tick = controller.tick(1.5).unwrap();
+    assert_eq!(tick.target, Target::Time(SourceTime(1.5)));
+
+    // Past the start of a loop it goes on from the loop's end
+    controller.command(
+        Command::SetLoop(Some(lambda_slicer_playback::controller::LoopRange {
+            start: SourceTime(1.),
+            end: SourceTime(1.75),
+        })),
+        1.5,
+    );
+    let wrapped = controller.tick(2.).unwrap();
+    assert_eq!(wrapped.target, Target::Time(SourceTime(1.75)));
+    assert!(wrapped.stamp.revision > tick.stamp.revision);
+    controller.command(Command::SetLoop(None), 2.);
+
+    // At the start it pauses there
+    let start = controller.tick(10.).unwrap();
+    assert_eq!(start.target, Target::Time(SourceTime::ZERO));
+    assert!(!controller.playing());
+
+    // Play goes forward again, with sound
+    let forward = controller.command(Command::Play, 11.).unwrap();
+    assert!(forward.audible);
+    assert_eq!(controller.time(12.), SourceTime(1.));
 }

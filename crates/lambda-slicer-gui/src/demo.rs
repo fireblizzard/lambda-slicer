@@ -42,6 +42,11 @@ const HIT_PIXELS: f32 = 5.;
 /// Narrowest view in seconds
 const MIN_SPAN: f32 = 0.5;
 
+/// A demo time in seconds, as the viewer takes them
+fn secs(t: DemoTime) -> f32 {
+    t.secs_f64() as f32
+}
+
 pub fn weapon_color(w: Option<Weapon>) -> Color32 {
     match w {
         Some(Weapon::Gauss) => Color32::from_rgb(90, 170, 255),
@@ -84,6 +89,10 @@ enum ExportRequest {
 enum RowAction {
     Remove,
     Export,
+    /// Play the clip once
+    Play,
+    /// Loop the clip, or stop looping it
+    Loop(bool),
 }
 
 /// A clip's start or end
@@ -225,6 +234,8 @@ pub struct DemoView {
     exports: HashMap<ClipKey, ExportState>,
     /// The backend spike's view of the demo's map
     pub viewer: Option<crate::viewer::Viewer>,
+    /// The clip the viewer loops
+    looping: Option<usize>,
 }
 
 impl DemoView {
@@ -256,6 +267,7 @@ impl DemoView {
             exports: HashMap::new(),
             export_on_load: false,
             viewer: None,
+            looping: None,
         }
     }
 
@@ -351,11 +363,16 @@ impl DemoView {
     }
 
     /// Select an event and bring it into view
+    /// Choose an event, bring it into view and move the viewer's playhead
+    /// to it
     fn select(&mut self, event: usize, from_table: bool) {
         self.selected = Some(event);
         self.scroll_table = !from_table;
         if let Some(m) = &self.model {
             let t = m.events[event].time;
+            if let Some(viewer) = &mut self.viewer {
+                viewer.seek(t);
+            }
             let (a, b) = self.view;
             if t < a || t > b {
                 let half = (b - a) / 2.;
@@ -657,6 +674,16 @@ impl DemoView {
                 Edge::End => c.end = t.max(c.start),
             }
         }
+        // The viewer shows the edge as it moves
+        if let Some((i, edge)) = self.dragging
+            && response.dragged()
+            && let (Some(c), Some(viewer)) = (self.clips.get(i), &mut self.viewer)
+        {
+            viewer.preview(secs(match edge {
+                Edge::Start => c.start,
+                Edge::End => c.end,
+            }));
+        }
         if response.drag_stopped() && self.dragging.take().is_some() {
             self.clips_changed = true;
         }
@@ -910,6 +937,18 @@ impl DemoView {
             );
         }
 
+        // The viewer's playhead
+        if let Some(now) = self.viewer.as_ref().map(|v| v.time())
+            && now >= a
+            && now <= b
+        {
+            let px = x(now);
+            painter.line_segment(
+                [Pos2::new(px, plot.min.y), Pos2::new(px, plot.max.y)],
+                Stroke::new(1., visuals.strong_text_color()),
+            );
+        }
+
         if let Some((event, _)) = hover {
             let e = &model.events[event];
             let tip = format!(
@@ -935,7 +974,11 @@ impl DemoView {
         } else if response.clicked()
             && let Some(p) = pointer
         {
-            let t = DemoTime::from_f32(a + (p.x - plot.min.x) * per_px);
+            let at = a + (p.x - plot.min.x) * per_px;
+            if let Some(viewer) = &mut self.viewer {
+                viewer.seek(at);
+            }
+            let t = DemoTime::from_f32(at);
             if let Some(i) = self
                 .clips
                 .iter()
@@ -1061,6 +1104,25 @@ impl DemoView {
                     match self.clip_row(ui, catalog, rtl, i) {
                         Some(RowAction::Remove) => remove = Some(i),
                         Some(RowAction::Export) => request = Some(ExportRequest::One(i)),
+                        Some(RowAction::Play) => {
+                            self.looping = None;
+                            if let Some(viewer) = &mut self.viewer {
+                                let c = &self.clips[i];
+                                viewer.set_loop(None);
+                                viewer.play_range(secs(c.start), secs(c.end));
+                            }
+                        }
+                        Some(RowAction::Loop(on)) => {
+                            self.looping = on.then_some(i);
+                            if let Some(viewer) = &mut self.viewer {
+                                let c = &self.clips[i];
+                                if on {
+                                    viewer.play_loop(secs(c.start), secs(c.end));
+                                } else {
+                                    viewer.set_loop(None);
+                                }
+                            }
+                        }
                         None => {}
                     }
                 }
@@ -1089,6 +1151,11 @@ impl DemoView {
                 Some(c) if c > i => Some(c - 1),
                 c => c,
             };
+            self.looping = match self.looping {
+                Some(c) if c == i => None,
+                Some(c) if c > i => Some(c - 1),
+                c => c,
+            };
             self.typing = None;
             self.dragging = None;
             self.clips_changed = true;
@@ -1113,6 +1180,7 @@ impl DemoView {
             Color32::TRANSPARENT
         };
         let (mut remove, mut show, mut export) = (false, false, false);
+        let (mut play, mut looped) = (false, None);
         let clip = self.clips[i].clone();
         let snapped = self.snap(&clip);
         let state = self.exports.get(&(clip.start, clip.end)).cloned();
@@ -1143,6 +1211,13 @@ impl DemoView {
                         .add_enabled(can_export, egui::Button::new(t("export-one")).small())
                         .clicked();
                     show = ui.small_button(t("clip-show")).clicked();
+                    if self.viewer.is_some() {
+                        play = ui.small_button(t("viewer-play")).clicked();
+                        let mut on = self.looping == Some(i);
+                        if ui.toggle_value(&mut on, t("clip-loop")).clicked() {
+                            looped = Some(on);
+                        }
+                    }
                     remove = ui.small_button(t("clip-remove")).clicked();
                 });
 
@@ -1189,9 +1264,11 @@ impl DemoView {
         if show {
             self.show_clip(i);
         }
-        match (remove, export) {
-            (true, _) => Some(RowAction::Remove),
-            (_, true) => Some(RowAction::Export),
+        match (remove, export, play, looped) {
+            (true, ..) => Some(RowAction::Remove),
+            (_, true, ..) => Some(RowAction::Export),
+            (_, _, true, _) => Some(RowAction::Play),
+            (.., Some(on)) => Some(RowAction::Loop(on)),
             _ => None,
         }
     }
@@ -1312,8 +1389,64 @@ impl DemoView {
                     Edge::End => self.clips[i].end = t,
                 }
                 self.clips_changed = true;
+                if let Some(viewer) = &mut self.viewer {
+                    viewer.preview(secs(t));
+                }
             }
             self.typing = None;
+        }
+    }
+
+    /// Buttons to choose the event before or after the chosen one in the
+    /// table, and to play the chosen one from its preroll through its
+    /// postroll
+    fn event_nav(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool) {
+        let Some(model) = self.model.clone() else {
+            return;
+        };
+        self.refresh_rows();
+        let ctx = ui.ctx().clone();
+        let t = |id: &str| text::widget_text(&ctx, &catalog.text(id), rtl, None, Look::Plain);
+        // From the chosen event's row, or else from the playhead
+        let at = self
+            .selected
+            .and_then(|s| self.rows.iter().position(|&r| r == s));
+        let now = self.viewer.as_ref().map_or(0., |v| v.time());
+        let previous = match at {
+            Some(i) => i.checked_sub(1),
+            None => self.rows.iter().rposition(|&r| model.events[r].time < now),
+        };
+        let next = match at {
+            Some(i) => Some(i + 1).filter(|&n| n < self.rows.len()),
+            None => self.rows.iter().position(|&r| model.events[r].time > now),
+        };
+        let mut chosen = None;
+        layout::row(ui, rtl, |ui| {
+            if ui
+                .add_enabled(previous.is_some(), egui::Button::new(t("event-previous")))
+                .clicked()
+            {
+                chosen = previous;
+            }
+            if ui
+                .add_enabled(next.is_some(), egui::Button::new(t("event-next")))
+                .clicked()
+            {
+                chosen = next;
+            }
+            if self.viewer.is_some() {
+                let event = self.selected.and_then(|i| model.events.get(i));
+                let r = ui.add_enabled(event.is_some(), egui::Button::new(t("event-play")));
+                let r = r.on_disabled_hover_text(t("clips-select-event"));
+                if r.clicked()
+                    && let (Some(e), Some(viewer)) = (event, &mut self.viewer)
+                {
+                    viewer.play_range(e.time - self.padding.0, e.time + self.padding.1);
+                }
+            }
+        });
+        if let Some(row) = chosen.and_then(|i| self.rows.get(i).copied()) {
+            self.select(row, false);
         }
     }
 
@@ -1834,6 +1967,13 @@ impl DemoView {
     /// The whole view. Returns true when it should close
     pub fn ui(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool) -> bool {
         self.poll();
+        // A looped clip's edits move its loop too
+        if let (Some(c), Some(viewer)) = (
+            self.looping.and_then(|i| self.clips.get(i)),
+            &mut self.viewer,
+        ) {
+            viewer.set_loop(Some((secs(c.start), secs(c.end))));
+        }
         self.poll_export();
         if self.export_on_load && self.model.is_some() {
             self.export_on_load = false;
@@ -1930,6 +2070,7 @@ impl DemoView {
                 .show(ui, |ui| self.timeline(ui, catalog, rtl));
         }
         ui.separator();
+        self.event_nav(ui, catalog, rtl);
         self.table(ui, catalog, rtl);
         close
     }

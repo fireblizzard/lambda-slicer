@@ -44,8 +44,7 @@ pub struct Position {
     pub time: SourceTime,
 }
 
-/// The speeds playback offers. Backward playback comes with the timeline
-/// controls (M11)
+/// The speeds playback offers, forward or backward
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Rate {
     Quarter,
@@ -69,12 +68,14 @@ impl Rate {
 }
 
 /// Source time as a function of wall time. While playing, source time runs
-/// from an anchor at the chosen rate. Paused, it stays where it stopped.
-/// Every change re-anchors, so a new rate never moves the playhead
+/// from an anchor at the chosen rate, forward or backward, never below 0.
+/// Paused, it stays where it stopped. Every change re-anchors, so a new
+/// rate or direction never moves the playhead
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Clock {
     playing: bool,
     rate: Rate,
+    backward: bool,
     anchor_wall: f64,
     anchor_source: SourceTime,
 }
@@ -84,6 +85,7 @@ impl Default for Clock {
         Self {
             playing: false,
             rate: Rate::Normal,
+            backward: false,
             anchor_wall: 0.,
             anchor_source: SourceTime::ZERO,
         }
@@ -99,6 +101,11 @@ impl Clock {
         self.rate
     }
 
+    /// Running toward the start
+    pub fn backward(&self) -> bool {
+        self.backward
+    }
+
     /// The source time at `wall`
     pub fn at(&self, wall: f64) -> SourceTime {
         if !self.playing {
@@ -106,7 +113,8 @@ impl Clock {
         }
 
         let elapsed = (wall - self.anchor_wall).max(0.);
-        SourceTime(self.anchor_source.0 + elapsed * self.rate.factor())
+        let sign = if self.backward { -1. } else { 1. };
+        SourceTime((self.anchor_source.0 + sign * elapsed * self.rate.factor()).max(0.))
     }
 
     fn anchor(&mut self, wall: f64, source: SourceTime) {
@@ -130,6 +138,13 @@ impl Clock {
         let now = self.at(wall);
         self.anchor(wall, now);
         self.rate = rate;
+    }
+
+    /// Run toward the start, or forward again
+    pub fn set_backward(&mut self, backward: bool, wall: f64) {
+        let now = self.at(wall);
+        self.anchor(wall, now);
+        self.backward = backward;
     }
 
     /// Move the playhead to `time`, playing on from there if it was playing
@@ -161,5 +176,19 @@ mod tests {
         // A wall clock read earlier than the anchor never runs time backwards
         clock.play(300.);
         assert_eq!(clock.at(299.), SourceTime(1.));
+    }
+
+    #[test]
+    fn backward_the_clock_runs_toward_the_start_and_stops_there() {
+        let mut clock = Clock::default();
+        clock.set(SourceTime(3.), 0.);
+        clock.play(0.);
+        clock.set_backward(true, 1.);
+        assert_eq!(clock.at(1.), SourceTime(4.));
+        clock.set_rate(Rate::Double, 1.);
+        assert_eq!(clock.at(2.), SourceTime(2.));
+        assert_eq!(clock.at(10.), SourceTime::ZERO);
+        clock.set_backward(false, 2.);
+        assert_eq!(clock.at(2.5), SourceTime(3.));
     }
 }

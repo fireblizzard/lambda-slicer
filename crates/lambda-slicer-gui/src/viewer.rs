@@ -35,10 +35,10 @@ use lambda_slicer_core::container::{Limits, read_header};
 use lambda_slicer_core::timeline::time::DemoTime;
 use lambda_slicer_playback::PresentedFrame;
 use lambda_slicer_playback::animation::{Flash, Holder};
-use lambda_slicer_playback::controller::{Command, Controller, Reply, Stamp};
+use lambda_slicer_playback::controller::{Command, Controller, LoopRange, Reply, Stamp};
 use lambda_slicer_playback::scene::EntityId;
 use lambda_slicer_playback::tempents::Tint;
-use lambda_slicer_playback::time::SourceTime;
+use lambda_slicer_playback::time::{Rate, SourceTime};
 use lambda_slicer_playback::trace::Hull;
 use lambda_slicer_playback::worker::Worker;
 use lambda_slicer_render::Rgba;
@@ -51,6 +51,9 @@ use lambda_slicer_render::light::{LightTree, ModelLight};
 use lambda_slicer_render::load::{self, EntityPose, GaitPose, LoadError, LoadedModel};
 use lambda_slicer_render::model::{Eye, ModelMesh};
 use lambda_slicer_render::world::{self, WorldMesh};
+
+use fluent_bundle::FluentValue;
+use fluent_bundle::types::{FluentNumber, FluentNumberOptions};
 
 use crate::decals::DecalCache;
 use crate::i18n::Catalog;
@@ -414,6 +417,50 @@ impl Viewer {
 
     fn wall(&self) -> f64 {
         self.clock.elapsed().as_secs_f64()
+    }
+
+    /// Move the playhead to `time`, playing on if it was playing
+    pub fn seek(&mut self, time: f32) {
+        self.command(Command::SeekTo(SourceTime(f64::from(time.max(0.)))));
+    }
+
+    /// Play from `from` and pause at `to`
+    pub fn play_range(&mut self, from: f32, to: f32) {
+        self.command(Command::PlayRange {
+            from: SourceTime(f64::from(from.max(0.))),
+            to: SourceTime(f64::from(to.max(0.))),
+        });
+    }
+
+    /// Play `from` to `to` over and over, or no longer loop with none,
+    /// sending nothing when the loop is already that
+    pub fn set_loop(&mut self, range: Option<(f32, f32)>) {
+        let range = range.map(|(from, to)| LoopRange {
+            start: SourceTime(f64::from(from.max(0.))),
+            end: SourceTime(f64::from(to.max(0.))),
+        });
+        if self.controller.loop_range() != range {
+            self.command(Command::SetLoop(range));
+        }
+    }
+
+    /// Loop `from` to `to`, playing from `from`
+    pub fn play_loop(&mut self, from: f32, to: f32) {
+        self.set_loop(Some((from, to)));
+        self.seek(from);
+        self.command(Command::Play);
+    }
+
+    /// Show the moment at `time`, paused, as editing a clip's start or end
+    /// does
+    pub fn preview(&mut self, time: f32) {
+        self.command(Command::Pause);
+        self.seek(time);
+    }
+
+    /// The playhead, in seconds of playback
+    pub fn time(&self) -> f32 {
+        self.controller.time(self.wall()).0 as f32
     }
 
     fn command(&mut self, command: Command) {
@@ -990,6 +1037,7 @@ impl Viewer {
     /// The view in `height` points with its controls under it, or all the
     /// space left in a bench run
     pub fn ui(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool, height: f32) {
+        self.shortcuts(ui.ctx());
         self.poll();
         self.request_assets();
         if let Some(frame) = &self.frame {
@@ -1008,7 +1056,8 @@ impl Viewer {
             return;
         }
 
-        let controls_height = ui.spacing().interact_size.y + ui.spacing().item_spacing.y;
+        // The buttons and the time bar
+        let controls_height = 2. * (ui.spacing().interact_size.y + ui.spacing().item_spacing.y);
         let height = match self.bench {
             Some(_) => ui.available_height() - controls_height,
             None => height,
@@ -1091,6 +1140,52 @@ impl Viewer {
     }
 
     /// Tell the sound mixer what the frame shown plays
+    /// The keys that drive playback while no text is being typed. Space and
+    /// L play forward or pause, J plays backward or pauses, K pauses, comma
+    /// and period step one recorded group back or forward, and the left and
+    /// right arrows seek five seconds. While a control has the keyboard's
+    /// focus, space and the arrows are its own
+    fn shortcuts(&mut self, ctx: &egui::Context) {
+        if ctx.egui_wants_keyboard_input() {
+            return;
+        }
+        let focused = ctx.memory(|m| m.focused().is_some());
+        let clock = self.controller.clock();
+        let forward = clock.playing() && !clock.backward();
+        let backward = clock.playing() && clock.backward();
+        let pressed = |key: egui::Key| ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, key));
+        let now = self.controller.time(self.wall()).0;
+        let command = if (!focused && pressed(egui::Key::Space)) || pressed(egui::Key::L) {
+            Some(if forward {
+                Command::Pause
+            } else {
+                Command::Play
+            })
+        } else if pressed(egui::Key::J) {
+            Some(if backward {
+                Command::Pause
+            } else {
+                Command::PlayBackward
+            })
+        } else if pressed(egui::Key::K) {
+            Some(Command::Pause)
+        } else if pressed(egui::Key::Comma) {
+            Some(Command::StepGroup(-1))
+        } else if pressed(egui::Key::Period) {
+            Some(Command::StepGroup(1))
+        } else if !focused && pressed(egui::Key::ArrowLeft) {
+            Some(Command::SeekTo(SourceTime((now - SEEK_STEP).max(0.))))
+        } else if !focused && pressed(egui::Key::ArrowRight) {
+            Some(Command::SeekTo(SourceTime(now + SEEK_STEP)))
+        } else {
+            None
+        };
+        if let Some(command) = command {
+            self.command(command);
+            ctx.request_repaint();
+        }
+    }
+
     fn feed_sound(&self) {
         let (Some(sound), Some(frame), Some(demo)) =
             (&self.sound, &self.frame, self.worker.loaded())
@@ -1102,7 +1197,9 @@ impl Viewer {
             demo,
             clock: self.controller.clock(),
             clock_base: self.clock,
-            audible: frame.audible,
+            // Backward playback is heard as nothing
+            audible: frame.audible && !self.controller.clock().backward(),
+            until: self.controller.until(),
         });
     }
 
@@ -1122,15 +1219,84 @@ impl Viewer {
                 .unwrap_or_default()
         };
 
-        layout::row(ui, rtl, |ui| {
-            let (id, command) = if self.controller.playing() {
-                ("viewer-pause", Command::Pause)
-            } else {
-                ("viewer-play", Command::Play)
+        let clock_state = self.controller.clock();
+        let forward = clock_state.playing() && !clock_state.backward();
+        let backward = clock_state.playing() && clock_state.backward();
+        let shortcut = |key: &str| {
+            catalog.text_with(
+                "viewer-shortcut",
+                &[("key", FluentValue::from(key.to_owned()))],
+            )
+        };
+        let space = catalog.text("key-space");
+        let rate_label = |rate: Rate| {
+            let digits = match rate {
+                Rate::Quarter => 2,
+                Rate::Half => 1,
+                _ => 0,
             };
-            let label = text::widget_text(&ctx, &catalog.text(id), rtl, None, Look::Plain);
-            if ui.button(label).clicked() {
-                self.command(command);
+            let options = FluentNumberOptions {
+                minimum_fraction_digits: Some(digits),
+                ..Default::default()
+            };
+            let value = FluentValue::Number(FluentNumber::new(rate.factor(), options));
+            catalog.text_with("viewer-rate", &[("rate", value)])
+        };
+
+        // The buttons wrap, and the time bar takes a row of its own
+        layout::wrapping_row(ui, rtl, |ui| {
+            let button = |ui: &mut Ui, id: &str, tip: String| {
+                let label = text::widget_text(&ctx, &catalog.text(id), rtl, None, Look::Plain);
+                ui.button(label).on_hover_text(tip).clicked()
+            };
+            let back = if backward {
+                "viewer-pause"
+            } else {
+                "viewer-play-backward"
+            };
+            if button(ui, back, shortcut("J")) {
+                self.command(if backward {
+                    Command::Pause
+                } else {
+                    Command::PlayBackward
+                });
+            }
+            if button(ui, "viewer-step-back", shortcut(",")) {
+                self.command(Command::StepGroup(-1));
+            }
+            let play = if forward {
+                "viewer-pause"
+            } else {
+                "viewer-play"
+            };
+            if button(ui, play, shortcut(&format!("{space}, L"))) {
+                self.command(if forward {
+                    Command::Pause
+                } else {
+                    Command::Play
+                });
+            }
+            if button(ui, "viewer-step-forward", shortcut(".")) {
+                self.command(Command::StepGroup(1));
+            }
+            let current = clock_state.rate();
+            let mut chosen = current;
+            egui::ComboBox::from_id_salt("viewer-rate")
+                .width(64.)
+                .selected_text(rate_label(current))
+                .show_ui(ui, |ui| {
+                    for rate in [
+                        Rate::Quarter,
+                        Rate::Half,
+                        Rate::Normal,
+                        Rate::Double,
+                        Rate::Quadruple,
+                    ] {
+                        ui.selectable_value(&mut chosen, rate, rate_label(rate));
+                    }
+                });
+            if chosen != current {
+                self.command(Command::SetRate(chosen));
             }
 
             let shown = format!("{} / {}", clock(now), clock(end));
@@ -1149,14 +1315,13 @@ impl Viewer {
                     sound.set_volume(volume);
                 }
             }
-
-            let mut at = now;
-            ui.spacing_mut().slider_width = ui.available_width().max(40.);
-            let slider = egui::Slider::new(&mut at, 0. ..=end.max(0.001)).show_value(false);
-            if ui.add(slider).changed() {
-                self.command(Command::SeekTo(SourceTime(at)));
-            }
         });
+        let mut at = now;
+        ui.spacing_mut().slider_width = ui.available_width().max(40.);
+        let slider = egui::Slider::new(&mut at, 0. ..=end.max(0.001)).show_value(false);
+        if ui.add(slider).changed() {
+            self.command(Command::SeekTo(SourceTime(at)));
+        }
     }
 }
 
@@ -1332,6 +1497,9 @@ fn variant(models: &HashMap<ModelRef, Slot>, first: ModelRef, body: i64, skin: i
         (other, ..) => other,
     }
 }
+
+/// Seconds the arrow keys move the playhead
+const SEEK_STEP: f64 = 5.;
 
 /// A tracer's colour, `tracerred`, `tracergreen` and `tracerblue` at their
 /// defaults by `traceralpha`'s, and its width either side of its line

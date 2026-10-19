@@ -55,6 +55,10 @@ pub struct Feed {
     pub clock_base: Instant,
     /// Sound is heard, playing forward
     pub audible: bool,
+    /// Where playing goes no further, a loop's or a played range's end.
+    /// Nothing past it is mixed, as the playhead goes back or pauses there
+    /// before the window's next frame says so
+    pub until: Option<SourceTime>,
 }
 
 /// A block of samples and the mark of the feed it was mixed for
@@ -327,6 +331,9 @@ fn run(
             let heard = Instant::now()
                 + Duration::from_secs_f64(QUEUED as f64 * block as f64 / f64::from(rate));
             let from = block_start(place, f.stamp, clock_at(&f, heard));
+            if f.until.is_some_and(|until| from.0 >= until.0) {
+                return None;
+            }
             let speed = f.clock.rate().factor();
             let to = SourceTime(from.0 + block as f64 * speed / f64::from(rate));
             let playback = advance(&mut own, &f.demo, &library, to, interrupt.clone())?;

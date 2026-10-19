@@ -43,7 +43,10 @@ pub enum CameraMode {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Command {
     Load(PathBuf),
+    /// Play forward
     Play,
+    /// Play toward the start, without sound
+    PlayBackward,
     Pause,
     SeekTo(SourceTime),
     /// Move this many record groups, forward when positive. Pauses
@@ -51,6 +54,13 @@ pub enum Command {
     SetRate(Rate),
     SetLoop(Option<LoopRange>),
     SetCamera(CameraMode),
+    /// Seek to `from` and play, pausing at `to`, as playing an event from
+    /// its preroll through its postroll does. Any other move of the
+    /// playhead, a pause or a play forgets `to`
+    PlayRange {
+        from: SourceTime,
+        to: SourceTime,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -99,6 +109,8 @@ pub struct Controller {
     stepping_to: Option<u64>,
     /// Why the current demo could not be played
     failed: Option<Message>,
+    /// Where playing a range pauses
+    stop_at: Option<SourceTime>,
 }
 
 impl Controller {
@@ -122,6 +134,17 @@ impl Controller {
 
     pub fn loop_range(&self) -> Option<LoopRange> {
         self.loop_range
+    }
+
+    /// Where playing goes no further, a loop's end or a played range's
+    /// end, the playhead going back or pausing there
+    pub fn until(&self) -> Option<SourceTime> {
+        let ends = self
+            .loop_range
+            .map(|r| r.end)
+            .into_iter()
+            .chain(self.stop_at);
+        ends.min_by(SourceTime::total_cmp)
     }
 
     pub fn failed(&self) -> Option<&Message> {
@@ -175,19 +198,38 @@ impl Controller {
                 })
             }
             Command::Play => {
+                self.stop_at = None;
+                self.clock.set_backward(false, wall);
+                self.clock.play(wall);
+                self.tick(wall)
+            }
+            Command::PlayBackward => {
+                self.stop_at = None;
+                self.clock.set_backward(true, wall);
                 self.clock.play(wall);
                 self.tick(wall)
             }
             Command::Pause => {
+                self.stop_at = None;
                 self.clock.pause(wall);
                 None
             }
+            Command::PlayRange { from, to } => {
+                self.new_revision();
+                self.clock.set(from, wall);
+                self.clock.set_backward(false, wall);
+                self.clock.play(wall);
+                self.stop_at = Some(SourceTime(to.0.max(from.0)));
+                self.request(Target::Time(from), true)
+            }
             Command::SeekTo(time) => {
+                self.stop_at = None;
                 self.new_revision();
                 self.clock.set(time, wall);
                 self.request(Target::Time(time), false)
             }
             Command::StepGroup(by) => {
+                self.stop_at = None;
                 let from = self.stepping_to.or(self.shown.map(|p| p.group))?;
                 let to = from.saturating_add_signed(by);
                 self.clock.pause(wall);
@@ -212,13 +254,38 @@ impl Controller {
     }
 
     /// While playing, the request for the playhead at `wall`. At the end of
-    /// a loop the playhead goes back to its start as a new seek
+    /// a loop the playhead goes back to its start as a new seek, and playing
+    /// backward to the loop's end from its start. Backward playback is
+    /// silent and pauses at the demo's start
     pub fn tick(&mut self, wall: f64) -> Option<Request> {
         if !self.clock.playing() {
             return None;
         }
 
         let at = self.clock.at(wall);
+        if self.clock.backward() {
+            if let Some(range) = self.loop_range
+                && at <= range.start
+            {
+                self.new_revision();
+                self.clock.set(range.end, wall);
+                return self.request(Target::Time(range.end), false);
+            }
+            if at <= SourceTime::ZERO {
+                self.clock.pause(wall);
+                self.clock.set(SourceTime::ZERO, wall);
+            }
+            return self.request(Target::Time(at), false);
+        }
+        if let Some(stop) = self.stop_at
+            && at >= stop
+        {
+            // The end of a played range, shown paused
+            self.stop_at = None;
+            self.clock.pause(wall);
+            self.clock.set(stop, wall);
+            return self.request(Target::Time(stop), false);
+        }
         if let Some(range) = self.loop_range
             && at >= range.end
         {

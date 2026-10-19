@@ -227,6 +227,59 @@ map and the studio models its entities use. Play, pause and a time bar drive the
 `--viewer-at SECONDS` seeks there once the demo is loaded. The asset folder setting and the rest
 of the viewer's controls come with M11.
 
+### Timeline and viewer (11a)
+
+The demo view's event table and timeline move the viewer's playhead through its controller
+(implementation plan §13.4):
+
+| Action | What the viewer does |
+|---|---|
+| Choosing an event, in the table, on the timeline or with previous and next event | seeks to the event's time, playing on if it was playing. A seek applies every group at or before the time, so the event has happened |
+| Clicking the timeline away from a mark | seeks to the time under the pointer, and chooses the clip there as before |
+| Previous and next event | the rows before and after the chosen one in the table as filtered, or around the playhead when none is chosen |
+| Play event | seeks to the chosen event's time less the preroll and plays, pausing at its time plus the postroll (the clip padding in Settings, 5 s each by default). Any other seek, pause or play forgets the pause |
+| Playhead | a line across the timeline at the viewer's time, moving while it plays |
+
+The analysis and playback take an event's time from the same clock (a record's playback time), so
+a time from the table needs no conversion. A demo whose times start again in a later session has
+the same time twice, and a seek by time finds its first. Zooming and panning the timeline only
+change what it shows.
+
+### Transport (11b)
+
+| Control | Key | What it does |
+|---|---|---|
+| Play, Pause | Space, L | plays forward at the chosen rate, with sound, or pauses |
+| Play backward | J | plays toward the start at the chosen rate, without sound, pausing at the start. Past a loop's start it goes on from the loop's end |
+| Pause | K | pauses either way |
+| Step back, Step forward | comma, period | moves one recorded group, pausing |
+| Rate | | 0.25×, 0.5×, 1×, 2× or 4×, for either direction, the playhead staying where it is |
+| Time bar | left and right arrows | seeks, the arrows five seconds back or forward |
+
+Keys work while no text is being typed. While a button or the time bar has the keyboard's focus,
+space and the arrows are left to it. Sound plays only forward, the device's blocks from before
+dropped when the direction changes.
+
+Backward playback seeks a little earlier for every frame shown, each a restore from the nearest
+checkpoint and playing forward from it. **Measured (2026-10-19)** on `naz_crossfire_pb_01.dem`
+(checkpoints 16 s apart), release build, 120 steps of 1/60 s back: from 600 s, 26 ms per step at
+the median and 35 ms at the 95th percentile, and from 300 s, 48 ms and 97 ms (209 ms at most).
+Backward playback shows 10 to 40 pictures a second, still at the right time for each.
+
+### Clips in the viewer (11c)
+
+| Action | What the viewer does |
+|---|---|
+| Play, on a clip | plays the clip from its start, pausing at its end |
+| Loop, on a clip | plays the clip from its start, going back to the start at its end until Loop is turned off or another clip is played. Changing the looped clip's start or end moves the loop |
+| Editing a start or end | shows that moment, paused, while an edge is dragged on the timeline and when a typed time is committed. The clip keeps its own range, whatever the playhead does |
+
+Going back to a loop's start is a seek, so the state at the start is restored as for any seek,
+and the sound device drops every block it holds from before (10b, "Old blocks"). The mixer also
+mixes nothing from the loop's end, or a played range's end, on: it runs about 40 ms ahead of what
+is heard and would otherwise mix past the end before the window's next frame goes back. A block
+that starts before the end is mixed whole, so at most 10 ms past it can be heard.
+
 ### What is drawn (9a)
 
 | Part | How |
