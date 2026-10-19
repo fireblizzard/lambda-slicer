@@ -200,6 +200,7 @@ show-timeline = Zeitleiste zeigen
 viewer-play = Abspielen
 viewer-pause = Pause
 viewer-volume = Lautstärke
+viewer-no-sound = Kein Ton
 viewer-play-backward = Zurückspulen
 viewer-step-back = Vorheriger Frame
 viewer-step-forward = Nächster Frame

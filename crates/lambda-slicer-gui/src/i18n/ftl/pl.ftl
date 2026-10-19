@@ -210,6 +210,7 @@ show-timeline = Pokaż oś czasu
 viewer-play = Odtwórz
 viewer-pause = Wstrzymaj
 viewer-volume = Głośność
+viewer-no-sound = Brak dźwięku
 viewer-play-backward = Przewiń do tyłu
 viewer-step-back = Poprzednia klatka
 viewer-step-forward = Następna klatka

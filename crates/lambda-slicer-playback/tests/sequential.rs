@@ -542,3 +542,77 @@ fn playing_after_a_step_runs_on_from_the_group_reached() {
     assert_eq!(controller.time(3.), SourceTime(reached.0 + 1.));
     assert!(controller.playing());
 }
+
+#[test]
+fn a_scrub_shows_the_frames_of_its_earlier_requests_and_a_range_ends_a_loop() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = demo(dir.path());
+    let mut controller = Controller::default();
+    controller.command(Command::Load(path.clone()), 0.).unwrap();
+    let mut p = open(&path);
+    let shown = |controller: &mut Controller, p: &mut Playback, stamp, at| {
+        let frame = p.present(stamp, at, CameraMode::Recorder, false);
+        controller.accept(&Reply::Frame(Box::new(frame)), 1.)
+    };
+
+    let before = controller
+        .command(Command::SeekTo(SourceTime(0.5)), 0.)
+        .unwrap();
+    let scrubs: Vec<_> = [3., 2.75, 2.5, 2.25]
+        .into_iter()
+        .map(|t| {
+            controller
+                .command(Command::Scrub(SourceTime(t)), 0.)
+                .unwrap()
+        })
+        .collect();
+    p.advance_to(SourceTime(3.)).unwrap();
+    // The worker finishing the first and third while the drag goes on
+    let accepted = [&scrubs[0], &scrubs[2]]
+        .into_iter()
+        .filter(|r| shown(&mut controller, &mut p, r.stamp, SourceTime(3.)))
+        .count();
+    assert_eq!(accepted, 2);
+    // A seek from before the scrub is not shown
+    assert!(!shown(
+        &mut controller,
+        &mut p,
+        before.stamp,
+        SourceTime(3.)
+    ));
+    // Once let go, only the newest is
+    controller.command(Command::EndScrub { cancel: false }, 0.5);
+    assert!(!shown(
+        &mut controller,
+        &mut p,
+        scrubs[2].stamp,
+        SourceTime(3.)
+    ));
+    assert!(shown(
+        &mut controller,
+        &mut p,
+        scrubs[3].stamp,
+        SourceTime(3.)
+    ));
+
+    // Playing a range ends a loop, which would take it back otherwise
+    controller.command(
+        Command::SetLoop(Some(lambda_slicer_playback::controller::LoopRange {
+            start: SourceTime(0.25),
+            end: SourceTime(0.75),
+        })),
+        1.,
+    );
+    controller.command(
+        Command::PlayRange {
+            from: SourceTime(5.),
+            to: SourceTime(6.),
+        },
+        1.,
+    );
+    assert_eq!(controller.loop_range(), None);
+    assert_eq!(
+        controller.tick(1.5).unwrap().target,
+        Target::Time(SourceTime(5.5))
+    );
+}

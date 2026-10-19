@@ -239,7 +239,7 @@ The demo view's event table and timeline move the viewer's playhead through its 
 | Choosing an event, in the table, on the timeline or with previous and next event | seeks to the event's time, playing on if it was playing. A seek applies every group at or before the time, so the event has happened |
 | Clicking the timeline away from a mark | seeks to the time under the pointer, and chooses the clip there as before |
 | Previous and next event | the rows before and after the chosen one in the table as filtered, or around the playhead when none is chosen |
-| Play event | seeks to the chosen event's time less the preroll and plays, pausing at its time plus the postroll (the clip padding in Settings, 5 s each by default). Any other seek, pause or play forgets the pause |
+| Play event | seeks to the chosen event's time less the preroll and plays, pausing at its time plus the postroll (the clip padding in Settings, 5 s each by default), once, as a looped clip stops looping. Any other seek, pause or play forgets the pause |
 | Playhead | a line across the timeline at the viewer's time, moving while it plays |
 
 The analysis and playback take an event's time from the same clock (a record's playback time), so
@@ -258,8 +258,9 @@ change what it shows.
 | Rate | | 0.25×, 0.5×, 1×, 2× or 4×, for either direction, the playhead staying where it is |
 | Time bar | left and right arrows | seeks, the arrows five seconds back or forward |
 
-Keys work while no text is being typed. While a button or the time bar has the keyboard's focus,
-space and the arrows are left to it. Sound plays only forward, the device's blocks from before
+Keys work while no text box has the keyboard's focus. While a button or the time bar has it,
+space and the arrows are left to it. Without a sound device "No sound" shows beside the controls,
+the reason on hovering it. Sound plays only forward, the device's blocks from before
 dropped when the direction changes.
 
 Backward playback seeks a little earlier for every frame shown, each a restore from the nearest
@@ -320,7 +321,7 @@ description says so. It changes only how the viewer draws a recording.
 | Action | What the viewer does |
 |---|---|
 | Play, on a clip | plays the clip from its start, pausing at its end |
-| Loop, on a clip | plays the clip from its start, going back to the start at its end until Loop is turned off or another clip is played. Changing the looped clip's start or end moves the loop |
+| Loop, on a clip | plays the clip from its start, going back to the start at its end until Loop is turned off, the clip is removed, or another clip or an event is played. Changing the looped clip's start or end moves the loop |
 | Editing a start or end | shows that moment, paused, while an edge is dragged on the timeline and when a typed time is committed. The clip keeps its own range, whatever the playhead does |
 
 Going back to a loop's start is a seek, so the state at the start is restored as for any seek,
@@ -337,15 +338,25 @@ is let go it plays on from there if it was playing, its sound starting from the 
 none of the sounds passed over. Escape during a drag goes back to where it began, and the rest of
 that drag moves nothing. A click on the time bar or the timeline seeks as before.
 
-**Measured (2026-10-19)** on `naz_crossfire_pb_01.dem`, release build, a drag sending a scrub
-every 16 ms for 2 s through 60 s of the demo, frames counted as the worker answered:
+Every scrub is a new revision, and the controller shows no answer to an older revision, so a
+drag whose seeks take longer than the pointer's moves showed few of the frames the worker
+finished. While a scrub lasts, the controller now shows the answer to any of its requests, and
+only the answers to requests from before the drag are refused. Once let go, the rule is the usual
+one again.
 
-| Drag | Frames | Longest wait between frames | Last frame after letting go |
+**Measured (2026-10-21)** on `naz_crossfire_pb_01.dem`, release build, a drag sending a scrub
+every 16 ms for 2 s through 60 s of the demo, frames counted as the controller accepted them for
+showing, before and after that change:
+
+| Drag | Frames shown, before and after | Longest wait between frames | Last frame after letting go |
 |---|---|---|---|
-| Indexed, 200 to 260 s | 125 | 50 ms | at once |
-| Indexed, 700 to 640 s, backward | 72 | 113 ms | 59 ms |
-| Before the index, 200 to 260 s | 51 | 1,256 ms, the first seek | 22 ms |
-| Before the index, 700 to 640 s | 50 | 665 ms | 29 ms |
+| Indexed, 200 to 260 s | 125, 126 | 34 ms, 34 ms | at once |
+| Indexed, 700 to 640 s, backward | 27, 82 | 504 ms, 68 ms | 81 ms, 82 ms |
+| Before the index, 200 to 260 s | 25, 41 | 1,071 ms, 848 ms, the first seek | 0 ms, 9 ms |
+| Before the index, 700 to 640 s | 13, 61 | 1,210 ms, 712 ms | 19 ms, 27 ms |
+
+An earlier measurement counted the worker's answers rather than the frames shown, and missed
+this.
 
 Before the index covers the demo, the first seek of a drag plays from the nearest checkpoint, the
 start at worst. A seek a newer one stops leaves playback where it got to, and the next goes on from

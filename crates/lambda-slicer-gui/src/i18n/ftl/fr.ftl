@@ -205,6 +205,7 @@ show-timeline = Afficher la frise
 viewer-play = Lecture
 viewer-pause = Pause
 viewer-volume = Volume
+viewer-no-sound = Pas de son
 viewer-play-backward = Rembobiner
 viewer-step-back = Image précédente
 viewer-step-forward = Image suivante

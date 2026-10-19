@@ -220,6 +220,7 @@ show-timeline = إظهار الخط الزمني
 viewer-play = تشغيل
 viewer-pause = إيقاف مؤقت
 viewer-volume = مستوى الصوت
+viewer-no-sound = لا صوت
 viewer-play-backward = ترجيع
 viewer-step-back = الإطار السابق
 viewer-step-forward = الإطار التالي

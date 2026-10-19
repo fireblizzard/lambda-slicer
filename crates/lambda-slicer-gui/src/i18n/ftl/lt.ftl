@@ -210,6 +210,7 @@ show-timeline = Rodyti laiko juostą
 viewer-play = Leisti
 viewer-pause = Pristabdyti
 viewer-volume = Garsumas
+viewer-no-sound = Nėra garso
 viewer-play-backward = Atsukti
 viewer-step-back = Ankstesnis kadras
 viewer-step-forward = Kitas kadras

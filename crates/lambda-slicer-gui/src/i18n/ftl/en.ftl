@@ -201,6 +201,7 @@ show-timeline = Show timeline
 viewer-play = Play
 viewer-pause = Pause
 viewer-volume = Volume
+viewer-no-sound = No sound
 viewer-play-backward = Rewind
 viewer-step-back = Previous frame
 viewer-step-forward = Next frame

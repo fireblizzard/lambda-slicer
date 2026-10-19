@@ -119,8 +119,9 @@ pub struct Controller {
     failed: Option<Message>,
     /// Where playing a range pauses
     stop_at: Option<SourceTime>,
-    /// While scrubbing, where it began and whether it was playing
-    scrub: Option<(SourceTime, bool)>,
+    /// While scrubbing, where it began, whether it was playing and the
+    /// revision of its first request
+    scrub: Option<(SourceTime, bool, u64)>,
 }
 
 impl Controller {
@@ -233,6 +234,8 @@ impl Controller {
                 None
             }
             Command::PlayRange { from, to } => {
+                // A range plays once, through any loop
+                self.loop_range = None;
                 self.new_revision();
                 self.clock.set(from, wall);
                 self.clock.set_backward(false, wall);
@@ -242,7 +245,8 @@ impl Controller {
             }
             Command::Scrub(time) => {
                 if self.scrub.is_none() {
-                    self.scrub = Some((self.clock.at(wall), self.clock.playing()));
+                    let first = self.stamp.revision + 1;
+                    self.scrub = Some((self.clock.at(wall), self.clock.playing(), first));
                     self.clock.pause(wall);
                 }
                 self.stop_at = None;
@@ -251,7 +255,7 @@ impl Controller {
                 self.request(Target::Time(time), false)
             }
             Command::EndScrub { cancel } => {
-                let (start, playing) = self.scrub.take()?;
+                let (start, playing, _) = self.scrub.take()?;
                 let mut request = None;
                 if cancel {
                     self.new_revision();
@@ -339,10 +343,17 @@ impl Controller {
     }
 
     /// Whether to show `reply`. A step's frame moves the paused playhead to
-    /// the group it reached, and the end of the demo pauses playback
+    /// the group it reached, and the end of the demo pauses playback. While
+    /// scrubbing, a frame for any of the scrub's requests is shown, as each
+    /// moves the playhead on before an answer can come, and the worker
+    /// answers the ones it finishes
     pub fn accept(&mut self, reply: &Reply, wall: f64) -> bool {
         let stamp = reply.stamp();
-        if stamp.generation != self.stamp.generation || stamp.revision < self.stamp.revision {
+        let scrubbed = self
+            .scrub
+            .is_some_and(|(_, _, first)| stamp.revision >= first);
+        let older = stamp.revision < self.stamp.revision && !scrubbed;
+        if stamp.generation != self.stamp.generation || older {
             return false;
         }
 

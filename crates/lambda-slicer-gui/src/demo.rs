@@ -1188,7 +1188,13 @@ impl DemoView {
                 c => c,
             };
             self.looping = match self.looping {
-                Some(c) if c == i => None,
+                Some(c) if c == i => {
+                    // The removed clip's loop goes with it
+                    if let Some(viewer) = &mut self.viewer {
+                        viewer.set_loop(None);
+                    }
+                    None
+                }
                 Some(c) if c > i => Some(c - 1),
                 c => c,
             };
@@ -1477,6 +1483,9 @@ impl DemoView {
                 if r.clicked()
                     && let (Some(e), Some(viewer)) = (event, &mut self.viewer)
                 {
+                    // Played once, through any clip's loop
+                    self.looping = None;
+                    viewer.set_loop(None);
                     viewer.play_range(e.time - self.padding.0, e.time + self.padding.1);
                 }
             }

@@ -200,6 +200,7 @@ show-timeline = Zaman çizelgesini göster
 viewer-play = Oynat
 viewer-pause = Duraklat
 viewer-volume = Ses düzeyi
+viewer-no-sound = Ses yok
 viewer-play-backward = Geri sar
 viewer-step-back = Önceki kare
 viewer-step-forward = Sonraki kare

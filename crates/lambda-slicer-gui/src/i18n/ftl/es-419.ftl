@@ -205,6 +205,7 @@ show-timeline = Mostrar línea de tiempo
 viewer-play = Reproducir
 viewer-pause = Pausar
 viewer-volume = Volumen
+viewer-no-sound = Sin sonido
 viewer-play-backward = Rebobinar
 viewer-step-back = Frame anterior
 viewer-step-forward = Siguiente frame

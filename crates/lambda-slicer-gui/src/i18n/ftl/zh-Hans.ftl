@@ -195,6 +195,7 @@ show-timeline = 显示时间线
 viewer-play = 播放
 viewer-pause = 暂停
 viewer-volume = 音量
+viewer-no-sound = 无声音
 viewer-play-backward = 倒带
 viewer-step-back = 上一帧
 viewer-step-forward = 下一帧

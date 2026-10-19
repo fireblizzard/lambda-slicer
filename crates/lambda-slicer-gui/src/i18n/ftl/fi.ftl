@@ -200,6 +200,7 @@ show-timeline = Näytä aikajana
 viewer-play = Toista
 viewer-pause = Tauko
 viewer-volume = Äänenvoimakkuus
+viewer-no-sound = Ei ääntä
 viewer-play-backward = Kelaa taaksepäin
 viewer-step-back = Edellinen ruutu
 viewer-step-forward = Seuraava ruutu

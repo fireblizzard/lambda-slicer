@@ -210,6 +210,7 @@ show-timeline = Показати шкалу часу
 viewer-play = Відтворити
 viewer-pause = Пауза
 viewer-volume = Гучність
+viewer-no-sound = Немає звуку
 viewer-play-backward = Перемотати назад
 viewer-step-back = Попередній кадр
 viewer-step-forward = Наступний кадр

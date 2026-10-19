@@ -270,6 +270,8 @@ pub struct Viewer {
     sound: Option<Device>,
     /// A scrub Escape cancelled, whose drag goes on until it is let go
     scrub_cancelled: bool,
+    /// Why there is no sound, when the device could not be opened
+    sound_error: Option<String>,
     /// While measuring A/V skew, where to write how far each picture
     /// painted trails the playhead, and those lags
     video_lag: Option<(PathBuf, Vec<(f64, f64)>)>,
@@ -374,11 +376,16 @@ impl Viewer {
             .and_then(|l| l.read("decals.wad"))
             .and_then(|bytes| Wad::parse(bytes, AssetLimits::default()).ok());
         let quiet = bench.is_some() || capture.is_some();
+        // Why the sound device could not be opened, shown under the view
+        let sound_error = std::cell::RefCell::new(None);
         let glow_library = library.clone();
         let sound = library.filter(|_| !quiet).and_then(|l| {
             let tap = std::env::var_os("LAMBDA_SLICER_SOUND_TAP").map(PathBuf::from);
             Device::open(l, tap, skew_path())
-                .inspect_err(|e| eprintln!("sound: {e}"))
+                .inspect_err(|e| {
+                    eprintln!("sound: {e}");
+                    *sound_error.borrow_mut() = Some(e.clone());
+                })
                 .ok()
         });
         let loader = game.map(|game| Loader::start(install, game, ctx.clone()));
@@ -399,6 +406,7 @@ impl Viewer {
             worker,
             sound,
             scrub_cancelled: false,
+            sound_error: sound_error.into_inner(),
             video_lag: skew_path().map(|p| (p.with_extension("video.txt"), Vec::new())),
 
             loader,
@@ -1257,7 +1265,9 @@ impl Viewer {
     /// right arrows seek five seconds. While a control has the keyboard's
     /// focus, space and the arrows are its own
     fn shortcuts(&mut self, ctx: &egui::Context) {
-        if ctx.egui_wants_keyboard_input() {
+        // Typing goes to the text, other controls keep only space and the
+        // arrows for themselves
+        if ctx.text_edit_focused() {
             return;
         }
         let focused = ctx.memory(|m| m.focused().is_some());
@@ -1427,6 +1437,18 @@ impl Viewer {
             );
             ui.toggle_value(&mut self.settings.see_through, label)
                 .on_hover_text(catalog.text("settings-see-through-hint"));
+
+            // Without a device, why there is no sound
+            if let Some(e) = &self.sound_error {
+                let label = text::widget_text(
+                    &ctx,
+                    &catalog.text("viewer-no-sound"),
+                    rtl,
+                    None,
+                    Look::Weak,
+                );
+                ui.label(label).on_hover_text(e);
+            }
 
             // The volume is a setting, which the app saves
             if self.sound.is_some() {
