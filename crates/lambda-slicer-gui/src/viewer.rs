@@ -61,6 +61,8 @@ use crate::i18n::Catalog;
 use crate::layout;
 use crate::settings::ViewerSettings;
 use crate::text::{self, Look};
+use crate::theme;
+use crate::widgets::{Icon, IconButton, PlayButton};
 
 /// `EF_NODRAW`, an entity the game does not draw
 const NO_DRAW: i64 = 128;
@@ -117,6 +119,38 @@ pub struct Dev {
     pub capture: Option<Capture>,
     /// Play this many seconds with sound, then close the window
     pub play: Option<f64>,
+}
+
+/// What playback was doing, carried to a viewer opened again for the same
+/// demo, as when the game's files are found while it plays
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Playback {
+    time: f64,
+    rate: Rate,
+    backward: bool,
+    playing: bool,
+    /// Where a played range pauses, apart from a loop's end
+    stop_at: Option<f64>,
+    loop_range: Option<LoopRange>,
+}
+
+impl Playback {
+    /// The command that plays on as playback did, none when it was paused
+    fn resume(&self) -> Option<Command> {
+        if !self.playing {
+            return None;
+        }
+
+        let command = match (self.stop_at, self.backward) {
+            (_, true) => Command::PlayBackward,
+            (Some(to), false) => Command::PlayRange {
+                from: SourceTime(self.time),
+                to: SourceTime(to),
+            },
+            (None, false) => Command::Play,
+        };
+        Some(command)
+    }
 }
 
 enum CapturePhase {
@@ -285,6 +319,14 @@ struct Resources {
 pub struct Viewer {
     /// The settings it shows and plays with, the app's each frame
     pub settings: ViewerSettings,
+    /// The game's files are there to draw and hear the demo with. Without
+    /// them the demo still plays, so the timeline and clips work
+    assets: bool,
+    /// How playback goes on once the first frame of a viewer opened again
+    /// is in
+    resume: Option<Command>,
+    /// The volume before muting, for unmuting to, kept for the session
+    unmuted_volume: Option<f32>,
     render_state: RenderState,
     controller: Controller,
     worker: Worker,
@@ -352,12 +394,15 @@ fn map_name(map: &str) -> String {
 }
 
 impl Viewer {
+    /// A viewer for `demo`, reading the game's files from `install` when
+    /// there is one, and playing on as `carry` says a viewer before it did
     pub fn open(
         render_state: RenderState,
-        install: PathBuf,
+        install: Option<PathBuf>,
         demo: PathBuf,
         duration: f32,
         dev: Dev,
+        carry: Option<Playback>,
         ctx: &egui::Context,
     ) -> Self {
         let Dev {
@@ -382,16 +427,20 @@ impl Viewer {
 
         let repaint = ctx.clone();
         let game = game_dir(&demo);
-        let library = game.as_ref().and_then(|game| {
-            let search = SearchPath::new(
-                &install,
-                game,
-                &SearchOptions::default(),
-                AssetLimits::default(),
-            )
-            .ok()?;
-            Some(Arc::new(Library::new(search, AssetLimits::default())))
-        });
+        let assets = install.is_some();
+        let library = install
+            .as_ref()
+            .zip(game.as_ref())
+            .and_then(|(install, game)| {
+                let search = SearchPath::new(
+                    install,
+                    game,
+                    &SearchOptions::default(),
+                    AssetLimits::default(),
+                )
+                .ok()?;
+                Some(Arc::new(Library::new(search, AssetLimits::default())))
+            });
         let worker = Worker::spawn_with(
             Limits::default(),
             library.as_ref().map(|l| l.game_files()),
@@ -415,7 +464,9 @@ impl Viewer {
                 })
                 .ok()
         });
-        let loader = game.map(|game| Loader::start(install, game, ctx.clone()));
+        let loader = install
+            .zip(game)
+            .map(|(install, game)| Loader::start(install, game, ctx.clone()));
         let mut controller = Controller::default();
         if let Some(request) = controller.command(Command::Load(demo), 0.) {
             worker.send(request);
@@ -426,8 +477,27 @@ impl Viewer {
             worker.send(request);
         }
 
+        // Where the viewer before stood, playing on once a frame is in
+        let mut resume = None;
+        if let Some(carry) = carry {
+            let commands = [
+                Command::SetRate(carry.rate),
+                Command::SetLoop(carry.loop_range),
+                Command::SeekTo(SourceTime(carry.time)),
+            ];
+            for command in commands {
+                if let Some(request) = controller.command(command, 0.) {
+                    worker.send(request);
+                }
+            }
+            resume = carry.resume();
+        }
+
         Self {
             settings: ViewerSettings::default(),
+            assets,
+            resume,
+            unmuted_volume: None,
             render_state,
             controller,
             worker,
@@ -477,6 +547,34 @@ impl Viewer {
 
     fn wall(&self) -> f64 {
         self.clock.elapsed().as_secs_f64()
+    }
+
+    /// Whether the game's files are there to draw and hear the demo with
+    pub fn has_assets(&self) -> bool {
+        self.assets
+    }
+
+    /// What playback is doing, for a viewer opened again to go on from
+    pub fn playback(&self) -> Playback {
+        let clock = self.controller.clock();
+        let loop_range = self.controller.loop_range();
+
+        // An end to playing that is not the loop's is a played range's
+        let loop_end = loop_range.map(|r| r.end);
+        let stop_at = self
+            .controller
+            .until()
+            .filter(|until| Some(*until) != loop_end)
+            .map(|until| until.0);
+
+        Playback {
+            time: self.controller.time(self.wall()).0,
+            rate: clock.rate(),
+            backward: clock.backward(),
+            playing: clock.playing(),
+            stop_at,
+            loop_range,
+        }
     }
 
     /// Move the playhead to `time`, playing on if it was playing
@@ -1213,6 +1311,13 @@ impl Viewer {
             self.decals.update(&frame.decals, frame.decal_revision);
         }
 
+        // A viewer opened again plays on once its demo has a frame
+        if self.frame.is_some()
+            && let Some(command) = self.resume.take()
+        {
+            self.command(command);
+        }
+
         let (capture_size, captured) = self.step_capture();
         if captured {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
@@ -1320,12 +1425,292 @@ impl Viewer {
         }
     }
 
-    /// The transport under the view. Nothing while playback has failed
-    pub fn transport_ui(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool) {
+    /// The transport under the view, the playback controls first and the
+    /// view and sound at the far end, on two rows when one is too narrow.
+    /// It runs left to right in every language, as time and the play
+    /// controls' directions do. Nothing while playback has failed. Returns
+    /// true when the picture settings were asked for
+    pub fn transport_ui(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool) -> bool {
+        if self.controller.failed().is_some() {
+            return false;
+        }
+
+        let mut picture = false;
+        if ui.available_width() >= TRANSPORT_ONE_ROW {
+            layout::row(ui, false, |ui| {
+                self.playback_controls(ui, catalog, rtl);
+                layout::trailing(ui, false, |ui| {
+                    picture = self.view_controls(ui, catalog, rtl);
+                });
+            });
+        } else {
+            layout::row(ui, false, |ui| self.playback_controls(ui, catalog, rtl));
+            layout::row(ui, false, |ui| {
+                picture = self.view_controls(ui, catalog, rtl)
+            });
+        }
+
+        picture
+    }
+
+    /// An icon button that runs `command`, naming its keyboard shortcut
+    fn command_button(
+        &mut self,
+        ui: &mut Ui,
+        catalog: &Catalog,
+        icon: Icon,
+        id: &str,
+        key: &str,
+        command: Command,
+    ) {
+        let shortcut = catalog.text_with(
+            "viewer-shortcut",
+            &[("key", FluentValue::from(key.to_owned()))],
+        );
+        let label = format!("{}\n{shortcut}", catalog.text(id));
+        if ui.add(IconButton::new(icon, &label)).clicked() {
+            self.command(command);
+        }
+    }
+
+    /// Back to the start, reverse, a group back, play, a group forward, the
+    /// time and the rate. Times always read left to right
+    fn playback_controls(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool) {
+        let clock = self.controller.clock();
+        let forward = clock.playing() && !clock.backward();
+        let backward = clock.playing() && clock.backward();
+
+        self.command_button(
+            ui,
+            catalog,
+            Icon::SkipStart,
+            "viewer-start",
+            "Home",
+            Command::SeekTo(SourceTime::ZERO),
+        );
+
+        let (icon, id, command) = if backward {
+            (Icon::Pause, "viewer-pause", Command::Pause)
+        } else {
+            (
+                Icon::PlayBackward,
+                "viewer-play-backward",
+                Command::PlayBackward,
+            )
+        };
+        self.command_button(ui, catalog, icon, id, "J", command);
+
+        self.command_button(
+            ui,
+            catalog,
+            Icon::StepBack,
+            "viewer-step-back",
+            ",",
+            Command::StepGroup(-1),
+        );
+
+        // The main play button, filled in the accent
+        let space = catalog.text("key-space");
+        let shortcut = catalog.text_with(
+            "viewer-shortcut",
+            &[("key", FluentValue::from(format!("{space}, L")))],
+        );
+        let (id, command) = if forward {
+            ("viewer-pause", Command::Pause)
+        } else {
+            ("viewer-play", Command::Play)
+        };
+        let label = format!("{}\n{shortcut}", catalog.text(id));
+        if ui.add(PlayButton::new(forward, &label)).clicked() {
+            self.command(command);
+        }
+
+        self.command_button(
+            ui,
+            catalog,
+            Icon::StepForward,
+            "viewer-step-forward",
+            ".",
+            Command::StepGroup(1),
+        );
+
+        self.time_readout(ui);
+        self.rate_menu(ui, catalog, rtl);
+    }
+
+    /// The demo's length as known so far, the library's figure or how far
+    /// the worker has read, and never short of the playhead
+    fn length(&self, now: f64) -> f64 {
+        let indexed = self.frame.as_ref().map_or(0., |f| f.indexed.0.0);
+        indexed.max(self.duration).max(now)
+    }
+
+    /// A bar across the space that drags the playhead and seeks where it is
+    /// clicked, until the timeline takes its place
+    pub fn seek_bar_ui(&mut self, ui: &mut Ui) {
         if self.controller.failed().is_some() {
             return;
         }
-        self.controls(ui, catalog, rtl);
+
+        let now = self.controller.time(self.wall()).0;
+        let end = self.length(now);
+        let mut at = now;
+        ui.spacing_mut().slider_width = ui.available_width().max(40.);
+        let slider = egui::Slider::new(&mut at, 0. ..=end.max(0.001)).show_value(false);
+        let response = ui.add(slider);
+
+        // Dragging scrubs, a click seeks
+        if response.changed() {
+            if response.dragged() {
+                self.scrub(at as f32);
+            } else {
+                self.command(Command::SeekTo(SourceTime(at)));
+            }
+        }
+        if response.drag_stopped() {
+            self.end_scrub();
+        }
+    }
+
+    /// The playhead to the millisecond and the demo's length to the second,
+    /// the length fainter
+    fn time_readout(&self, ui: &mut Ui) {
+        let now = self.controller.time(self.wall()).0;
+        let end = self.length(now);
+        let clock = |t: f64| {
+            DemoTime::from_f32(t as f32)
+                .map(|t| t.to_string())
+                .unwrap_or_default()
+        };
+        let whole = clock(end);
+        let length = whole.split('.').next().unwrap_or_default();
+
+        let mut job = egui::text::LayoutJob::default();
+        let font = egui::TextStyle::Monospace.resolve(ui.style());
+        let format = |color| egui::TextFormat::simple(font.clone(), color);
+        job.append(&clock(now), 0., format(theme::FOREGROUND));
+        job.append(&format!(" / {length}"), 0., format(theme::FAINT));
+        ui.label(job);
+    }
+
+    fn rate_menu(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool) {
+        let rate_label = |rate: Rate| {
+            let digits = match rate {
+                Rate::Quarter => 2,
+                Rate::Half => 1,
+                _ => 0,
+            };
+            let options = FluentNumberOptions {
+                minimum_fraction_digits: Some(digits),
+                ..Default::default()
+            };
+            let value = FluentValue::Number(FluentNumber::new(rate.factor(), options));
+            catalog.text_with("viewer-rate", &[("rate", value)])
+        };
+
+        let current = self.controller.clock().rate();
+        let mut chosen = current;
+        let selected = text::widget_text(ui.ctx(), &rate_label(current), rtl, None, Look::Plain);
+        egui::ComboBox::from_id_salt("viewer-rate")
+            .width(RATE_MENU_WIDTH)
+            .selected_text(selected)
+            .show_ui(ui, |ui| {
+                for rate in [
+                    Rate::Quarter,
+                    Rate::Half,
+                    Rate::Normal,
+                    Rate::Double,
+                    Rate::Quadruple,
+                ] {
+                    ui.selectable_value(&mut chosen, rate, rate_label(rate));
+                }
+            });
+        if chosen != current {
+            self.command(Command::SetRate(chosen));
+        }
+    }
+
+    /// See through walls, mute and the volume, and the picture settings,
+    /// placed from the row's trailing end. The first two need the game's
+    /// files and the sound device, and say so when they are not there.
+    /// Returns true when the picture settings were asked for
+    fn view_controls(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool) -> bool {
+        let picture_label = catalog.text("viewer-picture");
+        let picture = ui
+            .add(IconButton::new(Icon::Picture, &picture_label))
+            .clicked();
+
+        // The volume is a setting, which the app saves, and muting keeps
+        // the volume before it for unmuting to
+        let why_silent = if !self.assets {
+            Some(catalog.text("viewer-needs-files"))
+        } else {
+            self.sound_error.as_ref().map(|e| {
+                let reason = FluentValue::from(e.clone());
+                catalog.text_with("viewer-no-sound-why", &[("reason", reason)])
+            })
+        };
+        let audible = why_silent.is_none();
+        ui.add_enabled_ui(audible, |ui| {
+            ui.spacing_mut().slider_width = VOLUME_SLIDER_WIDTH;
+            let volume = egui::Slider::new(&mut self.settings.volume, 0. ..=1.).show_value(false);
+            let response = ui.add(volume);
+            response.widget_info(|| {
+                egui::WidgetInfo::slider(
+                    true,
+                    f64::from(self.settings.volume),
+                    catalog.text("viewer-volume"),
+                )
+            });
+
+            let muted = self.settings.volume <= 0.;
+            let (icon, id) = if muted {
+                (Icon::Mute, "viewer-unmute")
+            } else {
+                (Icon::Volume, "viewer-mute")
+            };
+            let label = catalog.text(id);
+            let mute = ui.add(IconButton::new(icon, &label));
+            let mute = match &why_silent {
+                Some(why) => mute.on_disabled_hover_text(why),
+                None => mute,
+            };
+            if mute.clicked() {
+                self.toggle_mute();
+            }
+        });
+
+        // Players through walls, a setting the app saves
+        let see_through = catalog.text("viewer-see-through");
+        let button = IconButton::new(Icon::Eye, &see_through).selected(self.settings.see_through);
+        let response = ui.add_enabled(self.assets, button);
+        let response = response
+            .on_hover_text(text::help(
+                ui.ctx(),
+                &catalog.text("settings-see-through-hint"),
+                rtl,
+            ))
+            .on_disabled_hover_text(catalog.text("viewer-needs-files"));
+        if response.clicked() {
+            self.settings.see_through = !self.settings.see_through;
+        }
+
+        picture
+    }
+
+    /// Mute, keeping the volume for unmuting to, or unmute to the volume
+    /// kept, the default volume when none was
+    fn toggle_mute(&mut self) {
+        if self.settings.volume > 0. {
+            self.unmuted_volume = Some(self.settings.volume);
+            self.settings.volume = 0.;
+            return;
+        }
+
+        let volume = self
+            .unmuted_volume
+            .unwrap_or(ViewerSettings::default().volume);
+        self.settings.volume = volume;
     }
 
     /// Feed the sound from the playback state every control has had its say
@@ -1395,9 +1780,10 @@ impl Viewer {
 
     /// The keys that drive playback while no text is being typed. Space and
     /// L play forward or pause, J plays backward or pauses, K pauses, comma
-    /// and period step one recorded group back or forward, and the left and
-    /// right arrows seek five seconds. While a control has the keyboard's
-    /// focus, space and the arrows are its own
+    /// and period step one recorded group back or forward, the left and
+    /// right arrows seek five seconds and Home goes back to the start. While
+    /// a control has the keyboard's focus, space, the arrows and Home are its
+    /// own
     pub fn shortcuts(&mut self, ctx: &egui::Context) {
         // Typing goes to the text, other controls keep only space and the
         // arrows for themselves
@@ -1428,6 +1814,8 @@ impl Viewer {
             })
         } else if pressed(egui::Key::K) {
             Some(Command::Pause)
+        } else if !focused && pressed(egui::Key::Home) {
+            Some(Command::SeekTo(SourceTime::ZERO))
         } else if pressed(egui::Key::Comma) {
             Some(Command::StepGroup(-1))
         } else if pressed(egui::Key::Period) {
@@ -1461,154 +1849,6 @@ impl Viewer {
             audible: frame.audible && !self.controller.clock().backward(),
             until: self.controller.until(),
         });
-    }
-
-    fn controls(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool) {
-        let ctx = ui.ctx().clone();
-        let wall = self.wall();
-        let now = self.controller.time(wall).0;
-        let end = self
-            .frame
-            .as_ref()
-            .map_or(0., |f| f.indexed.0.0)
-            .max(self.duration)
-            .max(now);
-        let clock = |t: f64| {
-            DemoTime::from_f32(t as f32)
-                .map(|t| t.to_string())
-                .unwrap_or_default()
-        };
-
-        let clock_state = self.controller.clock();
-        let forward = clock_state.playing() && !clock_state.backward();
-        let backward = clock_state.playing() && clock_state.backward();
-        let shortcut = |key: &str| {
-            catalog.text_with(
-                "viewer-shortcut",
-                &[("key", FluentValue::from(key.to_owned()))],
-            )
-        };
-        let space = catalog.text("key-space");
-        let rate_label = |rate: Rate| {
-            let digits = match rate {
-                Rate::Quarter => 2,
-                Rate::Half => 1,
-                _ => 0,
-            };
-            let options = FluentNumberOptions {
-                minimum_fraction_digits: Some(digits),
-                ..Default::default()
-            };
-            let value = FluentValue::Number(FluentNumber::new(rate.factor(), options));
-            catalog.text_with("viewer-rate", &[("rate", value)])
-        };
-
-        // The buttons wrap, and the time bar takes a row of its own
-        layout::wrapping_row(ui, rtl, |ui| {
-            let button = |ui: &mut Ui, id: &str, tip: String| {
-                let label = text::widget_text(&ctx, &catalog.text(id), rtl, None, Look::Plain);
-                ui.button(label).on_hover_text(tip).clicked()
-            };
-            let back = if backward {
-                "viewer-pause"
-            } else {
-                "viewer-play-backward"
-            };
-            if button(ui, back, shortcut("J")) {
-                self.command(if backward {
-                    Command::Pause
-                } else {
-                    Command::PlayBackward
-                });
-            }
-            if button(ui, "viewer-step-back", shortcut(",")) {
-                self.command(Command::StepGroup(-1));
-            }
-            let play = if forward {
-                "viewer-pause"
-            } else {
-                "viewer-play"
-            };
-            if button(ui, play, shortcut(&format!("{space}, L"))) {
-                self.command(if forward {
-                    Command::Pause
-                } else {
-                    Command::Play
-                });
-            }
-            if button(ui, "viewer-step-forward", shortcut(".")) {
-                self.command(Command::StepGroup(1));
-            }
-            let current = clock_state.rate();
-            let mut chosen = current;
-            egui::ComboBox::from_id_salt("viewer-rate")
-                .width(64.)
-                .selected_text(rate_label(current))
-                .show_ui(ui, |ui| {
-                    for rate in [
-                        Rate::Quarter,
-                        Rate::Half,
-                        Rate::Normal,
-                        Rate::Double,
-                        Rate::Quadruple,
-                    ] {
-                        ui.selectable_value(&mut chosen, rate, rate_label(rate));
-                    }
-                });
-            if chosen != current {
-                self.command(Command::SetRate(chosen));
-            }
-
-            let shown = format!("{} / {}", clock(now), clock(end));
-            ui.label(text::widget_text(&ctx, &shown, false, None, Look::Plain));
-
-            // Players through walls, a setting the app saves
-            let label = text::widget_text(
-                &ctx,
-                &catalog.text("viewer-see-through"),
-                rtl,
-                None,
-                Look::Plain,
-            );
-            ui.toggle_value(&mut self.settings.see_through, label)
-                .on_hover_text(catalog.text("settings-see-through-hint"));
-
-            // Without a device, why there is no sound
-            if let Some(e) = &self.sound_error {
-                let label = text::widget_text(
-                    &ctx,
-                    &catalog.text("viewer-no-sound"),
-                    rtl,
-                    None,
-                    Look::Weak,
-                );
-                ui.label(label).on_hover_text(e);
-            }
-
-            // The volume is a setting, which the app saves
-            if self.sound.is_some() {
-                let label =
-                    text::widget_text(&ctx, &catalog.text("viewer-volume"), rtl, None, Look::Plain);
-                ui.label(label);
-                ui.spacing_mut().slider_width = 80.;
-                ui.add(egui::Slider::new(&mut self.settings.volume, 0. ..=1.).show_value(false));
-            }
-        });
-        let mut at = now;
-        ui.spacing_mut().slider_width = ui.available_width().max(40.);
-        let slider = egui::Slider::new(&mut at, 0. ..=end.max(0.001)).show_value(false);
-        let r = ui.add(slider);
-        // Dragging scrubs, a click seeks
-        if r.changed() {
-            if r.dragged() {
-                self.scrub(at as f32);
-            } else {
-                self.command(Command::SeekTo(SourceTime(at)));
-            }
-        }
-        if r.drag_stopped() {
-            self.end_scrub();
-        }
     }
 }
 
@@ -2031,6 +2271,12 @@ fn skew_path() -> Option<PathBuf> {
     std::env::var_os("LAMBDA_SLICER_SOUND_SKEW").map(PathBuf::from)
 }
 
+/// The narrowest the transport fits on one row, the rate menu's width and
+/// the volume slider's
+const TRANSPORT_ONE_ROW: f32 = 600.;
+const RATE_MENU_WIDTH: f32 = 64.;
+const VOLUME_SLIDER_WIDTH: f32 = 64.;
+
 /// Seconds the arrow keys move the playhead
 const SEEK_STEP: f64 = 5.;
 
@@ -2289,6 +2535,37 @@ fn without_colours(name: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn playback(playing: bool, backward: bool, stop_at: Option<f64>) -> Playback {
+        Playback {
+            time: 400.,
+            rate: Rate::Half,
+            backward,
+            playing,
+            stop_at,
+            loop_range: None,
+        }
+    }
+
+    #[test]
+    fn a_viewer_opened_again_plays_on_as_the_one_before() {
+        // Paused stays paused, wherever it stood
+        assert_eq!(playback(false, false, None).resume(), None);
+        assert_eq!(playback(false, true, Some(410.)).resume(), None);
+
+        assert_eq!(playback(true, false, None).resume(), Some(Command::Play));
+        assert_eq!(
+            playback(true, true, None).resume(),
+            Some(Command::PlayBackward)
+        );
+
+        // A played range still pauses at its end
+        let range = Command::PlayRange {
+            from: SourceTime(400.),
+            to: SourceTime(410.),
+        };
+        assert_eq!(playback(true, false, Some(410.)).resume(), Some(range));
+    }
 
     #[test]
     fn colour_codes_leave_names_but_other_carets_stay() {

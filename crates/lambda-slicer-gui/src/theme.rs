@@ -16,6 +16,8 @@ pub const RAISED: Color32 = Color32::from_rgb(0x27, 0x2b, 0x30);
 pub const HOVER: Color32 = Color32::from_rgb(0x31, 0x36, 0x3c);
 /// Thin separators
 pub const BORDER: Color32 = Color32::from_rgb(0x2b, 0x2f, 0x35);
+/// Behind the demo view, where the picture is drawn
+pub const VIEWPORT: Color32 = Color32::BLACK;
 
 /// Text that is read, secondary text, and only decoration such as grid lines
 pub const FOREGROUND: Color32 = Color32::from_rgb(0xd8, 0xd5, 0xcf);
@@ -26,6 +28,8 @@ pub const FAINT: Color32 = Color32::from_rgb(0x5e, 0x63, 0x6a);
 pub const ACCENT: Color32 = Color32::from_rgb(0xe8, 0x91, 0x3a);
 /// The accent behind chosen rows and toggles
 pub const ACCENT_SOFT: Color32 = Color32::from_rgba_unmultiplied_const(0xe8, 0x91, 0x3a, 0x24);
+/// Text and icons on the solid accent
+pub const ACCENT_FOREGROUND: Color32 = Color32::from_rgb(0x1a, 0x12, 0x06);
 
 /// A side known to be blue or red
 pub const TEAM_BLUE: Color32 = Color32::from_rgb(0x74, 0xa7, 0xde);
@@ -59,6 +63,8 @@ pub const BUTTON_PADDING: Vec2 = Vec2::new(10., 4.);
 const CONTROL_MIN_WIDTH: f32 = 40.;
 /// The glyph inside an icon button
 pub const ICON_SIZE: f32 = 16.;
+/// The main play button, round and filled in the accent
+pub const PLAY_BUTTON: f32 = 32.;
 /// The accent edge on a chosen row's leading side
 pub const SELECTED_EDGE: f32 = 2.;
 

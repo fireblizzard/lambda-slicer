@@ -48,6 +48,12 @@ pub fn leading_panel(id: &str, rtl: bool) -> egui::Panel {
     }
 }
 
+/// A side panel on the interface's trailing side, the right one or in a
+/// right-to-left interface the left one
+pub fn trailing_panel(id: &str, rtl: bool) -> egui::Panel {
+    leading_panel(id, !rtl)
+}
+
 /// A row whose widgets are placed from the trailing side, for actions kept
 /// at the end of a toolbar after the ones that lead it
 pub fn trailing<R>(ui: &mut Ui, rtl: bool, add: impl FnOnce(&mut Ui) -> R) -> R {

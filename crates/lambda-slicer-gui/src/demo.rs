@@ -18,11 +18,13 @@ use fluent_bundle::FluentValue;
 use lambda_slicer_core::analysis::analyze_demo_with;
 use lambda_slicer_core::analysis::weapons::{Action, Weapon};
 use lambda_slicer_core::container::Limits;
+use lambda_slicer_core::library::cache::FileRow;
 use lambda_slicer_core::message::{Coded, Message};
 use lambda_slicer_core::slice::range::Snapped;
 use lambda_slicer_core::state::DecodeStatus;
 use lambda_slicer_core::timeline::time::DemoTime;
 
+use crate::app::SettingsTab;
 use crate::clips::{Clip, next_name, parse_time};
 use crate::export::{ClipKey, ExportJob, ExportState};
 use crate::i18n::Catalog;
@@ -31,6 +33,7 @@ use crate::library::WEAPONS;
 use crate::text::{self, Look};
 use crate::theme;
 use crate::timeline::{EventKind, LaneKey, MarkKind, Model, SpanKind, bins, nearest, tick_step};
+use crate::widgets::{self, Icon, IconButton, Variant};
 use lambda_slicer_core::analysis::accuracy::accuracy;
 use lambda_slicer_core::analysis::context::{PlayerScore, StandingSide, standing_at};
 
@@ -123,9 +126,97 @@ enum DemoAction {
     ClipHighlight,
     /// Show the final scores rather than those at the selected event
     ShowFinal,
-    /// Close the demo
-    Close,
 }
+
+/// What the demo view asks the app to do, as only the app can
+#[derive(Clone, Debug, PartialEq)]
+pub enum Request {
+    Close,
+    /// Open the settings window on this tab
+    Settings(SettingsTab),
+    /// Ask where the game is installed
+    Locate,
+    /// Bring back the demo list, hidden or out of room
+    ShowList,
+    /// A problem to show until dismissed
+    Notice(String),
+}
+
+/// The inspector's tabs beside the view
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum InspectorTab {
+    #[default]
+    Events,
+    Clips,
+    Scoreboard,
+}
+
+/// How the demo's panes are arranged, kept for the session whichever demo
+/// is open
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct WorkspaceUi {
+    pub inspector_tab: InspectorTab,
+    /// The demo list was hidden
+    pub list_hidden: bool,
+    /// The window has no room for the list beside the view, so it opens
+    /// over the view when asked for
+    pub list_squeezed: bool,
+    pub drawer_open: bool,
+}
+
+impl WorkspaceUi {
+    /// Whether the demo list is out of view, so the header offers it
+    pub fn list_out_of_view(&self) -> bool {
+        self.list_hidden || (self.list_squeezed && !self.drawer_open)
+    }
+}
+
+/// Why the viewer has no game files to read, for its setup notice
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Setup {
+    /// A folder the settings name that no longer holds the game
+    pub missing: Option<PathBuf>,
+    /// Why the last choice was refused
+    pub refusal: Option<String>,
+}
+
+/// What the demo view shows that the app holds
+pub struct Surroundings<'a> {
+    pub catalog: &'a Catalog,
+    pub rtl: bool,
+    /// The library's row for the demo, none for a demo opened as a file
+    pub file: Option<&'a FileRow>,
+    /// The window is too narrow for the inspector beside the view, so it
+    /// goes under it
+    pub narrow: bool,
+    pub setup: &'a Setup,
+}
+
+/// The inspector beside the view at first, and in a window at least
+/// `WIDE_WINDOW` wide, with the narrowest and widest it can be dragged to
+pub const INSPECTOR_WIDTH: f32 = 360.;
+const INSPECTOR_WIDE: f32 = 400.;
+const WIDE_WINDOW: f32 = 1600.;
+const INSPECTOR_RANGE: std::ops::RangeInclusive<f32> = 320.0..=520.0;
+
+/// The inspector under the view in a narrow window at first, and the least
+/// it shrinks to
+const INSPECTOR_HEIGHT: f32 = 220.;
+const INSPECTOR_MIN_HEIGHT: f32 = 120.;
+
+/// The least the view shrinks to, and the most of the middle the player
+/// lanes take
+const MIN_VIEWPORT: f32 = 120.;
+const LANES_SHARE: f32 = 0.35;
+
+/// How many icon buttons the header keeps at its trailing end
+const HEADER_ACTIONS: usize = 4;
+
+/// The setup notice's width, the circle around its warning, and the warning
+/// sign itself
+const SETUP_WIDTH: f32 = 380.;
+const SETUP_ICON: f32 = 44.;
+const SETUP_GLYPH: f32 = 20.;
 
 /// A number for each demo view opened, so state kept by egui for one demo
 /// is never taken for another's
@@ -231,8 +322,10 @@ pub struct DemoView {
     pub path: PathBuf,
     /// Which demo view this is, for egui state that must not carry over
     generation: u64,
-    /// What the controls asked for this frame, applied once they have drawn
+    /// What the controls asked for this frame, applied once they have drawn,
+    /// and what they asked of the app
     actions: Vec<DemoAction>,
+    requests: Vec<Request>,
     loader: Option<Loader>,
     model: Option<Arc<Model>>,
     failed: Option<String>,
@@ -291,6 +384,7 @@ impl DemoView {
             path,
             generation: GENERATION.fetch_add(1, Ordering::Relaxed),
             actions: Vec::new(),
+            requests: Vec::new(),
             model: None,
             failed: None,
             view: (0., duration.max(MIN_SPAN)),
@@ -1160,39 +1254,34 @@ impl DemoView {
             let width = Some(ui.available_width());
             ui.label(text::widget_text(&ctx, &line, rtl, width, Look::Weak));
         });
-        let row_height = ui.text_style_height(&egui::TextStyle::Body) + 8.;
+        // The clips scroll with the tab they are in
         let mut remove = None;
-        egui::ScrollArea::vertical()
-            .id_salt("clips")
-            .max_height(row_height * 2. * 3.5)
-            .show(ui, |ui| {
-                for i in 0..self.clips.len() {
-                    match self.clip_row(ui, catalog, rtl, i) {
-                        Some(RowAction::Remove) => remove = Some(i),
-                        Some(RowAction::Export) => request = Some(ExportRequest::One(i)),
-                        Some(RowAction::Play) => {
-                            self.looping = None;
-                            if let Some(viewer) = &mut self.viewer {
-                                let c = &self.clips[i];
-                                viewer.set_loop(None);
-                                viewer.play_range(secs(c.start), secs(c.end));
-                            }
-                        }
-                        Some(RowAction::Loop(on)) => {
-                            self.looping = on.then_some(i);
-                            if let Some(viewer) = &mut self.viewer {
-                                let c = &self.clips[i];
-                                if on {
-                                    viewer.play_loop(secs(c.start), secs(c.end));
-                                } else {
-                                    viewer.set_loop(None);
-                                }
-                            }
-                        }
-                        None => {}
+        for i in 0..self.clips.len() {
+            match self.clip_row(ui, catalog, rtl, i) {
+                Some(RowAction::Remove) => remove = Some(i),
+                Some(RowAction::Export) => request = Some(ExportRequest::One(i)),
+                Some(RowAction::Play) => {
+                    self.looping = None;
+                    if let Some(viewer) = &mut self.viewer {
+                        let c = &self.clips[i];
+                        viewer.set_loop(None);
+                        viewer.play_range(secs(c.start), secs(c.end));
                     }
                 }
-            });
+                Some(RowAction::Loop(on)) => {
+                    self.looping = on.then_some(i);
+                    if let Some(viewer) = &mut self.viewer {
+                        let c = &self.clips[i];
+                        if on {
+                            viewer.play_loop(secs(c.start), secs(c.end));
+                        } else {
+                            viewer.set_loop(None);
+                        }
+                    }
+                }
+                None => {}
+            }
+        }
 
         // A time typed into a field commits when the field loses focus, which
         // the same click that presses Export does, while the rows draw. So
@@ -1555,9 +1644,10 @@ impl DemoView {
             .min_scrolled_height(0.);
         for c in &cols {
             table = table.column(match *c {
-                "column-event" => Column::remainder().at_least(120.),
-                "column-player" => Column::initial(170.).at_least(60.),
-                _ => Column::initial(100.).at_least(60.),
+                "column-event" => Column::remainder().at_least(60.).clip(true),
+                "column-player" => Column::initial(100.).at_least(48.).clip(true),
+                "column-time" => Column::initial(88.).at_least(64.).clip(true),
+                _ => Column::initial(72.).at_least(48.).clip(true),
             });
         }
         if self.scroll_table
@@ -1992,57 +2082,36 @@ impl DemoView {
         let room = ui.available_width() - ui.spacing().scroll.allocated_width();
         let stacked = side_width * sides.len() as f32 > room;
 
-        // The longest column, every side in turn, or every player in a
-        // ranked list
-        let lines = if sides.is_empty() {
-            standing.sides.len() as f32 + 2.5
+        // The scores scroll with the tab they are in
+        if sides.is_empty() {
+            // Three or more players without teams, as one ranked list
+            let all = StandingSide {
+                name: String::new(),
+                frags: 0,
+                deaths: 0,
+                players: standing
+                    .sides
+                    .iter()
+                    .flat_map(|s| s.players.clone())
+                    .collect(),
+            };
+            side_ui(ui, &all, false);
         } else if stacked {
-            sides.iter().map(|s| s.players.len() as f32 + 2.5).sum()
+            // Top to bottom in the scoreboard's own order
+            let mut sides = sides.clone();
+            if rtl {
+                sides.reverse();
+            }
+            for side in sides {
+                side_ui(ui, side, true);
+            }
         } else {
-            standing
-                .sides
-                .iter()
-                .map(|s| s.players.len())
-                .max()
-                .unwrap_or(0) as f32
-                + 2.5
-        };
-        let height = (ui.text_style_height(&egui::TextStyle::Body) + 4.) * lines;
-        egui::ScrollArea::vertical()
-            .id_salt("scores")
-            .auto_shrink([false, true])
-            .max_height(height.min(200.))
-            .show(ui, |ui| {
-                if sides.is_empty() {
-                    // Three or more players without teams, as one ranked list
-                    let all = StandingSide {
-                        name: String::new(),
-                        frags: 0,
-                        deaths: 0,
-                        players: standing
-                            .sides
-                            .iter()
-                            .flat_map(|s| s.players.clone())
-                            .collect(),
-                    };
-                    side_ui(ui, &all, false);
-                } else if stacked {
-                    // Top to bottom in the scoreboard's own order
-                    let mut sides = sides.clone();
-                    if rtl {
-                        sides.reverse();
-                    }
-                    for side in sides {
-                        side_ui(ui, side, true);
-                    }
-                } else {
-                    ui.columns(sides.len(), |cols| {
-                        for (col, side) in cols.iter_mut().zip(&sides) {
-                            side_ui(col, side, true);
-                        }
-                    });
+            ui.columns(sides.len(), |cols| {
+                for (col, side) in cols.iter_mut().zip(&sides) {
+                    side_ui(col, side, true);
                 }
             });
+        }
     }
 
     /// Take in the analysis, export results and playback state, and the
@@ -2071,15 +2140,11 @@ impl DemoView {
 
     /// Apply what the controls asked for, then bring the loop and the sound
     /// in line with the edits. Called once a frame after everything has
-    /// drawn. Returns true when the demo should close
-    pub fn finish_frame(&mut self, ctx: &egui::Context, catalog: &Catalog) -> bool {
+    /// drawn. Returns what was asked of the app
+    pub fn finish_frame(&mut self, ctx: &egui::Context, catalog: &Catalog) -> Vec<Request> {
         let actions = std::mem::take(&mut self.actions);
-        let mut close = false;
         for action in &actions {
-            match action {
-                DemoAction::Close => close = true,
-                _ => self.apply(*action, catalog),
-            }
+            self.apply(*action, catalog);
         }
 
         // What an action changed shows on the next frame, asked for here as
@@ -2100,7 +2165,7 @@ impl DemoView {
             viewer.finish_frame(ctx);
         }
 
-        close
+        std::mem::take(&mut self.requests)
     }
 
     fn apply(&mut self, action: DemoAction, catalog: &Catalog) {
@@ -2169,7 +2234,6 @@ impl DemoView {
                 }
             }
             DemoAction::ShowFinal => self.selected = None,
-            DemoAction::Close => {}
         }
     }
 
@@ -2193,63 +2257,446 @@ impl DemoView {
         }
     }
 
-    /// The whole view. What its controls ask for is applied by
-    /// [`Self::finish_frame`]
-    pub fn ui(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool) {
-        let ctx = ui.ctx().clone();
-        let name = self
-            .path
-            .file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_default();
-        layout::row(ui, rtl, |ui| {
-            if ui
-                .button(text::widget_text(
-                    &ctx,
-                    &catalog.text("demo-close"),
-                    rtl,
-                    None,
-                    Look::Plain,
-                ))
-                .clicked()
-            {
-                self.actions.push(DemoAction::Close);
-            }
-            ui.label(text::widget_text(
-                &ctx,
-                &name,
-                text::starts_rtl(&name),
-                None,
-                Look::Strong,
-            ));
-        });
-        if let Some(viewer) = &mut self.viewer {
-            let height = (ui.available_height() * 0.45).min(ui.available_width() * 9. / 16.);
-            viewer.viewport_ui(ui, catalog, rtl, height);
-            viewer.transport_ui(ui, catalog, rtl);
-            ui.separator();
+    /// The whole demo, its inspector beside the view or under it in a
+    /// narrow window, and the view between its header and its transport.
+    /// What the controls ask for is applied by [`Self::finish_frame`]
+    pub fn ui(&mut self, ui: &mut Ui, s: &Surroundings, workspace: &mut WorkspaceUi) {
+        let (catalog, rtl) = (s.catalog, s.rtl);
+        self.refresh_rows();
+
+        // The inspector beside the view, or under it in a narrow window
+        let frame = egui::Frame::new()
+            .fill(theme::BACKGROUND)
+            .inner_margin(theme::GAP_S as i8);
+        if s.narrow {
+            let most = (ui.available_height() - MIN_VIEWPORT).max(INSPECTOR_MIN_HEIGHT);
+            egui::Panel::bottom("inspector below")
+                .frame(frame)
+                .resizable(true)
+                .default_size(INSPECTOR_HEIGHT)
+                .size_range(INSPECTOR_MIN_HEIGHT..=most)
+                .show(ui, |ui| self.inspector(ui, catalog, rtl, workspace));
+        } else {
+            let width = if ui.available_width() >= WIDE_WINDOW {
+                INSPECTOR_WIDE
+            } else {
+                INSPECTOR_WIDTH
+            };
+            layout::trailing_panel("inspector", rtl)
+                .frame(frame)
+                .resizable(true)
+                .default_size(width)
+                .size_range(INSPECTOR_RANGE)
+                .show(ui, |ui| self.inspector(ui, catalog, rtl, workspace));
         }
 
-        if self.loader.is_some() {
-            layout::row(ui, rtl, |ui| {
-                ui.spinner();
-                let msg =
-                    catalog.text_with("demo-loading", &[("name", FluentValue::from(name.clone()))]);
-                ui.label(text::widget_text(&ctx, &msg, rtl, None, Look::Plain));
+        self.middle(ui, s, workspace);
+    }
+
+    /// The header over the view, and the transport and player lanes under
+    /// it, kept room for before the view takes what is left
+    fn middle(&mut self, ui: &mut Ui, s: &Surroundings, workspace: &WorkspaceUi) {
+        let (catalog, rtl) = (s.catalog, s.rtl);
+        let most_lanes = ui.available_height() * LANES_SHARE;
+        let margin = egui::Margin::symmetric(theme::GAP_S as i8, 0);
+
+        let header = egui::Frame::new().fill(theme::SURFACE).inner_margin(margin);
+        egui::Panel::top("demo header")
+            .exact_size(theme::TOOLBAR_HEIGHT)
+            .frame(header)
+            .show(ui, |ui| self.header(ui, s, workspace));
+
+        let transport = egui::Frame::new().inner_margin(margin);
+        egui::Panel::bottom("transport")
+            .frame(transport)
+            .show(ui, |ui| {
+                if let Some(viewer) = &mut self.viewer {
+                    if viewer.transport_ui(ui, catalog, rtl) {
+                        self.requests.push(Request::Settings(SettingsTab::Viewer));
+                    }
+                    viewer.seek_bar_ui(ui);
+                }
+                self.lanes_section(ui, catalog, rtl, most_lanes);
             });
+
+        // The view takes what is left, the setup notice in its place while
+        // the game's files are not found
+        let height = ui.available_height().max(MIN_VIEWPORT);
+        match &mut self.viewer {
+            Some(viewer) if viewer.has_assets() => viewer.viewport_ui(ui, catalog, rtl, height),
+            _ => self.setup_notice(ui, s, height),
+        }
+    }
+
+    /// The demo's name and facts, its actions at the trailing end, and the
+    /// way back to the demo list leading while the list is out of view
+    fn header(&mut self, ui: &mut Ui, s: &Surroundings, workspace: &WorkspaceUi) {
+        let (catalog, rtl) = (s.catalog, s.rtl);
+        let name = demo_name(&self.path);
+        let facts = self.facts(s);
+
+        layout::row(ui, rtl, |ui| {
+            if workspace.list_out_of_view() {
+                let label = catalog.text("list-show");
+                let show = IconButton::new(Icon::PanelOpen, &label).mirrored(rtl);
+                if ui.add(show).clicked() {
+                    self.requests.push(Request::ShowList);
+                }
+            }
+
+            // The name and its facts take what the actions leave, cut short
+            // rather than pushing them away
+            let action = theme::CONTROL_HEIGHT + ui.spacing().item_spacing.x;
+            let room = (ui.available_width() - action * HEADER_ACTIONS as f32).max(0.);
+            layout::cell(ui, rtl, room, |ui| {
+                let path = self.path.display().to_string();
+                let title =
+                    text::widget_text(ui.ctx(), &name, text::starts_rtl(&name), None, Look::Strong);
+                ui.add(egui::Label::new(title).truncate())
+                    .on_hover_text(path);
+
+                let look = Look::Color(theme::MUTED);
+                let facts = text::styled_text(ui.ctx(), &facts, rtl, look, &theme::secondary());
+                ui.add(egui::Label::new(facts).truncate());
+            });
+
+            layout::trailing(ui, rtl, |ui| self.header_actions(ui, s));
+        });
+    }
+
+    /// Close, show in folder, copy the path and the details, placed from the
+    /// trailing end
+    fn header_actions(&mut self, ui: &mut Ui, s: &Surroundings) {
+        let catalog = s.catalog;
+
+        let close = catalog.text("demo-close");
+        if ui.add(IconButton::new(Icon::Close, &close)).clicked() {
+            self.requests.push(Request::Close);
+        }
+
+        let show = catalog.text("path-show");
+        if ui.add(IconButton::new(Icon::Folder, &show)).clicked()
+            && let Err(e) = crate::platform::show_in_folder(&self.path)
+        {
+            let detail = FluentValue::from(e.to_string());
+            let notice = catalog.text_with("path-show-failed", &[("detail", detail)]);
+            self.requests.push(Request::Notice(notice));
+        }
+
+        // The whole path, however the header cuts it short
+        let copy = catalog.text("path-copy");
+        if ui.add(IconButton::new(Icon::Copy, &copy)).clicked() {
+            ui.ctx().copy_text(self.path.display().to_string());
+        }
+
+        let details = catalog.text("demo-details");
+        let response = ui.add(IconButton::new(Icon::Info, &details));
+        egui::Popup::menu(&response)
+            .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+            .show(|ui| self.details(ui, s));
+    }
+
+    /// The map, date, length and point of view, as far as they are known
+    fn facts(&self, s: &Surroundings) -> String {
+        let catalog = s.catalog;
+        let mut facts = Vec::new();
+        if let Some(map) = s.file.and_then(|f| f.map.clone()) {
+            facts.push(map);
+        }
+        if let Some(day) = s
+            .file
+            .and_then(|f| f.recorded_at.as_deref())
+            .and_then(crate::i18n::Ymd::parse)
+        {
+            facts.push(catalog.date(day));
+        }
+
+        // The analysis's extent once it is in, the library's until then
+        let length = match &self.model {
+            Some(model) => Some(model.end),
+            None => s.file.and_then(|f| f.duration),
+        };
+        if let Some(length) = length.and_then(DemoTime::from_f32) {
+            let length = length.to_string();
+            facts.push(length.split('.').next().unwrap_or("").to_string());
+        }
+
+        if let Some(kind) = s.file.and_then(|f| f.recording_kind.as_deref()) {
+            facts.push(catalog.text(&format!("kind-{}", kind.replace('_', "-"))));
+        }
+
+        facts.join(" · ")
+    }
+
+    /// Everything the library knows of the demo, for the details popup
+    fn details(&self, ui: &mut Ui, s: &Surroundings) {
+        let (catalog, rtl) = (s.catalog, s.rtl);
+        ui.set_max_width(text::HELP_WIDTH);
+        ui.label(egui::RichText::new(self.path.display().to_string()).monospace());
+
+        let Some(f) = s.file else {
+            return;
+        };
+
+        let mut facts = Vec::new();
+        if let Some(r) = &f.recorder {
+            let name = FluentValue::from(text::player_name(r));
+            facts.push(catalog.text_with("details-recorder", &[("name", name)]));
+        }
+        if let Some(k) = &f.recording_kind {
+            facts.push(catalog.text(&format!("kind-{}", k.replace('_', "-"))));
+        }
+        if let Some(n) = f.shots {
+            facts.push(catalog.text_with("details-shots", &[("count", FluentValue::from(n))]));
+        }
+        if let Some(n) = f.kills {
+            facts.push(catalog.text_with("details-kills", &[("count", FluentValue::from(n))]));
+        }
+        if let Some(score) = f.best_window {
+            let score = FluentValue::from(score);
+            facts.push(catalog.text_with("details-action", &[("score", score)]));
+        }
+
+        for fact in facts {
+            text::label(ui, &fact, rtl);
+        }
+        if let Some(e) = &f.error {
+            text::label(ui, &catalog.stored(e), rtl);
+        }
+    }
+
+    /// In the view's place while the game's files are not found, what the
+    /// viewer needs them for and the way to give them, and that the rest
+    /// works without them
+    fn setup_notice(&mut self, ui: &mut Ui, s: &Surroundings, height: f32) {
+        let (catalog, rtl) = (s.catalog, s.rtl);
+        let size = Vec2::new(ui.available_width(), height);
+        let (rect, _) = ui.allocate_exact_size(size, Sense::hover());
+        ui.painter().rect_filled(rect, 0., theme::VIEWPORT);
+
+        // Without a GPU there is no viewer, and nothing the game's files
+        // would change
+        if self.viewer.is_none() {
             return;
         }
+
+        // Centred by the height it took last frame, as that is only known
+        // once it is laid out
+        let height_id = ui.scope_id().with(("setup notice", self.generation));
+        let last_height: f32 = ui.ctx().data(|d| d.get_temp(height_id)).unwrap_or(0.);
+        let top = rect.min.y + ((rect.height() - last_height) / 2.).max(theme::GAP_M);
+        let width = SETUP_WIDTH.min(rect.width() - theme::GAP_M * 2.);
+        let area = Rect::from_min_max(
+            Pos2::new(rect.center().x - width / 2., top),
+            Pos2::new(rect.center().x + width / 2., rect.max.y),
+        );
+        let layout = egui::Layout::top_down(egui::Align::Center);
+        let mut notice = ui.new_child(egui::UiBuilder::new().max_rect(area).layout(layout));
+
+        let mut locate = false;
+        let mut settings = false;
+
+        warning_mark(&mut notice);
+
+        let title = catalog.text("setup-title");
+        let title = text::styled_text(
+            notice.ctx(),
+            &title,
+            rtl,
+            Look::Strong,
+            &egui::TextStyle::Heading,
+        );
+        notice.label(title);
+
+        let muted = Look::Color(theme::MUTED);
+        let body = text::widget_text(
+            notice.ctx(),
+            &catalog.text("setup-body"),
+            rtl,
+            Some(SETUP_WIDTH),
+            muted,
+        );
+        notice.add(egui::Label::new(body).wrap());
+
+        // A folder the settings name that no longer holds the game
+        if let Some(folder) = &s.setup.missing {
+            let folder = FluentValue::from(folder.display().to_string());
+            let line = catalog.text_with("setup-relocate", &[("folder", folder)]);
+            let line = text::widget_text(
+                notice.ctx(),
+                &line,
+                rtl,
+                Some(SETUP_WIDTH),
+                Look::Color(theme::WARNING),
+            );
+            notice.add(egui::Label::new(line).wrap());
+        }
+
+        let id = if cfg!(windows) {
+            "setup-locate-exe"
+        } else {
+            "setup-locate-folder"
+        };
+        let buttons =
+            egui::Layout::left_to_right(egui::Align::Center).with_main_align(egui::Align::Center);
+        let row = Vec2::new(notice.available_width(), theme::CONTROL_HEIGHT);
+        notice.allocate_ui_with_layout(row, buttons, |ui| {
+            let label = text::widget_text(ui.ctx(), &catalog.text(id), rtl, None, Look::Plain);
+            let primary = widgets::Button::new(Some(Icon::Folder), label, Variant::Primary, rtl);
+            locate = ui.add(primary).clicked();
+            let label = text::widget_text(
+                ui.ctx(),
+                &catalog.text("setup-settings"),
+                rtl,
+                None,
+                Look::Plain,
+            );
+            let ghost = widgets::Button::new(None, label, Variant::Ghost, rtl);
+            settings = ui.add(ghost).clicked();
+        });
+
+        // Why the last choice was refused, beside the way to choose again
+        if let Some(refusal) = &s.setup.refusal {
+            let line = text::widget_text(
+                notice.ctx(),
+                refusal,
+                rtl,
+                Some(SETUP_WIDTH),
+                Look::Color(theme::ERROR),
+            );
+            notice.add(egui::Label::new(line).wrap());
+        }
+
+        let still = catalog.text("setup-still-works");
+        let still = text::widget_text(
+            notice.ctx(),
+            &still,
+            rtl,
+            Some(SETUP_WIDTH),
+            Look::Color(theme::FAINT),
+        );
+        notice.add(egui::Label::new(still).wrap());
+
+        let height = notice.min_rect().height();
+        if height != last_height {
+            ui.ctx().data_mut(|d| d.insert_temp(height_id, height));
+            ui.ctx().request_repaint();
+        }
+
+        if locate {
+            self.requests.push(Request::Locate);
+        }
+        if settings {
+            self.requests.push(Request::Settings(SettingsTab::General));
+        }
+    }
+
+    /// The player lanes under the transport, shown when asked for
+    fn lanes_section(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool, most: f32) {
+        let Some(model) = self.model.clone() else {
+            return;
+        };
+
+        let ctx = ui.ctx().clone();
+        layout::row(ui, rtl, |ui| {
+            let label =
+                text::widget_text(&ctx, &catalog.text("show-timeline"), rtl, None, Look::Plain);
+            ui.checkbox(&mut self.show_timeline, label);
+        });
+        if !self.show_timeline {
+            return;
+        }
+
+        self.legend(ui, catalog, rtl);
+        let lanes = AXIS_HEIGHT + LANE_HEIGHT * model.lanes.len() as f32;
+        egui::ScrollArea::vertical()
+            .id_salt("lanes")
+            .max_height(lanes.min(most))
+            .show(ui, |ui| self.timeline(ui, catalog, rtl));
+    }
+
+    /// The inspector's tabs with their counts, and the chosen one under
+    /// them
+    fn inspector(
+        &mut self,
+        ui: &mut Ui,
+        catalog: &Catalog,
+        rtl: bool,
+        workspace: &mut WorkspaceUi,
+    ) {
+        let events = self.model.as_ref().map(|_| self.rows.len());
+        let tabs = [
+            (InspectorTab::Events, "tab-events", events),
+            (InspectorTab::Clips, "tab-clips", Some(self.clips.len())),
+            (InspectorTab::Scoreboard, "tab-scoreboard", None),
+        ];
+        layout::row(ui, rtl, |ui| {
+            for (tab, id, count) in tabs {
+                let chosen = workspace.inspector_tab == tab;
+                let title = text::widget_text(ui.ctx(), &catalog.text(id), rtl, None, Look::Plain);
+                if ui.add(egui::Button::selectable(chosen, title)).clicked() {
+                    workspace.inspector_tab = tab;
+                }
+                if let Some(count) = count {
+                    let count = egui::RichText::new(count.to_string())
+                        .monospace()
+                        .color(theme::FAINT);
+                    ui.label(count);
+                }
+            }
+        });
+        ui.separator();
+
+        if !self.analysis_ready(ui, catalog, rtl) {
+            return;
+        }
+        match workspace.inspector_tab {
+            InspectorTab::Events => self.events_tab(ui, catalog, rtl),
+            InspectorTab::Clips => {
+                egui::ScrollArea::vertical()
+                    .id_salt(("clips", self.generation))
+                    .show(ui, |ui| self.clips_ui(ui, catalog, rtl));
+            }
+            InspectorTab::Scoreboard => {
+                egui::ScrollArea::vertical()
+                    .id_salt(("scores", self.generation))
+                    .show(ui, |ui| self.scores(ui, catalog, rtl));
+            }
+        }
+    }
+
+    /// Whether the analysis is in, and while it is not, that it is under
+    /// way or why it failed
+    fn analysis_ready(&self, ui: &mut Ui, catalog: &Catalog, rtl: bool) -> bool {
+        if self.loader.is_some() {
+            let name = FluentValue::from(demo_name(&self.path));
+            let line = catalog.text_with("demo-loading", &[("name", name)]);
+            layout::row(ui, rtl, |ui| {
+                ui.spinner();
+                ui.label(text::widget_text(ui.ctx(), &line, rtl, None, Look::Plain));
+            });
+            return false;
+        }
+
         if let Some(code) = &self.failed {
             text::label(
                 ui,
                 &catalog.text_or(code, &catalog.text("status-failed")),
                 rtl,
             );
-            return;
+            return false;
         }
+
+        self.model.is_some()
+    }
+
+    /// What the recording cannot show, then the event filters and the
+    /// events
+    fn events_tab(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool) {
         let Some(model) = self.model.clone() else {
             return;
         };
+
         layout::column(ui, rtl, |ui| {
             for n in &model.coverage_notes {
                 text::label(ui, &catalog.message(n), rtl);
@@ -2258,30 +2705,38 @@ impl DemoView {
                 text::label(ui, &catalog.message(e), rtl);
             }
         });
-        ui.separator();
+
         self.controls(ui, catalog, rtl);
-        ui.add_space(4.);
-        self.scores(ui, catalog, rtl);
         ui.separator();
-        self.clips_ui(ui, catalog, rtl);
-        ui.separator();
-        let ctx = ui.ctx().clone();
-        layout::row(ui, rtl, |ui| {
-            let label =
-                text::widget_text(&ctx, &catalog.text("show-timeline"), rtl, None, Look::Plain);
-            ui.checkbox(&mut self.show_timeline, label);
-        });
-        if self.show_timeline {
-            self.legend(ui, catalog, rtl);
-            let timeline_height = (AXIS_HEIGHT + LANE_HEIGHT * model.lanes.len() as f32)
-                .min(ui.available_height() * 0.55);
-            egui::ScrollArea::vertical()
-                .id_salt("lanes")
-                .max_height(timeline_height)
-                .show(ui, |ui| self.timeline(ui, catalog, rtl));
-        }
-        ui.separator();
+
         self.event_nav(ui, catalog, rtl);
         self.table(ui, catalog, rtl);
     }
+}
+
+/// A demo's file name without the `.dem` every demo has
+fn demo_name(path: &Path) -> String {
+    let name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+
+    match name.strip_suffix(".dem") {
+        Some(stem) if !stem.is_empty() => stem.to_string(),
+        _ => name,
+    }
+}
+
+/// A warning sign in a soft circle, heading the setup notice
+fn warning_mark(ui: &mut Ui) {
+    let (rect, _) = ui.allocate_exact_size(Vec2::splat(SETUP_ICON), Sense::hover());
+    let painter = ui.painter();
+    painter.circle_filled(
+        rect.center(),
+        SETUP_ICON / 2.,
+        theme::WARNING.gamma_multiply(0.15),
+    );
+
+    let glyph = Rect::from_center_size(rect.center(), Vec2::splat(SETUP_GLYPH));
+    widgets::paint_icon(painter, glyph, Icon::Warning, theme::WARNING);
 }

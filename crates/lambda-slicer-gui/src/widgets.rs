@@ -36,10 +36,34 @@ pub enum Icon {
     Copy,
     /// A folder, for showing a file in its folder
     Folder,
+    /// A bar and a triangle, for back to the start
+    SkipStart,
+    /// A triangle pointing back, for playing in reverse
+    PlayBackward,
+    Pause,
+    /// Chevrons, for a recorded group back or forward
+    StepBack,
+    StepForward,
+    /// An eye, for seeing through walls
+    Eye,
+    Volume,
+    Mute,
+    /// A landscape in a frame, for the picture settings
+    Picture,
+    /// An i in a circle, for details
+    Info,
+    /// A pane on the leading side, with an arrow out of it or into it
+    PanelOpen,
+    PanelClose,
+    /// A triangle with an exclamation mark
+    Warning,
 }
 
 /// The width of an icon's lines
 const ICON_LINE: f32 = 1.5;
+
+/// How much lighter the accent turns under the pointer or the keyboard
+const ACCENT_LIT: f32 = 0.1;
 
 /// Points along a circle of `radius` around `center`, from `from` to `to`
 /// radians, clockwise on screen as y grows downwards
@@ -55,12 +79,28 @@ fn arc(center: Pos2, radius: f32, from: f32, to: f32) -> Vec<Pos2> {
 
 /// Paint `icon` inside `rect` in lines of `color`
 pub fn paint_icon(painter: &egui::Painter, rect: Rect, icon: Icon, color: Color32) {
+    paint_icon_facing(painter, rect, icon, color, false);
+}
+
+/// Paint `icon` inside `rect`, turned left for right when `mirror`, as a
+/// pane's icon is in a right-to-left interface. Icons whose direction means
+/// time, such as play, are never mirrored
+pub fn paint_icon_facing(
+    painter: &egui::Painter,
+    rect: Rect,
+    icon: Icon,
+    color: Color32,
+    mirror: bool,
+) {
     let stroke = Stroke::new(ICON_LINE, color);
 
     // A point of the 16 point grid the icons are drawn on
     let unit = rect.width().min(rect.height()) / 16.;
     let origin = rect.center() - Vec2::splat(8. * unit);
-    let p = |x: f32, y: f32| origin + Vec2::new(x, y) * unit;
+    let p = |x: f32, y: f32| {
+        let x = if mirror { 16. - x } else { x };
+        origin + Vec2::new(x, y) * unit
+    };
 
     match icon {
         Icon::Open => {
@@ -193,6 +233,99 @@ pub fn paint_icon(painter: &egui::Painter, rect: Rect, icon: Icon, color: Color3
             ];
             painter.add(Shape::closed_line(folder, stroke));
         }
+        Icon::SkipStart => {
+            painter.line_segment([p(4., 3.), p(4., 13.)], stroke);
+            let back = vec![p(12.5, 3.), p(12.5, 13.), p(6., 8.)];
+            painter.add(Shape::closed_line(back, stroke));
+        }
+        Icon::PlayBackward => {
+            let back = vec![p(12.5, 3.), p(12.5, 13.), p(3.5, 8.)];
+            painter.add(Shape::closed_line(back, stroke));
+        }
+        Icon::Pause => {
+            let bar = Stroke::new(2. * unit, color);
+            painter.line_segment([p(5.5, 3.5), p(5.5, 12.5)], bar);
+            painter.line_segment([p(10.5, 3.5), p(10.5, 12.5)], bar);
+        }
+        Icon::StepBack => {
+            painter.add(Shape::line(
+                vec![p(10., 3.), p(5., 8.), p(10., 13.)],
+                stroke,
+            ));
+        }
+        Icon::StepForward => {
+            painter.add(Shape::line(vec![p(6., 3.), p(11., 8.), p(6., 13.)], stroke));
+        }
+        Icon::Eye => {
+            // Two curved lids meeting at the corners, around the pupil
+            let steps = 16;
+            let mut upper = Vec::with_capacity(steps + 1);
+            let mut lower = Vec::with_capacity(steps + 1);
+            for i in 0..=steps {
+                let t = i as f32 / steps as f32;
+                let lift = 4.5 * (t * TAU / 2.).sin();
+                upper.push(p(1.5 + 13. * t, 8. - lift));
+                lower.push(p(1.5 + 13. * t, 8. + lift));
+            }
+            painter.add(Shape::line(upper, stroke));
+            painter.add(Shape::line(lower, stroke));
+            painter.circle_stroke(p(8., 8.), 2. * unit, stroke);
+        }
+        Icon::Volume | Icon::Mute => {
+            let speaker = vec![
+                p(2., 6.),
+                p(5., 6.),
+                p(9., 3.),
+                p(9., 13.),
+                p(5., 10.),
+                p(2., 10.),
+            ];
+            painter.add(Shape::closed_line(speaker, stroke));
+
+            // Sound coming out, or a cross where it would
+            if icon == Icon::Volume {
+                let center = p(9., 8.);
+                let wave = |radius: f32| arc(center, radius * unit, -0.12 * TAU, 0.12 * TAU);
+                painter.add(Shape::line(wave(3.), stroke));
+                painter.add(Shape::line(wave(5.5), stroke));
+            } else {
+                painter.line_segment([p(11., 6.), p(15., 10.)], stroke);
+                painter.line_segment([p(15., 6.), p(11., 10.)], stroke);
+            }
+        }
+        Icon::Picture => {
+            let frame = Rect::from_min_max(p(2., 3.), p(14., 13.));
+            painter.rect_stroke(frame, 1., stroke, StrokeKind::Middle);
+
+            // Hills under a sun
+            let hills = vec![p(2., 12.), p(6., 8.), p(9., 11.), p(11., 9.), p(14., 12.)];
+            painter.add(Shape::line(hills, stroke));
+            painter.circle_filled(p(11., 6.), 1.3 * unit, color);
+        }
+        Icon::Info => {
+            painter.circle_stroke(p(8., 8.), 6.5 * unit, stroke);
+            painter.circle_filled(p(8., 5.), 1. * unit, color);
+            painter.line_segment([p(8., 7.5), p(8., 11.5)], stroke);
+        }
+        Icon::PanelOpen | Icon::PanelClose => {
+            let frame = Rect::from_min_max(p(2., 3.), p(14., 13.));
+            painter.rect_stroke(frame, 1., stroke, StrokeKind::Middle);
+            painter.line_segment([p(6., 3.), p(6., 13.)], stroke);
+
+            // Out of the pane to open it, into it to close it
+            let arrow = if icon == Icon::PanelOpen {
+                vec![p(9., 6.), p(11., 8.), p(9., 10.)]
+            } else {
+                vec![p(11., 6.), p(9., 8.), p(11., 10.)]
+            };
+            painter.add(Shape::line(arrow, stroke));
+        }
+        Icon::Warning => {
+            let triangle = vec![p(8., 1.5), p(15., 14.), p(1., 14.)];
+            painter.add(Shape::closed_line(triangle, stroke));
+            painter.line_segment([p(8., 6.), p(8., 10.)], stroke);
+            painter.circle_filled(p(8., 12.), 0.9 * unit, color);
+        }
     }
 }
 
@@ -215,6 +348,7 @@ pub struct IconButton<'a> {
     icon: Icon,
     label: &'a str,
     selected: bool,
+    mirror: bool,
 }
 
 impl<'a> IconButton<'a> {
@@ -223,12 +357,20 @@ impl<'a> IconButton<'a> {
             icon,
             label,
             selected: false,
+            mirror: false,
         }
     }
 
     /// Shown as a toggle that is on when `selected`
     pub fn selected(mut self, selected: bool) -> Self {
         self.selected = selected;
+        self
+    }
+
+    /// Its icon turned left for right, as a pane's is in a right-to-left
+    /// interface
+    pub fn mirrored(mut self, mirror: bool) -> Self {
+        self.mirror = mirror;
         self
     }
 }
@@ -257,9 +399,69 @@ impl Widget for IconButton<'_> {
         ui.painter().rect_filled(rect, radius, fill);
 
         let glyph = Rect::from_center_size(rect.center(), Vec2::splat(theme::ICON_SIZE));
-        paint_icon(ui.painter(), glyph, self.icon, color);
+        paint_icon_facing(ui.painter(), glyph, self.icon, color, self.mirror);
 
         focus_outline(ui, &response, rect);
+        response
+    }
+}
+
+/// The main play button, round and filled in the accent, showing pause
+/// while playing. `label` says what a click does
+pub struct PlayButton<'a> {
+    playing: bool,
+    label: &'a str,
+}
+
+impl<'a> PlayButton<'a> {
+    pub fn new(playing: bool, label: &'a str) -> Self {
+        Self { playing, label }
+    }
+}
+
+impl Widget for PlayButton<'_> {
+    fn ui(self, ui: &mut Ui) -> Response {
+        let size = Vec2::splat(theme::PLAY_BUTTON);
+        let (rect, response) = ui.allocate_exact_size(size, Sense::click());
+        let enabled = ui.is_enabled();
+        response.widget_info(|| WidgetInfo::labeled(Role::Button, enabled, self.label));
+        let response = response.on_hover_text(self.label);
+
+        if !ui.is_rect_visible(rect) {
+            return response;
+        }
+
+        let lit = response.hovered() || response.has_focus();
+        let fill = if lit {
+            theme::ACCENT.lerp_to_gamma(Color32::WHITE, ACCENT_LIT)
+        } else {
+            theme::ACCENT
+        };
+        let painter = ui.painter();
+        let center = rect.center();
+        painter.circle_filled(center, rect.width() / 2., fill);
+
+        // A filled triangle a little right of the middle, as it looks
+        // centred there, or the pause bars
+        let glyph = Rect::from_center_size(center, Vec2::splat(theme::ICON_SIZE));
+        if self.playing {
+            paint_icon(painter, glyph, Icon::Pause, theme::ACCENT_FOREGROUND);
+        } else {
+            let unit = glyph.width() / 16.;
+            let at = |x: f32, y: f32| glyph.min + Vec2::new(x, y) * unit;
+            let triangle = vec![at(5., 3.), at(13.5, 8.), at(5., 13.)];
+            painter.add(Shape::convex_polygon(
+                triangle,
+                theme::ACCENT_FOREGROUND,
+                Stroke::NONE,
+            ));
+        }
+
+        if response.has_focus() {
+            let outline = Stroke::new(1., theme::FOREGROUND);
+            painter.circle_stroke(center, rect.width() / 2. + 1., outline);
+        }
+
         response
     }
 }
@@ -294,6 +496,8 @@ const BUTTON_ICON_GAP: f32 = 6.;
 pub enum Variant {
     /// A raised button
     Default,
+    /// Filled in the accent, for the one action a place is for
+    Primary,
     /// No fill until hovered, for toolbars
     Ghost,
 }
@@ -344,6 +548,11 @@ impl Widget for Button {
 
         let lit = response.hovered() || response.has_focus();
         let (fill, color) = match self.variant {
+            Variant::Primary if lit => (
+                theme::ACCENT.lerp_to_gamma(Color32::WHITE, ACCENT_LIT),
+                theme::ACCENT_FOREGROUND,
+            ),
+            Variant::Primary => (theme::ACCENT, theme::ACCENT_FOREGROUND),
             Variant::Default if lit => (theme::HOVER, theme::FOREGROUND),
             Variant::Default => (theme::RAISED, theme::FOREGROUND),
             Variant::Ghost if lit => (theme::RAISED, theme::FOREGROUND),

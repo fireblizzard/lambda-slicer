@@ -42,6 +42,7 @@ mod clips;
 mod decals;
 mod demo;
 mod export;
+mod game_setup;
 mod i18n;
 mod jobs;
 mod layout;

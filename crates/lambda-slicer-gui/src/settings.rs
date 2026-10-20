@@ -37,6 +37,10 @@ pub struct Settings {
 pub struct ViewerSettings {
     /// The Half-Life folder, the one holding `valve`. `--game` comes first
     pub game: Option<PathBuf>,
+    /// The game's executable the folder was found by, which only locates
+    /// it, as the viewer draws and plays demos itself. None when the folder
+    /// was chosen as a folder
+    pub executable: Option<PathBuf>,
     /// The game's `gamma`, `brightness`, `texgamma`, `lightgamma` and
     /// `gl_overbright`
     pub gamma: f32,
@@ -61,6 +65,7 @@ impl Default for ViewerSettings {
         let g = lambda_slicer_render::gamma::Gamma::default();
         Self {
             game: None,
+            executable: None,
             gamma: g.gamma,
             brightness: g.brightness,
             texgamma: g.texgamma,
@@ -210,6 +215,7 @@ mod tests {
             export_folder: Some(PathBuf::from("F:/clips")),
             viewer: ViewerSettings {
                 game: Some(PathBuf::from("F:/Half-Life")),
+                executable: Some(PathBuf::from("F:/Half-Life/hl.exe")),
                 gamma: 2.,
                 brightness: 2.,
                 lightgamma: 2.,
@@ -245,5 +251,20 @@ mod tests {
 
         std::fs::write(&path, b"not json").unwrap();
         assert_eq!(Settings::load_from(&path), Settings::default());
+    }
+
+    #[test]
+    fn a_folder_saved_before_the_executable_was_kept_still_loads() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        let saved = br#"{"locale": "en", "folders": ["F:/demos"], "preroll": 2.0,
+            "viewer": {"game": "F:/Half-Life", "volume": 0.5}}"#;
+        std::fs::write(&path, saved).unwrap();
+
+        let loaded = Settings::load_from(&path);
+        assert_eq!(loaded.viewer.game, Some(PathBuf::from("F:/Half-Life")));
+        assert_eq!(loaded.viewer.executable, None);
+        assert_eq!((loaded.viewer.volume, loaded.preroll), (0.5, 2.));
+        assert_eq!(loaded.folders, [PathBuf::from("F:/demos")]);
     }
 }

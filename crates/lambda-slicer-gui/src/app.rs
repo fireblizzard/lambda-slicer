@@ -11,11 +11,12 @@ use lambda_slicer_core::library::cache::default_path;
 use lambda_slicer_core::library::scan::ScanOptions;
 
 use crate::clips::{ClipStore, LoadProblem};
-use crate::demo::DemoView;
+use crate::demo::{self, DemoView, Request, Setup, Surroundings, WorkspaceUi};
+use crate::game_setup::{self, Refusal};
 use crate::i18n::{Catalog, Locale};
 use crate::jobs::{Problem, ScanJob};
 use crate::layout;
-use crate::library::{LibraryView, parse_number};
+use crate::library::{LibraryView, ListAction, parse_number};
 use crate::settings::{FOV, MAX_PADDING, Settings, ViewerSettings};
 use crate::text::{self, Look};
 use crate::theme;
@@ -25,6 +26,16 @@ use crate::widgets::{self, Icon, IconButton, Variant};
 /// narrowest and widest it can be dragged to
 const LIST_WIDTH: f32 = 280.;
 const LIST_WIDTH_RANGE: std::ops::RangeInclusive<f32> = 240.0..=360.0;
+
+/// The narrowest a window keeps the list, the view and the inspector side by
+/// side in, and the least room the view keeps between them
+const THREE_PANES: f32 = 1180.;
+const MIDDLE_MIN: f32 = 500.;
+/// Narrower than this the inspector goes under the view
+const NARROW_WINDOW: f32 = 960.;
+/// How much more room than its threshold the list wants back before it
+/// returns, so resizing near the threshold does not make it flicker
+const ROOM_MARGIN: f32 = 32.;
 
 /// Save a screenshot after this many frames and close, for checking how a
 /// language renders
@@ -111,6 +122,15 @@ pub struct App {
     pub render_state: Option<eframe::egui_wgpu::RenderState>,
     /// The app's icon for the toolbar, made on the first frame
     brand: Option<egui::TextureHandle>,
+    /// How the open demo's panes are arranged
+    workspace: WorkspaceUi,
+    /// Why the last choice of the game's installation was refused
+    setup_refusal: Option<Refusal>,
+    /// The game folder last checked for the game's files, and whether it
+    /// held them, so the disk is read once for each folder
+    install_checked: Option<(PathBuf, bool)>,
+    /// The same for the game's executable the settings name
+    executable_checked: Option<(PathBuf, bool)>,
 }
 
 /// The app's icon as a texture, for the toolbar
@@ -135,6 +155,15 @@ fn is_demo(path: &Path) -> bool {
 
 impl App {
     pub fn new(settings: Settings, settings_path: Option<PathBuf>, launch: Launch) -> Self {
+        // Settings saved before the executable was kept find it in their
+        // folder, saved with the next change
+        let mut settings = settings;
+        if settings.viewer.executable.is_none()
+            && let Some(root) = &settings.viewer.game
+        {
+            settings.viewer.executable = game_setup::executable_in(root);
+        }
+
         let mut catalog = Catalog::new(settings.locale());
         catalog.pseudo = launch.pseudo;
         let cache_path = launch
@@ -225,6 +254,10 @@ impl App {
             viewer_unsaved: false,
             render_state: None,
             brand: None,
+            workspace: WorkspaceUi::default(),
+            setup_refusal: None,
+            install_checked: None,
+            executable_checked: None,
         }
     }
 
@@ -237,35 +270,111 @@ impl App {
         text::widget_text(ctx, &self.catalog.text(id), self.rtl(), None, Look::Plain)
     }
 
-    /// The demo view's viewer, from the game folder `--game` names or else
-    /// the one in Settings, opened again when that folder changes
-    fn open_viewer(&mut self, ctx: &egui::Context) {
-        let game = self
+    /// The folder the viewer reads the game's files from, the one `--game`
+    /// names before the one in Settings, when it holds the game. Whether it
+    /// does is read from disk once for each folder, not every frame
+    fn install_root(&mut self) -> Option<PathBuf> {
+        let wanted = self
+            .game
+            .clone()
+            .or_else(|| self.settings.viewer.game.clone())?;
+        let checked = matches!(&self.install_checked, Some((folder, _)) if *folder == wanted);
+        if !checked {
+            let installed = game_setup::looks_installed(&wanted);
+            self.install_checked = Some((wanted.clone(), installed));
+        }
+
+        let installed = self.install_checked.as_ref().is_some_and(|(_, ok)| *ok);
+        installed.then_some(wanted)
+    }
+
+    /// Whether the game's executable the settings name is still there,
+    /// read from disk once for each path
+    fn executable_present(&mut self) -> Option<bool> {
+        let executable = self.settings.viewer.executable.clone()?;
+        let checked = matches!(&self.executable_checked, Some((path, _)) if *path == executable);
+        if !checked {
+            let present = executable.is_file();
+            self.executable_checked = Some((executable, present));
+        }
+
+        self.executable_checked
+            .as_ref()
+            .map(|(_, present)| *present)
+    }
+
+    /// Why the viewer has no game files, for its setup notice
+    fn setup(&self) -> Setup {
+        let missing = match &self.install_checked {
+            Some((folder, false)) => Some(folder.clone()),
+            _ => None,
+        };
+        Setup {
+            missing,
+            refusal: self
+                .setup_refusal
+                .as_ref()
+                .map(|r| r.message(&self.catalog)),
+        }
+    }
+
+    /// Ask where the game is installed, through the same dialog the setup
+    /// notice and Settings use, and keep the choice when it holds the game.
+    /// A cancelled dialog changes nothing
+    fn locate_install(&mut self) {
+        let start = self
             .game
             .clone()
             .or_else(|| self.settings.viewer.game.clone());
+        let filter = self.catalog.text("dialog-executables");
+        if let Some(chosen) = game_setup::pick(start.as_deref(), &filter) {
+            self.accept_install(&chosen);
+        }
+    }
+
+    /// Keep `chosen` as the game's installation when it holds the game, and
+    /// otherwise say why, keeping the installation chosen before
+    fn accept_install(&mut self, chosen: &Path) {
+        match game_setup::accept(chosen) {
+            Ok(found) => {
+                self.settings.viewer.game = Some(found.root);
+                self.settings.viewer.executable = found.executable;
+                self.setup_refusal = None;
+                self.save_settings();
+            }
+            Err(refusal) => self.setup_refusal = Some(refusal),
+        }
+    }
+
+    /// The demo's viewer, reading the game's files when they are found and
+    /// otherwise playing the demo with nothing to draw or hear. It opens
+    /// again when the folder it reads changes, going on where it stood
+    fn open_viewer(&mut self, ctx: &egui::Context) {
+        let install = self.install_root();
         let (Some(d), Some(render_state)) = (&mut self.demo, &self.render_state) else {
             return;
         };
-        if d.viewer_game == game {
+        if d.viewer.is_some() && d.viewer_game == install {
             return;
         }
-        d.viewer_game = game.clone();
-        d.viewer = game.map(|game| {
-            crate::viewer::Viewer::open(
-                render_state.clone(),
-                game,
-                d.path.clone(),
-                d.duration,
-                crate::viewer::Dev {
-                    start: self.viewer_at.take(),
-                    bench: self.viewer_bench.take(),
-                    capture: self.viewer_capture.take(),
-                    play: self.viewer_play.take(),
-                },
-                ctx,
-            )
-        });
+
+        let carry = d.viewer.as_ref().map(crate::viewer::Viewer::playback);
+        let dev = crate::viewer::Dev {
+            start: self.viewer_at.take(),
+            bench: self.viewer_bench.take(),
+            capture: self.viewer_capture.take(),
+            play: self.viewer_play.take(),
+        };
+        d.viewer_game = install.clone();
+        d.viewer = Some(crate::viewer::Viewer::open(
+            render_state.clone(),
+            install,
+            d.path.clone(),
+            d.duration,
+            dev,
+            carry,
+            ctx,
+        ));
     }
 
     /// Give the open demo the settings it works with this frame, this run's
@@ -301,6 +410,206 @@ impl App {
         d.commit_typing();
         if d.clips_changed {
             self.save_clips(&d.path, d.clips.clone());
+        }
+    }
+
+    /// Whether the window has room for the demo list beside the demo, and
+    /// whether it is too narrow for the inspector beside the view. Losing
+    /// room hides the list until asked for without changing whether it was
+    /// hidden, and it returns once there is a little more room than it lost
+    /// it at. Returns true for a narrow window
+    fn arrange(&mut self, ctx: &egui::Context, list_id: egui::Id, width: f32) -> bool {
+        let narrow = width < NARROW_WINDOW;
+        let list = egui::containers::panel::PanelState::load(ctx, list_id)
+            .map_or(LIST_WIDTH, |state| state.size().x);
+        let inspector = if narrow { 0. } else { demo::INSPECTOR_WIDTH };
+
+        let margin = if self.workspace.list_squeezed {
+            ROOM_MARGIN
+        } else {
+            0.
+        };
+        let middle = width - list - inspector;
+        let room = width >= THREE_PANES + margin && middle >= MIDDLE_MIN + margin;
+        if room {
+            self.workspace.drawer_open = false;
+        }
+        self.workspace.list_squeezed = !room;
+
+        narrow
+    }
+
+    /// The narrow demo list, or why there is none
+    fn list_contents(&mut self, ui: &mut egui::Ui, rtl: bool) -> Option<ListAction> {
+        match &mut self.library {
+            Some(l) => l.list_ui(ui, &self.catalog, rtl),
+            None => {
+                text::label(ui, &self.catalog.text("library-no-cache"), rtl);
+                None
+            }
+        }
+    }
+
+    /// The demo list over the view from the leading edge, while the window
+    /// has no room for it beside the view. Choosing a demo, a click outside
+    /// it or Escape closes it
+    fn drawer(&mut self, ctx: &egui::Context, area: egui::Rect, rtl: bool) -> Option<ListAction> {
+        let x = if rtl {
+            area.max.x - LIST_WIDTH
+        } else {
+            area.min.x
+        };
+        let rect = egui::Rect::from_min_size(
+            egui::pos2(x, area.min.y),
+            egui::vec2(LIST_WIDTH, area.height()),
+        );
+
+        let chosen_before = self
+            .library
+            .as_ref()
+            .and_then(|l| l.selected.as_ref().map(|f| f.id));
+
+        let mut action = None;
+        let frame = egui::Frame::new()
+            .fill(theme::PANE)
+            .stroke(egui::Stroke::new(1., theme::BORDER));
+        let drawn = egui::Area::new(egui::Id::unique("list drawer"))
+            .fixed_pos(rect.min)
+            .order(egui::Order::Foreground)
+            .show(ctx, |ui| {
+                frame.show(ui, |ui| {
+                    ui.set_min_size(rect.size());
+                    ui.set_max_size(rect.size());
+                    action = self.list_contents(ui, rtl);
+                });
+            });
+
+        let chosen = self
+            .library
+            .as_ref()
+            .and_then(|l| l.selected.as_ref().map(|f| f.id));
+        let pointer = ctx.input(|i| i.pointer.interact_pos());
+        let clicked_outside = ctx.input(|i| i.pointer.any_click())
+            && pointer.is_some_and(|p| !drawn.response.rect.contains(p));
+        let escape = ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape));
+        if chosen != chosen_before || clicked_outside || escape {
+            self.workspace.drawer_open = false;
+        }
+
+        action
+    }
+
+    /// The open demo beside the narrow demo list, or with the list over it
+    /// while the window has no room for it, then what the demo asked of the
+    /// app and the settings and clips it changed
+    fn workspace_ui(&mut self, ui: &mut egui::Ui, rtl: bool) {
+        let ctx = ui.ctx().clone();
+        let area = ui.available_rect_before_wrap();
+
+        // The list's panel keeps its width under the id egui gives it here
+        let list_id = ui.scope_id().with_salt(egui::IdSalt::new("library"));
+        let narrow = self.arrange(&ctx, list_id, area.width());
+
+        let mut list_action = None;
+        if !self.workspace.list_hidden && !self.workspace.list_squeezed {
+            let pane = egui::Frame::side_top_panel(&ctx.global_style()).fill(theme::PANE);
+            layout::leading_panel("library", rtl)
+                .frame(pane)
+                .resizable(true)
+                .default_size(LIST_WIDTH)
+                .size_range(LIST_WIDTH_RANGE)
+                .show(ui, |ui| list_action = self.list_contents(ui, rtl));
+        }
+
+        let setup = self.setup();
+        let file = self.library.as_ref().and_then(|l| l.selected.as_ref());
+        let surroundings = Surroundings {
+            catalog: &self.catalog,
+            rtl,
+            file,
+            narrow,
+            setup: &setup,
+        };
+        egui::CentralPanel::default().show(ui, |ui| {
+            if let Some(d) = &mut self.demo {
+                d.ui(ui, &surroundings, &mut self.workspace);
+            }
+        });
+
+        if self.workspace.list_squeezed && self.workspace.drawer_open {
+            list_action = list_action.or(self.drawer(&ctx, area, rtl));
+        }
+
+        // Back to the table closes the demo as Close does, and hiding the
+        // list keeps the demo open
+        let mut close = list_action == Some(ListAction::Back);
+        if list_action == Some(ListAction::Hide) {
+            if self.workspace.list_squeezed {
+                self.workspace.drawer_open = false;
+            } else {
+                self.workspace.list_hidden = true;
+            }
+        }
+
+        let requests = match &mut self.demo {
+            Some(d) => d.finish_frame(&ctx, &self.catalog),
+            None => Vec::new(),
+        };
+        for request in requests {
+            match request {
+                Request::Close => close = true,
+                Request::Settings(tab) => {
+                    self.show_settings = true;
+                    self.settings_tab = tab;
+                }
+                Request::Locate => self.locate_install(),
+                Request::ShowList if self.workspace.list_squeezed => {
+                    self.workspace.drawer_open = true;
+                }
+                Request::ShowList => self.workspace.list_hidden = false,
+                Request::Notice(notice) => self.path_notice = Some(notice),
+            }
+        }
+
+        // The viewer's volume slider and see-through button are settings
+        if let Some(v) = self.demo.as_ref().and_then(|d| d.viewer.as_ref()) {
+            let saved = &mut self.settings.viewer;
+
+            // As the run's flag left it, which is not saved
+            let shown = saved.see_through || self.viewer_see_through;
+            if (v.settings.volume, v.settings.see_through) != (saved.volume, shown) {
+                saved.volume = v.settings.volume;
+                saved.see_through = v.settings.see_through;
+                self.viewer_unsaved = true;
+            }
+        }
+        if self.viewer_unsaved && !ui.input(|i| i.pointer.any_down()) {
+            self.viewer_unsaved = false;
+            self.save_settings();
+        }
+
+        if let Some(d) = &mut self.demo
+            && d.clips_changed
+        {
+            d.clips_changed = false;
+            let (path, clips) = (d.path.clone(), d.clips.clone());
+            self.save_clips(&path, clips);
+        }
+
+        // The timeline choice carries over to the next demo and the next run
+        if let Some(d) = &self.demo
+            && d.show_timeline != self.settings.show_timeline
+        {
+            self.settings.show_timeline = d.show_timeline;
+            self.save_settings();
+        }
+
+        if close {
+            self.drop_demo();
+            self.direct = None;
+            if let Some(l) = &mut self.library {
+                l.selected = None;
+            }
         }
     }
 
@@ -643,83 +952,6 @@ impl App {
         self.show_problems = open;
     }
 
-    fn details(&mut self, ui: &mut egui::Ui) {
-        let ctx = ui.ctx().clone();
-        let rtl = self.rtl();
-        let Some(f) = self.library.as_ref().and_then(|l| l.selected.as_ref()) else {
-            return;
-        };
-
-        let mut show_failed = None;
-        layout::column(ui, self.rtl(), |ui| {
-            // The whole path, which copies whole however it is cut short
-            layout::row(ui, rtl, |ui| {
-                let copy = self.catalog.text("path-copy");
-                if ui.add(IconButton::new(Icon::Copy, &copy)).clicked() {
-                    ui.ctx().copy_text(f.path.clone());
-                }
-
-                let show = self.catalog.text("path-show");
-                if ui.add(IconButton::new(Icon::Folder, &show)).clicked()
-                    && let Err(e) = crate::platform::show_in_folder(&f.source())
-                {
-                    show_failed = Some(e.to_string());
-                }
-
-                ui.add(egui::Label::new(RichText::new(&f.path).monospace()).truncate());
-            });
-
-            let mut facts = Vec::new();
-            if let Some(r) = &f.recorder {
-                facts.push(self.catalog.text_with(
-                    "details-recorder",
-                    &[("name", FluentValue::from(text::player_name(r)))],
-                ));
-            }
-            if let Some(k) = &f.recording_kind {
-                facts.push(self.catalog.text(&format!("kind-{}", k.replace('_', "-"))));
-            }
-            if let Some(s) = f.shots {
-                facts.push(
-                    self.catalog
-                        .text_with("details-shots", &[("count", FluentValue::from(s))]),
-                );
-            }
-            if let Some(k) = f.kills {
-                facts.push(
-                    self.catalog
-                        .text_with("details-kills", &[("count", FluentValue::from(k))]),
-                );
-            }
-            if let Some(a) = f.best_window {
-                facts.push(
-                    self.catalog
-                        .text_with("details-action", &[("score", FluentValue::from(a))]),
-                );
-            }
-            if !facts.is_empty() {
-                ui.label(text::widget_text(
-                    &ctx,
-                    &facts.join(" · "),
-                    rtl,
-                    None,
-                    Look::Plain,
-                ));
-            }
-            if let Some(e) = &f.error {
-                text::label(ui, &self.catalog.stored(e), rtl);
-            }
-        });
-
-        if let Some(detail) = show_failed {
-            let detail = FluentValue::from(detail);
-            let notice = self
-                .catalog
-                .text_with("path-show-failed", &[("detail", detail)]);
-            self.path_notice = Some(notice);
-        }
-    }
-
     fn settings_window(&mut self, ctx: &egui::Context) {
         let mut open = self.show_settings;
         let rtl = self.rtl();
@@ -776,30 +1008,7 @@ impl App {
             rtl,
             true,
         );
-        let mut game = self.settings.viewer.game.clone();
-        labelled(
-            ui,
-            &self.catalog,
-            "settings-viewer-game",
-            Some("settings-viewer-game-hint"),
-            rtl,
-        );
-        let shown = match &game {
-            Some(f) => f.display().to_string(),
-            None => self.catalog.text("settings-viewer-game-none"),
-        };
-        path(ui, &shown, rtl);
-        layout::row(ui, rtl, |ui| {
-            if ui.button(self.t(&ctx, "settings-export-choose")).clicked()
-                && let Some(f) = rfd::FileDialog::new().pick_folder()
-            {
-                game = Some(f);
-            }
-        });
-        if game != self.settings.viewer.game {
-            self.settings.viewer.game = game;
-            self.save_settings();
-        }
+        self.installation_settings(ui, rtl);
 
         ui.add_space(6.);
         labelled(
@@ -957,6 +1166,112 @@ impl App {
         if changed {
             [self.settings.preroll, self.settings.postroll] = padding;
             self.save_settings();
+        }
+    }
+
+    /// The Half-Life folder the viewer reads, and on Windows the game's
+    /// executable that finds it, both checked the same way as the setup
+    /// notice's choice. A choice that holds no game is refused with the
+    /// reason, keeping the one before
+    fn installation_settings(&mut self, ui: &mut egui::Ui, rtl: bool) {
+        let ctx = ui.ctx().clone();
+        let setup_needed = self.install_root().is_none();
+        let mut chosen = None;
+
+        labelled(
+            ui,
+            &self.catalog,
+            "settings-viewer-game",
+            Some("settings-viewer-game-hint"),
+            rtl,
+        );
+        let shown = match &self.settings.viewer.game {
+            Some(f) => f.display().to_string(),
+            None => self.catalog.text("settings-viewer-game-none"),
+        };
+        path(ui, &shown, rtl);
+        layout::row(ui, rtl, |ui| {
+            if ui.button(self.t(&ctx, "settings-export-choose")).clicked() {
+                let start = self.settings.viewer.game.clone().filter(|g| g.is_dir());
+                let mut dialog = rfd::FileDialog::new();
+                if let Some(start) = start {
+                    dialog = dialog.set_directory(start);
+                }
+                chosen = dialog.pick_folder();
+            }
+        });
+
+        // The executable only finds the folder, so a folder that holds the
+        // game needs none, and Linux chooses the folder itself
+        if cfg!(windows) {
+            ui.add_space(6.);
+            labelled(
+                ui,
+                &self.catalog,
+                "settings-executable",
+                Some("settings-executable-hint"),
+                rtl,
+            );
+            let present = self.executable_present();
+            let (line, look) = match (&self.settings.viewer.executable, present) {
+                (Some(e), Some(true)) => (e.display().to_string(), Look::Weak),
+                (Some(e), _) => {
+                    let gone = FluentValue::from(e.display().to_string());
+                    let line = self
+                        .catalog
+                        .text_with("settings-executable-missing", &[("path", gone)]);
+                    (line, Look::Color(theme::WARNING))
+                }
+                (None, _) if setup_needed => (
+                    self.catalog.text("settings-executable-not-set"),
+                    Look::Color(theme::WARNING),
+                ),
+                (None, _) => (
+                    self.catalog.text("settings-executable-optional"),
+                    Look::Weak,
+                ),
+            };
+            let width = Some(ui.available_width());
+            ui.add(egui::Label::new(text::widget_text(&ctx, &line, rtl, width, look)).wrap());
+
+            // Highlighted only while the viewer has no game files
+            let variant = if setup_needed {
+                Variant::Primary
+            } else {
+                Variant::Default
+            };
+            layout::row(ui, rtl, |ui| {
+                let label = self.t(&ctx, "settings-browse");
+                let browse = widgets::Button::new(None, label, variant, rtl);
+                if ui.add(browse).clicked() {
+                    let start = self.settings.viewer.game.clone();
+                    let filter = self.catalog.text("dialog-executables");
+                    chosen = game_setup::pick(start.as_deref(), &filter);
+                }
+            });
+        }
+
+        if let Some(chosen) = chosen {
+            self.accept_install(&chosen);
+        }
+
+        // Why the last choice was refused, where it was made
+        if let Some(refusal) = &self.setup_refusal {
+            let line = refusal.message(&self.catalog);
+            let width = Some(ui.available_width());
+            let look = Look::Color(theme::ERROR);
+            ui.add(egui::Label::new(text::widget_text(&ctx, &line, rtl, width, look)).wrap());
+        }
+
+        // A folder given for this run comes first, and a choice here waits
+        // for the next run
+        if let Some(game) = &self.game {
+            let game = FluentValue::from(game.display().to_string());
+            let line = self
+                .catalog
+                .text_with("settings-game-override", &[("path", game)]);
+            let width = Some(ui.available_width());
+            ui.add(egui::Label::new(text::widget_text(&ctx, &line, rtl, width, Look::Weak)).wrap());
         }
     }
 
@@ -1171,13 +1486,6 @@ impl eframe::App for App {
                 ui.add_space(2.);
             });
 
-        if self.library.as_ref().is_some_and(|l| l.selected.is_some()) {
-            egui::Panel::bottom("details").show(ui, |ui| {
-                ui.add_space(4.);
-                self.details(ui);
-                ui.add_space(4.);
-            });
-        }
         let rtl = self.rtl();
 
         // A selected demo opens beside the library, replacing an earlier one,
@@ -1221,69 +1529,7 @@ impl eframe::App for App {
             self.save_settings();
         }
         if self.demo.is_some() {
-            // The narrow list beside the demo, the same query as the table
-            let mut back = false;
-            let pane = egui::Frame::side_top_panel(&ctx.global_style()).fill(theme::PANE);
-            layout::leading_panel("library", rtl)
-                .frame(pane)
-                .resizable(true)
-                .default_size(LIST_WIDTH)
-                .size_range(LIST_WIDTH_RANGE)
-                .show(ui, |ui| match &mut self.library {
-                    Some(l) => back = l.list_ui(ui, &self.catalog, rtl),
-                    None => {
-                        text::label(ui, &self.catalog.text("library-no-cache"), rtl);
-                    }
-                });
-            egui::CentralPanel::default().show(ui, |ui| {
-                if let Some(d) = &mut self.demo {
-                    d.ui(ui, &self.catalog, rtl);
-                }
-            });
-
-            // Back to the table closes the demo as Close does
-            let mut close = back;
-            if let Some(d) = &mut self.demo {
-                close |= d.finish_frame(&ctx, &self.catalog);
-
-                // The viewer's volume slider and see-through button are
-                // settings
-                if let Some(v) = &d.viewer {
-                    let saved = &mut self.settings.viewer;
-                    // As the run's flag left it, which is not saved
-                    let shown = saved.see_through || self.viewer_see_through;
-                    if (v.settings.volume, v.settings.see_through) != (saved.volume, shown) {
-                        saved.volume = v.settings.volume;
-                        saved.see_through = v.settings.see_through;
-                        self.viewer_unsaved = true;
-                    }
-                }
-            }
-            if self.viewer_unsaved && !ui.input(|i| i.pointer.any_down()) {
-                self.viewer_unsaved = false;
-                self.save_settings();
-            }
-            if let Some(d) = &mut self.demo
-                && d.clips_changed
-            {
-                d.clips_changed = false;
-                let (path, clips) = (d.path.clone(), d.clips.clone());
-                self.save_clips(&path, clips);
-            }
-            // The timeline choice carries over to the next demo and the next run
-            if let Some(d) = &self.demo
-                && d.show_timeline != self.settings.show_timeline
-            {
-                self.settings.show_timeline = d.show_timeline;
-                self.save_settings();
-            }
-            if close {
-                self.drop_demo();
-                self.direct = None;
-                if let Some(l) = &mut self.library {
-                    l.selected = None;
-                }
-            }
+            self.workspace_ui(ui, rtl);
         } else {
             egui::CentralPanel::default().show(ui, |ui| match &mut self.library {
                 Some(l) => l.table_ui(ui, &self.catalog, rtl),
@@ -1323,7 +1569,7 @@ impl eframe::App for App {
 
 /// The settings window's tabs
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-enum SettingsTab {
+pub enum SettingsTab {
     #[default]
     General,
     /// What changes only how the demo viewer shows and plays a demo

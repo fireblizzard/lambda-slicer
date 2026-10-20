@@ -359,6 +359,15 @@ impl Col {
     }
 }
 
+/// What the narrow list's header asked for
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ListAction {
+    /// Back to the full library table, closing the demo
+    Back,
+    /// Out of the way of the demo, which keeps it open
+    Hide,
+}
+
 /// Names and paths sort from the start of the alphabet, figures from the
 /// highest
 fn descending_first(sort: Sort) -> bool {
@@ -1153,19 +1162,18 @@ impl LibraryView {
     }
 
     /// The narrow list beside an open demo, two lines a demo, or its filters
-    /// in place of the rows. Returns true when Back to the library table was
-    /// pressed
-    pub fn list_ui(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool) -> bool {
+    /// in place of the rows. Returns what its header asked for
+    pub fn list_ui(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool) -> Option<ListAction> {
         self.refresh(ui.ctx());
 
-        let back = self.list_header(ui, catalog, rtl);
+        let action = self.list_header(ui, catalog, rtl);
         ui.separator();
 
         if self.list_filters_open {
             egui::ScrollArea::vertical()
                 .id_salt("list filters")
                 .show(ui, |ui| self.filter_form(ui, catalog, rtl));
-            return back;
+            return action;
         }
 
         self.list_search(ui, catalog, rtl);
@@ -1173,7 +1181,7 @@ impl LibraryView {
 
         if self.error.is_some() || self.total == 0 {
             self.empty_ui(ui, catalog, rtl);
-            return back;
+            return action;
         }
 
         let mut clicked = None;
@@ -1195,22 +1203,31 @@ impl LibraryView {
         if let Some(file) = clicked {
             self.selected = Some(file);
         }
-        back
+        action
     }
 
-    /// Back to the table, the count, and the filters with how many are on.
-    /// Returns true when Back was pressed
-    fn list_header(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool) -> bool {
+    /// Back to the table, the count, the filters with how many are on, and
+    /// hiding the list. Returns what was asked for
+    fn list_header(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool) -> Option<ListAction> {
         let ctx = ui.ctx().clone();
         let active = self.filters.active();
         let count = self.count_line(catalog);
 
         layout::row(ui, rtl, |ui| {
+            let mut action = None;
             let back_label = catalog.text("list-back");
-            let back = ui.add(IconButton::new(Icon::Table, &back_label)).clicked();
+            if ui.add(IconButton::new(Icon::Table, &back_label)).clicked() {
+                action = Some(ListAction::Back);
+            }
             ui.label(text::widget_text(&ctx, &count, rtl, None, Look::Weak));
 
             layout::trailing(ui, rtl, |ui| {
+                let hide_label = catalog.text("list-hide");
+                let hide = IconButton::new(Icon::PanelClose, &hide_label).mirrored(rtl);
+                if ui.add(hide).clicked() {
+                    action = Some(ListAction::Hide);
+                }
+
                 let label = catalog.text("filters-title");
                 let filters =
                     IconButton::new(Icon::Filter, &label).selected(self.list_filters_open);
@@ -1221,7 +1238,7 @@ impl LibraryView {
                     widgets::badge(ui, active);
                 }
             });
-            back
+            action
         })
     }
 
