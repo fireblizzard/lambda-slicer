@@ -36,6 +36,7 @@ use lambda_slicer_core::timeline::time::DemoTime;
 use lambda_slicer_playback::PresentedFrame;
 use lambda_slicer_playback::animation::{Flash, Holder};
 use lambda_slicer_playback::controller::{Command, Controller, LoopRange, Reply, Stamp};
+use lambda_slicer_playback::hud::{Countdown, WAITING};
 use lambda_slicer_playback::scene::{Entity, EntityId};
 use lambda_slicer_playback::tempents::Tint;
 use lambda_slicer_playback::time::{Rate, SourceTime};
@@ -1268,6 +1269,9 @@ impl Viewer {
                     };
                     ui.painter()
                         .add(egui_wgpu::Callback::new_paint_callback(rect, callback));
+                    if let Some(countdown) = &frame.countdown {
+                        draw_countdown(ui.painter(), rect, countdown);
+                    }
                     if self.time_frame(pixels, drawn) {
                         ctx.send_viewport_cmd(egui::ViewportCommand::Close);
                     }
@@ -2176,9 +2180,74 @@ impl CallbackTrait for Frame {
     }
 }
 
+/// HL's default HUD colour, which AG's countdown is drawn in
+const HUD_COLOR: egui::Color32 = egui::Color32::from_rgb(255, 160, 0);
+
+/// AG's countdown over the view where its client draws it, a line of text
+/// seven of the game's text lines from the top and the number three lines
+/// below, sized as on a 640 by 480 screen, where a line is a 32nd of the
+/// height and the HUD's digits a 20th. The text is the game's own, in
+/// English as AG writes it
+fn draw_countdown(painter: &egui::Painter, rect: egui::Rect, countdown: &Countdown) {
+    let line = rect.height() / 32.;
+    let [first, second] = countdown.names.each_ref().map(|n| without_colours(n));
+    let text = if countdown.seconds == WAITING {
+        if first.is_empty() {
+            "Waiting for players to get ready...".to_owned()
+        } else {
+            format!("The last round was won by {first}!")
+        }
+    } else if !first.is_empty() && !second.is_empty() {
+        format!("{first} vs. {second}")
+    } else {
+        "The match is about to start.".to_owned()
+    };
+
+    let centre = rect.center().x;
+    painter.text(
+        egui::pos2(centre, rect.top() + 7. * line),
+        egui::Align2::CENTER_TOP,
+        text,
+        egui::FontId::proportional(line),
+        HUD_COLOR,
+    );
+    if countdown.seconds != WAITING {
+        // A digit stands about seven tenths of its font's size
+        let digits = rect.height() / 20. / 0.7;
+        painter.text(
+            egui::pos2(centre, rect.top() + 10. * line),
+            egui::Align2::CENTER_TOP,
+            countdown.seconds.to_string(),
+            egui::FontId::proportional(digits),
+            HUD_COLOR,
+        );
+    }
+}
+
+/// A player's name without the colour codes AG writes in names, a `^` and
+/// a digit
+fn without_colours(name: &str) -> String {
+    let mut out = String::with_capacity(name.len());
+    let mut chars = name.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '^' && chars.peek().is_some_and(char::is_ascii_digit) {
+            chars.next();
+            continue;
+        }
+        out.push(c);
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn colour_codes_leave_names_but_other_carets_stay() {
+        assert_eq!(without_colours("^1red^0 ^7naz"), "red naz");
+        assert_eq!(without_colours("a^b ^"), "a^b ^");
+    }
 
     #[test]
     fn noisy_beams_keep_their_length_and_stay_near_their_line() {

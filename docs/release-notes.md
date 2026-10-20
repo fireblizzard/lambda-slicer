@@ -59,7 +59,8 @@ without one. A file the demo names that the installation lacks is not replaced b
 
 **Not shown or played yet**, though the demo holds it:
 
-- The HUD, so no scores, health, messages, vote notices or crosshair.
+- The HUD, so no scores, health, messages, vote notices or crosshair. AG's countdown before a
+  match is the one part shown, with its spoken numbers.
 - Recorded voice, and sentences (a monster's or the announcer's speech made of words). Rooms'
   echoes.
 - Dynamic lights, such as muzzle flashes and the gauss's and Egon's light.

@@ -30,6 +30,7 @@ use crate::audio::Audio;
 use crate::beams::Beams;
 use crate::decals::Decals;
 use crate::events::Events;
+use crate::hud::Hud;
 use crate::scene::Scene;
 use crate::source::Cursor;
 use crate::tempents::TempEntities;
@@ -53,6 +54,8 @@ pub(crate) struct State {
     pub tempents: TempEntities,
     pub decals: Decals,
     pub beams: Beams,
+    /// What the client's HUD shows, AG's countdown
+    pub hud: Hud,
     pub position: Option<Position>,
     /// The latest source time of any group applied
     pub reach: SourceTime,

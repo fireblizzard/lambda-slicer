@@ -793,6 +793,26 @@ The first run found every seek in `naz_crossfire_pb_01.dem` after 150 s differen
 count of each shooter's bullets was a hash map, whose order differs between two playbacks, so the
 comparison failed although the counts were the same. It is an ordered map now.
 
+## AG's countdown
+
+**Implemented**, from OpenAG's `CHudCountdown`, on 2026-10-20, not yet compared with the game. The
+rest of the HUD is not drawn.
+
+AG's server counts down before a match with the user message `Countdown`: a signed byte of seconds
+left, a byte saying whether to speak it, and the two players of a duel, or while waiting the last
+round's winner.
+
+| Part | How |
+|---|---|
+| Sound | from ten down, a number spoken as it comes, `fvox/ten.wav` to `fvox/one.wav` and `barney/ba_bring.wav` at nought, where the listener is at full volume (`pfnPlaySoundByName`) |
+| Shown | for five seconds from the last spoken number. At fifty, "Waiting for players to get ready..." or "The last round was won by" the winner, until the next message. Below nought, nothing |
+| Drawn | over the view in HL's default HUD colour, the line "The match is about to start." or "<first> vs. <second>" seven text lines from the top and the number three lines below, sized as on a 640 by 480 screen. AG's colour codes, `^` and a digit, are left out of the names. The text is the game's own, in English |
+
+It is part of playback's state, so a seek or a checkpoint restores it as everything else. The
+viewer's captures read the scene alone, without it. In `20210424_012456_crossfire.dem` the server
+counts from five at 0.83 s, a second apart, to nought at 5.83 s, and hides it at 6.83 s. Each
+number is heard, centred, and the line and number show.
+
 ## Performance (12c)
 
 The plan's targets (implementation plan §13.9), measured on 2026-10-19 on the development machine,

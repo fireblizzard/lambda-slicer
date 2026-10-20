@@ -22,6 +22,7 @@ pub mod controller;
 pub mod decals;
 pub mod events;
 pub mod gauss;
+pub mod hud;
 pub mod playback;
 pub mod scene;
 pub mod source;

@@ -31,6 +31,7 @@ use crate::decals::{Decal, Decals};
 use crate::events::angle_vectors;
 use crate::events::{ATTN_NORM, Action, ClientEvent, Events, PITCH_NORM, SoundCall, handle};
 use crate::gauss;
+use crate::hud::{Countdown, Hud};
 use crate::scene::{self, Camera, Entity, PlayerView, Scene, Viewmodel};
 use crate::source::{Cursor, Group, Source};
 use crate::tempents::{Lookup, TempEntities, TempEntity};
@@ -88,6 +89,8 @@ pub struct PresentedFrame {
     pub decal_revision: u64,
     /// Beams, trails and tracers
     pub beams: Beams,
+    /// AG's countdown before a match, while it shows
+    pub countdown: Option<Countdown>,
 }
 
 type Lengths = Box<dyn Fn(&SoundName) -> SoundLength + Send>;
@@ -145,6 +148,7 @@ impl Playback {
             tempents: TempEntities::default(),
             decals: Decals::default(),
             beams: Beams::default(),
+            hud: Hud::default(),
             position: None,
             reach: SourceTime::ZERO,
             exhausted: false,
@@ -277,6 +281,7 @@ impl Playback {
                 &s.tempents,
                 &s.decals,
                 &s.beams,
+                &s.hud,
                 (s.position, s.reach, s.exhausted, &s.stopped),
             )
         )
@@ -351,6 +356,7 @@ impl Playback {
             tempents,
             decals,
             beams,
+            hud,
             stopped,
             ..
         } = &mut self.state;
@@ -379,6 +385,21 @@ impl Playback {
                     let applied = decoder.network_frame(record.location, frame, |d, m| {
                         scene.on_message(d, m, time);
                         audio.on_message(d, m, time, lengths);
+                        // The client speaks the countdown where the listener
+                        // is, at full volume (`pfnPlaySoundByName`)
+                        if let Some(sample) = hud.on_message(d, m, time) {
+                            let call = SoundCall {
+                                entity: view_entity(d),
+                                channel: CHAN_AUTO,
+                                sample: Arc::from(sample),
+                                volume: 1.,
+                                attenuation: 0.,
+                                flags: 0,
+                                pitch: PITCH_NORM,
+                                origin: scene.camera.origin,
+                            };
+                            audio.play(&call, time, view_entity(d), lengths);
+                        }
                         match &m.message {
                             protocol::Message::ServerInfo(_) => {
                                 tempents.clear();
@@ -648,6 +669,7 @@ impl Playback {
             decals: state.decals.list().clone(),
             decal_revision: state.decals.revision,
             beams: state.beams.clone(),
+            countdown: state.hud.countdown(at).cloned(),
             temp_entities: state
                 .tempents
                 .entities()
