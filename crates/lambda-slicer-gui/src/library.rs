@@ -1185,11 +1185,14 @@ impl LibraryView {
         }
 
         let mut clicked = None;
+
+        // Rows touch, so the rows the scroll area works out are the rows it
+        // draws, at the same places
+        ui.spacing_mut().item_spacing.y = 0.;
         egui::ScrollArea::vertical()
             .id_salt("demo list")
             .auto_shrink(false)
             .show_rows(ui, LIST_ROW, self.total as usize, |ui, rows| {
-                ui.spacing_mut().item_spacing.y = 0.;
                 for index in rows {
                     let Some(file) = self.row(index) else {
                         continue;

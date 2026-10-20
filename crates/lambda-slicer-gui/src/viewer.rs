@@ -480,11 +480,19 @@ impl Viewer {
         // Where the viewer before stood, playing on once a frame is in
         let mut resume = None;
         if let Some(carry) = carry {
-            let commands = [
+            let mut commands = vec![
                 Command::SetRate(carry.rate),
                 Command::SetLoop(carry.loop_range),
                 Command::SeekTo(SourceTime(carry.time)),
             ];
+
+            // Paused while playing backward, it still faces backward, so
+            // playing on goes the same way. No time passes between the two
+            if carry.backward && !carry.playing {
+                commands.push(Command::PlayBackward);
+                commands.push(Command::Pause);
+            }
+
             for command in commands {
                 if let Some(request) = controller.command(command, 0.) {
                     worker.send(request);
@@ -636,7 +644,12 @@ impl Viewer {
         self.controller.time(self.wall()).0 as f32
     }
 
+    /// Run `command`. Anything asked of playback after a viewer opened again
+    /// replaces the playing on still waiting for its first frame, so it
+    /// never undoes a later pause, step or seek
     fn command(&mut self, command: Command) {
+        self.resume = None;
+
         let wall = self.wall();
         if let Some(request) = self.controller.command(command, wall) {
             self.worker.send(request);
@@ -1192,26 +1205,48 @@ impl Viewer {
         frame.stamp == stamp && map.is_some() && self.map == map && !loading && sky
     }
 
-    /// The files the view could not read, with the reasons, folded away
-    /// under their count
-    fn missing_files(&self, ui: &mut Ui, catalog: &Catalog, rtl: bool) {
+    /// Why playback stopped early and how many files the view could not
+    /// read, as notes over the view's bottom corner, so they take no room
+    /// from the transport under it. The count opens the files and the
+    /// reasons when clicked
+    fn diagnostics(&self, ui: &mut Ui, rect: egui::Rect, catalog: &Catalog, rtl: bool) {
         let sounds = self
             .library
             .as_ref()
             .map(|l| l.missing_sounds())
             .unwrap_or_default();
         let count = self.missing.len() + sounds.len();
-        if count == 0 {
+        let stopped = self.frame.as_ref().and_then(|f| f.stopped.as_ref());
+        if count == 0 && stopped.is_none() {
             return;
         }
-        let title = catalog.text_with("viewer-missing", &[("count", (count as i64).into())]);
-        let title = text::widget_text(ui.ctx(), &title, rtl, None, Look::Plain);
-        egui::CollapsingHeader::new(title)
-            .id_salt("viewer-missing")
-            .show(ui, |ui| {
+
+        let area = rect.shrink(theme::GAP_S);
+        let corner = if rtl {
+            egui::Align::Max
+        } else {
+            egui::Align::Min
+        };
+        let layout = egui::Layout::bottom_up(corner);
+        let mut notes = ui.new_child(egui::UiBuilder::new().max_rect(area).layout(layout));
+        notes.set_clip_rect(rect);
+
+        let note = egui::Frame::new()
+            .fill(egui::Color32::from_black_alpha(NOTE_SHADE))
+            .corner_radius(egui::CornerRadius::same(theme::RADIUS_SMALL))
+            .inner_margin(egui::Margin::symmetric(theme::GAP_S as i8, NOTE_MARGIN_Y));
+        let warning = Look::Color(theme::WARNING);
+
+        if count > 0 {
+            let title = catalog.text_with("viewer-missing", &[("count", (count as i64).into())]);
+            let title = text::widget_text(notes.ctx(), &title, rtl, None, warning);
+            let shown = note.show(&mut notes, |ui| {
+                ui.add(egui::Label::new(title).sense(Sense::click()))
+            });
+            egui::Popup::from_toggle_button_response(&shown.inner).show(|ui| {
                 egui::ScrollArea::vertical()
                     .id_salt("viewer-missing-list")
-                    .max_height(120.)
+                    .max_height(MISSING_LIST_HEIGHT)
                     .show(ui, |ui| {
                         let files = self.missing.iter().map(|(n, r)| (n.as_str(), r.as_str()));
                         let sounds = sounds.iter().map(|(n, r)| (n.as_str(), r.as_str()));
@@ -1222,6 +1257,14 @@ impl Viewer {
                         }
                     });
             });
+        }
+
+        if let Some(stopped) = stopped {
+            let reason = catalog.message(stopped);
+            let line = catalog.text_with("viewer-stopped", &[("reason", reason.into())]);
+            let line = text::widget_text(notes.ctx(), &line, rtl, Some(area.width()), warning);
+            note.show(&mut notes, |ui| ui.add(egui::Label::new(line).wrap()));
+        }
     }
 
     /// The map the frame is on, and why, when it could not be loaded
@@ -1334,7 +1377,7 @@ impl Viewer {
 
     /// The view in `height` points, or in a bench run all the space left
     /// above the transport, with what it could not read and why playback
-    /// stopped under it
+    /// stopped over its corner
     pub fn viewport_ui(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool, height: f32) {
         let ctx = ui.ctx().clone();
 
@@ -1414,15 +1457,7 @@ impl Viewer {
         self.drawn = drawn;
         self.drawn_at = drawn_at;
 
-        self.missing_files(ui, catalog, rtl);
-        if let Some(stopped) = self.frame.as_ref().and_then(|f| f.stopped.as_ref()) {
-            let reason = catalog.message(stopped);
-            text::label(
-                ui,
-                &catalog.text_with("viewer-stopped", &[("reason", reason.into())]),
-                rtl,
-            );
-        }
+        self.diagnostics(ui, rect, catalog, rtl);
     }
 
     /// The transport under the view, the playback controls first and the
@@ -2270,6 +2305,13 @@ fn silhouette(instance: &Instance, tint: [f32; 3]) -> Instance {
 fn skew_path() -> Option<PathBuf> {
     std::env::var_os("LAMBDA_SLICER_SOUND_SKEW").map(PathBuf::from)
 }
+
+/// How dark the notes over the view are behind their text, the room above
+/// and below their text, and the most room the list of files the view could
+/// not read takes
+const NOTE_SHADE: u8 = 190;
+const NOTE_MARGIN_Y: i8 = 2;
+const MISSING_LIST_HEIGHT: f32 = 240.;
 
 /// The narrowest the transport fits on one row, the rate menu's width and
 /// the volume slider's

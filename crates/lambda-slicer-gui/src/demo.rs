@@ -153,9 +153,12 @@ pub enum InspectorTab {
 
 /// How the demo's panes are arranged, kept for the session whichever demo
 /// is open
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct WorkspaceUi {
     pub inspector_tab: InspectorTab,
+    /// The inspector's width beside the view as last drawn, none before it
+    /// was
+    pub inspector_width: Option<f32>,
     /// The demo list was hidden
     pub list_hidden: bool,
     /// The window has no room for the list beside the view, so it opens
@@ -204,6 +207,12 @@ const INSPECTOR_RANGE: std::ops::RangeInclusive<f32> = 320.0..=520.0;
 const INSPECTOR_HEIGHT: f32 = 220.;
 const INSPECTOR_MIN_HEIGHT: f32 = 120.;
 
+/// The most of the Events tab its filters take before they scroll, the
+/// events kept in view under them, and the room around an event row's text
+const FILTERS_SHARE: f32 = 0.45;
+const EVENT_ROWS_KEPT: f32 = 3.;
+const EVENT_ROW_PADDING: f32 = 4.;
+
 /// The least the view shrinks to, and the most of the middle the player
 /// lanes take
 const MIN_VIEWPORT: f32 = 120.;
@@ -217,6 +226,10 @@ const HEADER_ACTIONS: usize = 4;
 const SETUP_WIDTH: f32 = 380.;
 const SETUP_ICON: f32 = 44.;
 const SETUP_GLYPH: f32 = 20.;
+
+/// The least height the whole setup notice fits in, below which it keeps
+/// only its title and buttons
+const SETUP_FULL_HEIGHT: f32 = 260.;
 
 /// A number for each demo view opened, so state kept by egui for one demo
 /// is never taken for another's
@@ -1560,14 +1573,16 @@ impl DemoView {
 
     /// Buttons to choose the event before or after the chosen one in the
     /// table, and to play the chosen one from its preroll through its
-    /// postroll
+    /// postroll, added to the row they are drawn in
     fn event_nav(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool) {
         let Some(model) = self.model.clone() else {
             return;
         };
+
         self.refresh_rows();
         let ctx = ui.ctx().clone();
         let t = |id: &str| text::widget_text(&ctx, &catalog.text(id), rtl, None, Look::Plain);
+
         // From the chosen event's row, or else from the playhead
         let at = self
             .selected
@@ -1581,31 +1596,33 @@ impl DemoView {
             Some(i) => Some(i + 1).filter(|&n| n < self.rows.len()),
             None => self.rows.iter().position(|&r| model.events[r].time > now),
         };
+
+        // The buttons join the row they are drawn in, wrapping with it
         let mut chosen = None;
-        layout::row(ui, rtl, |ui| {
-            if ui
-                .add_enabled(previous.is_some(), egui::Button::new(t("event-previous")))
-                .clicked()
+        if ui
+            .add_enabled(previous.is_some(), egui::Button::new(t("event-previous")))
+            .clicked()
+        {
+            chosen = previous;
+        }
+        if ui
+            .add_enabled(next.is_some(), egui::Button::new(t("event-next")))
+            .clicked()
+        {
+            chosen = next;
+        }
+
+        if self.viewer.is_some() {
+            let event = self.selected.filter(|&i| i < model.events.len());
+            let r = ui.add_enabled(event.is_some(), egui::Button::new(t("event-play")));
+            let r = r.on_disabled_hover_text(t("clips-select-event"));
+            if r.clicked()
+                && let Some(event) = event
             {
-                chosen = previous;
+                self.actions.push(DemoAction::PlayEvent(event));
             }
-            if ui
-                .add_enabled(next.is_some(), egui::Button::new(t("event-next")))
-                .clicked()
-            {
-                chosen = next;
-            }
-            if self.viewer.is_some() {
-                let event = self.selected.filter(|&i| i < model.events.len());
-                let r = ui.add_enabled(event.is_some(), egui::Button::new(t("event-play")));
-                let r = r.on_disabled_hover_text(t("clips-select-event"));
-                if r.clicked()
-                    && let Some(event) = event
-                {
-                    self.actions.push(DemoAction::PlayEvent(event));
-                }
-            }
-        });
+        }
+
         if let Some(event) = chosen.and_then(|i| self.rows.get(i).copied()) {
             self.actions.push(DemoAction::Select {
                 event,
@@ -1618,10 +1635,9 @@ impl DemoView {
         let Some(model) = self.model.clone() else {
             return;
         };
+
         self.refresh_rows();
         let ctx = ui.ctx().clone();
-        let count = catalog.text_with("demo-events", &[("count", (self.rows.len() as i64).into())]);
-        layout::column(ui, rtl, |ui| text::label(ui, &count, rtl));
 
         let mut cols = vec![
             "column-time",
@@ -1632,7 +1648,7 @@ impl DemoView {
         if rtl {
             cols.reverse();
         }
-        let row_height = ui.text_style_height(&egui::TextStyle::Body) + 4.;
+        let row_height = ui.text_style_height(&egui::TextStyle::Body) + EVENT_ROW_PADDING;
 
         // Its scroll position belongs to this demo, not to the next one opened
         let mut table = TableBuilder::new(ui)
@@ -1641,7 +1657,7 @@ impl DemoView {
             .resizable(true)
             .sense(Sense::click())
             .auto_shrink(false)
-            .min_scrolled_height(0.);
+            .min_scrolled_height(row_height * EVENT_ROWS_KEPT);
         for c in &cols {
             table = table.column(match *c {
                 "column-event" => Column::remainder().at_least(60.).clip(true),
@@ -2238,14 +2254,19 @@ impl DemoView {
     }
 
     /// Keep a clip time still being typed when it reads as a time, as
-    /// leaving its field would, before the demo is closed or replaced
+    /// leaving its field would, for when the field goes out of view with
+    /// its tab or its demo. Text that is not a time stays as typed, outlined
+    /// when the field shows again, and the clip keeps its time
     pub fn commit_typing(&mut self) {
-        let Some((i, edge, text)) = self.typing.take() else {
+        let Some((i, edge, text)) = &self.typing else {
             return;
         };
-        let (Some(clip), Some(t)) = (self.clips.get_mut(i), parse_time(&text)) else {
+        let (Some(clip), Some(t)) = (self.clips.get_mut(*i), parse_time(text)) else {
             return;
         };
+
+        let edge = *edge;
+        self.typing = None;
 
         let current = match edge {
             Edge::Start => &mut clip.start,
@@ -2282,12 +2303,16 @@ impl DemoView {
             } else {
                 INSPECTOR_WIDTH
             };
-            layout::trailing_panel("inspector", rtl)
+            let shown = layout::trailing_panel("inspector", rtl)
                 .frame(frame)
                 .resizable(true)
                 .default_size(width)
                 .size_range(INSPECTOR_RANGE)
                 .show(ui, |ui| self.inspector(ui, catalog, rtl, workspace));
+
+            // As wide as it was dragged, for the app to know how much room
+            // the view has left
+            workspace.inspector_width = Some(shown.response.rect.width());
         }
 
         self.middle(ui, s, workspace);
@@ -2310,13 +2335,21 @@ impl DemoView {
         egui::Panel::bottom("transport")
             .frame(transport)
             .show(ui, |ui| {
-                if let Some(viewer) = &mut self.viewer {
-                    if viewer.transport_ui(ui, catalog, rtl) {
-                        self.requests.push(Request::Settings(SettingsTab::Viewer));
-                    }
-                    viewer.seek_bar_ui(ui);
+                if let Some(viewer) = &mut self.viewer
+                    && viewer.transport_ui(ui, catalog, rtl)
+                {
+                    self.requests.push(Request::Settings(SettingsTab::Viewer));
                 }
-                self.lanes_section(ui, catalog, rtl, most_lanes);
+
+                // The lanes' checkbox leads the seek bar's row, so the view
+                // keeps the height another row would take
+                layout::row(ui, rtl, |ui| {
+                    self.lanes_toggle(ui, catalog, rtl);
+                    if let Some(viewer) = &mut self.viewer {
+                        viewer.seek_bar_ui(ui);
+                    }
+                });
+                self.lanes(ui, catalog, rtl, most_lanes);
             });
 
         // The view takes what is left, the setup notice in its place while
@@ -2492,11 +2525,17 @@ impl DemoView {
         );
         let layout = egui::Layout::top_down(egui::Align::Center);
         let mut notice = ui.new_child(egui::UiBuilder::new().max_rect(area).layout(layout));
+        notice.set_clip_rect(rect);
+
+        // A short view keeps only the title and the way to set up
+        let compact = rect.height() < SETUP_FULL_HEIGHT;
 
         let mut locate = false;
         let mut settings = false;
 
-        warning_mark(&mut notice);
+        if !compact {
+            warning_mark(&mut notice);
+        }
 
         let title = catalog.text("setup-title");
         let title = text::styled_text(
@@ -2508,15 +2547,17 @@ impl DemoView {
         );
         notice.label(title);
 
-        let muted = Look::Color(theme::MUTED);
-        let body = text::widget_text(
-            notice.ctx(),
-            &catalog.text("setup-body"),
-            rtl,
-            Some(SETUP_WIDTH),
-            muted,
-        );
-        notice.add(egui::Label::new(body).wrap());
+        if !compact {
+            let muted = Look::Color(theme::MUTED);
+            let body = text::widget_text(
+                notice.ctx(),
+                &catalog.text("setup-body"),
+                rtl,
+                Some(SETUP_WIDTH),
+                muted,
+            );
+            notice.add(egui::Label::new(body).wrap());
+        }
 
         // A folder the settings name that no longer holds the game
         if let Some(folder) = &s.setup.missing {
@@ -2567,15 +2608,17 @@ impl DemoView {
             notice.add(egui::Label::new(line).wrap());
         }
 
-        let still = catalog.text("setup-still-works");
-        let still = text::widget_text(
-            notice.ctx(),
-            &still,
-            rtl,
-            Some(SETUP_WIDTH),
-            Look::Color(theme::FAINT),
-        );
-        notice.add(egui::Label::new(still).wrap());
+        if !compact {
+            let still = catalog.text("setup-still-works");
+            let still = text::widget_text(
+                notice.ctx(),
+                &still,
+                rtl,
+                Some(SETUP_WIDTH),
+                Look::Color(theme::FAINT),
+            );
+            notice.add(egui::Label::new(still).wrap());
+        }
 
         let height = notice.min_rect().height();
         if height != last_height {
@@ -2591,18 +2634,23 @@ impl DemoView {
         }
     }
 
-    /// The player lanes under the transport, shown when asked for
-    fn lanes_section(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool, most: f32) {
+    /// The checkbox showing the player lanes, once there are lanes to show
+    fn lanes_toggle(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool) {
+        if self.model.is_none() {
+            return;
+        }
+
+        let label = catalog.text("show-timeline");
+        let label = text::widget_text(ui.ctx(), &label, rtl, None, Look::Plain);
+        ui.checkbox(&mut self.show_timeline, label);
+    }
+
+    /// The player lanes under the transport, while asked for
+    fn lanes(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool, most: f32) {
         let Some(model) = self.model.clone() else {
             return;
         };
 
-        let ctx = ui.ctx().clone();
-        layout::row(ui, rtl, |ui| {
-            let label =
-                text::widget_text(&ctx, &catalog.text("show-timeline"), rtl, None, Look::Plain);
-            ui.checkbox(&mut self.show_timeline, label);
-        });
         if !self.show_timeline {
             return;
         }
@@ -2624,6 +2672,10 @@ impl DemoView {
         rtl: bool,
         workspace: &mut WorkspaceUi,
     ) {
+        // The tabs fill the whole panel, so it keeps its height whatever the
+        // chosen tab holds
+        ui.set_min_height(ui.available_height());
+
         let events = self.model.as_ref().map(|_| self.rows.len());
         let tabs = [
             (InspectorTab::Events, "tab-events", events),
@@ -2635,7 +2687,7 @@ impl DemoView {
                 let chosen = workspace.inspector_tab == tab;
                 let title = text::widget_text(ui.ctx(), &catalog.text(id), rtl, None, Look::Plain);
                 if ui.add(egui::Button::selectable(chosen, title)).clicked() {
-                    workspace.inspector_tab = tab;
+                    self.choose_tab(workspace, tab);
                 }
                 if let Some(count) = count {
                     let count = egui::RichText::new(count.to_string())
@@ -2663,6 +2715,16 @@ impl DemoView {
                     .show(ui, |ui| self.scores(ui, catalog, rtl));
             }
         }
+    }
+
+    /// Show another of the inspector's tabs. A clip time still being typed
+    /// is kept first, as its field goes out of view before it could lose
+    /// the focus and keep it itself, and an export would read the old time
+    fn choose_tab(&mut self, workspace: &mut WorkspaceUi, tab: InspectorTab) {
+        if workspace.inspector_tab == InspectorTab::Clips && tab != InspectorTab::Clips {
+            self.commit_typing();
+        }
+        workspace.inspector_tab = tab;
     }
 
     /// Whether the analysis is in, and while it is not, that it is under
@@ -2697,19 +2759,48 @@ impl DemoView {
             return;
         };
 
-        layout::column(ui, rtl, |ui| {
-            for n in &model.coverage_notes {
-                text::label(ui, &catalog.message(n), rtl);
-            }
-            if let Some(e) = &model.decode_error {
-                text::label(ui, &catalog.message(e), rtl);
-            }
-        });
+        // The filters scroll rather than take the room a few events need,
+        // and never more than their share, so a short inspector still shows
+        // events under them
+        let room = ui.available_height();
+        let row = ui.text_style_height(&egui::TextStyle::Body) + EVENT_ROW_PADDING;
+        let below = theme::CONTROL_HEIGHT * 2. + row * EVENT_ROWS_KEPT;
+        let most = (room - below).clamp(0., room * FILTERS_SHARE);
+        egui::ScrollArea::vertical()
+            .id_salt(("event filters", self.generation))
+            .min_scrolled_height(0.)
+            .max_height(most)
+            .show(ui, |ui| {
+                // Why events stop early is never hidden away
+                if let Some(e) = &model.decode_error {
+                    let warning = Look::Color(theme::WARNING);
+                    let line = catalog.message(e);
+                    let width = Some(ui.available_width());
+                    let line = text::widget_text(ui.ctx(), &line, rtl, width, warning);
+                    ui.add(egui::Label::new(line).wrap());
+                }
 
-        self.controls(ui, catalog, rtl);
+                self.controls(ui, catalog, rtl);
+            });
         ui.separator();
 
-        self.event_nav(ui, catalog, rtl);
+        // The count, with what the recording cannot show behind its help,
+        // and the way through the events beside it while they fit
+        let count = self.rows.len() as i64;
+        let count = catalog.text_with("demo-events", &[("count", count.into())]);
+        let notes: Vec<String> = model
+            .coverage_notes
+            .iter()
+            .map(|n| catalog.message(n))
+            .collect();
+        layout::wrapping_row(ui, rtl, |ui| {
+            ui.label(text::widget_text(ui.ctx(), &count, rtl, None, Look::Plain));
+            if !notes.is_empty() {
+                widgets::help(ui, &notes.join("\n\n"), rtl);
+            }
+            self.event_nav(ui, catalog, rtl);
+        });
+
         self.table(ui, catalog, rtl);
     }
 }
@@ -2739,4 +2830,66 @@ fn warning_mark(ui: &mut Ui) {
 
     let glyph = Rect::from_center_size(rect.center(), Vec2::splat(SETUP_GLYPH));
     widgets::paint_icon(painter, glyph, Icon::Warning, theme::WARNING);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A demo view of a file that is not there, with one clip from 1 to 2
+    /// seconds whose start is being typed as `typed`
+    fn view_typing(typed: &str) -> DemoView {
+        let ctx = egui::Context::default();
+        let mut view = DemoView::open(PathBuf::from("not-there.dem"), 10., &ctx);
+        view.clips.push(Clip {
+            name: "Clip 1".into(),
+            start: DemoTime::from_micros(1_000_000),
+            end: DemoTime::from_micros(2_000_000),
+        });
+        view.typing = Some((0, Edge::Start, typed.into()));
+        view
+    }
+
+    #[test]
+    fn leaving_the_clips_tab_keeps_a_time_still_being_typed() {
+        let mut view = view_typing("00:00:01.500");
+        let mut workspace = WorkspaceUi {
+            inspector_tab: InspectorTab::Clips,
+            ..Default::default()
+        };
+
+        // The field goes out of view before it could lose the focus, and an
+        // export afterwards reads the clip, so the clip has the typed time
+        view.choose_tab(&mut workspace, InspectorTab::Events);
+        assert_eq!(workspace.inspector_tab, InspectorTab::Events);
+        assert_eq!(view.clips[0].start, DemoTime::from_micros(1_500_000));
+        assert!(view.clips_changed);
+        assert_eq!(view.typing, None);
+    }
+
+    #[test]
+    fn text_that_is_not_a_time_stays_typed_and_the_clip_keeps_its_time() {
+        let mut view = view_typing("1:3x");
+        let mut workspace = WorkspaceUi {
+            inspector_tab: InspectorTab::Clips,
+            ..Default::default()
+        };
+
+        view.choose_tab(&mut workspace, InspectorTab::Scoreboard);
+        assert_eq!(view.clips[0].start, DemoTime::from_micros(1_000_000));
+        assert!(!view.clips_changed);
+        assert_eq!(view.typing, Some((0, Edge::Start, "1:3x".to_string())));
+    }
+
+    #[test]
+    fn other_tabs_leave_a_time_being_typed_alone() {
+        let mut view = view_typing("00:00:01.500");
+        let mut workspace = WorkspaceUi::default();
+
+        // Only the clips tab holds the fields, so nothing is typed elsewhere
+        // to keep, and what is typed waits for its field
+        view.choose_tab(&mut workspace, InspectorTab::Scoreboard);
+        assert_eq!(view.clips[0].start, DemoTime::from_micros(1_000_000));
+        assert!(view.typing.is_some());
+    }
 }

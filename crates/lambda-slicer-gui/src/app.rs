@@ -341,6 +341,11 @@ impl App {
                 self.settings.viewer.executable = found.executable;
                 self.setup_refusal = None;
                 self.save_settings();
+
+                // Read again even for the same folder, which may only now
+                // hold the game, as when its drive is back
+                self.install_checked = None;
+                self.executable_checked = None;
             }
             Err(refusal) => self.setup_refusal = Some(refusal),
         }
@@ -422,7 +427,14 @@ impl App {
         let narrow = width < NARROW_WINDOW;
         let list = egui::containers::panel::PanelState::load(ctx, list_id)
             .map_or(LIST_WIDTH, |state| state.size().x);
-        let inspector = if narrow { 0. } else { demo::INSPECTOR_WIDTH };
+
+        // The inspector as wide as it was dragged, its first width before
+        // it was drawn
+        let inspector = match self.workspace.inspector_width {
+            _ if narrow => 0.,
+            Some(width) => width,
+            None => demo::INSPECTOR_WIDTH,
+        };
 
         let margin = if self.workspace.list_squeezed {
             ROOM_MARGIN
