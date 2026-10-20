@@ -2,9 +2,12 @@
 //! plan §13.6)
 //!
 //! A decal is a texture from `decals.wad` stamped on the surfaces about a
-//! point (`R_DecalShoot`). The server names it by its place in the wad's
-//! directory, which is the same on both ends as both read the same file, so
-//! no `svc_decalname` is sent. One on a brush entity, such as a door, keeps
+//! point (`R_DecalShoot`). The server numbers it by its own list of decals,
+//! which can differ from the client's, as the engine merges the game's and
+//! the mod's `decals.wad` and a server may carry decals the client lacks.
+//! The session's resource list names each number, and the client finds the
+//! decal by that name in its own files (`Draw_DecalSetName`). One on a
+//! brush entity, such as a door, keeps
 //! its place on the brush as the brush moves. One aimed at any other entity
 //! is dropped, as the engine puts decals only on brushes. The engine keeps
 //! the newest 4096 (`MAX_DECALS`) and a new session clears them.
@@ -75,17 +78,20 @@ impl Decals {
     }
 
     /// A decal from an `svc_temp_entity` of `kind`, if it makes one.
-    /// `model` names a precached model by its index
+    /// `model` names a precached model by its index, and `texture` finds
+    /// the client's place in `decals.wad` of the decal the server numbers,
+    /// none for one the client lacks, which is left out
     pub(crate) fn message(
         &mut self,
         kind: u8,
         body: &[u8],
         scene: &Scene,
         model: &dyn Fn(i16) -> Option<Arc<str>>,
+        texture: &dyn Fn(u16) -> Option<u16>,
     ) {
         let byte = |at: usize| u16::from(body.get(at).copied().unwrap_or(0));
         let origin = vector(body);
-        let (texture, entity, named) = match kind {
+        let (number, entity, named) = match kind {
             kind::WORLD_DECAL => (byte(6), 0, None),
             kind::WORLD_DECAL_HIGH => (byte(6) + 256, 0, None),
             kind::DECAL => (byte(6), short(body, 7), None),
@@ -98,6 +104,10 @@ impl Decals {
             }
             _ => return,
         };
+        let Some(texture) = texture(number) else {
+            return;
+        };
+
         let entity = u16::try_from(entity).unwrap_or(0);
         self.shoot(texture, entity, origin, named, scene);
     }
@@ -159,13 +169,27 @@ mod tests {
         let mut decals = Decals::default();
         let scene = Scene::default();
         let none = |_| None;
-        decals.message(kind::WORLD_DECAL, &body([1, 2, 3], &[27]), &scene, &none);
-        decals.message(kind::WORLD_DECAL_HIGH, &body([0; 3], &[4]), &scene, &none);
+        let same = |n| Some(n);
+        decals.message(
+            kind::WORLD_DECAL,
+            &body([1, 2, 3], &[27]),
+            &scene,
+            &none,
+            &same,
+        );
+        decals.message(
+            kind::WORLD_DECAL_HIGH,
+            &body([0; 3], &[4]),
+            &scene,
+            &none,
+            &same,
+        );
         decals.message(
             kind::GUNSHOT_DECAL,
             &body([5, 6, 7], &[0, 0, 21]),
             &scene,
             &none,
+            &same,
         );
         let list: Vec<_> = decals
             .list()
@@ -177,8 +201,37 @@ mod tests {
             [(27, [1., 2., 3.]), (260, [0.; 3]), (21, [5., 6., 7.])]
         );
         // One aimed at an entity the scene does not hold is dropped
-        decals.message(kind::DECAL, &body([0; 3], &[1, 9, 0]), &scene, &none);
+        decals.message(kind::DECAL, &body([0; 3], &[1, 9, 0]), &scene, &none, &same);
         assert_eq!(decals.list().len(), 3);
+    }
+
+    #[test]
+    fn a_decal_is_found_by_the_name_the_server_gives_its_number() {
+        let mut decals = Decals::default();
+        let scene = Scene::default();
+
+        // The server's 192 is the client's 32, and its 7 the client lacks
+        let texture = |n: u16| match n {
+            192 => Some(32),
+            _ => None,
+        };
+        decals.message(
+            kind::WORLD_DECAL,
+            &body([0; 3], &[192]),
+            &scene,
+            &|_| None,
+            &texture,
+        );
+        decals.message(
+            kind::WORLD_DECAL,
+            &body([0; 3], &[7]),
+            &scene,
+            &|_| None,
+            &texture,
+        );
+
+        let textures: Vec<u16> = decals.list().iter().map(|d| d.texture).collect();
+        assert_eq!(textures, [32]);
     }
 
     #[test]
@@ -186,7 +239,13 @@ mod tests {
         let mut decals = Decals::default();
         let scene = Scene::default();
         for _ in 0..MAX_DECALS + 2 {
-            decals.message(kind::WORLD_DECAL, &body([0; 3], &[1]), &scene, &|_| None);
+            decals.message(
+                kind::WORLD_DECAL,
+                &body([0; 3], &[1]),
+                &scene,
+                &|_| None,
+                &Some,
+            );
         }
         assert_eq!(decals.list().len(), MAX_DECALS);
         assert_eq!(decals.list()[0].id, 2);

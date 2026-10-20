@@ -427,7 +427,8 @@ impl Playback {
                             }
                             protocol::Message::TempEntity { kind, body } => {
                                 let model = |index: i16| precached_model(d, index);
-                                decals.message(*kind, body, scene, &model);
+                                let texture = |number: u16| server_decal(d, decal_index, number);
+                                decals.message(*kind, body, scene, &model, &texture);
                                 beams.message(*kind, body, time, scene, &model);
                                 let lookup = Lookup {
                                     model: &model,
@@ -718,6 +719,25 @@ fn precached_model(decoder: &Decoder, index: i16) -> Option<Arc<str>> {
         .iter()
         .find(|r| r.kind == resource_type::MODEL && r.index == index)
         .map(|r| Arc::from(String::from_utf8_lossy(&r.name).as_ref()))
+}
+
+/// The client's place in `decals.wad` of the decal the server numbers
+/// `number`. The session's resource list names the server's numbers, and the
+/// client finds each name in its own files (`Draw_DecalSetName`). A session
+/// naming none keeps the server's numbering
+fn server_decal(
+    decoder: &Decoder,
+    decal_index: &dyn Fn(&str) -> Option<u16>,
+    number: u16,
+) -> Option<u16> {
+    let named = decoder
+        .resources()
+        .iter()
+        .find(|r| r.kind == resource_type::DECAL && r.index == number);
+    match named {
+        Some(resource) => decal_index(&String::from_utf8_lossy(&resource.name)),
+        None => Some(number),
+    }
 }
 
 /// What an event's handler changes besides the scene
