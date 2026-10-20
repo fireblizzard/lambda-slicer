@@ -9,6 +9,9 @@ toolbar-add-folder = Dodaj folder…
 toolbar-rescan = Skanuj ponownie
 toolbar-cancel = Anuluj
 toolbar-settings = Ustawienia
+toolbar-rescan-busy = Skanowanie już trwa.
+toolbar-rescan-nothing = Dodaj folder lub otwórz demo, aby skanować.
+toolbar-cancel-idle = Żadne skanowanie nie trwa.
 dialog-demos = Dema Half-Life
 
 ## Ustawienia

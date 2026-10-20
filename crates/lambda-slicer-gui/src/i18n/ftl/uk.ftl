@@ -9,6 +9,9 @@ toolbar-add-folder = Додати теку…
 toolbar-rescan = Пересканувати
 toolbar-cancel = Скасувати
 toolbar-settings = Налаштування
+toolbar-rescan-busy = Сканування вже триває.
+toolbar-rescan-nothing = Додайте теку або відкрийте демо, щоб сканувати.
+toolbar-cancel-idle = Сканування не триває.
 dialog-demos = Демозаписи Half-Life
 
 ## Налаштування

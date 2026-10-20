@@ -29,6 +29,7 @@ use crate::i18n::Catalog;
 use crate::layout;
 use crate::library::WEAPONS;
 use crate::text::{self, Look};
+use crate::theme;
 use crate::timeline::{EventKind, LaneKey, MarkKind, Model, SpanKind, bins, nearest, tick_step};
 use lambda_slicer_core::analysis::accuracy::accuracy;
 use lambda_slicer_core::analysis::context::{PlayerScore, StandingSide, standing_at};
@@ -1862,8 +1863,8 @@ impl DemoView {
             if title {
                 let name = text::player_name(&side.name);
                 let color = match side.name.to_lowercase().as_str() {
-                    "red" => Some(Color32::from_rgb(235, 90, 90)),
-                    "blue" => Some(Color32::from_rgb(100, 150, 255)),
+                    "red" => Some(theme::TEAM_RED),
+                    "blue" => Some(theme::TEAM_BLUE),
                     _ => None,
                 };
                 let line = format!("{name}  {}", side.frags);

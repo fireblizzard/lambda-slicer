@@ -18,6 +18,8 @@ use crate::layout;
 use crate::library::{LibraryView, parse_number};
 use crate::settings::{FOV, MAX_PADDING, Settings, ViewerSettings};
 use crate::text::{self, Look};
+use crate::theme;
+use crate::widgets::{self, Icon, IconButton, Variant};
 
 /// Save a screenshot after this many frames and close, for checking how a
 /// language renders
@@ -100,6 +102,20 @@ pub struct App {
     viewer_unsaved: bool,
     /// The window's GPU device, which the viewer draws with
     pub render_state: Option<eframe::egui_wgpu::RenderState>,
+    /// The app's icon for the toolbar, made on the first frame
+    brand: Option<egui::TextureHandle>,
+}
+
+/// The app's icon as a texture, for the toolbar
+fn brand_texture(ctx: &egui::Context) -> egui::TextureHandle {
+    let png = include_bytes!("../../../assets/branding/icons/icon-48.png");
+    let image = image::load_from_memory(png)
+        .expect("the bundled application icon must be a valid PNG")
+        .to_rgba8();
+    let size = [image.width() as usize, image.height() as usize];
+    let pixels = egui::ColorImage::from_rgba_unmultiplied(size, image.as_raw());
+
+    ctx.load_texture("brand", pixels, egui::TextureOptions::LINEAR)
 }
 
 /// Whether `path` starts with the GoldSrc demo magic
@@ -200,6 +216,7 @@ impl App {
             viewer_see_through: launch.viewer_see_through,
             viewer_unsaved: false,
             render_state: None,
+            brand: None,
         }
     }
 
@@ -420,50 +437,91 @@ impl App {
         self.open_files(ctx, files);
     }
 
+    /// A toolbar button with text after its icon
+    fn tool(&self, ctx: &egui::Context, icon: Icon, id: &str) -> widgets::Button {
+        widgets::Button::new(Some(icon), self.t(ctx, id), Variant::Ghost, self.rtl())
+    }
+
+    /// The app's icon and name, leading the toolbar
+    fn brand(&mut self, ui: &mut egui::Ui) {
+        let texture = self.brand.get_or_insert_with(|| brand_texture(ui.ctx()));
+        let size = egui::Vec2::splat(20.);
+        ui.add(egui::Image::new((texture.id(), size)));
+
+        let name = self.catalog.text("app-title");
+        ui.label(text::widget_text(
+            ui.ctx(),
+            &name,
+            false,
+            None,
+            Look::Strong,
+        ));
+    }
+
     fn toolbar(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
-        layout::row(ui, self.rtl(), |ui| {
-            if ui.button(self.t(&ctx, "toolbar-open")).clicked()
+        let rtl = self.rtl();
+        layout::row(ui, rtl, |ui| {
+            self.brand(ui);
+            ui.add_space(theme::GAP_M);
+
+            if ui
+                .add(self.tool(&ctx, Icon::Open, "toolbar-open"))
+                .clicked()
                 && let Some(files) = rfd::FileDialog::new()
                     .add_filter(self.catalog.text("dialog-demos"), &["dem"])
                     .pick_files()
             {
                 self.open_files(&ctx, files);
             }
-            if ui.button(self.t(&ctx, "toolbar-add-folder")).clicked()
+
+            let add_folder = self.tool(&ctx, Icon::AddFolder, "toolbar-add-folder");
+            if ui.add(add_folder).clicked()
                 && let Some(folders) = rfd::FileDialog::new().pick_folders()
             {
                 self.add_folders(&ctx, folders);
             }
-            let can_scan =
-                !self.scanning() && (!self.settings.folders.is_empty() || !self.opened.is_empty());
+
+            // A disabled button says why it cannot be used
+            let busy = self.scanning();
+            let nothing = self.settings.folders.is_empty() && self.opened.is_empty();
+            let why = if busy {
+                "toolbar-rescan-busy"
+            } else {
+                "toolbar-rescan-nothing"
+            };
+            let rescan = self.tool(&ctx, Icon::Rescan, "toolbar-rescan");
             if ui
-                .add_enabled(can_scan, egui::Button::new(self.t(&ctx, "toolbar-rescan")))
+                .add_enabled(!busy && !nothing, rescan)
+                .on_disabled_hover_text(self.t(&ctx, why))
                 .clicked()
             {
                 self.start_scan(&ctx);
             }
-            let can_cancel = self
-                .scan
-                .as_ref()
-                .is_some_and(|j| j.running() && !j.cancelling());
+
+            let cancelling = self.scan.as_ref().is_some_and(ScanJob::cancelling);
+            let why = if cancelling {
+                "scan-cancelling"
+            } else {
+                "toolbar-cancel-idle"
+            };
+            let cancel = self.tool(&ctx, Icon::Close, "toolbar-cancel");
             if ui
-                .add_enabled(
-                    can_cancel,
-                    egui::Button::new(self.t(&ctx, "toolbar-cancel")),
-                )
+                .add_enabled(busy && !cancelling, cancel)
+                .on_disabled_hover_text(self.t(&ctx, why))
                 .clicked()
                 && let Some(job) = &self.scan
             {
                 job.cancel();
             }
-            ui.separator();
-            if ui
-                .selectable_label(self.show_settings, self.t(&ctx, "toolbar-settings"))
-                .clicked()
-            {
-                self.show_settings = !self.show_settings;
-            }
+
+            layout::trailing(ui, rtl, |ui| {
+                let label = self.catalog.text("toolbar-settings");
+                let settings = IconButton::new(Icon::Settings, &label).selected(self.show_settings);
+                if ui.add(settings).clicked() {
+                    self.show_settings = !self.show_settings;
+                }
+            });
         });
     }
 
@@ -720,7 +778,9 @@ impl App {
             self.save_settings();
         }
         let add = layout::row(ui, rtl, |ui| {
-            ui.button(self.t(&ctx, "toolbar-add-folder")).clicked()
+            let label = self.t(&ctx, "toolbar-add-folder");
+            let add = widgets::Button::new(Some(Icon::AddFolder), label, Variant::Default, rtl);
+            ui.add(add).clicked()
         });
         if add && let Some(folders) = rfd::FileDialog::new().pick_folders() {
             self.add_folders(&ctx, folders);
@@ -1009,43 +1069,59 @@ impl eframe::App for App {
             self.start_scan(&ctx);
         }
 
-        egui::Panel::top("toolbar").show(ui, |ui| {
-            ui.add_space(4.);
-            self.toolbar(ui);
-            ui.add_space(4.);
-        });
+        // The toolbar's controls sit in the middle of its height
+        let margin_y = (theme::TOOLBAR_HEIGHT - theme::CONTROL_HEIGHT) / 2.;
+        let toolbar = egui::Frame::new()
+            .fill(theme::SURFACE)
+            .inner_margin(egui::Margin::symmetric(theme::GAP_M as i8, margin_y as i8));
+        egui::Panel::top("toolbar")
+            .exact_size(theme::TOOLBAR_HEIGHT)
+            .frame(toolbar)
+            .show(ui, |ui| self.toolbar(ui));
+
         if self.scan.is_some() || !self.rejected.is_empty() || self.clips_notice.is_some() {
-            egui::Panel::bottom("status").show(ui, |ui| {
-                ui.add_space(2.);
-                if let Some(notice) = self.clips_notice.clone() {
-                    let rtl = self.rtl();
+            let status = egui::Frame::new()
+                .fill(theme::SURFACE)
+                .inner_margin(egui::Margin::symmetric(theme::GAP_M as i8, 2));
+            egui::Panel::bottom("status")
+                .min_size(theme::STATUS_HEIGHT)
+                .frame(status)
+                .show(ui, |ui| {
+                    ui.add_space(2.);
+
                     // The message wraps, with the button under it
-                    layout::column(ui, rtl, |ui| {
-                        let warn = Look::Color(ui.visuals().warn_fg_color);
-                        let width = Some(ui.available_width());
-                        let w = text::widget_text(ui.ctx(), &notice, rtl, width, warn);
-                        ui.add(egui::Label::new(w).wrap());
-                        if ui
-                            .small_button(self.t(ui.ctx(), "notice-dismiss"))
-                            .clicked()
-                        {
-                            self.clips_notice = None;
-                        }
-                    });
-                }
-                if self.scan.is_some() {
-                    self.status_bar(ui);
-                }
-                if !self.rejected.is_empty() {
-                    let names = self.rejected.join(", ");
-                    let msg = self
-                        .catalog
-                        .text_with("drop-not-demo", &[("names", FluentValue::from(names))]);
-                    text::label(ui, &msg, self.rtl());
-                }
-                ui.add_space(2.);
-            });
+                    if let Some(notice) = self.clips_notice.clone() {
+                        let rtl = self.rtl();
+                        layout::column(ui, rtl, |ui| {
+                            let warn = Look::Color(ui.visuals().warn_fg_color);
+                            let width = Some(ui.available_width());
+                            let w = text::widget_text(ui.ctx(), &notice, rtl, width, warn);
+                            ui.add(egui::Label::new(w).wrap());
+                            if ui
+                                .small_button(self.t(ui.ctx(), "notice-dismiss"))
+                                .clicked()
+                            {
+                                self.clips_notice = None;
+                            }
+                        });
+                    }
+
+                    if self.scan.is_some() {
+                        self.status_bar(ui);
+                    }
+
+                    if !self.rejected.is_empty() {
+                        let names = self.rejected.join(", ");
+                        let msg = self
+                            .catalog
+                            .text_with("drop-not-demo", &[("names", FluentValue::from(names))]);
+                        text::label(ui, &msg, self.rtl());
+                    }
+
+                    ui.add_space(2.);
+                });
         }
+
         if self.library.as_ref().is_some_and(|l| l.selected.is_some()) {
             egui::Panel::bottom("details").show(ui, |ui| {
                 ui.add_space(4.);
@@ -1103,13 +1179,9 @@ impl eframe::App for App {
             self.save_settings();
         }
         if self.demo.is_some() {
-            let side = if rtl {
-                egui::Panel::right("library")
-            } else {
-                egui::Panel::left("library")
-            };
             let width = ctx.content_rect().width();
-            side.resizable(true)
+            layout::leading_panel("library", rtl)
+                .resizable(true)
                 .default_size(width * 0.42)
                 .size_range(320.0..=width * 0.8)
                 .show(ui, |ui| library(self, ui));
@@ -1203,7 +1275,7 @@ enum SettingsTab {
 }
 
 /// A section's heading, with space above it unless it is the first, and a
-/// `(?)` showing `hint` when there is one
+/// question mark explaining `hint` when there is one
 fn heading(
     ui: &mut egui::Ui,
     catalog: &Catalog,
@@ -1224,12 +1296,13 @@ fn heading(
             Look::Strong,
         ));
         if let Some(hint) = hint {
-            help(ui, &catalog.text(hint), rtl);
+            widgets::help(ui, &catalog.text(hint), rtl);
         }
     });
 }
 
-/// A setting's label, with a `(?)` showing `hint` when there is one
+/// A setting's label, with a question mark explaining `hint` when there is
+/// one
 fn labelled(ui: &mut egui::Ui, catalog: &Catalog, id: &str, hint: Option<&str>, rtl: bool) {
     layout::row(ui, rtl, |ui| {
         ui.label(text::widget_text(
@@ -1240,20 +1313,9 @@ fn labelled(ui: &mut egui::Ui, catalog: &Catalog, id: &str, hint: Option<&str>, 
             Look::Plain,
         ));
         if let Some(hint) = hint {
-            help(ui, &catalog.text(hint), rtl);
+            widgets::help(ui, &catalog.text(hint), rtl);
         }
     });
-}
-
-/// A `(?)` that explains what is beside it when hovered
-fn help(ui: &mut egui::Ui, hint: &str, rtl: bool) {
-    let icon = text::widget_text(ui.ctx(), "(?)", false, None, Look::Weak);
-    ui.label(icon)
-        .on_hover_cursor(egui::CursorIcon::Help)
-        .on_hover_ui(|ui| {
-            ui.set_max_width(320.);
-            text::label(ui, hint, rtl);
-        });
 }
 
 /// A folder or file the settings name, or what stands in for one

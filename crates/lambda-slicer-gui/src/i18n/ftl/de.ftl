@@ -9,6 +9,9 @@ toolbar-add-folder = Ordner hinzufügen…
 toolbar-rescan = Neu scannen
 toolbar-cancel = Abbrechen
 toolbar-settings = Einstellungen
+toolbar-rescan-busy = Ein Scan läuft bereits.
+toolbar-rescan-nothing = Füge einen Ordner hinzu oder öffne eine Demo zum Scannen.
+toolbar-cancel-idle = Es läuft kein Scan.
 dialog-demos = Half-Life-Demos
 
 ## Einstellungen

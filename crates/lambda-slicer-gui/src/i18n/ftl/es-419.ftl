@@ -9,6 +9,9 @@ toolbar-add-folder = Agregar carpeta…
 toolbar-rescan = Volver a escanear
 toolbar-cancel = Cancelar
 toolbar-settings = Configuración
+toolbar-rescan-busy = Ya hay un escaneo en curso.
+toolbar-rescan-nothing = Agrega una carpeta o abre una demo para escanear.
+toolbar-cancel-idle = No hay ningún escaneo en curso.
 dialog-demos = Demos de Half-Life
 
 ## Configuración

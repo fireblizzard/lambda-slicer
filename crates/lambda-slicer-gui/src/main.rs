@@ -48,8 +48,10 @@ mod layout;
 mod library;
 mod settings;
 mod text;
+mod theme;
 mod timeline;
 mod viewer;
+mod widgets;
 
 use std::path::PathBuf;
 
@@ -211,6 +213,8 @@ fn main() -> eframe::Result {
         "Lambda Slicer",
         options,
         Box::new(move |cc| {
+            theme::install(&cc.egui_ctx);
+
             let mut app = App::new(
                 settings,
                 save_to,

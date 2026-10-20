@@ -38,6 +38,24 @@ pub fn cell<R>(ui: &mut Ui, rtl: bool, width: f32, add: impl FnOnce(&mut Ui) -> 
     .inner
 }
 
+/// A side panel on the interface's leading side, the left one or in a
+/// right-to-left interface the right one
+pub fn leading_panel(id: &str, rtl: bool) -> egui::Panel {
+    if rtl {
+        egui::Panel::right(id)
+    } else {
+        egui::Panel::left(id)
+    }
+}
+
+/// A row whose widgets are placed from the trailing side, for actions kept
+/// at the end of a toolbar after the ones that lead it
+pub fn trailing<R>(ui: &mut Ui, rtl: bool, add: impl FnOnce(&mut Ui) -> R) -> R {
+    let layout = row_layout(!rtl);
+    let size = egui::vec2(ui.available_width(), ui.spacing().interact_size.y);
+    ui.allocate_ui_with_layout(size, layout, add).inner
+}
+
 /// A column aligned to the interface's leading side
 pub fn column<R>(ui: &mut Ui, rtl: bool, add: impl FnOnce(&mut Ui) -> R) -> R {
     let layout = Layout::top_down(if rtl { Align::Max } else { Align::Min });

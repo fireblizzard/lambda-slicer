@@ -9,6 +9,9 @@ toolbar-add-folder = Lisää kansio…
 toolbar-rescan = Skannaa uudelleen
 toolbar-cancel = Peruuta
 toolbar-settings = Asetukset
+toolbar-rescan-busy = Skannaus on jo käynnissä.
+toolbar-rescan-nothing = Lisää kansio tai avaa demo skannattavaksi.
+toolbar-cancel-idle = Skannaus ei ole käynnissä.
 dialog-demos = Half-Life-demot
 
 ## Asetukset

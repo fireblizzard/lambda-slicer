@@ -20,6 +20,8 @@ use lambda_slicer_core::timeline::time::DemoTime;
 use crate::i18n::{Catalog, DateOrder, Ymd};
 use crate::layout;
 use crate::text::{self, Look};
+use crate::theme;
+use crate::widgets::{self, AnalysisState};
 
 /// A date bound with a checkbox to use it, its fields in the locale's order.
 /// The checkbox and the fields wrap together as one group
@@ -508,19 +510,26 @@ impl LibraryView {
         });
     }
 
-    /// The status column's text for a row, and its tooltip
-    fn status(row: &FileRow, catalog: &Catalog) -> (String, Option<String>) {
-        let id = match row.status.as_str() {
-            "complete" if row.shots.unwrap_or(0) == 0 => "status-no-use",
-            "complete" => "status-complete",
-            "partial" => "status-partial",
-            "unsupported" => "status-unsupported",
-            _ => "status-failed",
+    /// A row's analysis state as a symbol and its name, with the stored
+    /// error when there is one on hover
+    fn status(ui: &mut Ui, row: &FileRow, catalog: &Catalog, rtl: bool) {
+        let state = AnalysisState::of(&row.status, row.shots);
+        let name = catalog.text(state.message_id());
+        let color = match state {
+            AnalysisState::Complete | AnalysisState::NoWeaponUse => None,
+            AnalysisState::Partial | AnalysisState::Unsupported => Some(theme::WARNING),
+            AnalysisState::Failed => Some(theme::ERROR),
         };
-        (
-            catalog.text(id),
-            row.error.as_ref().map(|m| catalog.stored(m)),
-        )
+        let error = row.error.as_ref().map(|m| catalog.stored(m));
+
+        let ctx = ui.ctx().clone();
+        layout::row(ui, rtl, |ui| {
+            widgets::status_symbol(ui, state, &name);
+            let r = Self::cell(ui, &ctx, &name, rtl, color);
+            if let Some(error) = error {
+                r.on_hover_text(error);
+            }
+        });
     }
 
     fn cell(
@@ -645,15 +654,7 @@ impl LibraryView {
                         .unwrap_or_else(|| file.path.clone());
                     for c in &cols {
                         row.col(|ui| match c {
-                            Col::Status => {
-                                let (status, tip) = Self::status(&file, catalog);
-                                let muted = file.status == "complete";
-                                let color = (!muted).then_some(ui.visuals().warn_fg_color);
-                                let r = Self::cell(ui, &ctx, &status, rtl, color);
-                                if let Some(tip) = tip {
-                                    r.on_hover_text(tip);
-                                }
-                            }
+                            Col::Status => Self::status(ui, &file, catalog, rtl),
                             // Names keep their own direction in any interface
                             Col::Name => {
                                 Self::cell(ui, &ctx, &name, text::starts_rtl(&name), None)

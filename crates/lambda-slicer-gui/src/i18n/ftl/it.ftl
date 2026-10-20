@@ -9,6 +9,9 @@ toolbar-add-folder = Aggiungi cartella…
 toolbar-rescan = Analizza di nuovo
 toolbar-cancel = Annulla
 toolbar-settings = Impostazioni
+toolbar-rescan-busy = Un'analisi è già in corso.
+toolbar-rescan-nothing = Aggiungi una cartella o apri una demo da analizzare.
+toolbar-cancel-idle = Nessuna analisi in corso.
 dialog-demos = Demo di Half-Life
 
 ## Impostazioni

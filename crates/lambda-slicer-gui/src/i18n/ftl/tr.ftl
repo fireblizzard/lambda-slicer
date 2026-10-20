@@ -9,6 +9,9 @@ toolbar-add-folder = Klasör ekle…
 toolbar-rescan = Yeniden tara
 toolbar-cancel = İptal
 toolbar-settings = Ayarlar
+toolbar-rescan-busy = Zaten bir tarama sürüyor.
+toolbar-rescan-nothing = Taramak için bir klasör ekle veya bir demo aç.
+toolbar-cancel-idle = Süren bir tarama yok.
 dialog-demos = Half-Life demoları
 
 ## Ayarlar

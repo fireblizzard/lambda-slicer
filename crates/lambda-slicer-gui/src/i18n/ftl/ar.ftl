@@ -9,6 +9,9 @@ toolbar-add-folder = إضافة مجلد…
 toolbar-rescan = إعادة الفحص
 toolbar-cancel = إلغاء
 toolbar-settings = الإعدادات
+toolbar-rescan-busy = الفحص جارٍ بالفعل.
+toolbar-rescan-nothing = أضف مجلدًا أو افتح تسجيلًا لفحصه.
+toolbar-cancel-idle = لا يجري أي فحص.
 dialog-demos = تسجيلات Half-Life
 
 ## الإعدادات

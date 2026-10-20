@@ -9,6 +9,9 @@ toolbar-add-folder = Добавить папку…
 toolbar-rescan = Пересканировать
 toolbar-cancel = Отмена
 toolbar-settings = Настройки
+toolbar-rescan-busy = Сканирование уже идёт.
+toolbar-rescan-nothing = Добавьте папку или откройте демо, чтобы сканировать.
+toolbar-cancel-idle = Сканирование не идёт.
 dialog-demos = Демозаписи Half-Life
 
 ## Настройки

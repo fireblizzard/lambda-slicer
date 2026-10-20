@@ -9,6 +9,9 @@ toolbar-add-folder = 添加文件夹…
 toolbar-rescan = 重新扫描
 toolbar-cancel = 取消
 toolbar-settings = 设置
+toolbar-rescan-busy = 已在扫描。
+toolbar-rescan-nothing = 先添加文件夹或打开录像再扫描。
+toolbar-cancel-idle = 当前没有扫描。
 dialog-demos = Half-Life 录像
 
 ## 设置

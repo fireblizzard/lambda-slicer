@@ -9,6 +9,9 @@ toolbar-add-folder = Pridėti aplanką…
 toolbar-rescan = Nuskaityti iš naujo
 toolbar-cancel = Atšaukti
 toolbar-settings = Nustatymai
+toolbar-rescan-busy = Nuskaitymas jau vyksta.
+toolbar-rescan-nothing = Pridėkite aplanką arba atidarykite įrašą, kad būtų ką nuskaityti.
+toolbar-cancel-idle = Niekas nenuskaitoma.
 dialog-demos = Half-Life įrašai
 
 ## Nustatymai
