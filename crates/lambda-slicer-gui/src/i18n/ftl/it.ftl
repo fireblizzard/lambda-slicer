@@ -285,8 +285,26 @@ speed-unit = ups
 speed-killer = Killer
 speed-victim = Vittima
 help-speed = Velocità orizzontale in unità al secondo, parallela al suolo. Il killer è misurato al colpo legato all’uccisione, o all’uccisione se non c’è, e la vittima alla morte. Le velocità degli altri giocatori sono stime.
-wallgauss-pending = Questa versione non sa ancora quali uccisioni col gauss hanno attraversato un muro, quindi nessuna uccisione corrisponde. Azzera il filtro per rivedere tutte le uccisioni.
 wallgauss-weapon = Wallgauss riguarda solo le uccisioni col gauss, e il filtro arma mostra { $weapon }.
+wallgauss-checking = Controllo Wallgauss… { $examined } di { $total } uccisioni
+wallgauss-needs-files = Wallgauss ha bisogno dei file del gioco per tracciare i colpi nella mappa.
+wallgauss-failed = Impossibile controllare Wallgauss. { $reason }
+help-wallgauss = Uccisioni col gauss attraverso un muro, ricavate tracciando ogni colpo nella mappa come fa il server. Un’uccisione che non si può stabilire, come una in cui la vittima era fuori dalla vista della registrazione, conta come sconosciuta e resta esclusa.
+badge-wall = WALL
+wall-yes-exit = Wallgauss identificato per ricostruzione: l’esplosione dove il raggio è uscito da un muro spesso { $thickness } unità.
+wall-yes-beyond = Wallgauss identificato per ricostruzione: il raggio dopo aver attraversato un muro spesso { $thickness } unità.
+wall-limits = Ricostruito dal colpo e dallo snapshot, non registrato dal server. I giocatori sono tracciati come scatole, e la vittima poteva trovarsi a qualche decina di unità da dove la mostra lo snapshot.
+wall-no-direct = Non è un Wallgauss: il raggio poteva colpire la vittima prima di qualsiasi muro.
+wall-no-reflection = Non è un Wallgauss: l’esplosione di un rimbalzo poteva colpire la vittima prima di qualsiasi muro.
+wall-doubt-no-shot = Wallgauss sconosciuto: il colpo del killer non è nella registrazione.
+wall-doubt-no-map = Wallgauss sconosciuto: impossibile leggere i file della mappa.
+wall-doubt-unseen = Wallgauss sconosciuto: la vittima era fuori dalla vista della registrazione.
+wall-doubt-brush = Wallgauss sconosciuto: il raggio ha incontrato una porta, una piattaforma o un’altra brush entity, che non viene tracciata.
+wall-doubt-ambiguous = Wallgauss sconosciuto: il colpo poteva uccidere sia attraverso un muro sia senza.
+wall-doubt-unexplained = Wallgauss sconosciuto: non è stato trovato alcun modo in cui il colpo abbia raggiunto la vittima.
+wall-doubt-unconfirmed = Wallgauss sconosciuto: il colpo poteva raggiungere la vittima solo attraverso un muro, ma non è certo.
+wall-doubt-not-reached = Wallgauss sconosciuto: la registrazione si ferma prima del colpo.
+wall-pending = Wallgauss non ancora controllato.
 events-unknown = { $count ->
     [one] A un’uccisione mancano i dati per stabilirlo
     [many] A { $count } di uccisioni mancano i dati per stabilirlo

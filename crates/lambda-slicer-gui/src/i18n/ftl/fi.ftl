@@ -276,8 +276,26 @@ speed-unit = ups
 speed-killer = Tappaja
 speed-victim = Uhri
 help-speed = Vaakasuora nopeus yksikköinä sekunnissa, maan suuntaisesti. Tappaja mitataan tappoon liitetyn laukauksen kohdalla, tai tapon kohdalla, jos sellaista ei ole, ja uhri kuoleman hetkellä. Muiden pelaajien nopeudet ovat arvioita.
-wallgauss-pending = Tämä versio ei vielä tunnista, mitkä gauss-tapot menivät seinän läpi, joten mikään tappo ei täsmää. Tyhjennä rajaus nähdäksesi taas kaikki tapot.
 wallgauss-weapon = Wallgauss koskee vain gauss-tappoja, ja asesuodattimessa on { $weapon }.
+wallgauss-checking = Wallgauss-tarkistus… { $examined } / { $total } tappoa
+wallgauss-needs-files = Wallgauss tarvitsee pelitiedostot jäljittääkseen laukaukset kartan läpi.
+wallgauss-failed = Wallgauss-tarkistus epäonnistui. { $reason }
+help-wallgauss = Seinän läpi tehdyt gauss-tapot, selvitetty jäljittämällä jokainen laukaus kartan läpi samoin kuin palvelin. Tappo, jota ei voi ratkaista, esimerkiksi jos uhri oli tallenteen näkymän ulkopuolella, lasketaan tuntemattomaksi ja jätetään pois.
+badge-wall = WALL
+wall-yes-exit = Wallgauss tunnistettu rekonstruoimalla: räjähdys kohdassa, jossa säde tuli ulos { $thickness } yksikön paksuisesta seinästä.
+wall-yes-beyond = Wallgauss tunnistettu rekonstruoimalla: säde sen jälkeen, kun se oli mennyt { $thickness } yksikön paksuisen seinän läpi.
+wall-limits = Rekonstruoitu laukauksesta ja tilannekuvasta, ei palvelimen tallentama. Pelaajat jäljitetään laatikkoina, ja uhri saattoi olla muutaman kymmenen yksikön päässä siitä, missä tilannekuva hänet näyttää.
+wall-no-direct = Ei Wallgauss: säde olisi voinut osua uhriin ennen yhtään seinää.
+wall-no-reflection = Ei Wallgauss: heijastuksen räjähdys olisi voinut osua uhriin ennen yhtään seinää.
+wall-doubt-no-shot = Wallgauss ei tiedossa: tappajan laukaus ei ole tallenteessa.
+wall-doubt-no-map = Wallgauss ei tiedossa: kartan tiedostoja ei voitu lukea.
+wall-doubt-unseen = Wallgauss ei tiedossa: uhri oli tallenteen näkymän ulkopuolella.
+wall-doubt-brush = Wallgauss ei tiedossa: säde osui oveen, tasoon tai muuhun brush-entiteettiin, joita ei jäljitetä.
+wall-doubt-ambiguous = Wallgauss ei tiedossa: laukaus olisi voinut tappaa sekä seinän läpi että ilman.
+wall-doubt-unexplained = Wallgauss ei tiedossa: ei löytynyt tapaa, jolla laukaus olisi päässyt uhriin.
+wall-doubt-unconfirmed = Wallgauss ei tiedossa: laukaus olisi voinut päästä uhriin vain seinän läpi, mutta ei varmasti.
+wall-doubt-not-reached = Wallgauss ei tiedossa: tallenne loppuu ennen laukausta.
+wall-pending = Wallgauss: ei vielä tarkistettu.
 events-unknown = { $count ->
     [one] Yhden tapon tiedot eivät riitä ratkaisuun
    *[other] { $count } tapon tiedot eivät riitä ratkaisuun

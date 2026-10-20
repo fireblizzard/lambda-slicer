@@ -285,8 +285,26 @@ speed-unit = ups
 speed-killer = Matador
 speed-victim = Vítima
 help-speed = Velocidade horizontal em unidades por segundo, paralela ao chão. O matador é medido no disparo ligado ao abate, ou no abate se não houver um, e a vítima na morte. As velocidades dos outros jogadores são estimativas.
-wallgauss-pending = Esta versão ainda não sabe dizer quais abates com o gauss atravessaram uma parede, então nenhum abate corresponde. Limpe o refinamento para ver todos os abates de novo.
 wallgauss-weapon = Wallgauss só abrange abates com o gauss, e o filtro de arma mostra { $weapon }.
+wallgauss-checking = Verificando Wallgauss… { $examined } de { $total } abates
+wallgauss-needs-files = Wallgauss precisa dos arquivos do jogo para traçar os disparos pelo mapa.
+wallgauss-failed = Não foi possível verificar Wallgauss. { $reason }
+help-wallgauss = Abates com o gauss através de uma parede, calculados traçando cada disparo pelo mapa como o servidor faz. Um abate que não dá para resolver, como um em que a vítima estava fora da visão da gravação, conta como desconhecido e fica de fora.
+badge-wall = WALL
+wall-yes-exit = Wallgauss identificado por reconstrução: a explosão onde o raio saiu de uma parede de { $thickness } unidades de espessura.
+wall-yes-beyond = Wallgauss identificado por reconstrução: o raio depois de atravessar uma parede de { $thickness } unidades de espessura.
+wall-limits = Reconstruído a partir do disparo e do snapshot, não registrado pelo servidor. Os jogadores são traçados como caixas, e a vítima pode ter estado a algumas dezenas de unidades de onde o snapshot a mostra.
+wall-no-direct = Não é Wallgauss: o raio poderia ter acertado a vítima antes de qualquer parede.
+wall-no-reflection = Não é Wallgauss: a explosão de um reflexo poderia ter acertado a vítima antes de qualquer parede.
+wall-doubt-no-shot = Wallgauss desconhecido: o disparo do matador não está na gravação.
+wall-doubt-no-map = Wallgauss desconhecido: não foi possível ler os arquivos do mapa.
+wall-doubt-unseen = Wallgauss desconhecido: a vítima estava fora da visão da gravação.
+wall-doubt-brush = Wallgauss desconhecido: o raio encontrou uma porta, uma plataforma ou outra entidade brush, que não é traçada.
+wall-doubt-ambiguous = Wallgauss desconhecido: o disparo poderia ter matado tanto através de uma parede quanto sem ela.
+wall-doubt-unexplained = Wallgauss desconhecido: não foi encontrado nenhum caminho pelo qual o disparo chegou à vítima.
+wall-doubt-unconfirmed = Wallgauss desconhecido: o disparo só poderia ter chegado à vítima através de uma parede, mas não com certeza.
+wall-doubt-not-reached = Wallgauss desconhecido: a gravação termina antes do disparo.
+wall-pending = Wallgauss ainda não verificado.
 events-unknown = { $count ->
     [one] Um abate não tem dados para dizer
     [many] { $count } de abates não têm dados para dizer

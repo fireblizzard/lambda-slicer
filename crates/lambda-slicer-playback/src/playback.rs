@@ -287,6 +287,24 @@ impl Playback {
         )
     }
 
+    /// Each map's world, without the rest of the game's files, for tracing
+    /// through the maps alone
+    pub fn set_map_hulls(&mut self, hulls: crate::MapHulls) {
+        self.hulls = Box::new(move |map| hulls(map));
+        self.hull = None;
+    }
+
+    /// Apply the next group. False once none is left
+    pub fn step(&mut self) -> bool {
+        self.apply_next()
+    }
+
+    /// The world of the map being played, none before a map is known or
+    /// when its world cannot be read
+    pub fn map_world(&mut self) -> Option<Arc<Hull>> {
+        self.world()
+    }
+
     /// The world of the session's map to trace temporary entities through
     fn world(&mut self) -> Option<Arc<Hull>> {
         let map = self.state.scene.map.as_deref()?;

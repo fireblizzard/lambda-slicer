@@ -31,6 +31,7 @@ use crate::app::SettingsTab;
 use crate::clips::{Clip, next_name, parse_time};
 use crate::export::{ClipKey, ExportJob, ExportState};
 use crate::i18n::Catalog;
+use crate::kill_analysis::Walls;
 use crate::kill_filters::{KillFilters, Verdict};
 use crate::layout;
 use crate::text::{self, Look};
@@ -369,16 +370,20 @@ impl Shown {
         self.weapon.is_none() || self.weapon == w
     }
 
-    /// Whether `event` is shown, as far as can be told. Only a kill can be
-    /// unknown, by a refinement its data cannot settle, and the refinements
-    /// leave other events to their kind and weapon
-    fn judge(&self, event: &Event) -> Verdict {
+    /// Whether `event` is shown, as far as can be told with what `walls`
+    /// has told of kills through a wall. Only a kill can be unknown, by a
+    /// refinement its data cannot settle, and the refinements leave other
+    /// events to their kind and weapon
+    fn judge(&self, event: &Event, walls: &Walls) -> Verdict {
         if !self.kind(mark_kind(event)) || !self.weapon(event.weapon) {
             return Verdict::NoMatch;
         }
 
         match &event.kind {
-            EventKind::Kill { features, .. } => self.kill_filters.judge(features),
+            EventKind::Kill { features, .. } => {
+                let wall = walls.get(&features.key);
+                self.kill_filters.judge(features, wall)
+            }
             _ => Verdict::Match,
         }
     }
@@ -440,7 +445,9 @@ pub struct DemoView {
     marks: Vec<RowMark>,
     /// Whether each of the model's events is shown, for the player lanes
     shown_events: Vec<bool>,
-    rows_for: Option<Shown>,
+    /// What the rows were worked out for, and the revision of the kills
+    /// through a wall then
+    rows_for: Option<(Shown, u64)>,
     /// Counts each time the rows change, for what is worked out from them
     rows_version: u64,
     /// Kills a refinement could not tell about, so not shown
@@ -503,6 +510,8 @@ pub struct DemoView {
     /// The height the header and the transport with the timeline took last
     /// frame, which the inspector under the view leaves room for
     around_view: f32,
+    /// Which Gauss kills went through a wall, told in the background
+    walls: Walls,
 }
 
 impl DemoView {
@@ -551,6 +560,7 @@ impl DemoView {
             duration,
             looping: None,
             around_view: 0.,
+            walls: Walls::default(),
         }
     }
 
@@ -632,7 +642,8 @@ impl DemoView {
         let Some(m) = self.model.clone() else {
             return;
         };
-        if self.rows_for == Some(self.shown) {
+        let wanted = (self.shown, self.walls.revision());
+        if self.rows_for == Some(wanted) {
             return;
         }
 
@@ -642,7 +653,7 @@ impl DemoView {
         self.unknown_kills = 0;
 
         for (index, event) in m.events.iter().enumerate() {
-            match self.shown.judge(event) {
+            match self.shown.judge(event, &self.walls) {
                 Verdict::Match => {}
                 Verdict::Unknown => {
                     self.unknown_kills += 1;
@@ -657,7 +668,7 @@ impl DemoView {
             self.shown_events[index] = true;
         }
 
-        self.rows_for = Some(self.shown);
+        self.rows_for = Some(wanted);
         self.rows_version += 1;
     }
 
@@ -1564,6 +1575,17 @@ impl DemoView {
             self.start_export(ctx, keys);
         }
 
+        // Which Gauss kills went through a wall, once the analysis is in,
+        // with the game's files the viewer reads
+        if let Some(model) = self.model.clone() {
+            let install = self.viewer_game.clone();
+            let viewer = self.viewer.as_ref();
+            let hulls = || viewer.and_then(|v| v.map_hulls());
+            self.walls
+                .update(&self.path, &model, install.as_deref(), hulls, ctx);
+        }
+        self.walls.poll();
+
         // The event the command line asked for, once there are rows
         if self.model.is_some()
             && let Some(row) = self.open_event.take()
@@ -2218,6 +2240,7 @@ mod tests {
     use lambda_slicer_core::analysis::context::KillCause;
     use lambda_slicer_core::analysis::motion::MotionEvidence;
     use lambda_slicer_core::slice::range::{GroupIndex, GroupStart};
+    use lambda_slicer_playback::kill_features::{OtherRoute, WallDetails, WallGauss, WallRoute};
 
     use super::*;
     use crate::kill_filters::MidairMode;
@@ -2296,7 +2319,8 @@ mod tests {
     }
 
     /// A kill at `time` in `segment` whose killer's airborne state is
-    /// `airborne`, the victim known to be on the ground
+    /// `airborne`, the victim known to be on the ground. Its place among the
+    /// kills is its whole seconds
     fn kill(segment: u32, time: f32, airborne: Option<bool>) -> Event {
         let motion = |airborne| KillMotion {
             airborne,
@@ -2307,7 +2331,7 @@ mod tests {
         let features = KillFeatures {
             key: KillKey {
                 segment,
-                ordinal: 0,
+                ordinal: time as u32,
             },
             killer_motion: Some(motion(airborne)),
             victim_motion: Some(motion(Some(false))),
@@ -2316,6 +2340,7 @@ mod tests {
             killer_team: None,
             victim_team: None,
             gauss: true,
+            gauss_kill: None,
         };
 
         Event {
@@ -2399,5 +2424,35 @@ mod tests {
         // It can still be selected and read, without being played
         view.select(1, true);
         assert_eq!(view.selected, Some(1));
+    }
+
+    #[test]
+    fn only_kills_told_through_a_wall_show_and_the_rest_wait() {
+        let events = vec![kill(0, 1., None), kill(0, 2., None), kill(0, 3., None)];
+        let mut view = view_of(events, GroupIndex::default());
+        view.shown.kill_filters.wallgauss = true;
+        view.refresh_rows();
+
+        // Nothing told yet, so every Gauss kill waits as unknown
+        assert!(view.rows.is_empty());
+        assert_eq!(view.unknown_kills, 3);
+
+        let key = |event: usize| match &view.model.as_ref().unwrap().events[event].kind {
+            EventKind::Kill { features, .. } => features.key,
+            _ => unreachable!(),
+        };
+        let (first, second) = (key(0), key(1));
+        let yes = WallGauss::Yes(WallDetails {
+            route: WallRoute::Beyond,
+            thickness: 12.,
+            shot_time: 1.,
+        });
+        view.walls.insert(first, yes);
+        view.walls.insert(second, WallGauss::No(OtherRoute::Direct));
+
+        // A verdict arriving works the rows out again
+        view.refresh_rows();
+        assert_eq!(view.rows, [0]);
+        assert_eq!(view.unknown_kills, 1);
     }
 }

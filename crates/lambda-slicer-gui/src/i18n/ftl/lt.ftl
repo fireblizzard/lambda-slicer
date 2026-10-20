@@ -294,8 +294,26 @@ speed-unit = ups
 speed-killer = Žudikas
 speed-victim = Auka
 help-speed = Horizontalusis greitis vienetais per sekundę, lygiagrečiai žemei. Žudiko greitis matuojamas su nužudymu susieto šūvio metu arba, jei šūvio nėra, nužudymo metu, o aukos mirties metu. Kitų žaidėjų greičiai yra įverčiai.
-wallgauss-pending = Ši versija dar negali nustatyti, kurie gauso nužudymai buvo per sieną, todėl neatitinka joks nužudymas. Išvalykite patikslinimą, kad vėl matytumėte visus nužudymus.
 wallgauss-weapon = Wallgauss apima tik gauso nužudymus, o ginklo filtras rodo { $weapon }.
+wallgauss-checking = Tikrinamas Wallgauss… { $examined } iš { $total } nužudymų
+wallgauss-needs-files = Wallgauss tikrinimui reikia žaidimo failų, kad būtų galima atsekti šūvius per žemėlapį.
+wallgauss-failed = Nepavyko patikrinti Wallgauss. { $reason }
+help-wallgauss = Gauso nužudymai per sieną, nustatyti atsekant kiekvieną šūvį per žemėlapį taip, kaip tai daro serveris. Nužudymas, kurio nepavyksta išspręsti, pavyzdžiui, kai auka buvo už įrašo matomumo ribų, laikomas nežinomu ir neįtraukiamas.
+badge-wall = WALL
+wall-yes-exit = Wallgauss nustatytas atkūrus: sprogimas ten, kur spindulys išėjo iš { $thickness } vienetų storio sienos.
+wall-yes-beyond = Wallgauss nustatytas atkūrus: spindulys po to, kai praėjo per { $thickness } vienetų storio sieną.
+wall-limits = Atkurta iš šūvio ir momentinės kopijos, o ne įrašyta serverio. Žaidėjai atsekami kaip dėžės, o auka galėjo būti kelios dešimtys vienetų nuo vietos, kurią rodo momentinė kopija.
+wall-no-direct = Ne Wallgauss: spindulys galėjo pataikyti į auką prieš bet kokią sieną.
+wall-no-reflection = Ne Wallgauss: atšokimo sprogimas galėjo pataikyti į auką prieš bet kokią sieną.
+wall-doubt-no-shot = Wallgauss nežinomas: žudiko šūvio įraše nėra.
+wall-doubt-no-map = Wallgauss nežinomas: nepavyko perskaityti žemėlapio failų.
+wall-doubt-unseen = Wallgauss nežinomas: auka buvo už įrašo matomumo ribų.
+wall-doubt-brush = Wallgauss nežinomas: spindulys pataikė į duris, platformą ar kitą brush objektą, o jie neatsekami.
+wall-doubt-ambiguous = Wallgauss nežinomas: šūvis galėjo nužudyti ir per sieną, ir be jos.
+wall-doubt-unexplained = Wallgauss nežinomas: nerastas joks būdas, kaip šūvis pasiekė auką.
+wall-doubt-unconfirmed = Wallgauss nežinomas: šūvis galėjo pasiekti auką tik per sieną, bet tai neužtikrinta.
+wall-doubt-not-reached = Wallgauss nežinomas: įrašas baigiasi prieš šūvį.
+wall-pending = Wallgauss dar nepatikrintas.
 events-unknown = { $count ->
     [one] { $count } nužudymas neturi duomenų tam nustatyti
     [few] { $count } nužudymai neturi duomenų tam nustatyti

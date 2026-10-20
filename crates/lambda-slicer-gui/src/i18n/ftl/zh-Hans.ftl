@@ -261,8 +261,26 @@ speed-unit = ups
 speed-killer = 击杀者
 speed-victim = 受害者
 help-speed = 沿地面方向的水平速度，单位为每秒单位数。击杀者在与击杀关联的射击时测量，没有关联射击则在击杀时测量；受害者在死亡时测量。其他玩家的速度为估算值。
-wallgauss-pending = 此版本尚无法判断哪些高斯击杀穿过了墙，因此没有匹配的击杀。清除此细化条件即可重新看到所有击杀。
 wallgauss-weapon = 穿墙高斯只涵盖高斯击杀，而武器筛选显示的是 { $weapon }。
+wallgauss-checking = 正在检查穿墙高斯… { $examined } / { $total } 个击杀
+wallgauss-needs-files = 穿墙高斯需要游戏文件，才能在地图中追踪射击。
+wallgauss-failed = 无法检查穿墙高斯。{ $reason }
+help-wallgauss = 穿过墙壁的高斯击杀，按服务器的方式在地图中追踪每次射击得出。无法判定的击杀（例如受害者在录像视野之外）计为未知并被排除。
+badge-wall = 穿墙
+wall-yes-exit = 经重建判定为穿墙高斯：光束穿出 { $thickness } 单位厚的墙时产生的爆炸。
+wall-yes-beyond = 经重建判定为穿墙高斯：穿过 { $thickness } 单位厚的墙之后的光束。
+wall-limits = 根据射击和快照重建，并非服务器记录。玩家按方盒追踪，受害者的实际位置可能与快照显示的相差几十个单位。
+wall-no-direct = 不是穿墙高斯：光束可能在碰到任何墙之前就击中了受害者。
+wall-no-reflection = 不是穿墙高斯：反射的爆炸可能在碰到任何墙之前就击中了受害者。
+wall-doubt-no-shot = 穿墙高斯未知：录像中没有击杀者的射击。
+wall-doubt-no-map = 穿墙高斯未知：无法读取地图文件。
+wall-doubt-unseen = 穿墙高斯未知：受害者在录像视野之外。
+wall-doubt-brush = 穿墙高斯未知：光束碰到了门、平台或其他 brush 实体，这些不会被追踪。
+wall-doubt-ambiguous = 穿墙高斯未知：这次射击既可能穿墙击杀，也可能不穿墙击杀。
+wall-doubt-unexplained = 穿墙高斯未知：找不到射击击中受害者的路径。
+wall-doubt-unconfirmed = 穿墙高斯未知：射击只可能穿墙击中受害者，但无法确定。
+wall-doubt-not-reached = 穿墙高斯未知：录像在射击之前就结束了。
+wall-pending = 尚未检查穿墙高斯。
 events-unknown = { $count ->
    *[other] { $count } 次击杀缺少判断所需的数据
 }

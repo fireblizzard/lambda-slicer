@@ -17,6 +17,7 @@ use lambda_slicer_core::analysis::weapons::{Action, Actor, IntervalEnd, Weapon};
 use lambda_slicer_core::message::Message;
 use lambda_slicer_core::slice::range::GroupIndex;
 use lambda_slicer_core::state::PlayerIdentity;
+use lambda_slicer_playback::kill_features::GaussKill;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum LaneKey {
@@ -176,10 +177,13 @@ pub struct KillFeatures {
     /// A player killed with the Gauss, the only kill that can be through a
     /// wall
     pub gauss: bool,
+    /// The Gauss kill with the killer's shots that could have made it, for
+    /// telling whether it went through a wall
+    pub gauss_kill: Option<GaussKill>,
 }
 
 impl KillFeatures {
-    fn new(kill: &Kill, ordinal: usize) -> Self {
+    fn new(kill: &Kill, ordinal: usize, gauss_kill: Option<GaussKill>) -> Self {
         let key = KillKey {
             segment: kill.segment,
             ordinal: u32::try_from(ordinal).unwrap_or(u32::MAX),
@@ -203,6 +207,7 @@ impl KillFeatures {
             killer_team: kill.killer_team.clone(),
             victim_team: kill.victim_team.clone(),
             gauss: kill.weapon == Some(Weapon::Gauss),
+            gauss_kill,
         }
     }
 }
@@ -381,6 +386,9 @@ impl Model {
             });
         }
 
+        // The recording player's events aim as they looked, other players'
+        // as their model pitched
+        let recorder = r.recorder.as_ref().map(|p| u16::from(p.slot) + 1);
         for (ordinal, k) in r.kills.iter().enumerate() {
             let killer = k.killer.as_ref();
             let lane = match killer {
@@ -388,6 +396,7 @@ impl Model {
                 None => b.lane(LaneKey::Unknown, None),
             };
             let victim = k.victim.as_ref().map(|p| p.name.clone());
+            let gauss_kill = GaussKill::of(k, &r.occurrences, r.max_clients, recorder);
             let event = Event {
                 segment: k.segment,
                 time: k.time,
@@ -400,7 +409,7 @@ impl Model {
                     cause: k.cause,
                     killer: killer.map(|p| (p.slot, p.incarnation)),
                     headshot: k.headshot,
-                    features: Box::new(KillFeatures::new(k, ordinal)),
+                    features: Box::new(KillFeatures::new(k, ordinal, gauss_kill)),
                 },
             };
             b.mark(lane, k.time, MarkKind::Kill, k.weapon, event);

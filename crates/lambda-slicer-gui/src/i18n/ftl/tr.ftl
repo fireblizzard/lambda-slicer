@@ -267,8 +267,26 @@ speed-unit = ups
 speed-killer = Öldüren
 speed-victim = Kurban
 help-speed = Saniyede birim cinsinden, zemine paralel yatay hız. Öldüren, öldürmeye bağlı atış anında, böyle bir atış yoksa öldürme anında; kurban ise ölüm anında ölçülür. Diğer oyuncuların hızları tahminidir.
-wallgauss-pending = Bu sürüm hangi gauss öldürmelerinin duvardan geçtiğini henüz anlayamıyor, bu yüzden hiçbir öldürme eşleşmiyor. Tüm öldürmeleri yeniden görmek için daraltmayı temizleyin.
 wallgauss-weapon = Wallgauss yalnızca gauss öldürmelerini kapsar ve silah filtresi { $weapon } gösteriyor.
+wallgauss-checking = Wallgauss kontrol ediliyor… { $examined } / { $total } öldürme
+wallgauss-needs-files = Wallgauss, atışları harita boyunca izlemek için oyun dosyalarına ihtiyaç duyar.
+wallgauss-failed = Wallgauss kontrol edilemedi. { $reason }
+help-wallgauss = Duvarın içinden geçen gauss öldürmeleri; her atış, sunucunun yaptığı gibi harita boyunca izlenerek bulunur. Çözülemeyen bir öldürme, örneğin kurbanın kaydın göremediği bir yerde olduğu durum, bilinmiyor sayılır ve dışarıda bırakılır.
+badge-wall = WALL
+wall-yes-exit = Wallgauss yeniden kurularak belirlendi: ışının { $thickness } birim kalınlığındaki bir duvardan çıktığı yerdeki patlama.
+wall-yes-beyond = Wallgauss yeniden kurularak belirlendi: { $thickness } birim kalınlığındaki bir duvardan geçtikten sonraki ışın.
+wall-limits = Atıştan ve anlık görüntüden yeniden kuruldu, sunucu tarafından kaydedilmedi. Oyuncular kutu olarak izlenir ve kurban, anlık görüntünün gösterdiği yerden birkaç düzine birim uzakta olabilir.
+wall-no-direct = Wallgauss değil: ışın kurbana herhangi bir duvardan önce isabet edebilirdi.
+wall-no-reflection = Wallgauss değil: bir sekmenin patlaması kurbana herhangi bir duvardan önce isabet edebilirdi.
+wall-doubt-no-shot = Wallgauss bilinmiyor: öldürenin atışı kayıtta yok.
+wall-doubt-no-map = Wallgauss bilinmiyor: haritanın dosyaları okunamadı.
+wall-doubt-unseen = Wallgauss bilinmiyor: kurban kaydın göremediği bir yerdeydi.
+wall-doubt-brush = Wallgauss bilinmiyor: ışın bir kapıya, platforma ya da başka bir brush entity'ye çarptı; bunlar izlenmez.
+wall-doubt-ambiguous = Wallgauss bilinmiyor: atış hem duvarın içinden hem de duvarsız öldürmüş olabilir.
+wall-doubt-unexplained = Wallgauss bilinmiyor: atışın kurbana nasıl ulaştığı bulunamadı.
+wall-doubt-unconfirmed = Wallgauss bilinmiyor: atış kurbana yalnızca duvardan geçerek ulaşmış olabilir, ama bu kesin değil.
+wall-doubt-not-reached = Wallgauss bilinmiyor: kayıt atıştan önce bitiyor.
+wall-pending = Wallgauss henüz kontrol edilmedi.
 events-unknown = { $count ->
     [one] Bir öldürmede karar vermek için veri yok
    *[other] { $count } öldürmede karar vermek için veri yok

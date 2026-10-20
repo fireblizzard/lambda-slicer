@@ -294,8 +294,26 @@ speed-unit = ups
 speed-killer = Zabójca
 speed-victim = Ofiara
 help-speed = Prędkość pozioma w jednostkach na sekundę, równolegle do ziemi. Zabójcę mierzy się przy strzale powiązanym z zabójstwem, a bez takiego strzału przy zabójstwie, ofiarę zaś w chwili śmierci. Prędkości innych graczy są szacunkowe.
-wallgauss-pending = Ta wersja nie potrafi jeszcze rozpoznać, które zabójstwa z gaussa przeszły przez ścianę, więc żadne zabójstwo nie pasuje. Wyczyść zawężenie, aby znów zobaczyć wszystkie zabójstwa.
 wallgauss-weapon = Wallgauss obejmuje tylko zabójstwa z gaussa, a filtr broni pokazuje { $weapon }.
+wallgauss-checking = Sprawdzanie Wallgauss… { $examined } z { $total } zabójstw
+wallgauss-needs-files = Wallgauss potrzebuje plików gry, aby prześledzić strzały na mapie.
+wallgauss-failed = Nie udało się sprawdzić Wallgauss. { $reason }
+help-wallgauss = Zabójstwa z gaussa przez ścianę, ustalone przez prześledzenie każdego strzału na mapie tak, jak robi to serwer. Zabójstwo, którego nie da się rozstrzygnąć, na przykład gdy ofiara była poza polem widzenia nagrania, liczy się jako nieznane i jest pomijane.
+badge-wall = WALL
+wall-yes-exit = Wallgauss rozpoznany przez rekonstrukcję: wybuch w miejscu, gdzie wiązka wyszła ze ściany o grubości { $thickness } jednostek.
+wall-yes-beyond = Wallgauss rozpoznany przez rekonstrukcję: wiązka po przejściu przez ścianę o grubości { $thickness } jednostek.
+wall-limits = Odtworzone ze strzału i migawki, nie zapisane przez serwer. Gracze są śledzeni jako prostopadłościany, a ofiara mogła być kilkadziesiąt jednostek od miejsca pokazanego na migawce.
+wall-no-direct = To nie Wallgauss: wiązka mogła trafić ofiarę przed jakąkolwiek ścianą.
+wall-no-reflection = To nie Wallgauss: wybuch odbicia mógł trafić ofiarę przed jakąkolwiek ścianą.
+wall-doubt-no-shot = Wallgauss nieznany: strzału zabójcy nie ma w nagraniu.
+wall-doubt-no-map = Wallgauss nieznany: nie udało się odczytać plików mapy.
+wall-doubt-unseen = Wallgauss nieznany: ofiara była poza polem widzenia nagrania.
+wall-doubt-brush = Wallgauss nieznany: wiązka trafiła na drzwi, platformę lub inną encję typu brush, a takich się nie śledzi.
+wall-doubt-ambiguous = Wallgauss nieznany: strzał mógł zabić zarówno przez ścianę, jak i bez niej.
+wall-doubt-unexplained = Wallgauss nieznany: nie znaleziono drogi, którą strzał dotarł do ofiary.
+wall-doubt-unconfirmed = Wallgauss nieznany: strzał mógł dosięgnąć ofiary tylko przez ścianę, ale nie na pewno.
+wall-doubt-not-reached = Wallgauss nieznany: nagranie kończy się przed strzałem.
+wall-pending = Wallgauss jeszcze niesprawdzony.
 events-unknown = { $count ->
     [one] Dla jednego zabójstwa brakuje danych, by to ustalić
     [few] Dla { $count } zabójstw brakuje danych, by to ustalić

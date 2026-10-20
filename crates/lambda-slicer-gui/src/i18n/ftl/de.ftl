@@ -276,8 +276,26 @@ speed-unit = ups
 speed-killer = Schütze
 speed-victim = Opfer
 help-speed = Horizontale Geschwindigkeit in Units pro Sekunde, parallel zum Boden. Der Schütze wird beim mit dem Abschuss verknüpften Schuss gemessen, ohne einen solchen beim Abschuss, und das Opfer beim Tod. Die Geschwindigkeiten anderer Spieler sind Schätzungen.
-wallgauss-pending = Diese Version erkennt noch nicht, welche Gauss-Abschüsse durch eine Wand gingen, daher passt kein Abschuss. Setze die Eingrenzung zurück, um wieder alle Abschüsse zu sehen.
 wallgauss-weapon = Wallgauss betrifft nur Gauss-Abschüsse, und der Waffenfilter zeigt { $weapon }.
+wallgauss-checking = Wallgauss wird geprüft… { $examined } von { $total } Abschüssen
+wallgauss-needs-files = Wallgauss braucht die Spieldateien, um Schüsse durch die Karte zu verfolgen.
+wallgauss-failed = Wallgauss konnte nicht geprüft werden. { $reason }
+help-wallgauss = Gauss-Abschüsse durch eine Wand, ermittelt, indem jeder Schuss wie auf dem Server durch die Karte verfolgt wird. Ein Abschuss, der sich nicht klären lässt, etwa weil das Opfer außerhalb des Blickfelds der Aufnahme war, gilt als unbekannt und wird ausgelassen.
+badge-wall = WALL
+wall-yes-exit = Wallgauss per Rekonstruktion erkannt: die Explosion, wo der Strahl eine { $thickness } Units dicke Wand verließ.
+wall-yes-beyond = Wallgauss per Rekonstruktion erkannt: der Strahl, nachdem er eine { $thickness } Units dicke Wand durchdrungen hatte.
+wall-limits = Aus dem Schuss und dem Snapshot rekonstruiert, nicht vom Server aufgezeichnet. Spieler werden als Boxen verfolgt, und das Opfer war womöglich einige Dutzend Units von der Stelle entfernt, die der Snapshot zeigt.
+wall-no-direct = Kein Wallgauss: Der Strahl hätte das Opfer vor jeder Wand treffen können.
+wall-no-reflection = Kein Wallgauss: Die Explosion einer Reflexion hätte das Opfer vor jeder Wand treffen können.
+wall-doubt-no-shot = Wallgauss unbekannt: Der Schuss des Schützen ist nicht in der Aufnahme.
+wall-doubt-no-map = Wallgauss unbekannt: Die Dateien der Karte konnten nicht gelesen werden.
+wall-doubt-unseen = Wallgauss unbekannt: Das Opfer war außerhalb des Blickfelds der Aufnahme.
+wall-doubt-brush = Wallgauss unbekannt: Der Strahl traf eine Tür, eine Plattform oder eine andere Brush-Entity, die nicht verfolgt wird.
+wall-doubt-ambiguous = Wallgauss unbekannt: Der Schuss hätte sowohl durch eine Wand als auch ohne töten können.
+wall-doubt-unexplained = Wallgauss unbekannt: Es wurde kein Weg gefunden, wie der Schuss das Opfer erreichte.
+wall-doubt-unconfirmed = Wallgauss unbekannt: Der Schuss kann das Opfer nur durch eine Wand erreicht haben, doch das ist nicht sicher.
+wall-doubt-not-reached = Wallgauss unbekannt: Die Aufnahme endet vor dem Schuss.
+wall-pending = Wallgauss noch nicht geprüft.
 events-unknown = { $count ->
     [one] Einem Abschuss fehlen die Daten zur Beurteilung
    *[other] { $count } Abschüssen fehlen die Daten zur Beurteilung

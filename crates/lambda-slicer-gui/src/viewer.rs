@@ -562,6 +562,11 @@ impl Viewer {
         self.assets
     }
 
+    /// Each map's world from the game's files, none without them
+    pub fn map_hulls(&self) -> Option<lambda_slicer_playback::MapHulls> {
+        self.library.as_ref().map(|l| l.game_files().hulls)
+    }
+
     /// What playback is doing, for a viewer opened again to go on from
     pub fn playback(&self) -> Playback {
         let clock = self.controller.clock();

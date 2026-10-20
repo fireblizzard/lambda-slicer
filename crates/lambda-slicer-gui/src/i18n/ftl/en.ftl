@@ -277,8 +277,26 @@ speed-unit = ups
 speed-killer = Killer
 speed-victim = Victim
 help-speed = Horizontal speed in units per second, across the ground. The killer is measured at the shot linked to the kill, or at the kill without one, and the victim at the death. Other players' speeds are estimates.
-wallgauss-pending = This version can't tell yet which Gauss kills went through a wall, so no kills match. Clear the refinement to see every kill again.
 wallgauss-weapon = Wallgauss only covers Gauss kills, and the weapon filter shows { $weapon }.
+wallgauss-checking = Checking wallgauss… { $examined } of { $total } kills
+wallgauss-needs-files = Wallgauss needs the game's files to trace the map.
+wallgauss-failed = Wallgauss could not be checked. { $reason }
+help-wallgauss = Gauss kills through a wall, worked out by tracing each shot through the map as the server does. A kill it cannot settle, such as one whose victim was out of the recording's view, counts as unknown and is left out.
+badge-wall = WALL
+wall-yes-exit = Wallgauss identified by reconstruction: the blast where the beam left a wall { $thickness } units thick.
+wall-yes-beyond = Wallgauss identified by reconstruction: the beam after going through a wall { $thickness } units thick.
+wall-limits = Reconstructed from the shot and the snapshot, not recorded by the server. Players are traced as boxes, and the victim may have been a few dozen units from where the snapshot shows them.
+wall-no-direct = Not a wallgauss: the beam could have hit the victim before any wall.
+wall-no-reflection = Not a wallgauss: the blast of a reflection could have hit the victim before any wall.
+wall-doubt-no-shot = Wallgauss unknown: the killer's shot is not in the recording.
+wall-doubt-no-map = Wallgauss unknown: the map's files could not be read.
+wall-doubt-unseen = Wallgauss unknown: the victim was out of the recording's view.
+wall-doubt-brush = Wallgauss unknown: the beam met a door, a platform or another brush entity, which is not traced.
+wall-doubt-ambiguous = Wallgauss unknown: the shot could have killed both through a wall and without one.
+wall-doubt-unexplained = Wallgauss unknown: no way the shot reached the victim was found.
+wall-doubt-unconfirmed = Wallgauss unknown: only through a wall could the shot have reached the victim, but not surely.
+wall-doubt-not-reached = Wallgauss unknown: the recording stops before the shot.
+wall-pending = Wallgauss not checked yet.
 events-unknown = { $count ->
     [one] One kill lacks the data to tell
    *[other] { $count } kills lack the data to tell

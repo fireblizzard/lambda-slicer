@@ -285,8 +285,26 @@ speed-unit = ups
 speed-killer = Tueur
 speed-victim = Victime
 help-speed = Vitesse horizontale en unités par seconde, parallèlement au sol. Le tueur est mesuré au tir lié à l’élimination, ou à l’élimination s’il n’y en a pas, et la victime à sa mort. Les vitesses des autres joueurs sont des estimations.
-wallgauss-pending = Cette version ne sait pas encore quelles éliminations au gauss ont traversé un mur, donc aucune élimination ne correspond. Efface l’affinage pour revoir toutes les éliminations.
 wallgauss-weapon = Wallgauss ne concerne que les éliminations au gauss, et le filtre d’arme affiche { $weapon }.
+wallgauss-checking = Vérification Wallgauss… { $examined } sur { $total } éliminations
+wallgauss-needs-files = Wallgauss a besoin des fichiers du jeu pour tracer les tirs à travers la carte.
+wallgauss-failed = Impossible de vérifier Wallgauss. { $reason }
+help-wallgauss = Éliminations au gauss à travers un mur, déterminées en traçant chaque tir à travers la carte comme le fait le serveur. Une élimination impossible à trancher, par exemple quand la victime était hors de la vue de l’enregistrement, compte comme inconnue et est exclue.
+badge-wall = WALL
+wall-yes-exit = Wallgauss identifié par reconstruction : l’explosion là où le rayon est sorti d’un mur de { $thickness } unités d’épaisseur.
+wall-yes-beyond = Wallgauss identifié par reconstruction : le rayon après avoir traversé un mur de { $thickness } unités d’épaisseur.
+wall-limits = Reconstitué à partir du tir et de l’instantané, pas enregistré par le serveur. Les joueurs sont tracés comme des boîtes, et la victime pouvait se trouver à quelques dizaines d’unités de l’endroit où l’instantané la montre.
+wall-no-direct = Pas un Wallgauss : le rayon pouvait toucher la victime avant tout mur.
+wall-no-reflection = Pas un Wallgauss : l’explosion d’un rebond pouvait toucher la victime avant tout mur.
+wall-doubt-no-shot = Wallgauss inconnu : le tir du tueur n’est pas dans l’enregistrement.
+wall-doubt-no-map = Wallgauss inconnu : les fichiers de la carte n’ont pas pu être lus.
+wall-doubt-unseen = Wallgauss inconnu : la victime était hors de la vue de l’enregistrement.
+wall-doubt-brush = Wallgauss inconnu : le rayon a rencontré une porte, une plateforme ou une autre entité brush, qui n’est pas tracée.
+wall-doubt-ambiguous = Wallgauss inconnu : le tir a pu tuer aussi bien à travers un mur que sans.
+wall-doubt-unexplained = Wallgauss inconnu : aucun chemin du tir jusqu’à la victime n’a été trouvé.
+wall-doubt-unconfirmed = Wallgauss inconnu : le tir n’a pu atteindre la victime qu’à travers un mur, mais ce n’est pas sûr.
+wall-doubt-not-reached = Wallgauss inconnu : l’enregistrement s’arrête avant le tir.
+wall-pending = Wallgauss pas encore vérifié.
 events-unknown = { $count ->
     [one] Une élimination manque de données pour trancher
     [many] { $count } d’éliminations manquent de données pour trancher

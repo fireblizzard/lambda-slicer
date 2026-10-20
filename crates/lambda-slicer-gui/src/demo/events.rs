@@ -11,10 +11,12 @@ use fluent_bundle::FluentValue;
 use lambda_slicer_core::analysis::context::KillCause;
 use lambda_slicer_core::analysis::motion::MotionEvidence;
 use lambda_slicer_core::analysis::weapons::Weapon;
+use lambda_slicer_playback::kill_features::{Doubt, OtherRoute, WallGauss, WallRoute};
 
 use super::compact::{clock, side_colour};
-use super::{DemoAction, DemoView, WINDOW_TINT, track};
+use super::{DemoAction, DemoView, Request, WINDOW_TINT, track};
 use crate::i18n::Catalog;
+use crate::kill_analysis::WallStatus;
 use crate::kill_filters::{self, AirBadge, MidairMode, SpeedBadge, SpeedSubject};
 use crate::layout;
 use crate::library::WEAPONS;
@@ -385,15 +387,63 @@ impl DemoView {
             }
 
             if filters.wallgauss {
-                let width = Some(ui.available_width());
-                let mut lines = vec![catalog.text("wallgauss-pending")];
+                let warning = Look::Color(theme::WARNING);
+
+                // How far telling kills through a wall has got, and the way
+                // to give it the game's files when it needs them
+                let status = self.walls.status();
+                let line = match status {
+                    WallStatus::Checking => {
+                        let progress = self.walls.progress();
+                        let args = [
+                            ("examined", FluentValue::from(progress.examined as i64)),
+                            ("total", FluentValue::from(progress.total as i64)),
+                        ];
+                        let line = catalog.text_with("wallgauss-checking", &args);
+                        Some((line, Look::Color(theme::MUTED)))
+                    }
+                    WallStatus::NeedsFiles => {
+                        Some((catalog.text("wallgauss-needs-files"), warning))
+                    }
+                    WallStatus::Failed(reason) => {
+                        let reason = FluentValue::from(catalog.message(reason));
+                        let line = catalog.text_with("wallgauss-failed", &[("reason", reason)]);
+                        Some((line, warning))
+                    }
+                    WallStatus::Done => None,
+                };
+                layout::wrapping_row(ui, rtl, |ui| {
+                    if *status == WallStatus::Checking {
+                        ui.spinner();
+                    }
+                    if let Some((line, look)) = line {
+                        let line = text::widget_text(ui.ctx(), &line, rtl, None, look);
+                        ui.add(egui::Label::new(line).wrap());
+                    }
+                    widgets::help(ui, &catalog.text("help-wallgauss"), rtl);
+                });
+
+                let locate = *status == WallStatus::NeedsFiles && self.viewer.is_some();
+                if locate {
+                    let id = if cfg!(windows) {
+                        "setup-locate-exe"
+                    } else {
+                        "setup-locate-folder"
+                    };
+                    let label =
+                        text::widget_text(ui.ctx(), &catalog.text(id), rtl, None, Look::Plain);
+                    let button =
+                        widgets::Button::new(Some(Icon::Folder), label, Variant::Default, rtl);
+                    if ui.add(button).clicked() {
+                        self.requests.push(Request::Locate);
+                    }
+                }
+
                 if let Some(w) = weapon.filter(|w| *w != Weapon::Gauss) {
                     let weapon = FluentValue::from(w.name());
-                    lines.push(catalog.text_with("wallgauss-weapon", &[("weapon", weapon)]));
-                }
-                for line in lines {
-                    let look = Look::Color(theme::WARNING);
-                    let line = text::widget_text(ui.ctx(), &line, rtl, width, look);
+                    let line = catalog.text_with("wallgauss-weapon", &[("weapon", weapon)]);
+                    let width = Some(ui.available_width());
+                    let line = text::widget_text(ui.ctx(), &line, rtl, width, warning);
                     ui.add(egui::Label::new(line).wrap());
                 }
             }
@@ -710,6 +760,16 @@ impl DemoView {
             });
         }
 
+        // Only a kill reconstructed as through a wall shows it
+        let wall = self.walls.get(&features.key);
+        if let Some(WallGauss::Yes(_)) = wall {
+            badges.push(Badge {
+                text: catalog.text("badge-wall"),
+                tone: Tone::Accent,
+                tip: Some(wall_tip(catalog, wall)),
+            });
+        }
+
         if let Some(air) = kill_filters::air_badge(features) {
             let id = match air {
                 AirBadge::Both => "badge-air-both",
@@ -775,7 +835,11 @@ impl DemoView {
             && let Some(event) = shown
             && let EventKind::Kill { features, .. } = &model.events[event].kind
         {
-            for line in motion_lines(catalog, features) {
+            let mut lines = motion_lines(catalog, features);
+            if features.gauss {
+                lines.push(wall_tip(catalog, self.walls.get(&features.key)));
+            }
+            for line in lines {
                 let look = Look::Color(theme::MUTED);
                 let line = text::widget_text(ui.ctx(), &line, rtl, width, look);
                 ui.add(egui::Label::new(line).wrap());
@@ -1002,6 +1066,39 @@ fn air_tip(catalog: &Catalog, features: &KillFeatures, badge: AirBadge) -> Strin
 
     lines.extend(motion_lines(catalog, features));
     lines.join("\n")
+}
+
+/// What is told of a Gauss kill going through a wall, with what a
+/// reconstruction cannot know when it was through one
+fn wall_tip(catalog: &Catalog, wall: Option<&WallGauss>) -> String {
+    let doubt = |doubt: &Doubt| match doubt {
+        Doubt::NoShot => "wall-doubt-no-shot",
+        Doubt::NoMap => "wall-doubt-no-map",
+        Doubt::VictimUnseen => "wall-doubt-unseen",
+        Doubt::BrushEntity => "wall-doubt-brush",
+        Doubt::Ambiguous => "wall-doubt-ambiguous",
+        Doubt::Unexplained => "wall-doubt-unexplained",
+        Doubt::Unconfirmed => "wall-doubt-unconfirmed",
+        Doubt::NotReached => "wall-doubt-not-reached",
+    };
+
+    let Some(WallGauss::Yes(details)) = wall else {
+        let id = match wall {
+            Some(WallGauss::No(OtherRoute::Direct)) => "wall-no-direct",
+            Some(WallGauss::No(OtherRoute::Reflection)) => "wall-no-reflection",
+            Some(WallGauss::Unknown(why)) => doubt(why),
+            _ => "wall-pending",
+        };
+        return catalog.text(id);
+    };
+
+    let id = match details.route {
+        WallRoute::ExitBlast => "wall-yes-exit",
+        WallRoute::Beyond => "wall-yes-beyond",
+    };
+    let thickness = FluentValue::from(f64::from(details.thickness.round()));
+    let line = catalog.text_with(id, &[("thickness", thickness)]);
+    format!("{line}\n{}", catalog.text("wall-limits"))
 }
 
 /// Badges folded away for room, as a count whose hover lists them

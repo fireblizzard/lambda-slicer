@@ -519,7 +519,7 @@ pub(crate) fn angle_vectors(angles: [f32; 3]) -> [[f32; 3]; 3] {
 
 /// Where the shooter's eye is, over the event's origin by the standing or
 /// ducking view height (`EV_GetGunPosition`)
-fn eye(event: &ClientEvent) -> [f32; 3] {
+pub(crate) fn eye(event: &ClientEvent) -> [f32; 3] {
     let args = &event.args;
     let player = (1..=u16::from(event.max_clients)).contains(&event.entity);
     // VEC_DUCK_VIEW or DEFAULT_VIEWHEIGHT

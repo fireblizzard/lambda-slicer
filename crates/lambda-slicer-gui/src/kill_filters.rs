@@ -4,7 +4,10 @@
 //! A movement the analysis could not see is unknown, never grounded or
 //! standing still, so a refinement asks whether a kill is known to match,
 //! known not to, or cannot be told. Only kills known to match are shown.
-//! Speeds are horizontal, as the library's kill queries measure them
+//! Speeds are horizontal, as the library's kill queries measure them. A
+//! kill is through a wall only once reconstructed as one
+
+use lambda_slicer_playback::kill_features::WallGauss;
 
 use crate::timeline::{KillFeatures, KillMotion};
 
@@ -100,9 +103,10 @@ impl KillFilters {
         };
     }
 
-    /// Whether `kill` meets every refinement that is on. A kill meets no
+    /// Whether `kill` meets every refinement that is on, `wall` being what
+    /// is told of it going through a wall so far. A kill meets no
     /// refinements at all when none is on
-    pub fn judge(&self, kill: &KillFeatures) -> Verdict {
+    pub fn judge(&self, kill: &KillFeatures, wall: Option<&WallGauss>) -> Verdict {
         let killer = kill.killer_motion.as_ref();
         let victim = kill.victim_motion.as_ref();
         let mut verdict = Verdict::Match;
@@ -124,13 +128,14 @@ impl KillFilters {
             verdict = verdict.and(fast);
         }
 
-        // No kill is yet identified as through a wall, so a Gauss kill
-        // cannot be told and any other kill is not one
+        // A Gauss kill not told yet, or not surely, cannot be told, and any
+        // other kill is not one
         if self.wallgauss {
-            let wall = if kill.gauss {
-                Verdict::Unknown
-            } else {
-                Verdict::NoMatch
+            let wall = match (kill.gauss, wall) {
+                (false, _) => Verdict::NoMatch,
+                (true, Some(WallGauss::Yes(_))) => Verdict::Match,
+                (true, Some(WallGauss::No(_))) => Verdict::NoMatch,
+                (true, _) => Verdict::Unknown,
             };
             verdict = verdict.and(wall);
         }
@@ -247,6 +252,7 @@ pub fn speed_badge(kill: &KillFeatures, filters: &KillFilters) -> Option<SpeedBa
 #[cfg(test)]
 mod tests {
     use lambda_slicer_core::analysis::motion::MotionEvidence;
+    use lambda_slicer_playback::kill_features::{Doubt, OtherRoute, WallDetails, WallRoute};
 
     use super::*;
     use crate::timeline::{KillKey, SampledAt};
@@ -275,6 +281,7 @@ mod tests {
             killer_team: None,
             victim_team: None,
             gauss,
+            gauss_kill: None,
         }
     }
 
@@ -403,7 +410,7 @@ mod tests {
             speed_subject: SpeedSubject::Killer,
             ..Default::default()
         };
-        assert_eq!(filters.judge(&air_fast), Verdict::Match);
+        assert_eq!(filters.judge(&air_fast, None), Verdict::Match);
 
         // A known miss of one decides it whatever the other
         filters.speed_subject = SpeedSubject::Victim;
@@ -412,24 +419,43 @@ mod tests {
             motion(Some(false), Some(10.)),
             false,
         );
-        assert_eq!(filters.judge(&ground_fast), Verdict::NoMatch);
+        assert_eq!(filters.judge(&ground_fast, None), Verdict::NoMatch);
 
         // A match and an unknown leave it unknown
-        assert_eq!(filters.judge(&air_fast), Verdict::Unknown);
+        assert_eq!(filters.judge(&air_fast, None), Verdict::Unknown);
 
         // No refinement on matches every kill
-        assert_eq!(KillFilters::default().judge(&ground_fast), Verdict::Match);
+        assert_eq!(
+            KillFilters::default().judge(&ground_fast, None),
+            Verdict::Match
+        );
     }
 
     #[test]
-    fn wallgauss_cannot_be_told_yet_and_other_weapons_never_are() {
+    fn only_a_gauss_kill_reconstructed_through_a_wall_is_one() {
         let filters = KillFilters {
             wallgauss: true,
             ..Default::default()
         };
         let still = motion(Some(false), Some(0.));
-        assert_eq!(filters.judge(&kill(still, still, true)), Verdict::Unknown);
-        assert_eq!(filters.judge(&kill(still, still, false)), Verdict::NoMatch);
+        let gauss = kill(still, still, true);
+        let yes = WallGauss::Yes(WallDetails {
+            route: WallRoute::ExitBlast,
+            thickness: 16.,
+            shot_time: 1.,
+        });
+        assert_eq!(filters.judge(&gauss, Some(&yes)), Verdict::Match);
+        let no = WallGauss::No(OtherRoute::Direct);
+        assert_eq!(filters.judge(&gauss, Some(&no)), Verdict::NoMatch);
+
+        // Not told yet, or not surely, is unknown rather than no
+        assert_eq!(filters.judge(&gauss, None), Verdict::Unknown);
+        let unsure = WallGauss::Unknown(Doubt::Ambiguous);
+        assert_eq!(filters.judge(&gauss, Some(&unsure)), Verdict::Unknown);
+
+        // Another weapon's kill never is, whatever it was told
+        let other = kill(still, still, false);
+        assert_eq!(filters.judge(&other, Some(&yes)), Verdict::NoMatch);
     }
 
     #[test]
