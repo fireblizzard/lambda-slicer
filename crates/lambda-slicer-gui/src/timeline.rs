@@ -173,6 +173,9 @@ pub struct KillFeatures {
     /// Teams from `TeamInfo` when the death message arrived
     pub killer_team: Option<String>,
     pub victim_team: Option<String>,
+    /// A player killed with the Gauss, the only kill that can be through a
+    /// wall
+    pub gauss: bool,
 }
 
 impl KillFeatures {
@@ -199,6 +202,7 @@ impl KillFeatures {
             victim: kill.victim.as_ref().map(key_of),
             killer_team: kill.killer_team.clone(),
             victim_team: kill.victim_team.clone(),
+            gauss: kill.weapon == Some(Weapon::Gauss),
         }
     }
 }
@@ -246,6 +250,16 @@ pub struct Model {
     pub recorder: Option<(u8, u32)>,
     /// Frame groups, for the range a clip's export would cut
     pub groups: GroupIndex,
+    /// Sessions whose scoreboard names teams, where a player's team is a
+    /// side rather than a model name
+    pub team_segments: Vec<u32>,
+}
+
+impl Model {
+    /// Whether `segment` was played in teams
+    pub fn team_play(&self, segment: u32) -> bool {
+        self.team_segments.contains(&segment)
+    }
 }
 
 fn key_of(p: &PlayerIdentity) -> LaneKey {
@@ -479,6 +493,15 @@ impl Model {
         } else {
             duration.max(last)
         };
+
+        // A scoreboard names teams only in team play
+        let mut team_segments = Vec::new();
+        for update in &r.score_updates {
+            if !update.team.is_empty() && !team_segments.contains(&update.segment) {
+                team_segments.push(update.segment);
+            }
+        }
+
         Model {
             lanes: b.lanes,
             events,
@@ -502,6 +525,7 @@ impl Model {
             shots: r.shot_outcomes.clone(),
             recorder: r.recorder.as_ref().map(|p| (p.slot, p.incarnation)),
             groups: r.groups.clone(),
+            team_segments,
         }
     }
 }

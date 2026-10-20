@@ -191,17 +191,12 @@ protocol-unsupported-network = Сервер перейшов на мережев
 
 demo-close = Закрити
 demo-loading = Розбір { $name }…
-timeline-fit = Умістити
 show-shots = Постріли
 show-actions = Інші дії
 show-kills = Вбивства
 show-switches = Зміна зброї
 lane-unknown = Невідомий гравець
 lane-recorder = { $name } (записував)
-column-time = Час
-column-player = Гравець
-column-weapon = Зброя
-column-event = Подія
 event-kill = Убив { $victim }
 event-switch = Зміна зброї
 action-swing = Удар
@@ -237,7 +232,6 @@ filter-to = По
 date-from-name = Дата з назви файлу
 date-from-modified = Дата останньої зміни файлу, вона може змінитися під час копіювання чи завантаження
 timeline-best-action = Золота хвилина
-timeline-windows = Найгарячіші моменти
 timeline-window = №{ $rank } { NUMBER($score, minimumFractionDigits: 2) } · { $start }–{ $end } · { $sides }
 
 scores-final = Підсумковий рахунок на останньому вбивстві { $time }
@@ -246,7 +240,6 @@ scores-show-final = Показати підсумковий рахунок
 scores-frags = Фраги
 scores-deaths = Смерті
 
-show-timeline = Показати шкалу часу
 viewer-play = Відтворити
 viewer-pause = Пауза
 viewer-volume = Гучність
@@ -263,12 +256,86 @@ viewer-missing = Файли, які не вдалося прочитати: { $c
 event-previous = Попередня подія
 event-next = Наступна подія
 event-play = Відтворити подію
+timeline-title = Шкала часу
+timeline-lanes = Рядки гравців
+timeline-zoom-in = Наблизити
+timeline-zoom-out = Віддалити
+timeline-fit-all = Умістити весь демозапис
+timeline-gestures = Клацніть мітку, щоб вибрати її подію, або будь-де інде, щоб перейти туди. Перетягуйте лінійку або курсор відтворення для перемотування, а деінде — для зсуву. Коліщатко масштабує навколо вказівника, а подвійне клацання показує весь демозапис. Перетягніть край кліпу, щоб зсунути його, або клацніть кліп, щоб змінити його.
+timeline-density = Затінені стовпчики показують, скільки показаних подій припадає на кожен відрізок, порівняно з найнасиченішим відрізком демозапису.
+timeline-density-count = { $count ->
+    [one] Тут { $count } показана подія
+    [few] Тут { $count } показані події
+    [many] Тут { $count } показаних подій
+   *[other] Тут { $count } показаної події
+}
+timeline-session-count = Сесія { $session }: { $count }
+timeline-choose = Події в цій точці
+legend-clip = Кліп
+event-session = Сесія { $session }
+event-unreachable = Ця подія в пізнішій сесії, яка знову використовує ті самі позначки часу, тому перегляд не може до неї перейти.
+event-hidden = Вибрану подію приховано фільтрами.
+highlight-jump = Перейти до хайлайту…
+highlight-help = Хайлайти ранжують увесь демозапис за напругою дії, хай що показують фільтри.
+kills-with = Вбивства з
+refine-midair = Midair
+refine-speed = Швидкість
+refine-wallgauss = Wallgauss
+refine-clear = Скинути
+refine-airborne = У повітрі
+refine-either = Будь-хто
+midair-both = Обидва
+midair-one = Лише один
+help-midair-either = Вбивця, жертва або обидва були в повітрі. Вбивцю перевіряють у момент пострілу, пов’язаного з вбивством, а без нього — у момент вбивства, жертву — у момент смерті.
+help-midair-both = Вбивця і жертва обидва були в повітрі, кожен у момент перевірки.
+help-midair-one = У повітрі був рівно один із них, а інший напевно був на землі.
+speed-at-least = Не менше
+speed-unit = ups
+speed-killer = Вбивця
+speed-victim = Жертва
+help-speed = Горизонтальна швидкість у юнітах за секунду, паралельно землі. Швидкість вбивці вимірюється в момент пострілу, пов’язаного з вбивством, а без нього — у момент вбивства, жертви — у момент смерті. Швидкості інших гравців — оцінки.
+wallgauss-pending = Ця версія поки не вміє визначати, які вбивства з гаусса пройшли крізь стіну, тому жодне вбивство не підходить. Скиньте уточнення, щоб знову побачити всі вбивства.
+wallgauss-weapon = Wallgauss стосується лише вбивств із гаусса, а фільтр зброї показує { $weapon }.
+events-unknown = { $count ->
+    [one] Для { $count } вбивства бракує даних, щоб це визначити
+    [few] Для { $count } вбивств бракує даних, щоб це визначити
+    [many] Для { $count } вбивств бракує даних, щоб це визначити
+   *[other] Для { $count } вбивства бракує даних, щоб це визначити
+}
+help-unknown = Рух, якого запис не зміг побачити, вважається невідомим, але ніколи — перебуванням на землі чи нерухомістю, тому ці вбивства не враховуються.
+clip-it = У кліп
+badge-headshot = ХШ
+badge-air = AIR
+badge-air-both = AIR ×2
+speed-ups = { $speed } ups
+speed-ups-unknown = — ups
+badge-suicide = суїцид
+badge-teamkill = тімкіл
+badge-world = світ
+air-both = Обидва були в повітрі в момент перевірки.
+air-killer = Вбивця був у повітрі в момент перевірки.
+air-victim = Жертва була в повітрі в момент перевірки.
+air-other-unknown = Чи був у повітрі інший, невідомо.
+speed-horizontal = Горизонтальна швидкість, паралельно землі.
+motion-line = { $who }: { $air }, { $speed }. { $how }, { $when }.
+motion-who-killer = Вбивця
+motion-who-victim = Жертва
+motion-air-yes = у повітрі
+motion-air-no = на землі
+motion-air-unknown = невідомо, чи в повітрі
+motion-speed-unknown = швидкість невідома
+motion-exact = Записано грою
+motion-trajectory = Оцінено за рухом
+motion-unclear = Рух неясний
+motion-not-visible = Поза полем зору
+motion-at-shot = у момент пов’язаного пострілу
+motion-at-kill = у момент смерті
+motion-none = В аналізі немає руху для цього вбивства.
 legend-shot = Постріл
 legend-charge = Заряджання
 legend-kill = Вбивство
 legend-death = Смерть
 legend-switch = Зміна зброї
-timeline-help = Кожен рядок — гравець. Коліщатко масштабує, перетягування зсуває, подвійне клацання показує все, клацання по мітці вибирає її.
 
 column-headshots = Хедшоти
 filter-headshots = Вбивства в голову
@@ -302,7 +369,6 @@ clip-loop = Повтор
 clip-time-help = Секунди (96), хвилини й секунди (1:36) або години, хвилини й секунди (00:01:36.250)
 clip-exact = Експорт почнеться й закінчиться точно тут.
 clip-effective = Експорт виріже { $start } – { $end } ({ $duration }), за кадрами запису.
-timeline-clip-help = Кліпи — світло-блакитні смуги. Перетягніть край смуги, щоб зсунути його.
 settings-clip-padding = Запас навколо кліпу
 settings-preroll = Секунд до події
 settings-postroll = Секунд після події

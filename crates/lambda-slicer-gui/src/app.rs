@@ -57,6 +57,9 @@ pub struct Launch {
     /// A cached demo to show at start, and an action window to open it on
     pub demo: Option<PathBuf>,
     pub window: Option<usize>,
+    /// The shown event selected and the kill refinements on in that demo
+    pub event: Option<usize>,
+    pub refine: crate::kill_filters::KillFilters,
     /// Turn on both date filters, for checking how they wrap
     pub dates: bool,
     /// Export every clip of the demo shown at start
@@ -99,6 +102,8 @@ pub struct App {
     scan: Option<ScanJob>,
     demo: Option<DemoView>,
     open_window: Option<usize>,
+    open_event: Option<usize>,
+    open_refine: Option<crate::kill_filters::KillFilters>,
     export_on_open: bool,
     /// A scan to start once the stopping one has stopped
     rescan: bool,
@@ -239,6 +244,8 @@ impl App {
             scan: None,
             demo: None,
             open_window: launch.window,
+            open_event: launch.event,
+            open_refine: Some(launch.refine),
             export_on_open: launch.export,
             rescan: false,
             direct: launch.open.iter().find(|p| p.is_file()).cloned(),
@@ -1518,6 +1525,10 @@ impl eframe::App for App {
 
                 let mut d = DemoView::open(path.clone(), *duration, &ctx);
                 d.open_window = self.open_window.take();
+                d.open_event = self.open_event.take();
+                if let Some(filters) = self.open_refine.take() {
+                    d.refine(filters);
+                }
                 d.export_on_load = std::mem::take(&mut self.export_on_open);
                 d.show_timeline = self.settings.show_timeline;
                 d.clips = self.clips.get(path);

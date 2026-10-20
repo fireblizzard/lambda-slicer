@@ -2,7 +2,7 @@
 //!
 //! `lambda-slicer-gui [PATH...] [--locale TAG] [--settings] [--timeline]
 //! [--dates] [--pseudo] [--size WxH] [--cache FILE] [--clips FILE]
-//! [--demo FILE [--window N] [--export DIR]]
+//! [--demo FILE [--window N] [--event N] [--refine LIST] [--export DIR]]
 //! [--screenshot OUT.png [--frames N]]
 //! [--game DIR [--viewer-at SECONDS] [--viewer-bench SECONDS OUT.txt]
 //! [--viewer-capture TIMES FOLDER] [--viewer-size WxH] [--viewer-play SECONDS]
@@ -12,10 +12,13 @@
 //! Demos and folders given as `PATH` are opened for this session. `--locale`
 //! overrides the saved language, `--cache` the library cache and `--clips`
 //! the clips file for this run. `--demo` shows a cached demo at start, on
-//! its `N`th golden minute candidate with `--window`, and `--export`
-//! exports its clips into `DIR`. `--settings` opens the settings window,
-//! `--timeline` shows demo timelines, `--dates` turns on both date filters,
-//! `--pseudo` lengthens and accents every message to find text that does
+//! its `N`th golden minute candidate with `--window`, with its `N`th shown
+//! event selected with `--event`, and with the kill refinements in the
+//! comma-separated `LIST` on with `--refine`, from `midair`, `both`, `one`,
+//! `speed`, `killer`, `victim` and `wallgauss`. `--export` exports its clips
+//! into `DIR`. `--settings` opens the settings window, `--timeline` opens
+//! the player lanes under the timeline, `--dates` turns on both date
+//! filters, `--pseudo` lengthens and accents every message to find text that does
 //! not fit, and `--size` sets the window size. `--screenshot` saves the window to a
 //! PNG `N` frames after any demo has loaded and its exports finished, and
 //! exits, for checking how a language renders. `--game` names the game's
@@ -45,6 +48,7 @@ mod export;
 mod game_setup;
 mod i18n;
 mod jobs;
+mod kill_filters;
 mod layout;
 mod library;
 mod platform;
@@ -61,7 +65,28 @@ use eframe::egui;
 
 use app::{App, Launch, Screenshot};
 use i18n::Locale;
+use kill_filters::{KillFilters, MidairMode, SpeedSubject};
 use settings::Settings;
+
+/// Kill refinements named in a comma-separated list, for showing them from
+/// the command line
+fn refinements(list: &str) -> KillFilters {
+    let mut filters = KillFilters::default();
+    for name in list.split(',') {
+        match name.trim() {
+            "midair" => filters.midair = MidairMode::Either,
+            "both" => filters.midair = MidairMode::Both,
+            "one" => filters.midair = MidairMode::ExactlyOne,
+            "speed" => filters.speed = true,
+            "killer" => filters.speed_subject = SpeedSubject::Killer,
+            "victim" => filters.speed_subject = SpeedSubject::Victim,
+            "wallgauss" => filters.wallgauss = true,
+            other => eprintln!("ignoring refinement {other}"),
+        }
+    }
+
+    filters
+}
 
 fn main() -> eframe::Result {
     let mut args = std::env::args().skip(1);
@@ -75,6 +100,8 @@ fn main() -> eframe::Result {
     let mut open = Vec::new();
     let mut demo = None;
     let mut window = None;
+    let mut event = None;
+    let mut refine = KillFilters::default();
     let mut size = [1280., 800.];
     let mut dates = false;
     let mut export = None;
@@ -102,6 +129,17 @@ fn main() -> eframe::Result {
                     .next()
                     .and_then(|n| n.parse::<usize>().ok())
                     .map(|n| n.saturating_sub(1))
+            }
+            "--event" => {
+                event = args
+                    .next()
+                    .and_then(|n| n.parse::<usize>().ok())
+                    .map(|n| n.saturating_sub(1))
+            }
+            "--refine" => {
+                if let Some(list) = args.next() {
+                    refine = refinements(&list);
+                }
             }
             "--size" => {
                 if let Some((w, h)) = args.next().as_deref().and_then(|s| s.split_once('x'))
@@ -228,6 +266,8 @@ fn main() -> eframe::Result {
                     open,
                     demo,
                     window,
+                    event,
+                    refine,
                     dates,
                     export: export.is_some(),
                     pseudo,

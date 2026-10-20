@@ -366,6 +366,8 @@ fn english_has_every_message_the_gui_names() {
         include_str!("../library.rs"),
         include_str!("../jobs.rs"),
         include_str!("../demo.rs"),
+        include_str!("../demo/compact.rs"),
+        include_str!("../demo/events.rs"),
     ];
     let mut named: Vec<String> = built.iter().map(|s| s.to_string()).collect();
     for source in sources {

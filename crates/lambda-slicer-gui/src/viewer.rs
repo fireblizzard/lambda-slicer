@@ -644,6 +644,16 @@ impl Viewer {
         self.controller.time(self.wall()).0 as f32
     }
 
+    /// Whether playback is going on, forward or backward
+    pub fn is_playing(&self) -> bool {
+        self.controller.clock().playing()
+    }
+
+    /// Whether playback runs backward, playing or paused
+    pub fn is_backward(&self) -> bool {
+        self.controller.clock().backward()
+    }
+
     /// Run `command`. Anything asked of playback after a viewer opened again
     /// replaces the playing on still waiting for its first frame, so it
     /// never undoes a later pause, step or seek
@@ -1578,33 +1588,6 @@ impl Viewer {
     fn length(&self, now: f64) -> f64 {
         let indexed = self.frame.as_ref().map_or(0., |f| f.indexed.0.0);
         indexed.max(self.duration).max(now)
-    }
-
-    /// A bar across the space that drags the playhead and seeks where it is
-    /// clicked, until the timeline takes its place
-    pub fn seek_bar_ui(&mut self, ui: &mut Ui) {
-        if self.controller.failed().is_some() {
-            return;
-        }
-
-        let now = self.controller.time(self.wall()).0;
-        let end = self.length(now);
-        let mut at = now;
-        ui.spacing_mut().slider_width = ui.available_width().max(40.);
-        let slider = egui::Slider::new(&mut at, 0. ..=end.max(0.001)).show_value(false);
-        let response = ui.add(slider);
-
-        // Dragging scrubs, a click seeks
-        if response.changed() {
-            if response.dragged() {
-                self.scrub(at as f32);
-            } else {
-                self.command(Command::SeekTo(SourceTime(at)));
-            }
-        }
-        if response.drag_stopped() {
-            self.end_scrub();
-        }
     }
 
     /// The playhead to the millisecond and the demo's length to the second,

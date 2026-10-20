@@ -1,9 +1,13 @@
-//! One demo's view, a timeline of lanes per player, its clips and its event
-//! table (implementation plan §8)
+//! One demo's view, its timeline with lanes per player, its clips and its
+//! events (implementation plan §8, GUI redesign plan §9 and §10)
 //!
 //! Selecting a demo analyses it again on a thread of its own, since weapon
 //! occurrences are not kept in the cache. Only the compact timeline model
 //! crosses back to the window. Choosing another demo cancels the analysis
+
+mod compact;
+mod events;
+mod track;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -13,7 +17,6 @@ use std::sync::mpsc::{self, Receiver};
 use std::thread::JoinHandle;
 
 use eframe::egui::{self, Color32, Pos2, Rect, Sense, Stroke, Ui, Vec2};
-use egui_extras::{Column, TableBuilder};
 use fluent_bundle::FluentValue;
 use lambda_slicer_core::analysis::analyze_demo_with;
 use lambda_slicer_core::analysis::weapons::{Action, Weapon};
@@ -28,23 +31,15 @@ use crate::app::SettingsTab;
 use crate::clips::{Clip, next_name, parse_time};
 use crate::export::{ClipKey, ExportJob, ExportState};
 use crate::i18n::Catalog;
+use crate::kill_filters::{KillFilters, Verdict};
 use crate::layout;
-use crate::library::WEAPONS;
 use crate::text::{self, Look};
 use crate::theme;
-use crate::timeline::{EventKind, LaneKey, MarkKind, Model, SpanKind, bins, nearest, tick_step};
+use crate::timeline::{Event, EventKind, MarkKind, Model};
 use crate::widgets::{self, Icon, IconButton, Variant};
 use lambda_slicer_core::analysis::accuracy::accuracy;
 use lambda_slicer_core::analysis::context::{PlayerScore, StandingSide, standing_at};
-
-const LABEL_WIDTH: f32 = 170.;
-const LANE_HEIGHT: f32 = 22.;
-const AXIS_HEIGHT: f32 = 20.;
-/// Width of a bin at wide zoom, and how close a click must be to a mark
-const BIN_PIXELS: f32 = 3.;
-const HIT_PIXELS: f32 = 5.;
-/// Narrowest view in seconds
-const MIN_SPAN: f32 = 0.5;
+use track::{Density, MarkerBin, RowMark, Side, Transform};
 
 /// A demo time in seconds, as the viewer takes them
 fn secs(t: DemoTime) -> f32 {
@@ -70,13 +65,8 @@ pub fn weapon_color(w: Option<Weapon>) -> Color32 {
 
 const KILL_COLOR: Color32 = Color32::from_rgb(240, 70, 70);
 
-/// The tint of a chosen action window, on the timeline and its table rows
+/// The tint of a chosen action window, on the timeline and its event rows
 const WINDOW_TINT: Color32 = Color32::from_rgba_premultiplied(40, 32, 10, 40);
-
-/// Clips on the timeline, the chosen one stronger
-const CLIP_TINT: Color32 = Color32::from_rgba_premultiplied(14, 27, 40, 40);
-const CLIP_CHOSEN_TINT: Color32 = Color32::from_rgba_premultiplied(25, 47, 70, 70);
-const CLIP_EDGE: Color32 = Color32::from_rgb(140, 220, 255);
 
 /// The length of a clip made with New clip, before it is edited
 const NEW_CLIP_SECONDS: f32 = 10.;
@@ -117,6 +107,11 @@ enum DemoAction {
     PlayEvent(usize),
     /// Show the whole recording on the timeline
     Fit,
+    /// Zoom the timeline around the playhead, or around the middle of the
+    /// view when the playhead is out of it. A factor below one zooms in
+    Zoom(f32),
+    /// Choose a clip from the timeline and show it in the Clips tab
+    ChooseClip(usize),
     /// Shade one of the most intense moments and bring it into view
     ChooseHighlight(usize),
     /// Add a clip of ten seconds to edit by hand
@@ -207,12 +202,6 @@ const INSPECTOR_RANGE: std::ops::RangeInclusive<f32> = 320.0..=520.0;
 const INSPECTOR_HEIGHT: f32 = 220.;
 const INSPECTOR_MIN_HEIGHT: f32 = 120.;
 
-/// The most of the Events tab its filters take before they scroll, the
-/// events kept in view under them, and the room around an event row's text
-const FILTERS_SHARE: f32 = 0.45;
-const EVENT_ROWS_KEPT: f32 = 3.;
-const EVENT_ROW_PADDING: f32 = 4.;
-
 /// The least the view shrinks to, and the most of the middle the player
 /// lanes take
 const MIN_VIEWPORT: f32 = 120.;
@@ -240,6 +229,51 @@ static GENERATION: AtomicU64 = AtomicU64::new(0);
 enum Edge {
     Start,
     End,
+}
+
+/// A drag on the timeline, decided by what it began on and kept until it is
+/// let go, whatever it passes over
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Drag {
+    /// The ruler or the playhead, dragging the viewer's playhead
+    Scrub,
+    /// A clip's edge, which goes back to `original` if Escape gives it up
+    ClipEdge {
+        clip: usize,
+        edge: Edge,
+        original: DemoTime,
+    },
+    /// The track moved along, keeping the moment `grab` under the pointer as
+    /// the press's `transform` placed it
+    Pan {
+        grab: f32,
+        original: (f32, f32),
+        transform: Transform,
+    },
+    /// The overview's window moved, `offset` seconds after its start under
+    /// the pointer
+    OverviewPan { offset: f32, original: (f32, f32) },
+    /// Escape gave the drag up, and it waits to be let go
+    Cancelled,
+}
+
+/// Events of different sessions under one click on the timeline, offered
+/// to choose from rather than one taken at random
+#[derive(Clone, Debug, PartialEq)]
+struct Chooser {
+    at: Pos2,
+    events: Vec<usize>,
+    /// Opened by this frame's click, which must not close it again
+    fresh: bool,
+}
+
+/// The timeline's markers for one view, kept while the view, its width and
+/// the shown events stay the same
+struct MarkerCache {
+    view: (f32, f32),
+    width: f32,
+    rows_version: u64,
+    bins: Vec<MarkerBin>,
 }
 
 enum Loaded {
@@ -294,6 +328,8 @@ impl Drop for Loader {
     }
 }
 
+/// Which events the list, the timeline and its density show, all through
+/// [`Shown::judge`]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Shown {
     pub shots: bool,
@@ -301,9 +337,11 @@ pub struct Shown {
     pub kills: bool,
     pub switches: bool,
     pub weapon: Option<Weapon>,
+    /// Refinements of the kills, kept while kills are hidden
+    pub kill_filters: KillFilters,
 }
 
-/// Only kills at first, the rest one checkbox away
+/// Only kills at first, the rest one toggle away
 impl Default for Shown {
     fn default() -> Self {
         Self {
@@ -312,6 +350,7 @@ impl Default for Shown {
             kills: true,
             switches: false,
             weapon: None,
+            kill_filters: KillFilters::default(),
         }
     }
 }
@@ -329,6 +368,56 @@ impl Shown {
     fn weapon(&self, w: Option<Weapon>) -> bool {
         self.weapon.is_none() || self.weapon == w
     }
+
+    /// Whether `event` is shown, as far as can be told. Only a kill can be
+    /// unknown, by a refinement its data cannot settle, and the refinements
+    /// leave other events to their kind and weapon
+    fn judge(&self, event: &Event) -> Verdict {
+        if !self.kind(mark_kind(event)) || !self.weapon(event.weapon) {
+            return Verdict::NoMatch;
+        }
+
+        match &event.kind {
+            EventKind::Kill { features, .. } => self.kill_filters.judge(features),
+            _ => Verdict::Match,
+        }
+    }
+}
+
+/// How an event is marked on the timeline. A kill's death mark in its
+/// victim's lane is the same event
+fn mark_kind(event: &Event) -> MarkKind {
+    match event.kind {
+        EventKind::Action { action, .. } if action.is_shot() => MarkKind::Shot,
+        EventKind::Action { .. } => MarkKind::Action,
+        EventKind::Kill { .. } => MarkKind::Kill,
+        EventKind::Switch => MarkKind::Switch,
+    }
+}
+
+/// What the compact timeline draws of the shown event at `index`. Team
+/// colours are only for a session played in teams, as players' teams in
+/// other sessions are not sides
+fn row_mark(index: usize, event: &Event, teams: bool) -> RowMark {
+    let (side, headshot) = match &event.kind {
+        EventKind::Kill {
+            features, headshot, ..
+        } => {
+            let team = features.killer_team.as_deref().filter(|_| teams);
+            (track::side_of(team), *headshot == Some(true))
+        }
+        _ => (Side::Unknown, false),
+    };
+
+    RowMark {
+        event: index,
+        segment: event.segment,
+        time: event.time,
+        kind: mark_kind(event),
+        weapon: event.weapon,
+        side,
+        headshot,
+    }
 }
 
 pub struct DemoView {
@@ -342,24 +431,51 @@ pub struct DemoView {
     loader: Option<Loader>,
     model: Option<Arc<Model>>,
     failed: Option<String>,
+    /// The stretch of the recording the timeline shows
     view: (f32, f32),
     shown: Shown,
-    /// Rows of the event table, indices into the model's events
+    /// The shown events as indices into the model's events, in time order,
+    /// and what the timeline draws of each
     rows: Vec<usize>,
+    marks: Vec<RowMark>,
+    /// Whether each of the model's events is shown, for the player lanes
+    shown_events: Vec<bool>,
     rows_for: Option<Shown>,
+    /// Counts each time the rows change, for what is worked out from them
+    rows_version: u64,
+    /// Kills a refinement could not tell about, so not shown
+    unknown_kills: usize,
+    /// The shown events' density for a version of the rows, none for a
+    /// recording with no length
+    density: Option<(u64, Option<Density>)>,
+    /// The timeline's markers for the view last drawn
+    markers: Option<MarkerCache>,
     selected: Option<usize>,
     scroll_table: bool,
-    /// Frames left to scroll the table to the chosen window's first event.
-    /// A table seen for the first time has no size yet, so it gets a few
+    /// Frames left to scroll the list to the chosen window's first event.
+    /// A list seen for the first time has no size yet, so it gets a few
     scroll_to_window: u8,
+    /// An inspector tab a control asked for, shown on the next frame
+    wanted_tab: Option<InspectorTab>,
+    /// Events to choose between after a click on the timeline
+    chooser: Option<Chooser>,
+    /// The drag under way on the timeline
+    drag: Option<Drag>,
+    /// The playhead was in view last frame, so playing out of view turns a
+    /// page of the timeline rather than a view the user moved away
+    playhead_in_view: bool,
     /// The action window shaded on the timeline, and one to jump to once
     /// the analysis is in
     window: Option<usize>,
     pub open_window: Option<usize>,
+    /// A shown event to select once the analysis is in, by its place in the
+    /// list, for checking the view from the command line
+    pub open_event: Option<usize>,
     /// Export every clip once the analysis is in, for checking exports
     /// from the command line
     pub export_on_load: bool,
-    /// The timeline is hidden until asked for, as it takes some reading
+    /// The player lanes are hidden under the timeline until asked for, as
+    /// they take some reading
     pub show_timeline: bool,
     /// This demo's clips. The app saves them when `clips_changed` is set
     pub clips: Vec<Clip>,
@@ -367,8 +483,6 @@ pub struct DemoView {
     chosen_clip: Option<usize>,
     /// A clip's start or end while it is being typed
     typing: Option<(usize, Edge, String)>,
-    /// The clip edge being dragged on the timeline
-    dragging: Option<(usize, Edge)>,
     /// Seconds a new clip keeps before and after its event
     pub padding: (f32, f32),
     /// What an export of each requested range would cut, worked out once
@@ -386,8 +500,9 @@ pub struct DemoView {
     pub duration: f32,
     /// The clip the viewer loops
     looping: Option<usize>,
-    /// The timeline's ruler or playhead is being dragged
-    scrubbing: bool,
+    /// The height the header and the transport with the timeline took last
+    /// frame, which the inspector under the view leaves room for
+    around_view: f32,
 }
 
 impl DemoView {
@@ -400,21 +515,31 @@ impl DemoView {
             requests: Vec::new(),
             model: None,
             failed: None,
-            view: (0., duration.max(MIN_SPAN)),
+            view: track::clamp_view((0., duration), (0., duration)),
             shown: Shown::default(),
             rows: Vec::new(),
+            marks: Vec::new(),
+            shown_events: Vec::new(),
             rows_for: None,
+            rows_version: 0,
+            unknown_kills: 0,
+            density: None,
+            markers: None,
             selected: None,
             scroll_table: false,
             scroll_to_window: 0,
+            wanted_tab: None,
+            chooser: None,
+            drag: None,
+            playhead_in_view: true,
             window: None,
             open_window: None,
+            open_event: None,
             show_timeline: false,
             clips: Vec::new(),
             clips_changed: false,
             chosen_clip: None,
             typing: None,
-            dragging: None,
             padding: (0., 0.),
             snapped: HashMap::new(),
             export_folder: None,
@@ -425,7 +550,7 @@ impl DemoView {
             viewer_game: None,
             duration,
             looping: None,
-            scrubbing: false,
+            around_view: 0.,
         }
     }
 
@@ -462,6 +587,12 @@ impl DemoView {
         self.loader.is_some()
     }
 
+    /// Turn on these kill refinements, for checking them from the command
+    /// line
+    pub fn refine(&mut self, filters: KillFilters) {
+        self.shown.kill_filters = filters;
+    }
+
     /// Still analysing or exporting
     pub fn busy(&self) -> bool {
         self.loading() || self.export.is_some() || self.export_on_load
@@ -473,13 +604,14 @@ impl DemoView {
         };
         match loader.rx.try_recv() {
             Ok(Loaded::Model(m)) => {
-                self.view = (m.start, m.end.max(m.start + MIN_SPAN));
+                let extent = (m.start, m.end);
+                self.view = extent;
                 if let Some(w) = self
                     .open_window
                     .and_then(|i| m.windows.get(i).map(|w| (i, w)))
                 {
                     let pad = ((w.1.end - w.1.start) * 0.1).max(3.);
-                    self.view = (w.1.start - pad, w.1.end + pad);
+                    self.view = track::clamp_view((w.1.start - pad, w.1.end + pad), extent);
                     self.window = Some(w.0);
                     self.scroll_to_window = 3;
                 }
@@ -494,47 +626,95 @@ impl DemoView {
         }
     }
 
+    /// Work out the shown events again once what is shown has changed, with
+    /// what the timeline draws of them and the kills that could not be told
     fn refresh_rows(&mut self) {
-        let Some(m) = &self.model else {
+        let Some(m) = self.model.clone() else {
             return;
         };
         if self.rows_for == Some(self.shown) {
             return;
         }
-        let shown = self.shown;
-        self.rows = m
-            .events
-            .iter()
-            .enumerate()
-            .filter(|(_, e)| {
-                let kind = match e.kind {
-                    EventKind::Action { action, .. } if action.is_shot() => MarkKind::Shot,
-                    EventKind::Action { .. } => MarkKind::Action,
-                    EventKind::Kill { .. } => MarkKind::Kill,
-                    EventKind::Switch => MarkKind::Switch,
-                };
-                shown.kind(kind) && shown.weapon(e.weapon)
-            })
-            .map(|(i, _)| i)
-            .collect();
-        self.rows_for = Some(shown);
+
+        self.rows.clear();
+        self.marks.clear();
+        self.shown_events = vec![false; m.events.len()];
+        self.unknown_kills = 0;
+
+        for (index, event) in m.events.iter().enumerate() {
+            match self.shown.judge(event) {
+                Verdict::Match => {}
+                Verdict::Unknown => {
+                    self.unknown_kills += 1;
+                    continue;
+                }
+                Verdict::NoMatch => continue,
+            }
+
+            self.rows.push(index);
+            self.marks
+                .push(row_mark(index, event, m.team_play(event.segment)));
+            self.shown_events[index] = true;
+        }
+
+        self.rows_for = Some(self.shown);
+        self.rows_version += 1;
     }
 
-    /// Choose an event, bring it into view and move the viewer's playhead
-    /// to it
-    fn select(&mut self, event: usize, from_table: bool) {
+    /// The recording's extent, the analysis's once it is in and the
+    /// library's length until then
+    fn extent(&self) -> (f32, f32) {
+        match &self.model {
+            Some(m) => (m.start, m.end),
+            None => (0., self.duration),
+        }
+    }
+
+    /// Whether the viewer can go to an event. It seeks by time alone, so an
+    /// event of a later session whose time an earlier session also has is
+    /// out of its reach
+    fn reachable(&self, event: usize) -> bool {
+        let Some(m) = &self.model else {
+            return false;
+        };
+        let Some(e) = m.events.get(event) else {
+            return false;
+        };
+        let Some(time) = DemoTime::from_f32(e.time) else {
+            return false;
+        };
+
+        // Past the last group there is no other session to mistake it for
+        match m.groups.segment_at(time) {
+            Some(segment) => segment == e.segment,
+            None => true,
+        }
+    }
+
+    /// Choose an event and bring it into view, moving the viewer's playhead
+    /// to it when the viewer can go there
+    fn select(&mut self, event: usize, from_list: bool) {
+        let Some(time) = self
+            .model
+            .as_ref()
+            .and_then(|m| m.events.get(event))
+            .map(|e| e.time)
+        else {
+            return;
+        };
+
         self.selected = Some(event);
-        self.scroll_table = !from_table;
-        if let Some(m) = &self.model {
-            let t = m.events[event].time;
-            if let Some(viewer) = &mut self.viewer {
-                viewer.seek(t);
-            }
-            let (a, b) = self.view;
-            if t < a || t > b {
-                let half = (b - a) / 2.;
-                self.view = (t - half, t + half);
-            }
+        self.scroll_table = !from_list;
+
+        if self.reachable(event)
+            && let Some(viewer) = &mut self.viewer
+        {
+            viewer.seek(time);
+        }
+
+        let (start, end) = self.view;
+        if time < start || time > end {
+            self.view = track::centre_on(self.view, self.extent(), time);
         }
     }
 
@@ -610,111 +790,8 @@ impl DemoView {
         };
         let (s, e) = (c.start.secs_f64() as f32, c.end.secs_f64() as f32);
         let pad = ((e - s) * 0.1).max(2.);
-        self.view = (s - pad, e + pad);
+        self.view = track::clamp_view((s - pad, e + pad), self.extent());
         self.chosen_clip = Some(i);
-    }
-
-    fn controls(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool) {
-        let ctx = ui.ctx().clone();
-        let t = |id: &str| text::widget_text(&ctx, &catalog.text(id), rtl, None, Look::Plain);
-        layout::wrapping_row(ui, rtl, |ui| {
-            ui.checkbox(&mut self.shown.shots, t("show-shots"));
-            ui.checkbox(&mut self.shown.actions, t("show-actions"));
-            ui.checkbox(&mut self.shown.kills, t("show-kills"));
-            ui.checkbox(&mut self.shown.switches, t("show-switches"));
-            let current = self
-                .shown
-                .weapon
-                .map_or_else(|| t("filter-weapon-any"), |w| w.name().into());
-            egui::ComboBox::from_id_salt("timeline weapon")
-                .selected_text(current)
-                .show_ui(ui, |ui| {
-                    ui.selectable_value(&mut self.shown.weapon, None, t("filter-weapon-any"));
-                    for w in WEAPONS {
-                        ui.selectable_value(&mut self.shown.weapon, Some(w), w.name());
-                    }
-                });
-            if ui.button(t("timeline-fit")).clicked() {
-                self.actions.push(DemoAction::Fit);
-            }
-
-            // Jump to the best stretches of play, the first being the best
-            let Some(m) = self.model.clone() else {
-                return;
-            };
-            if m.windows.is_empty() {
-                return;
-            }
-            let mut chosen = None;
-            if ui.button(t("timeline-best-action")).clicked() {
-                chosen = Some(0);
-            }
-            let describe = |i: usize| {
-                let w = &m.windows[i];
-                let clock = |t: f32| {
-                    DemoTime::from_f32(t)
-                        .map(|d| d.to_string())
-                        .unwrap_or_default()
-                        .split('.')
-                        .next()
-                        .unwrap_or("")
-                        .to_string()
-                };
-                let sides: Vec<String> = w
-                    .sides
-                    .iter()
-                    .map(|(n, k)| format!("{} {k}", text::player_name(n)))
-                    .collect();
-                catalog.text_with(
-                    "timeline-window",
-                    &[
-                        ("rank", ((i + 1) as i64).into()),
-                        ("score", w.score.into()),
-                        ("start", FluentValue::from(clock(w.start))),
-                        ("end", FluentValue::from(clock(w.end))),
-                        ("sides", FluentValue::from(sides.join(" – "))),
-                    ],
-                )
-            };
-            let current = self
-                .window
-                .map_or_else(|| catalog.text("timeline-windows"), describe);
-            egui::ComboBox::from_id_salt("action windows")
-                .selected_text(text::widget_text(&ctx, &current, rtl, None, Look::Plain))
-                .width(260.)
-                .show_ui(ui, |ui| {
-                    for i in 0..m.windows.len() {
-                        let label = text::widget_text(&ctx, &describe(i), rtl, None, Look::Plain);
-                        if ui.selectable_label(self.window == Some(i), label).clicked() {
-                            chosen = Some(i);
-                        }
-                    }
-                });
-            if let Some(i) = chosen {
-                self.actions.push(DemoAction::ChooseHighlight(i));
-            }
-        });
-    }
-
-    fn lane_label(&self, catalog: &Catalog, lane: usize) -> String {
-        let Some(m) = &self.model else {
-            return String::new();
-        };
-        let l = &m.lanes[lane];
-        let name = match l.key {
-            LaneKey::Unknown => catalog.text("lane-unknown"),
-            LaneKey::Player { .. } => l
-                .names
-                .iter()
-                .map(|n| text::player_name(n))
-                .collect::<Vec<_>>()
-                .join(" / "),
-        };
-        if l.recorder {
-            catalog.text_with("lane-recorder", &[("name", FluentValue::from(name))])
-        } else {
-            name
-        }
     }
 
     /// What an event was, in words
@@ -762,408 +839,6 @@ impl DemoView {
                 }
             }
             EventKind::Switch => catalog.text("event-switch"),
-        }
-    }
-
-    fn timeline(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool) {
-        let Some(model) = self.model.clone() else {
-            return;
-        };
-        let lanes = model.lanes.len();
-        let height = AXIS_HEIGHT + LANE_HEIGHT * lanes as f32;
-        let width = ui.available_width();
-        let (rect, _) = ui.allocate_exact_size(Vec2::new(width, height), Sense::hover());
-        let (label_rect, plot) = if rtl {
-            (
-                Rect::from_min_max(Pos2::new(rect.max.x - LABEL_WIDTH, rect.min.y), rect.max),
-                Rect::from_min_max(rect.min, Pos2::new(rect.max.x - LABEL_WIDTH, rect.max.y)),
-            )
-        } else {
-            (
-                Rect::from_min_max(rect.min, Pos2::new(rect.min.x + LABEL_WIDTH, rect.max.y)),
-                Rect::from_min_max(Pos2::new(rect.min.x + LABEL_WIDTH, rect.min.y), rect.max),
-            )
-        };
-        let response = ui.interact(plot, ui.scope_id().with("plot"), Sense::click_and_drag());
-
-        // Zoom around the pointer, pan by dragging
-        let (mut a, mut b) = self.view;
-        let span = (b - a).max(MIN_SPAN);
-        let per_px = span / plot.width().max(1.);
-
-        // Dragging a clip's edge moves the edge instead of the view
-        let at_pointer = |p: Pos2| a + (p.x - plot.min.x) * per_px;
-        let edge_at = |p: Pos2, clips: &[Clip]| -> Option<(usize, Edge)> {
-            if !plot.contains(p) {
-                return None;
-            }
-            let t = at_pointer(p);
-            clips
-                .iter()
-                .enumerate()
-                .flat_map(|(i, c)| [(i, Edge::Start, c.start), (i, Edge::End, c.end)])
-                .map(|(i, edge, time)| (i, edge, ((time.secs_f64() as f32 - t) / per_px).abs()))
-                .filter(|(.., px)| *px <= HIT_PIXELS)
-                .min_by(|x, y| x.2.total_cmp(&y.2))
-                .map(|(i, edge, _)| (i, edge))
-        };
-        // The ruler along the top, or the playhead, drags the viewer's
-        // playhead
-        let playhead = self.viewer.as_ref().map(|v| v.time());
-        let scrubs_at = |p: Pos2| {
-            plot.contains(p)
-                && (p.y < plot.min.y + AXIS_HEIGHT
-                    || playhead.is_some_and(|t| ((at_pointer(p) - t) / per_px).abs() <= HIT_PIXELS))
-        };
-        let pointer = ui.input(|i| i.pointer.hover_pos());
-        if response.drag_started() {
-            let origin = ui.input(|i| i.pointer.press_origin());
-            self.dragging = origin.and_then(|p| edge_at(p, &self.clips));
-            if let Some((i, _)) = self.dragging {
-                self.chosen_clip = Some(i);
-                self.typing = None;
-            }
-            self.scrubbing =
-                self.dragging.is_none() && self.viewer.is_some() && origin.is_some_and(&scrubs_at);
-        }
-        let over_scrub = self.viewer.is_some() && pointer.is_some_and(scrubs_at);
-        if self.dragging.is_some()
-            || self.scrubbing
-            || over_scrub
-            || pointer.and_then(|p| edge_at(p, &self.clips)).is_some()
-        {
-            ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
-        }
-        if self.scrubbing
-            && response.dragged()
-            && let (Some(p), Some(viewer)) = (pointer, &mut self.viewer)
-        {
-            viewer.scrub(at_pointer(p).max(0.));
-        }
-        if response.drag_stopped()
-            && std::mem::take(&mut self.scrubbing)
-            && let Some(viewer) = &mut self.viewer
-        {
-            viewer.end_scrub();
-        }
-        if let Some((i, edge)) = self.dragging
-            && response.dragged()
-            && let Some(p) = pointer
-            && let Some(c) = self.clips.get_mut(i)
-        {
-            // Whole milliseconds, as the fields show them
-            let ms = (f64::from(at_pointer(p).max(0.)) * 1000.).round() as i64;
-            let t = DemoTime::from_micros(ms * 1000);
-            match edge {
-                Edge::Start => c.start = t.min(c.end),
-                Edge::End => c.end = t.max(c.start),
-            }
-        }
-        // The viewer shows the edge as it moves
-        if let Some((i, edge)) = self.dragging
-            && response.dragged()
-            && let (Some(c), Some(viewer)) = (self.clips.get(i), &mut self.viewer)
-        {
-            viewer.preview(secs(match edge {
-                Edge::Start => c.start,
-                Edge::End => c.end,
-            }));
-        }
-        if response.drag_stopped() && self.dragging.take().is_some() {
-            self.clips_changed = true;
-        }
-        if response.hovered() {
-            let scroll = ui.input(|i| i.smooth_scroll_delta.y + i.smooth_scroll_delta.x);
-            if scroll != 0. {
-                let pointer = ui
-                    .input(|i| i.pointer.hover_pos())
-                    .map_or(a + span / 2., |p| a + (p.x - plot.min.x) * per_px);
-                let factor = (-scroll * 0.003).exp();
-                let new_span =
-                    (span * factor).clamp(MIN_SPAN, (model.end - model.start).max(MIN_SPAN) * 1.2);
-                a = pointer - (pointer - a) * new_span / span;
-                b = a + new_span;
-            }
-        }
-        if response.dragged() && self.dragging.is_none() && !self.scrubbing {
-            let dx = response.drag_delta().x * per_px;
-            a -= dx;
-            b -= dx;
-        }
-        if response.double_clicked() {
-            a = model.start;
-            b = model.end.max(model.start + MIN_SPAN);
-        }
-        self.view = (a, b);
-        let span = (b - a).max(MIN_SPAN);
-        let per_px = span / plot.width().max(1.);
-        let x = |t: f32| plot.min.x + (t - a) / per_px;
-
-        let painter = ui.painter_at(rect);
-        let visuals = ui.visuals().clone();
-        painter.rect_filled(plot, 0., visuals.extreme_bg_color);
-        if let Some(w) = self.window.and_then(|i| model.windows.get(i)) {
-            let shade = Rect::from_min_max(
-                Pos2::new(x(w.start).max(plot.min.x), plot.min.y),
-                Pos2::new(x(w.end).min(plot.max.x), plot.max.y),
-            );
-            if shade.width() > 0. {
-                painter.rect_filled(shade, 0., WINDOW_TINT);
-            }
-        }
-
-        // Clips as bands with their edges and names, and the range clipping
-        // the selected event would take as dashed edges
-        for (i, c) in self.clips.iter().enumerate() {
-            let (s, e) = (c.start.secs_f64() as f32, c.end.secs_f64() as f32);
-            if e < a || s > b {
-                continue;
-            }
-            let chosen = self.chosen_clip == Some(i);
-            let band = Rect::from_min_max(
-                Pos2::new(x(s).max(plot.min.x), plot.min.y),
-                Pos2::new(x(e).min(plot.max.x), plot.max.y),
-            );
-            painter.rect_filled(band, 0., if chosen { CLIP_CHOSEN_TINT } else { CLIP_TINT });
-            for t in [s, e].into_iter().filter(|t| (a..=b).contains(t)) {
-                painter.line_segment(
-                    [Pos2::new(x(t), plot.min.y), Pos2::new(x(t), plot.max.y)],
-                    Stroke::new(if chosen { 2.5 } else { 1.5 }, CLIP_EDGE),
-                );
-            }
-            if band.width() > 30. {
-                let galley = text::widget_text(
-                    ui.ctx(),
-                    &c.name,
-                    text::starts_rtl(&c.name),
-                    None,
-                    Look::Plain,
-                )
-                .into_galley(
-                    ui,
-                    Some(egui::TextWrapMode::Truncate),
-                    band.width() - 6.,
-                    egui::TextStyle::Small,
-                );
-                let at = Pos2::new(band.min.x + 3., plot.max.y - galley.size().y - 2.);
-                painter.galley(at, galley, CLIP_EDGE);
-            }
-        }
-        if let Some((s, e)) = self.proposal() {
-            for t in [s, e].into_iter().filter(|t| (a..=b).contains(t)) {
-                painter.extend(egui::Shape::dashed_line(
-                    &[Pos2::new(x(t), plot.min.y), Pos2::new(x(t), plot.max.y)],
-                    Stroke::new(1.5, CLIP_EDGE),
-                    6.,
-                    4.,
-                ));
-            }
-        }
-
-        // Time axis with labels at least 90 pixels apart, always left to right
-        let step = tick_step(90. * per_px);
-        let mut t = (a / step).ceil() * step;
-        while t <= b {
-            let px = x(t);
-            painter.line_segment(
-                [
-                    Pos2::new(px, plot.min.y + AXIS_HEIGHT - 4.),
-                    Pos2::new(px, plot.max.y),
-                ],
-                Stroke::new(1., visuals.faint_bg_color),
-            );
-            let label = DemoTime::from_f32(t.max(0.))
-                .map(|d| d.to_string())
-                .unwrap_or_default();
-            let label = if step >= 1. {
-                label.split('.').next().unwrap_or("").to_string()
-            } else {
-                label
-            };
-            painter.text(
-                Pos2::new(px + 3., plot.min.y + 2.),
-                egui::Align2::LEFT_TOP,
-                label,
-                egui::FontId::monospace(11.),
-                visuals.weak_text_color(),
-            );
-            t += step;
-        }
-
-        let bin_width = BIN_PIXELS * per_px;
-        let mut hover: Option<(usize, f32)> = None;
-        for (i, lane) in model.lanes.iter().enumerate() {
-            let top = plot.min.y + AXIS_HEIGHT + LANE_HEIGHT * i as f32;
-            let mid = top + LANE_HEIGHT / 2.;
-            if i % 2 == 1 {
-                painter.rect_filled(
-                    Rect::from_min_max(
-                        Pos2::new(rect.min.x, top),
-                        Pos2::new(rect.max.x, top + LANE_HEIGHT),
-                    ),
-                    0.,
-                    visuals.faint_bg_color.gamma_multiply(0.5),
-                );
-            }
-
-            // Lane label, ordered for its own direction
-            // A recorder's label is a sentence of the interface, other
-            // labels are names with their own direction
-            let label = self.lane_label(catalog, i);
-            let base = if lane.recorder || lane.key == LaneKey::Unknown {
-                rtl
-            } else {
-                text::starts_rtl(&label)
-            };
-            let w = text::widget_text(ui.ctx(), &label, base, None, Look::Plain);
-            let galley = w.into_galley(
-                ui,
-                Some(egui::TextWrapMode::Truncate),
-                LABEL_WIDTH - 8.,
-                egui::TextStyle::Body,
-            );
-            let lx = if rtl {
-                label_rect.max.x - 4. - galley.size().x
-            } else {
-                label_rect.min.x + 4.
-            };
-            let color = if lane.recorder {
-                visuals.strong_text_color()
-            } else {
-                visuals.text_color()
-            };
-            painter.galley(Pos2::new(lx, mid - galley.size().y / 2.), galley, color);
-
-            if self.shown.kind(MarkKind::Shot) || self.shown.kind(MarkKind::Action) {
-                for s in &lane.spans {
-                    if s.end < a || s.start > b || !self.shown.weapon(Some(s.weapon)) {
-                        continue;
-                    }
-                    let r = Rect::from_min_max(
-                        Pos2::new(x(s.start).max(plot.min.x), mid - 5.),
-                        Pos2::new(x(s.end).min(plot.max.x).max(x(s.start) + 1.), mid + 5.),
-                    );
-                    let alpha = match s.kind {
-                        SpanKind::Charge => 0.35,
-                        SpanKind::Beam => 0.5,
-                    };
-                    painter.rect_filled(r, 2., weapon_color(Some(s.weapon)).gamma_multiply(alpha));
-                }
-            }
-
-            let shown = self.shown;
-            let visible = |m: &crate::timeline::Mark| shown.kind(m.kind) && shown.weapon(m.weapon);
-            for bin in bins(lane, a, b, bin_width, visible) {
-                let px = x(bin.start + bin_width / 2.);
-                let strength = (bin.count as f32).min(5.) / 5.;
-                match bin.kind {
-                    MarkKind::Shot => {
-                        let h = 5. + 5. * strength;
-                        painter.line_segment(
-                            [Pos2::new(px, mid - h), Pos2::new(px, mid + h)],
-                            Stroke::new(2., weapon_color(bin.weapon)),
-                        );
-                    }
-                    MarkKind::Action => {
-                        painter.line_segment(
-                            [Pos2::new(px, mid - 3.), Pos2::new(px, mid + 3.)],
-                            Stroke::new(1., visuals.weak_text_color()),
-                        );
-                    }
-                    MarkKind::Kill => {
-                        let p = Pos2::new(px, mid);
-                        painter.add(egui::Shape::convex_polygon(
-                            vec![
-                                p + Vec2::new(0., -7.),
-                                p + Vec2::new(6., 5.),
-                                p + Vec2::new(-6., 5.),
-                            ],
-                            KILL_COLOR,
-                            Stroke::NONE,
-                        ));
-                    }
-                    MarkKind::Death => {
-                        painter.circle_stroke(Pos2::new(px, mid), 5., Stroke::new(1.5, KILL_COLOR));
-                    }
-                    MarkKind::Switch => {
-                        painter.rect_filled(
-                            Rect::from_center_size(
-                                Pos2::new(px, top + LANE_HEIGHT - 4.),
-                                Vec2::splat(4.),
-                            ),
-                            0.,
-                            weapon_color(bin.weapon),
-                        );
-                    }
-                }
-            }
-
-            if let Some(p) = pointer
-                && plot.contains(p)
-                && p.y >= top
-                && p.y < top + LANE_HEIGHT
-            {
-                let time = a + (p.x - plot.min.x) * per_px;
-                if let Some(m) = nearest(lane, time, HIT_PIXELS * per_px, visible) {
-                    hover = Some((m.event, m.time));
-                }
-            }
-        }
-
-        if let Some(sel) = self.selected
-            && let Some(e) = model.events.get(sel)
-            && e.time >= a
-            && e.time <= b
-        {
-            let px = x(e.time);
-            painter.line_segment(
-                [Pos2::new(px, plot.min.y), Pos2::new(px, plot.max.y)],
-                Stroke::new(1.5, visuals.selection.stroke.color),
-            );
-        }
-
-        // The viewer's playhead
-        if let Some(now) = self.viewer.as_ref().map(|v| v.time())
-            && now >= a
-            && now <= b
-        {
-            let px = x(now);
-            painter.line_segment(
-                [Pos2::new(px, plot.min.y), Pos2::new(px, plot.max.y)],
-                Stroke::new(1., visuals.strong_text_color()),
-            );
-        }
-
-        if let Some((event, _)) = hover {
-            let e = &model.events[event];
-            let tip = format!(
-                "{} · {} · {}",
-                DemoTime::from_f32(e.time)
-                    .map(|d| d.to_string())
-                    .unwrap_or_default(),
-                e.actor
-                    .as_deref()
-                    .map_or_else(|| catalog.text("lane-unknown"), text::player_name),
-                Self::describe(catalog, &e.kind)
-            );
-            let tip = text::widget_text(ui.ctx(), &tip, rtl, None, Look::Plain);
-            // Shown at once, not after egui's usual tooltip delay
-            egui::Tooltip::for_widget(&response)
-                .at_pointer()
-                .show(|ui| {
-                    ui.label(tip);
-                });
-            if response.clicked() {
-                self.actions.push(DemoAction::Select {
-                    event,
-                    from_list: false,
-                });
-            }
-        } else if response.clicked()
-            && let Some(p) = pointer
-        {
-            let at = a + (p.x - plot.min.x) * per_px;
-            self.actions.push(DemoAction::Seek(at));
         }
     }
 
@@ -1331,8 +1006,13 @@ impl DemoView {
                 c => c,
             };
             self.typing = None;
-            self.dragging = None;
             self.clips_changed = true;
+
+            // The clips after it move up a place, so a drag of a clip's edge
+            // could now move another clip's, and it is given up
+            if matches!(self.drag, Some(Drag::ClipEdge { .. })) {
+                self.drag = Some(Drag::Cancelled);
+            }
         }
     }
 
@@ -1569,270 +1249,6 @@ impl DemoView {
             }
             self.typing = None;
         }
-    }
-
-    /// Buttons to choose the event before or after the chosen one in the
-    /// table, and to play the chosen one from its preroll through its
-    /// postroll, added to the row they are drawn in
-    fn event_nav(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool) {
-        let Some(model) = self.model.clone() else {
-            return;
-        };
-
-        self.refresh_rows();
-        let ctx = ui.ctx().clone();
-        let t = |id: &str| text::widget_text(&ctx, &catalog.text(id), rtl, None, Look::Plain);
-
-        // From the chosen event's row, or else from the playhead
-        let at = self
-            .selected
-            .and_then(|s| self.rows.iter().position(|&r| r == s));
-        let now = self.viewer.as_ref().map_or(0., |v| v.time());
-        let previous = match at {
-            Some(i) => i.checked_sub(1),
-            None => self.rows.iter().rposition(|&r| model.events[r].time < now),
-        };
-        let next = match at {
-            Some(i) => Some(i + 1).filter(|&n| n < self.rows.len()),
-            None => self.rows.iter().position(|&r| model.events[r].time > now),
-        };
-
-        // The buttons join the row they are drawn in, wrapping with it
-        let mut chosen = None;
-        if ui
-            .add_enabled(previous.is_some(), egui::Button::new(t("event-previous")))
-            .clicked()
-        {
-            chosen = previous;
-        }
-        if ui
-            .add_enabled(next.is_some(), egui::Button::new(t("event-next")))
-            .clicked()
-        {
-            chosen = next;
-        }
-
-        if self.viewer.is_some() {
-            let event = self.selected.filter(|&i| i < model.events.len());
-            let r = ui.add_enabled(event.is_some(), egui::Button::new(t("event-play")));
-            let r = r.on_disabled_hover_text(t("clips-select-event"));
-            if r.clicked()
-                && let Some(event) = event
-            {
-                self.actions.push(DemoAction::PlayEvent(event));
-            }
-        }
-
-        if let Some(event) = chosen.and_then(|i| self.rows.get(i).copied()) {
-            self.actions.push(DemoAction::Select {
-                event,
-                from_list: false,
-            });
-        }
-    }
-
-    fn table(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool) {
-        let Some(model) = self.model.clone() else {
-            return;
-        };
-
-        self.refresh_rows();
-        let ctx = ui.ctx().clone();
-
-        let mut cols = vec![
-            "column-time",
-            "column-player",
-            "column-weapon",
-            "column-event",
-        ];
-        if rtl {
-            cols.reverse();
-        }
-        let row_height = ui.text_style_height(&egui::TextStyle::Body) + EVENT_ROW_PADDING;
-
-        // Its scroll position belongs to this demo, not to the next one opened
-        let mut table = TableBuilder::new(ui)
-            .id_salt(("events", self.generation))
-            .striped(true)
-            .resizable(true)
-            .sense(Sense::click())
-            .auto_shrink(false)
-            .min_scrolled_height(row_height * EVENT_ROWS_KEPT);
-        for c in &cols {
-            table = table.column(match *c {
-                "column-event" => Column::remainder().at_least(60.).clip(true),
-                "column-player" => Column::initial(100.).at_least(48.).clip(true),
-                "column-time" => Column::initial(88.).at_least(64.).clip(true),
-                _ => Column::initial(72.).at_least(48.).clip(true),
-            });
-        }
-        if self.scroll_table
-            && let Some(sel) = self.selected
-            && let Some(row) = self.rows.iter().position(|r| *r == sel)
-        {
-            table = table.scroll_to_row(row, Some(egui::Align::Center));
-            self.scroll_table = false;
-        }
-        // The chosen window's events are tinted, and the table starts at them
-        let window = self
-            .window
-            .and_then(|i| model.windows.get(i))
-            .map(|w| (w.start, w.end));
-        if self.scroll_to_window > 0
-            && let Some((start, _)) = window
-        {
-            let first = self.rows.partition_point(|r| model.events[*r].time < start);
-            if first < self.rows.len() {
-                table = table.scroll_to_row(first, Some(egui::Align::TOP));
-            }
-            self.scroll_to_window -= 1;
-        }
-        let mut clicked = None;
-        table
-            .header(row_height + 4., |mut h| {
-                for c in &cols {
-                    h.col(|ui| {
-                        ui.label(text::widget_text(
-                            &ctx,
-                            &catalog.text(c),
-                            rtl,
-                            None,
-                            Look::Strong,
-                        ));
-                    });
-                }
-            })
-            .body(|body| {
-                body.rows(row_height, self.rows.len(), |mut row| {
-                    let index = self.rows[row.index()];
-                    let e = &model.events[index];
-                    row.set_selected(self.selected == Some(index));
-                    let in_window = window.is_some_and(|(a, b)| e.time >= a && e.time <= b);
-                    for c in &cols {
-                        row.col(|ui| {
-                            if in_window {
-                                // Half the spacing on each side, so cells meet
-                                let r = ui.max_rect().expand2(ui.spacing().item_spacing / 2.);
-                                ui.painter().rect_filled(r, 0., WINDOW_TINT);
-                            }
-                            let (s, own) = match *c {
-                                "column-time" => (
-                                    DemoTime::from_f32(e.time)
-                                        .map(|d| d.to_string())
-                                        .unwrap_or_default(),
-                                    false,
-                                ),
-                                "column-player" => {
-                                    let name = e.actor.as_deref().map_or_else(
-                                        || catalog.text("lane-unknown"),
-                                        text::player_name,
-                                    );
-                                    let own = text::starts_rtl(&name);
-                                    (name, own)
-                                }
-                                "column-weapon" => (
-                                    match &e.kind {
-                                        EventKind::Kill { weapon_name, .. } => weapon_name.clone(),
-                                        _ => e
-                                            .weapon
-                                            .map(|w| w.name().to_string())
-                                            .unwrap_or_default(),
-                                    },
-                                    false,
-                                ),
-                                _ => (Self::describe(catalog, &e.kind), rtl),
-                            };
-                            let look = match (&e.kind, *c) {
-                                (EventKind::Kill { .. }, "column-event") => Look::Color(KILL_COLOR),
-                                _ => Look::Plain,
-                            };
-                            let w = text::widget_text(&ctx, &s, own, None, look);
-                            ui.add(egui::Label::new(w).selectable(false).truncate());
-                        });
-                    }
-                    if row.response().clicked() {
-                        clicked = Some(index);
-                    }
-                });
-            });
-        if let Some(event) = clicked {
-            self.actions.push(DemoAction::Select {
-                event,
-                from_list: true,
-            });
-        }
-    }
-
-    /// What the marks mean and how to move around, above the lanes
-    fn legend(&self, ui: &mut Ui, catalog: &Catalog, rtl: bool) {
-        let ctx = ui.ctx().clone();
-        let gauss = weapon_color(Some(Weapon::Gauss));
-        let swatch = |ui: &mut Ui, kind: usize| {
-            let (rect, _) = ui.allocate_exact_size(Vec2::new(16., 14.), Sense::hover());
-            let c = rect.center();
-            let p = ui.painter();
-            match kind {
-                0 => {
-                    p.line_segment(
-                        [c + Vec2::new(0., -6.), c + Vec2::new(0., 6.)],
-                        Stroke::new(2., gauss),
-                    );
-                }
-                1 => {
-                    p.rect_filled(
-                        Rect::from_center_size(c, Vec2::new(14., 8.)),
-                        2.,
-                        gauss.gamma_multiply(0.35),
-                    );
-                }
-                2 => {
-                    p.add(egui::Shape::convex_polygon(
-                        vec![
-                            c + Vec2::new(0., -6.),
-                            c + Vec2::new(5., 5.),
-                            c + Vec2::new(-5., 5.),
-                        ],
-                        KILL_COLOR,
-                        Stroke::NONE,
-                    ));
-                }
-                3 => {
-                    p.circle_stroke(c, 5., Stroke::new(1.5, KILL_COLOR));
-                }
-                _ => {
-                    p.rect_filled(Rect::from_center_size(c, Vec2::splat(5.)), 0., gauss);
-                }
-            }
-        };
-        let items = [
-            "legend-shot",
-            "legend-charge",
-            "legend-kill",
-            "legend-death",
-            "legend-switch",
-        ];
-        layout::wrapping_row(ui, rtl, |ui| {
-            for (kind, id) in items.iter().enumerate() {
-                // A swatch reads before its label in either direction
-                swatch(ui, kind);
-                ui.label(text::widget_text(
-                    &ctx,
-                    &catalog.text(id),
-                    rtl,
-                    None,
-                    Look::Plain,
-                ));
-                ui.add_space(8.);
-            }
-        });
-        layout::column(ui, rtl, |ui| {
-            let help = catalog.text("timeline-help");
-            ui.label(text::widget_text(&ctx, &help, rtl, None, Look::Weak));
-            if !self.clips.is_empty() {
-                let help = catalog.text("timeline-clip-help");
-                ui.label(text::widget_text(&ctx, &help, rtl, None, Look::Weak));
-            }
-        });
     }
 
     /// The scores at the selected event, or the final scores. Teams and the
@@ -2148,6 +1564,19 @@ impl DemoView {
             self.start_export(ctx, keys);
         }
 
+        // The event the command line asked for, once there are rows
+        if self.model.is_some()
+            && let Some(row) = self.open_event.take()
+        {
+            self.refresh_rows();
+            if let Some(&event) = self.rows.get(row) {
+                self.actions.push(DemoAction::Select {
+                    event,
+                    from_list: false,
+                });
+            }
+        }
+
         if let Some(viewer) = &mut self.viewer {
             viewer.shortcuts(ctx);
             viewer.begin_frame(ctx);
@@ -2186,7 +1615,14 @@ impl DemoView {
 
     fn apply(&mut self, action: DemoAction, catalog: &Catalog) {
         match action {
-            DemoAction::Select { event, from_list } => self.select(event, from_list),
+            DemoAction::Select { event, from_list } => {
+                self.select(event, from_list);
+
+                // An event chosen elsewhere shows in its list
+                if !from_list {
+                    self.wanted_tab = Some(InspectorTab::Events);
+                }
+            }
             DemoAction::Seek(at) => {
                 if let Some(viewer) = &mut self.viewer {
                     viewer.seek(at);
@@ -2202,6 +1638,11 @@ impl DemoView {
                 }
             }
             DemoAction::PlayEvent(event) => {
+                // Played from the wrong session's moment is not this event
+                if !self.reachable(event) {
+                    return;
+                }
+
                 let Some(e) = self.model.as_ref().and_then(|m| m.events.get(event)) else {
                     return;
                 };
@@ -2215,38 +1656,61 @@ impl DemoView {
                 }
             }
             DemoAction::Fit => {
-                if let Some(m) = &self.model {
-                    self.view = (m.start, m.end.max(m.start + MIN_SPAN));
-                    self.window = None;
+                self.view = self.extent();
+                self.window = None;
+            }
+            DemoAction::Zoom(factor) => {
+                let (start, end) = self.view;
+                let playhead = self.viewer.as_ref().map(|v| v.time());
+                let anchor = match playhead {
+                    Some(t) if t >= start && t <= end => t,
+                    _ => (start + end) / 2.,
+                };
+                self.view = track::zoom(self.view, self.extent(), anchor, factor);
+            }
+            DemoAction::ChooseClip(i) => {
+                if i < self.clips.len() {
+                    self.chosen_clip = Some(i);
+                    self.wanted_tab = Some(InspectorTab::Clips);
                 }
             }
             DemoAction::ChooseHighlight(i) => {
                 let Some(w) = self.model.as_ref().and_then(|m| m.windows.get(i)) else {
                     return;
                 };
+                let (start, end, segment) = (w.start, w.end, w.segment);
 
                 // The minute with a little room on both sides
-                let pad = ((w.end - w.start) * 0.1).max(3.);
-                self.view = (w.start - pad, w.end + pad);
+                let pad = ((end - start) * 0.1).max(3.);
+                self.view = track::clamp_view((start - pad, end + pad), self.extent());
                 self.window = Some(i);
                 self.scroll_to_window = 3;
+
+                // To its start, unless an earlier session has the same time
+                if self.starts_in(start, segment)
+                    && let Some(viewer) = &mut self.viewer
+                {
+                    viewer.seek(start);
+                }
             }
             DemoAction::NewClip => {
                 // Any range, for a demo with no events or moments to start
-                // from, ten seconds from where the timeline shows, or from
-                // the start, to edit and check like any other clip
-                let from = if self.show_timeline { self.view.0 } else { 0. };
+                // from, ten seconds from where the timeline shows, to edit
+                // and check like any other clip
+                let from = self.view.0;
                 let range = self.clamped(from, from + NEW_CLIP_SECONDS);
                 self.add_clip(catalog, range);
             }
             DemoAction::ClipEvent => {
                 if let Some(range) = self.proposal() {
                     self.add_clip(catalog, range);
+                    self.wanted_tab = Some(InspectorTab::Clips);
                 }
             }
             DemoAction::ClipHighlight => {
                 if let Some(range) = self.highlight_range() {
                     self.add_clip(catalog, range);
+                    self.wanted_tab = Some(InspectorTab::Clips);
                 }
             }
             DemoAction::ShowFinal => self.selected = None,
@@ -2290,7 +1754,8 @@ impl DemoView {
             .fill(theme::BACKGROUND)
             .inner_margin(theme::GAP_S as i8);
         if s.narrow {
-            let most = (ui.available_height() - MIN_VIEWPORT).max(INSPECTOR_MIN_HEIGHT);
+            let room = ui.available_height() - MIN_VIEWPORT - self.around_view;
+            let most = room.max(INSPECTOR_MIN_HEIGHT);
             egui::Panel::bottom("inspector below")
                 .frame(frame)
                 .resizable(true)
@@ -2326,13 +1791,13 @@ impl DemoView {
         let margin = egui::Margin::symmetric(theme::GAP_S as i8, 0);
 
         let header = egui::Frame::new().fill(theme::SURFACE).inner_margin(margin);
-        egui::Panel::top("demo header")
+        let header = egui::Panel::top("demo header")
             .exact_size(theme::TOOLBAR_HEIGHT)
             .frame(header)
             .show(ui, |ui| self.header(ui, s, workspace));
 
         let transport = egui::Frame::new().inner_margin(margin);
-        egui::Panel::bottom("transport")
+        let transport = egui::Panel::bottom("transport")
             .frame(transport)
             .show(ui, |ui| {
                 if let Some(viewer) = &mut self.viewer
@@ -2341,16 +1806,9 @@ impl DemoView {
                     self.requests.push(Request::Settings(SettingsTab::Viewer));
                 }
 
-                // The lanes' checkbox leads the seek bar's row, so the view
-                // keeps the height another row would take
-                layout::row(ui, rtl, |ui| {
-                    self.lanes_toggle(ui, catalog, rtl);
-                    if let Some(viewer) = &mut self.viewer {
-                        viewer.seek_bar_ui(ui);
-                    }
-                });
-                self.lanes(ui, catalog, rtl, most_lanes);
+                self.timeline_ui(ui, catalog, rtl, most_lanes);
             });
+        self.around_view = header.response.rect.height() + transport.response.rect.height();
 
         // The view takes what is left, the setup notice in its place while
         // the game's files are not found
@@ -2634,35 +2092,6 @@ impl DemoView {
         }
     }
 
-    /// The checkbox showing the player lanes, once there are lanes to show
-    fn lanes_toggle(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool) {
-        if self.model.is_none() {
-            return;
-        }
-
-        let label = catalog.text("show-timeline");
-        let label = text::widget_text(ui.ctx(), &label, rtl, None, Look::Plain);
-        ui.checkbox(&mut self.show_timeline, label);
-    }
-
-    /// The player lanes under the transport, while asked for
-    fn lanes(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool, most: f32) {
-        let Some(model) = self.model.clone() else {
-            return;
-        };
-
-        if !self.show_timeline {
-            return;
-        }
-
-        self.legend(ui, catalog, rtl);
-        let lanes = AXIS_HEIGHT + LANE_HEIGHT * model.lanes.len() as f32;
-        egui::ScrollArea::vertical()
-            .id_salt("lanes")
-            .max_height(lanes.min(most))
-            .show(ui, |ui| self.timeline(ui, catalog, rtl));
-    }
-
     /// The inspector's tabs with their counts, and the chosen one under
     /// them
     fn inspector(
@@ -2675,6 +2104,10 @@ impl DemoView {
         // The tabs fill the whole panel, so it keeps its height whatever the
         // chosen tab holds
         ui.set_min_height(ui.available_height());
+
+        if let Some(tab) = self.wanted_tab.take() {
+            self.choose_tab(workspace, tab);
+        }
 
         let events = self.model.as_ref().map(|_| self.rows.len());
         let tabs = [
@@ -2751,58 +2184,6 @@ impl DemoView {
 
         self.model.is_some()
     }
-
-    /// What the recording cannot show, then the event filters and the
-    /// events
-    fn events_tab(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool) {
-        let Some(model) = self.model.clone() else {
-            return;
-        };
-
-        // The filters scroll rather than take the room a few events need,
-        // and never more than their share, so a short inspector still shows
-        // events under them
-        let room = ui.available_height();
-        let row = ui.text_style_height(&egui::TextStyle::Body) + EVENT_ROW_PADDING;
-        let below = theme::CONTROL_HEIGHT * 2. + row * EVENT_ROWS_KEPT;
-        let most = (room - below).clamp(0., room * FILTERS_SHARE);
-        egui::ScrollArea::vertical()
-            .id_salt(("event filters", self.generation))
-            .min_scrolled_height(0.)
-            .max_height(most)
-            .show(ui, |ui| {
-                // Why events stop early is never hidden away
-                if let Some(e) = &model.decode_error {
-                    let warning = Look::Color(theme::WARNING);
-                    let line = catalog.message(e);
-                    let width = Some(ui.available_width());
-                    let line = text::widget_text(ui.ctx(), &line, rtl, width, warning);
-                    ui.add(egui::Label::new(line).wrap());
-                }
-
-                self.controls(ui, catalog, rtl);
-            });
-        ui.separator();
-
-        // The count, with what the recording cannot show behind its help,
-        // and the way through the events beside it while they fit
-        let count = self.rows.len() as i64;
-        let count = catalog.text_with("demo-events", &[("count", count.into())]);
-        let notes: Vec<String> = model
-            .coverage_notes
-            .iter()
-            .map(|n| catalog.message(n))
-            .collect();
-        layout::wrapping_row(ui, rtl, |ui| {
-            ui.label(text::widget_text(ui.ctx(), &count, rtl, None, Look::Plain));
-            if !notes.is_empty() {
-                widgets::help(ui, &notes.join("\n\n"), rtl);
-            }
-            self.event_nav(ui, catalog, rtl);
-        });
-
-        self.table(ui, catalog, rtl);
-    }
 }
 
 /// A demo's file name without the `.dem` every demo has
@@ -2834,7 +2215,13 @@ fn warning_mark(ui: &mut Ui) {
 
 #[cfg(test)]
 mod tests {
+    use lambda_slicer_core::analysis::context::KillCause;
+    use lambda_slicer_core::analysis::motion::MotionEvidence;
+    use lambda_slicer_core::slice::range::{GroupIndex, GroupStart};
+
     use super::*;
+    use crate::kill_filters::MidairMode;
+    use crate::timeline::{KillFeatures, KillKey, KillMotion, SampledAt};
 
     /// A demo view of a file that is not there, with one clip from 1 to 2
     /// seconds whose start is being typed as `typed`
@@ -2891,5 +2278,126 @@ mod tests {
         view.choose_tab(&mut workspace, InspectorTab::Scoreboard);
         assert_eq!(view.clips[0].start, DemoTime::from_micros(1_000_000));
         assert!(view.typing.is_some());
+    }
+
+    /// A shot at `time` in the first session
+    fn shot(time: f32) -> Event {
+        Event {
+            segment: 0,
+            time,
+            lane: 0,
+            actor: None,
+            weapon: Some(Weapon::Gauss),
+            kind: EventKind::Action {
+                action: Action::Fire,
+                mode: None,
+            },
+        }
+    }
+
+    /// A kill at `time` in `segment` whose killer's airborne state is
+    /// `airborne`, the victim known to be on the ground
+    fn kill(segment: u32, time: f32, airborne: Option<bool>) -> Event {
+        let motion = |airborne| KillMotion {
+            airborne,
+            horizontal_speed: None,
+            evidence: MotionEvidence::Trajectory,
+            sampled_at: SampledAt::Kill,
+        };
+        let features = KillFeatures {
+            key: KillKey {
+                segment,
+                ordinal: 0,
+            },
+            killer_motion: Some(motion(airborne)),
+            victim_motion: Some(motion(Some(false))),
+            shot: None,
+            victim: None,
+            killer_team: None,
+            victim_team: None,
+            gauss: true,
+        };
+
+        Event {
+            segment,
+            time,
+            lane: 0,
+            actor: None,
+            weapon: Some(Weapon::Gauss),
+            kind: EventKind::Kill {
+                victim: None,
+                weapon_name: "gauss".into(),
+                cause: KillCause::PlayerWeapon,
+                killer: None,
+                headshot: None,
+                features: Box::new(features),
+            },
+        }
+    }
+
+    /// A demo view whose analysis is in with `events` and `groups`
+    fn view_of(events: Vec<Event>, groups: GroupIndex) -> DemoView {
+        let ctx = egui::Context::default();
+        let mut view = DemoView::open(PathBuf::from("not-there.dem"), 100., &ctx);
+        view.loader = None;
+        view.model = Some(Arc::new(Model {
+            events,
+            end: 100.,
+            groups,
+            ..Default::default()
+        }));
+        view
+    }
+
+    #[test]
+    fn refinements_hide_only_kills_and_every_part_reads_the_same_rows() {
+        let events = vec![
+            shot(1.),
+            kill(0, 2., Some(true)),
+            kill(0, 3., None),
+            kill(0, 4., Some(false)),
+        ];
+        let mut view = view_of(events, GroupIndex::default());
+        view.shown.shots = true;
+        view.shown.kill_filters.midair = MidairMode::Either;
+        view.refresh_rows();
+
+        // The shot stays, the kill known in the air shows, and the kill
+        // whose state is unknown is counted rather than taken as grounded
+        assert_eq!(view.rows, [0, 1]);
+        assert_eq!(view.unknown_kills, 1);
+        assert_eq!(view.shown_events, [true, true, false, false]);
+
+        // The timeline's marks, which its density counts too, are the rows
+        let marked: Vec<usize> = view.marks.iter().map(|m| m.event).collect();
+        assert_eq!(marked, view.rows);
+
+        // Hiding the kills keeps their refinements for when they come back
+        view.shown.kills = false;
+        view.refresh_rows();
+        assert_eq!(view.rows, [0]);
+        assert_eq!(view.shown.kill_filters.midair, MidairMode::Either);
+    }
+
+    #[test]
+    fn an_event_whose_time_an_earlier_session_has_is_out_of_reach() {
+        let group = |time: f32, segment: u32| GroupStart {
+            time,
+            segment,
+            demo_start: false,
+        };
+        let groups = GroupIndex {
+            groups: vec![group(0., 0), group(10., 0), group(0., 1), group(10., 1)],
+            ..Default::default()
+        };
+        let mut view = view_of(vec![kill(0, 5., None), kill(1, 5., None)], groups);
+
+        // The viewer seeks by time alone, which finds the first session
+        assert!(view.reachable(0));
+        assert!(!view.reachable(1));
+
+        // It can still be selected and read, without being played
+        view.select(1, true);
+        assert_eq!(view.selected, Some(1));
     }
 }

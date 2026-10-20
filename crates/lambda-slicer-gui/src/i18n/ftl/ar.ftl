@@ -205,17 +205,12 @@ protocol-unsupported-network = انتقل الخادم إلى بروتوكول �
 
 demo-close = إغلاق
 demo-loading = جارٍ تحليل { $name }…
-timeline-fit = ملاءمة
 show-shots = الطلقات
 show-actions = أفعال أخرى
 show-kills = القتلات
 show-switches = تبديل الأسلحة
 lane-unknown = لاعب غير معروف
 lane-recorder = { $name } (المسجِّل)
-column-time = الوقت
-column-player = اللاعب
-column-weapon = السلاح
-column-event = الحدث
 event-kill = قتل { $victim }
 event-switch = تبديل السلاح
 action-swing = ضربة
@@ -253,7 +248,6 @@ filter-to = إلى
 date-from-name = التاريخ مأخوذ من اسم الملف
 date-from-modified = تاريخ آخر تعديل للملف، وقد يتغير عند النسخ أو التنزيل
 timeline-best-action = الدقيقة الذهبية
-timeline-windows = أكثر اللحظات حماسًا
 timeline-window = رقم { $rank } { NUMBER($score, minimumFractionDigits: 2) } · { $start }–{ $end } · { $sides }
 
 scores-final = النتائج النهائية عند آخر قتل { $time }
@@ -262,7 +256,6 @@ scores-show-final = عرض النتائج النهائية
 scores-frags = القتلات
 scores-deaths = الوفيات
 
-show-timeline = إظهار الخط الزمني
 viewer-play = تشغيل
 viewer-pause = إيقاف مؤقت
 viewer-volume = مستوى الصوت
@@ -279,12 +272,90 @@ viewer-missing = ملفات تعذّرت قراءتها: { $count }
 event-previous = الحدث السابق
 event-next = الحدث التالي
 event-play = تشغيل الحدث
+timeline-title = الخط الزمني
+timeline-lanes = صفوف اللاعبين
+timeline-zoom-in = تكبير
+timeline-zoom-out = تصغير
+timeline-fit-all = ملاءمة التسجيل كله
+timeline-gestures = انقر على علامة لتحديد حدثها، أو في أي مكان آخر للانتقال إليه. اسحب المسطرة أو رأس التشغيل للتنقل، واسحب في مكان آخر للتحريك. مرّر العجلة للتكبير حول المؤشر، وانقر مرتين لرؤية التسجيل كله. اسحب طرف المقطع لتحريكه، أو انقر على المقطع لتحريره.
+timeline-density = تبيّن الأشرطة المظللة عدد الأحداث المعروضة في كل فترة، مقارنةً بأكثر فترات التسجيل ازدحامًا.
+timeline-density-count = { $count ->
+    [zero] لا أحداث معروضة هنا
+    [one] حدث معروض واحد هنا
+    [two] حدثان معروضان هنا
+    [few] { $count } أحداث معروضة هنا
+    [many] { $count } حدثًا معروضًا هنا
+   *[other] { $count } حدث معروض هنا
+}
+timeline-session-count = الجلسة { $session }: { $count }
+timeline-choose = الأحداث عند هذه النقطة
+legend-clip = مقطع
+event-session = الجلسة { $session }
+event-unreachable = هذا الحدث في جلسة لاحقة تعيد استخدام الأوقات نفسها، لذا لا يستطيع العارض الانتقال إليه.
+event-hidden = الحدث المحدد مخفي بسبب عوامل التصفية.
+highlight-jump = الانتقال إلى لقطة بارزة…
+highlight-help = ترتّب اللقطات البارزة التسجيل كله حسب الإثارة، أيًّا كان ما تعرضه المرشحات.
+kills-with = قتلات فيها
+refine-midair = في الهواء
+refine-speed = السرعة
+refine-wallgauss = Wallgauss
+refine-clear = مسح
+refine-airborne = من في الهواء
+refine-either = أيٌّ منهما
+midair-both = كلاهما
+midair-one = واحد فقط
+help-midair-either = كان القاتل أو الضحية أو كلاهما في الهواء. يُفحص القاتل عند الطلقة المرتبطة بالقتل، أو عند القتل إن لم توجد، وتُفحص الضحية عند الموت.
+help-midair-both = كان القاتل والضحية كلاهما في الهواء، كلٌّ عند فحصه.
+help-midair-one = كان أحدهما بالضبط في الهواء، ومن المعروف أن الآخر كان على الأرض.
+speed-at-least = على الأقل
+speed-unit = ups
+speed-killer = القاتل
+speed-victim = الضحية
+help-speed = السرعة الأفقية بالوحدات في الثانية، موازيةً للأرض. تُقاس سرعة القاتل عند الطلقة المرتبطة بالقتل، أو عند القتل إن لم توجد، وسرعة الضحية عند الموت. سرعات اللاعبين الآخرين تقديرية.
+wallgauss-pending = لا يستطيع هذا الإصدار بعدُ معرفة قتلات الغاوس التي اخترقت جدارًا، لذا لا تطابق أي قتلة. امسح هذا التضييق لترى كل القتلات مجددًا.
+wallgauss-weapon = يشمل Wallgauss قتلات الغاوس فقط، ومرشح السلاح يعرض { $weapon }.
+events-unknown = { $count ->
+    [zero] لا توجد عمليات قتل تنقصها البيانات اللازمة للحكم
+    [one] عملية قتل واحدة تنقصها البيانات اللازمة للحكم
+    [two] عمليتا قتل تنقصهما البيانات اللازمة للحكم
+    [few] { $count } عمليات قتل تنقصها البيانات اللازمة للحكم
+    [many] { $count } عملية قتل تنقصها البيانات اللازمة للحكم
+   *[other] { $count } عملية قتل تنقصها البيانات اللازمة للحكم
+}
+help-unknown = الحركة التي لم يستطع التسجيل رؤيتها تُعدّ مجهولة، ولا تُعدّ أبدًا وقوفًا على الأرض أو ثباتًا، لذا تُستبعد هذه القتلات.
+clip-it = أنشئ مقطعًا
+badge-headshot = HS
+badge-air = AIR
+badge-air-both = AIR ×2
+speed-ups = { $speed } ups
+speed-ups-unknown = — ups
+badge-suicide = انتحار
+badge-teamkill = قتل زميل
+badge-world = العالم
+air-both = كان كلاهما في الهواء عند الفحص.
+air-killer = كان القاتل في الهواء عند الفحص.
+air-victim = كانت الضحية في الهواء عند الفحص.
+air-other-unknown = ولا يُعرف إن كان الآخر كذلك.
+speed-horizontal = السرعة الأفقية، موازيةً للأرض.
+motion-line = { $who }: { $air }، { $speed }. { $how }، { $when }.
+motion-who-killer = القاتل
+motion-who-victim = الضحية
+motion-air-yes = في الهواء
+motion-air-no = على الأرض
+motion-air-unknown = لا يُعرف إن كان في الهواء
+motion-speed-unknown = السرعة مجهولة
+motion-exact = سجّلتها اللعبة
+motion-trajectory = مقدّرة من الحركة
+motion-unclear = الحركة غير واضحة
+motion-not-visible = خارج مجال الرؤية
+motion-at-shot = عند الطلقة المرتبطة
+motion-at-kill = عند الموت
+motion-none = لا يملك التحليل بيانات حركة لهذه القتلة.
 legend-shot = طلقة
 legend-charge = شحن
 legend-kill = قتل
 legend-death = موت
 legend-switch = تبديل السلاح
-timeline-help = كل صف لاعب. مرّر العجلة للتكبير، واسحب للتحريك، وانقر مرتين لرؤية الكل، وانقر على علامة لتحديدها.
 
 column-headshots = طلقات الرأس
 filter-headshots = قتلات بطلقة في الرأس
@@ -318,7 +389,6 @@ clip-loop = تكرار
 clip-time-help = ثوانٍ (96)، أو دقائق وثوانٍ (1:36)، أو ساعات ودقائق وثوانٍ (00:01:36.250)
 clip-exact = يبدأ التصدير وينتهي هنا تمامًا.
 clip-effective = يقطع التصدير { $start } – { $end } ({ $duration })، حسب إطارات التسجيل.
-timeline-clip-help = المقاطع هي الأشرطة الزرقاء الفاتحة. اسحب طرف الشريط لتحريكه.
 settings-clip-padding = هامش المقاطع
 settings-preroll = ثوانٍ قبل الحدث
 settings-postroll = ثوانٍ بعد الحدث

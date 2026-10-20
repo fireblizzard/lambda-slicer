@@ -191,17 +191,12 @@ protocol-unsupported-network = Сервер перешёл на сетевой �
 
 demo-close = Закрыть
 demo-loading = Разбор { $name }…
-timeline-fit = Вместить
 show-shots = Выстрелы
 show-actions = Другие действия
 show-kills = Убийства
 show-switches = Смена оружия
 lane-unknown = Неизвестный игрок
 lane-recorder = { $name } (записывал)
-column-time = Время
-column-player = Игрок
-column-weapon = Оружие
-column-event = Событие
 event-kill = Убил { $victim }
 event-switch = Смена оружия
 action-swing = Удар
@@ -237,7 +232,6 @@ filter-to = По
 date-from-name = Дата из имени файла
 date-from-modified = Дата последнего изменения файла, она может измениться при копировании или скачивании
 timeline-best-action = Золотая минута
-timeline-windows = Самые жаркие моменты
 timeline-window = №{ $rank } { NUMBER($score, minimumFractionDigits: 2) } · { $start }–{ $end } · { $sides }
 
 scores-final = Итоговый счёт на последнем убийстве { $time }
@@ -246,7 +240,6 @@ scores-show-final = Показать итоговый счёт
 scores-frags = Фраги
 scores-deaths = Смерти
 
-show-timeline = Показать шкалу времени
 viewer-play = Воспроизвести
 viewer-pause = Пауза
 viewer-volume = Громкость
@@ -263,12 +256,86 @@ viewer-missing = Файлы, которые не удалось прочитат
 event-previous = Предыдущее событие
 event-next = Следующее событие
 event-play = Воспроизвести событие
+timeline-title = Шкала времени
+timeline-lanes = Строки игроков
+timeline-zoom-in = Приблизить
+timeline-zoom-out = Отдалить
+timeline-fit-all = Вместить всю демозапись
+timeline-gestures = Щёлкните по метке, чтобы выбрать её событие, или в любом другом месте, чтобы перейти туда. Перетаскивайте линейку или указатель воспроизведения для перемотки, а в другом месте — для сдвига. Колесо мыши масштабирует вокруг курсора, а двойной щелчок показывает всю демозапись. Перетащите край клипа, чтобы сдвинуть его, или щёлкните по клипу, чтобы изменить его.
+timeline-density = Затенённые столбцы показывают, сколько показанных событий приходится на каждый отрезок, по сравнению с самым насыщенным отрезком демозаписи.
+timeline-density-count = { $count ->
+    [one] Здесь { $count } показанное событие
+    [few] Здесь { $count } показанных события
+    [many] Здесь { $count } показанных событий
+   *[other] Здесь { $count } показанного события
+}
+timeline-session-count = Сессия { $session }: { $count }
+timeline-choose = События в этой точке
+legend-clip = Клип
+event-session = Сессия { $session }
+event-unreachable = Это событие в более поздней сессии, которая заново использует те же отметки времени, поэтому просмотр не может к нему перейти.
+event-hidden = Выбранное событие скрыто фильтрами.
+highlight-jump = Перейти к хайлайту…
+highlight-help = Хайлайты ранжируют всю демозапись по накалу действия, что бы ни показывали фильтры.
+kills-with = Убийства с
+refine-midair = Midair
+refine-speed = Скорость
+refine-wallgauss = Wallgauss
+refine-clear = Сбросить
+refine-airborne = В воздухе
+refine-either = Любой
+midair-both = Оба
+midair-one = Только один
+help-midair-either = Убийца, жертва или оба были в воздухе. Убийцу проверяют в момент выстрела, связанного с убийством, а без него — в момент убийства, жертву — в момент смерти.
+help-midair-both = Убийца и жертва оба были в воздухе, каждый в момент проверки.
+help-midair-one = В воздухе был ровно один из них, а другой точно был на земле.
+speed-at-least = Не менее
+speed-unit = ups
+speed-killer = Убийца
+speed-victim = Жертва
+help-speed = Горизонтальная скорость в юнитах в секунду, параллельно земле. Скорость убийцы измеряется в момент выстрела, связанного с убийством, а без него — в момент убийства, жертвы — в момент смерти. Скорости других игроков — оценки.
+wallgauss-pending = Эта версия пока не умеет определять, какие убийства из гаусса прошли сквозь стену, поэтому ни одно убийство не подходит. Сбросьте уточнение, чтобы снова увидеть все убийства.
+wallgauss-weapon = Wallgauss относится только к убийствам из гаусса, а фильтр оружия показывает { $weapon }.
+events-unknown = { $count ->
+    [one] Для { $count } убийства не хватает данных, чтобы это определить
+    [few] Для { $count } убийств не хватает данных, чтобы это определить
+    [many] Для { $count } убийств не хватает данных, чтобы это определить
+   *[other] Для { $count } убийства не хватает данных, чтобы это определить
+}
+help-unknown = Движение, которое запись не смогла увидеть, считается неизвестным, но никогда — нахождением на земле или неподвижностью, поэтому эти убийства не учитываются.
+clip-it = В клип
+badge-headshot = ХШ
+badge-air = AIR
+badge-air-both = AIR ×2
+speed-ups = { $speed } ups
+speed-ups-unknown = — ups
+badge-suicide = суицид
+badge-teamkill = тимкилл
+badge-world = мир
+air-both = Оба были в воздухе в момент проверки.
+air-killer = Убийца был в воздухе в момент проверки.
+air-victim = Жертва была в воздухе в момент проверки.
+air-other-unknown = Был ли в воздухе другой, неизвестно.
+speed-horizontal = Горизонтальная скорость, параллельно земле.
+motion-line = { $who }: { $air }, { $speed }. { $how }, { $when }.
+motion-who-killer = Убийца
+motion-who-victim = Жертва
+motion-air-yes = в воздухе
+motion-air-no = на земле
+motion-air-unknown = неизвестно, в воздухе ли
+motion-speed-unknown = скорость неизвестна
+motion-exact = Записано игрой
+motion-trajectory = Оценено по движению
+motion-unclear = Движение неясно
+motion-not-visible = Вне поля зрения
+motion-at-shot = в момент связанного выстрела
+motion-at-kill = в момент смерти
+motion-none = В анализе нет движения для этого убийства.
 legend-shot = Выстрел
 legend-charge = Зарядка
 legend-kill = Убийство
 legend-death = Смерть
 legend-switch = Смена оружия
-timeline-help = Каждая строка — игрок. Колесо мыши масштабирует, перетаскивание сдвигает, двойной щелчок показывает всё, щелчок по метке выбирает её.
 
 column-headshots = Хедшоты
 filter-headshots = Убийства в голову
@@ -302,7 +369,6 @@ clip-loop = Повтор
 clip-time-help = Секунды (96), минуты и секунды (1:36) или часы, минуты и секунды (00:01:36.250)
 clip-exact = Экспорт начнётся и закончится точно здесь.
 clip-effective = Экспорт вырежет { $start } – { $end } ({ $duration }), по кадрам записи.
-timeline-clip-help = Клипы — светло-голубые полосы. Перетащите край полосы, чтобы сдвинуть его.
 settings-clip-padding = Запас вокруг клипа
 settings-preroll = Секунд до события
 settings-postroll = Секунд после события

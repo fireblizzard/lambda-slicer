@@ -184,17 +184,12 @@ protocol-unsupported-network = El servidor cambió al protocolo de red { $networ
 
 demo-close = Cerrar
 demo-loading = Analizando { $name }…
-timeline-fit = Ajustar
 show-shots = Disparos
 show-actions = Otras acciones
 show-kills = Bajas
 show-switches = Cambios de arma
 lane-unknown = Jugador desconocido
 lane-recorder = { $name } (grabó)
-column-time = Tiempo
-column-player = Jugador
-column-weapon = Arma
-column-event = Evento
 event-kill = Mató a { $victim }
 event-switch = Cambio de arma
 action-swing = Golpe
@@ -229,7 +224,6 @@ filter-to = Hasta
 date-from-name = Fecha tomada del nombre del archivo
 date-from-modified = Fecha de la última modificación del archivo, que puede cambiar al copiarlo o descargarlo
 timeline-best-action = Minuto de oro
-timeline-windows = Momentos más intensos
 timeline-window = N.º { $rank } { NUMBER($score, minimumFractionDigits: 2) } · { $start }–{ $end } · { $sides }
 
 scores-final = Puntajes finales, en la última baja { $time }
@@ -238,7 +232,6 @@ scores-show-final = Ver puntajes finales
 scores-frags = Bajas
 scores-deaths = Muertes
 
-show-timeline = Mostrar línea de tiempo
 viewer-play = Reproducir
 viewer-pause = Pausar
 viewer-volume = Volumen
@@ -255,12 +248,84 @@ viewer-missing = Archivos que no se pudieron leer: { $count }
 event-previous = Evento anterior
 event-next = Evento siguiente
 event-play = Reproducir evento
+timeline-title = Línea de tiempo
+timeline-lanes = Filas por jugador
+timeline-zoom-in = Acercar
+timeline-zoom-out = Alejar
+timeline-fit-all = Ajustar a toda la demo
+timeline-gestures = Haz clic en una marca para seleccionar su evento, o en cualquier otro lugar para ir ahí. Arrastra la regla o el cabezal para recorrer, y arrastra en otro lugar para desplazarte. Usa la rueda para hacer zoom alrededor del puntero y haz doble clic para ver toda la demo. Arrastra el borde de un clip para moverlo, o haz clic en el clip para editarlo.
+timeline-density = Las barras sombreadas muestran cuántos de los eventos mostrados caen en cada tramo, en relación con el tramo más movido de la demo.
+timeline-density-count = { $count ->
+    [one] Un evento mostrado aquí
+    [many] { $count } de eventos mostrados aquí
+   *[other] { $count } eventos mostrados aquí
+}
+timeline-session-count = Sesión { $session }: { $count }
+timeline-choose = Eventos en este punto
+legend-clip = Clip
+event-session = Sesión { $session }
+event-unreachable = Este evento está en una sesión posterior que reutiliza los mismos tiempos, así que el visor no puede ir a él.
+event-hidden = Los filtros ocultan el evento seleccionado.
+highlight-jump = Ir a una jugada destacada…
+highlight-help = Las jugadas destacadas ordenan toda la demo por su acción, sin importar lo que muestren los filtros.
+kills-with = Bajas con
+refine-midair = Midair
+refine-speed = Velocidad
+refine-wallgauss = Wallgauss
+refine-clear = Quitar
+refine-airborne = En el aire
+refine-either = Cualquiera
+midair-both = Ambos
+midair-one = Solo uno
+help-midair-either = El asesino, la víctima o ambos estaban en el aire. Al asesino se lo revisa en el disparo vinculado a la baja, o en la baja si no hay uno, y a la víctima en la muerte.
+help-midair-both = El asesino y la víctima estaban ambos en el aire, cada uno al revisarlo.
+help-midair-one = Exactamente uno de los dos estaba en el aire, y se sabe que el otro estaba en el suelo.
+speed-at-least = Al menos
+speed-unit = ups
+speed-killer = Asesino
+speed-victim = Víctima
+help-speed = Velocidad horizontal en unidades por segundo, paralela al suelo. Al asesino se lo mide en el disparo vinculado a la baja, o en la baja si no hay uno, y a la víctima en la muerte. Las velocidades de otros jugadores son estimaciones.
+wallgauss-pending = Esta versión todavía no puede saber qué bajas con la gauss atravesaron una pared, así que ninguna baja coincide. Quita el refinamiento para volver a ver todas las bajas.
+wallgauss-weapon = Wallgauss solo abarca bajas con la gauss, y el filtro de arma muestra { $weapon }.
+events-unknown = { $count ->
+    [one] A una baja le faltan datos para saberlo
+    [many] A { $count } de bajas les faltan datos para saberlo
+   *[other] A { $count } bajas les faltan datos para saberlo
+}
+help-unknown = El movimiento que la grabación no pudo ver cuenta como desconocido, nunca como en el suelo o quieto, así que estas bajas quedan fuera.
+clip-it = Clipear
+badge-headshot = HS
+badge-air = AIR
+badge-air-both = AIR ×2
+speed-ups = { $speed } ups
+speed-ups-unknown = — ups
+badge-suicide = suicidio
+badge-teamkill = teamkill
+badge-world = mundo
+air-both = Ambos estaban en el aire al revisarlos.
+air-killer = El asesino estaba en el aire al revisarlo.
+air-victim = La víctima estaba en el aire al revisarla.
+air-other-unknown = No se sabe si el otro también.
+speed-horizontal = Velocidad horizontal, paralela al suelo.
+motion-line = { $who }: { $air }, { $speed }. { $how }, { $when }.
+motion-who-killer = Asesino
+motion-who-victim = Víctima
+motion-air-yes = en el aire
+motion-air-no = en el suelo
+motion-air-unknown = no se sabe si en el aire
+motion-speed-unknown = velocidad desconocida
+motion-exact = Registrado por el juego
+motion-trajectory = Estimado por el movimiento
+motion-unclear = Movimiento poco claro
+motion-not-visible = Fuera de vista
+motion-at-shot = en el disparo vinculado
+motion-at-kill = en la muerte
+motion-none = El análisis no tiene movimiento para esta baja.
 legend-shot = Disparo
 legend-charge = Cargando
 legend-kill = Baja
 legend-death = Muerte
 legend-switch = Cambio de arma
-timeline-help = Cada fila es un jugador. Usa la rueda para acercar, arrastra para moverte, haz doble clic para ver todo y clic en una marca para seleccionarla.
 
 column-headshots = Headshots
 filter-headshots = Bajas con headshot
@@ -294,7 +359,6 @@ clip-loop = Repetir
 clip-time-help = Segundos (96), minutos y segundos (1:36) u horas, minutos y segundos (00:01:36.250)
 clip-exact = La exportación empieza y termina justo aquí.
 clip-effective = La exportación corta { $start } – { $end } ({ $duration }), donde caen los cuadros de la grabación.
-timeline-clip-help = Los clips son las franjas celestes. Arrastra el borde de una franja para moverlo.
 settings-clip-padding = Margen de los clips
 settings-preroll = Segundos antes del evento
 settings-postroll = Segundos después del evento

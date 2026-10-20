@@ -184,17 +184,12 @@ protocol-unsupported-network = O servidor mudou para o protocolo de rede { $netw
 
 demo-close = Fechar
 demo-loading = Analisando { $name }…
-timeline-fit = Ajustar
 show-shots = Disparos
 show-actions = Outras ações
 show-kills = Abates
 show-switches = Trocas de arma
 lane-unknown = Jogador desconhecido
 lane-recorder = { $name } (gravou)
-column-time = Tempo
-column-player = Jogador
-column-weapon = Arma
-column-event = Evento
 event-kill = Abateu { $victim }
 event-switch = Troca de arma
 action-swing = Golpe
@@ -229,7 +224,6 @@ filter-to = Até
 date-from-name = Data tirada do nome do arquivo
 date-from-modified = Data da última modificação do arquivo, que copiar ou baixar pode alterar
 timeline-best-action = Minuto de ouro
-timeline-windows = Momentos mais intensos
 timeline-window = Nº { $rank } { NUMBER($score, minimumFractionDigits: 2) } · { $start }–{ $end } · { $sides }
 
 scores-final = Placar final, no último abate { $time }
@@ -238,7 +232,6 @@ scores-show-final = Ver placar final
 scores-frags = Abates
 scores-deaths = Mortes
 
-show-timeline = Mostrar linha do tempo
 viewer-play = Reproduzir
 viewer-pause = Pausar
 viewer-volume = Volume
@@ -255,12 +248,84 @@ viewer-missing = Arquivos que não puderam ser lidos: { $count }
 event-previous = Evento anterior
 event-next = Próximo evento
 event-play = Reproduzir evento
+timeline-title = Linha do tempo
+timeline-lanes = Linhas por jogador
+timeline-zoom-in = Aproximar
+timeline-zoom-out = Afastar
+timeline-fit-all = Ajustar a demo inteira
+timeline-gestures = Clique numa marca para selecionar o evento dela, ou em qualquer outro lugar para ir até lá. Arraste a régua ou o cursor de reprodução para percorrer, e arraste em outro lugar para se mover. Role para dar zoom em volta do ponteiro, e clique duas vezes para ver a demo inteira. Arraste a borda de um clipe para movê-la, ou clique no clipe para editá-lo.
+timeline-density = As barras sombreadas mostram quantos dos eventos exibidos caem em cada trecho, em relação ao trecho mais movimentado da demo.
+timeline-density-count = { $count ->
+    [one] Um evento exibido aqui
+    [many] { $count } de eventos exibidos aqui
+   *[other] { $count } eventos exibidos aqui
+}
+timeline-session-count = Sessão { $session }: { $count }
+timeline-choose = Eventos neste ponto
+legend-clip = Clipe
+event-session = Sessão { $session }
+event-unreachable = Este evento está numa sessão posterior que reutiliza os mesmos tempos, então o visualizador não consegue ir até ele.
+event-hidden = Os filtros ocultam o evento selecionado.
+highlight-jump = Ir para um highlight…
+highlight-help = Os highlights classificam a demo inteira pela ação, seja o que for que os filtros mostrem.
+kills-with = Abates com
+refine-midair = Midair
+refine-speed = Velocidade
+refine-wallgauss = Wallgauss
+refine-clear = Limpar
+refine-airborne = No ar
+refine-either = Qualquer um
+midair-both = Ambos
+midair-one = Só um
+help-midair-either = O matador, a vítima ou ambos estavam no ar. O matador é verificado no disparo ligado ao abate, ou no abate se não houver um, e a vítima na morte.
+help-midair-both = O matador e a vítima estavam ambos no ar, cada um ao ser verificado.
+help-midair-one = Exatamente um dos dois estava no ar, e sabe-se que o outro estava no chão.
+speed-at-least = Pelo menos
+speed-unit = ups
+speed-killer = Matador
+speed-victim = Vítima
+help-speed = Velocidade horizontal em unidades por segundo, paralela ao chão. O matador é medido no disparo ligado ao abate, ou no abate se não houver um, e a vítima na morte. As velocidades dos outros jogadores são estimativas.
+wallgauss-pending = Esta versão ainda não sabe dizer quais abates com o gauss atravessaram uma parede, então nenhum abate corresponde. Limpe o refinamento para ver todos os abates de novo.
+wallgauss-weapon = Wallgauss só abrange abates com o gauss, e o filtro de arma mostra { $weapon }.
+events-unknown = { $count ->
+    [one] Um abate não tem dados para dizer
+    [many] { $count } de abates não têm dados para dizer
+   *[other] { $count } abates não têm dados para dizer
+}
+help-unknown = O movimento que a gravação não conseguiu ver conta como desconhecido, nunca como no chão ou parado, então esses abates ficam de fora.
+clip-it = Clipar
+badge-headshot = HS
+badge-air = AIR
+badge-air-both = AIR ×2
+speed-ups = { $speed } ups
+speed-ups-unknown = — ups
+badge-suicide = suicídio
+badge-teamkill = teamkill
+badge-world = mundo
+air-both = Ambos estavam no ar ao serem verificados.
+air-killer = O matador estava no ar ao ser verificado.
+air-victim = A vítima estava no ar ao ser verificada.
+air-other-unknown = Não se sabe se o outro também estava.
+speed-horizontal = Velocidade horizontal, paralela ao chão.
+motion-line = { $who }: { $air }, { $speed }. { $how }, { $when }.
+motion-who-killer = Matador
+motion-who-victim = Vítima
+motion-air-yes = no ar
+motion-air-no = no chão
+motion-air-unknown = não se sabe se no ar
+motion-speed-unknown = velocidade desconhecida
+motion-exact = Registrado pelo jogo
+motion-trajectory = Estimado pelo movimento
+motion-unclear = Movimento incerto
+motion-not-visible = Fora de vista
+motion-at-shot = no disparo ligado
+motion-at-kill = na morte
+motion-none = A análise não tem movimento para este abate.
 legend-shot = Disparo
 legend-charge = Carregando
 legend-kill = Abate
 legend-death = Morte
 legend-switch = Troca de arma
-timeline-help = Cada linha é um jogador. Role para aproximar, arraste para mover, clique duas vezes para ver tudo e clique numa marca para selecioná-la.
 
 column-headshots = Headshots
 filter-headshots = Abates com headshot
@@ -294,7 +359,6 @@ clip-loop = Repetir
 clip-time-help = Segundos (96), minutos e segundos (1:36) ou horas, minutos e segundos (00:01:36.250)
 clip-exact = A exportação começa e termina exatamente aqui.
 clip-effective = A exportação corta { $start } – { $end } ({ $duration }), onde caem os quadros da gravação.
-timeline-clip-help = Os clipes são as faixas azul-claras. Arraste a borda de uma faixa para movê-la.
 settings-clip-padding = Margem dos clipes
 settings-preroll = Segundos antes do evento
 settings-postroll = Segundos depois do evento

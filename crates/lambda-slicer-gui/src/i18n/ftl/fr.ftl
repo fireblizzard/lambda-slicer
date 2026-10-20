@@ -184,17 +184,12 @@ protocol-unsupported-network = Le serveur est passé au protocole réseau { $net
 
 demo-close = Fermer
 demo-loading = Analyse de { $name }…
-timeline-fit = Ajuster
 show-shots = Tirs
 show-actions = Autres actions
 show-kills = Éliminations
 show-switches = Changements d’arme
 lane-unknown = Joueur inconnu
 lane-recorder = { $name } (enregistre)
-column-time = Temps
-column-player = Joueur
-column-weapon = Arme
-column-event = Événement
 event-kill = A éliminé { $victim }
 event-switch = Changement d’arme
 action-swing = Coup
@@ -229,7 +224,6 @@ filter-to = Au
 date-from-name = Date tirée du nom du fichier
 date-from-modified = Date de dernière modification du fichier, qu’une copie ou un téléchargement peut changer
 timeline-best-action = Minute en or
-timeline-windows = Moments les plus intenses
 timeline-window = N° { $rank } { NUMBER($score, minimumFractionDigits: 2) } · { $start }–{ $end } · { $sides }
 
 scores-final = Scores finaux, à la dernière élimination { $time }
@@ -238,7 +232,6 @@ scores-show-final = Voir les scores finaux
 scores-frags = Frags
 scores-deaths = Morts
 
-show-timeline = Afficher la frise
 viewer-play = Lecture
 viewer-pause = Pause
 viewer-volume = Volume
@@ -255,12 +248,84 @@ viewer-missing = Fichiers illisibles : { $count }
 event-previous = Événement précédent
 event-next = Événement suivant
 event-play = Lire l’événement
+timeline-title = Frise
+timeline-lanes = Lignes par joueur
+timeline-zoom-in = Zoom avant
+timeline-zoom-out = Zoom arrière
+timeline-fit-all = Ajuster toute la démo
+timeline-gestures = Clique sur une marque pour sélectionner son événement, ou ailleurs pour t’y rendre. Fais glisser la règle ou la tête de lecture pour parcourir, et glisse ailleurs pour te déplacer. La molette zoome autour du pointeur, et un double-clic montre toute la démo. Fais glisser le bord d’un clip pour le déplacer, ou clique sur le clip pour le modifier.
+timeline-density = Les barres ombrées montrent combien des événements affichés tombent dans chaque tranche, par rapport à la tranche la plus chargée de la démo.
+timeline-density-count = { $count ->
+    [one] Un événement affiché ici
+    [many] { $count } d’événements affichés ici
+   *[other] { $count } événements affichés ici
+}
+timeline-session-count = Session { $session } : { $count }
+timeline-choose = Événements à cet endroit
+legend-clip = Clip
+event-session = Session { $session }
+event-unreachable = Cet événement se trouve dans une session ultérieure qui réutilise les mêmes temps, le lecteur ne peut donc pas s’y rendre.
+event-hidden = Les filtres masquent l’événement sélectionné.
+highlight-jump = Aller à un temps fort…
+highlight-help = Les temps forts classent toute la démo selon son action, quoi que montrent les filtres.
+kills-with = Éliminations avec
+refine-midair = Midair
+refine-speed = Vitesse
+refine-wallgauss = Wallgauss
+refine-clear = Effacer
+refine-airborne = En l’air
+refine-either = Au moins un
+midair-both = Les deux
+midair-one = Un seul
+help-midair-either = Le tueur, la victime ou les deux étaient en l’air. Le tueur est vérifié au tir lié à l’élimination, ou à l’élimination s’il n’y en a pas, et la victime à sa mort.
+help-midair-both = Le tueur et la victime étaient tous deux en l’air, chacun au moment de sa vérification.
+help-midair-one = Exactement l’un des deux était en l’air, et on sait que l’autre était au sol.
+speed-at-least = Au moins
+speed-unit = ups
+speed-killer = Tueur
+speed-victim = Victime
+help-speed = Vitesse horizontale en unités par seconde, parallèlement au sol. Le tueur est mesuré au tir lié à l’élimination, ou à l’élimination s’il n’y en a pas, et la victime à sa mort. Les vitesses des autres joueurs sont des estimations.
+wallgauss-pending = Cette version ne sait pas encore quelles éliminations au gauss ont traversé un mur, donc aucune élimination ne correspond. Efface l’affinage pour revoir toutes les éliminations.
+wallgauss-weapon = Wallgauss ne concerne que les éliminations au gauss, et le filtre d’arme affiche { $weapon }.
+events-unknown = { $count ->
+    [one] Une élimination manque de données pour trancher
+    [many] { $count } d’éliminations manquent de données pour trancher
+   *[other] { $count } éliminations manquent de données pour trancher
+}
+help-unknown = Un mouvement que l’enregistrement n’a pas pu voir compte comme inconnu, jamais comme au sol ou à l’arrêt, donc ces éliminations sont exclues.
+clip-it = Clipper
+badge-headshot = TT
+badge-air = AIR
+badge-air-both = AIR ×2
+speed-ups = { $speed } ups
+speed-ups-unknown = — ups
+badge-suicide = suicide
+badge-teamkill = teamkill
+badge-world = monde
+air-both = Les deux étaient en l’air lors de la vérification.
+air-killer = Le tueur était en l’air lors de la vérification.
+air-victim = La victime était en l’air lors de la vérification.
+air-other-unknown = On ne sait pas si l’autre l’était.
+speed-horizontal = Vitesse horizontale, parallèlement au sol.
+motion-line = { $who } : { $air }, { $speed }. { $how }, { $when }.
+motion-who-killer = Tueur
+motion-who-victim = Victime
+motion-air-yes = en l’air
+motion-air-no = au sol
+motion-air-unknown = en l’air ou non, on ne sait pas
+motion-speed-unknown = vitesse inconnue
+motion-exact = Enregistré par le jeu
+motion-trajectory = Estimé d’après le mouvement
+motion-unclear = Mouvement incertain
+motion-not-visible = Hors de vue
+motion-at-shot = au tir lié
+motion-at-kill = à la mort
+motion-none = L’analyse n’a aucun mouvement pour cette élimination.
 legend-shot = Tir
 legend-charge = Charge
 legend-kill = Élimination
 legend-death = Mort
 legend-switch = Changement d’arme
-timeline-help = Chaque ligne est un joueur. La molette zoome, glisser déplace, un double-clic montre tout, un clic sur une marque la sélectionne.
 
 column-headshots = Tirs à la tête
 filter-headshots = Éliminations d’un tir à la tête
@@ -294,7 +359,6 @@ clip-loop = Boucle
 clip-time-help = Secondes (96), minutes et secondes (1:36) ou heures, minutes et secondes (00:01:36.250)
 clip-exact = L’export commence et se termine exactement ici.
 clip-effective = L’export coupe { $start } – { $end } ({ $duration }), selon les images de l’enregistrement.
-timeline-clip-help = Les clips sont les bandes bleu clair. Fais glisser le bord d’une bande pour le déplacer.
 settings-clip-padding = Marge des clips
 settings-preroll = Secondes avant l’événement
 settings-postroll = Secondes après l’événement

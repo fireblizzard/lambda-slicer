@@ -57,6 +57,18 @@ pub enum Icon {
     PanelClose,
     /// A triangle with an exclamation mark
     Warning,
+    /// A magnifying glass with a plus or a minus
+    ZoomIn,
+    ZoomOut,
+    /// Four corners pointing out, for the whole of something
+    Fit,
+    /// Scissors, for cutting a clip
+    Scissors,
+    /// Chevrons up and down, for the item before or after
+    Previous,
+    Next,
+    /// An outlined triangle, for playing something once
+    Play,
 }
 
 /// The width of an icon's lines
@@ -325,6 +337,54 @@ pub fn paint_icon_facing(
             painter.add(Shape::closed_line(triangle, stroke));
             painter.line_segment([p(8., 6.), p(8., 10.)], stroke);
             painter.circle_filled(p(8., 12.), 0.9 * unit, color);
+        }
+        Icon::ZoomIn | Icon::ZoomOut => {
+            let lens = p(7., 7.);
+            painter.circle_stroke(lens, 4.5 * unit, stroke);
+            painter.line_segment([p(10.3, 10.3), p(14., 14.)], stroke);
+
+            painter.line_segment([p(5., 7.), p(9., 7.)], stroke);
+            if icon == Icon::ZoomIn {
+                painter.line_segment([p(7., 5.), p(7., 9.)], stroke);
+            }
+        }
+        Icon::Fit => {
+            // Each corner's two arms, from its tip
+            let corners = [
+                (p(2.5, 2.5), Vec2::new(1., 1.)),
+                (p(13.5, 2.5), Vec2::new(-1., 1.)),
+                (p(13.5, 13.5), Vec2::new(-1., -1.)),
+                (p(2.5, 13.5), Vec2::new(1., -1.)),
+            ];
+            for (tip, inward) in corners {
+                let arm = 3.5 * unit;
+                let across = tip + Vec2::new(inward.x * arm, 0.);
+                let down = tip + Vec2::new(0., inward.y * arm);
+                painter.add(Shape::line(vec![across, tip, down], stroke));
+            }
+        }
+        Icon::Scissors => {
+            // Two rings for the fingers and the blades crossing above them
+            painter.circle_stroke(p(4.5, 12.), 2.2 * unit, stroke);
+            painter.circle_stroke(p(11.5, 12.), 2.2 * unit, stroke);
+            painter.line_segment([p(6., 10.3), p(12.5, 2.)], stroke);
+            painter.line_segment([p(10., 10.3), p(3.5, 2.)], stroke);
+        }
+        Icon::Previous => {
+            painter.add(Shape::line(
+                vec![p(3.5, 10.5), p(8., 6.), p(12.5, 10.5)],
+                stroke,
+            ));
+        }
+        Icon::Next => {
+            painter.add(Shape::line(
+                vec![p(3.5, 5.5), p(8., 10.), p(12.5, 5.5)],
+                stroke,
+            ));
+        }
+        Icon::Play => {
+            let forward = vec![p(4.5, 3.), p(13., 8.), p(4.5, 13.)];
+            painter.add(Shape::closed_line(forward, stroke));
         }
     }
 }

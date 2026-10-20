@@ -191,17 +191,12 @@ protocol-unsupported-network = Serveris perėjo prie nepalaikomo tinklo protokol
 
 demo-close = Uždaryti
 demo-loading = Analizuojamas { $name }…
-timeline-fit = Talpinti
 show-shots = Šūviai
 show-actions = Kiti veiksmai
 show-kills = Nužudymai
 show-switches = Ginklų keitimai
 lane-unknown = Nežinomas žaidėjas
 lane-recorder = { $name } (įrašė)
-column-time = Laikas
-column-player = Žaidėjas
-column-weapon = Ginklas
-column-event = Įvykis
 event-kill = Nužudė { $victim }
 event-switch = Ginklo keitimas
 action-swing = Smūgis
@@ -237,7 +232,6 @@ filter-to = Iki
 date-from-name = Data iš failo pavadinimo
 date-from-modified = Paskutinio failo pakeitimo data, kurią kopijavimas ar atsisiuntimas gali pakeisti
 timeline-best-action = Auksinė minutė
-timeline-windows = Intensyviausios akimirkos
 timeline-window = Nr. { $rank } { NUMBER($score, minimumFractionDigits: 2) } · { $start }–{ $end } · { $sides }
 
 scores-final = Galutiniai rezultatai, ties paskutiniu nužudymu { $time }
@@ -246,7 +240,6 @@ scores-show-final = Rodyti galutinius rezultatus
 scores-frags = Fragai
 scores-deaths = Mirtys
 
-show-timeline = Rodyti laiko juostą
 viewer-play = Leisti
 viewer-pause = Pristabdyti
 viewer-volume = Garsumas
@@ -263,12 +256,86 @@ viewer-missing = Failai, kurių nepavyko perskaityti: { $count }
 event-previous = Ankstesnis įvykis
 event-next = Kitas įvykis
 event-play = Leisti įvykį
+timeline-title = Laiko juosta
+timeline-lanes = Žaidėjų eilutės
+timeline-zoom-in = Priartinti
+timeline-zoom-out = Nutolinti
+timeline-fit-all = Talpinti visą įrašą
+timeline-gestures = Spustelėkite žymę, kad pasirinktumėte jos įvykį, arba bet kur kitur, kad ten pereitumėte. Tempkite liniuotę arba atkūrimo galvutę, kad persuktumėte, o tempkite kitur, kad pastumtumėte vaizdą. Slinkite, kad keistumėte mastelį aplink žymeklį, ir dukart spustelėkite, kad matytumėte visą įrašą. Tempkite klipo kraštą, kad jį pastumtumėte, arba spustelėkite klipą, kad jį redaguotumėte.
+timeline-density = Užtamsintos juostelės rodo, kiek rodomų įvykių patenka į kiekvieną atkarpą, palyginti su intensyviausia įrašo atkarpa.
+timeline-density-count = { $count ->
+    [one] Čia { $count } rodomas įvykis
+    [few] Čia { $count } rodomi įvykiai
+    [many] Čia { $count } rodomo įvykio
+   *[other] Čia { $count } rodomų įvykių
+}
+timeline-session-count = Sesija { $session }: { $count }
+timeline-choose = Įvykiai šioje vietoje
+legend-clip = Klipas
+event-session = Sesija { $session }
+event-unreachable = Šis įvykis yra vėlesnėje sesijoje, kuri vėl naudoja tuos pačius laikus, todėl peržiūra negali į jį pereiti.
+event-hidden = Pasirinktą įvykį slepia filtrai.
+highlight-jump = Pereiti prie geriausios akimirkos…
+highlight-help = Geriausios akimirkos rikiuoja visą įrašą pagal veiksmą, nepaisant to, ką rodo filtrai.
+kills-with = Nužudymai su
+refine-midair = Midair
+refine-speed = Greitis
+refine-wallgauss = Wallgauss
+refine-clear = Išvalyti
+refine-airborne = Ore
+refine-either = Bet kuris
+midair-both = Abu
+midair-one = Tik vienas
+help-midair-either = Žudikas, auka arba abu buvo ore. Žudikas tikrinamas su nužudymu susieto šūvio metu arba, jei šūvio nėra, nužudymo metu, o auka mirties metu.
+help-midair-both = Žudikas ir auka abu buvo ore, kiekvienas savo tikrinimo metu.
+help-midair-one = Ore buvo lygiai vienas iš jų, o apie kitą žinoma, kad jis buvo ant žemės.
+speed-at-least = Bent
+speed-unit = ups
+speed-killer = Žudikas
+speed-victim = Auka
+help-speed = Horizontalusis greitis vienetais per sekundę, lygiagrečiai žemei. Žudiko greitis matuojamas su nužudymu susieto šūvio metu arba, jei šūvio nėra, nužudymo metu, o aukos mirties metu. Kitų žaidėjų greičiai yra įverčiai.
+wallgauss-pending = Ši versija dar negali nustatyti, kurie gauso nužudymai buvo per sieną, todėl neatitinka joks nužudymas. Išvalykite patikslinimą, kad vėl matytumėte visus nužudymus.
+wallgauss-weapon = Wallgauss apima tik gauso nužudymus, o ginklo filtras rodo { $weapon }.
+events-unknown = { $count ->
+    [one] { $count } nužudymas neturi duomenų tam nustatyti
+    [few] { $count } nužudymai neturi duomenų tam nustatyti
+    [many] { $count } nužudymo neturi duomenų tam nustatyti
+   *[other] { $count } nužudymų neturi duomenų tam nustatyti
+}
+help-unknown = Judėjimas, kurio įrašas negalėjo matyti, laikomas nežinomu, o ne buvimu ant žemės ar stovėjimu vietoje, todėl šie nužudymai neįtraukiami.
+clip-it = Į klipą
+badge-headshot = ŠG
+badge-air = AIR
+badge-air-both = AIR ×2
+speed-ups = { $speed } ups
+speed-ups-unknown = — ups
+badge-suicide = savižudybė
+badge-teamkill = teamkill
+badge-world = pasaulis
+air-both = Abu buvo ore tikrinimo metu.
+air-killer = Žudikas buvo ore tikrinimo metu.
+air-victim = Auka buvo ore tikrinimo metu.
+air-other-unknown = Ar ore buvo kitas, nežinoma.
+speed-horizontal = Horizontalusis greitis, lygiagrečiai žemei.
+motion-line = { $who }: { $air }, { $speed }. { $how }, { $when }.
+motion-who-killer = Žudikas
+motion-who-victim = Auka
+motion-air-yes = ore
+motion-air-no = ant žemės
+motion-air-unknown = nežinoma, ar ore
+motion-speed-unknown = greitis nežinomas
+motion-exact = Užfiksavo žaidimas
+motion-trajectory = Įvertinta pagal judėjimą
+motion-unclear = Judėjimas neaiškus
+motion-not-visible = Už matomumo ribų
+motion-at-shot = susieto šūvio metu
+motion-at-kill = mirties metu
+motion-none = Analizėje nėra šio nužudymo judėjimo duomenų.
 legend-shot = Šūvis
 legend-charge = Krovimas
 legend-kill = Nužudymas
 legend-death = Mirtis
 legend-switch = Ginklo keitimas
-timeline-help = Kiekviena eilutė yra žaidėjas. Slinkite, kad priartintumėte, tempkite, kad pastumtumėte, dukart spustelėkite, kad matytumėte viską, spustelėkite žymę, kad ją pasirinktumėte.
 
 column-headshots = Šūviai į galvą
 filter-headshots = Nužudymai šūviu į galvą
@@ -302,7 +369,6 @@ clip-loop = Kartoti
 clip-time-help = Sekundės (96), minutės ir sekundės (1:36) arba valandos, minutės ir sekundės (00:01:36.250)
 clip-exact = Eksportas prasidės ir baigsis lygiai čia.
 clip-effective = Eksportas iškirps { $start } – { $end } ({ $duration }) pagal įrašo kadrus.
-timeline-clip-help = Klipai yra šviesiai mėlynos juostos. Tempkite juostos kraštą, kad jį pastumtumėte.
 settings-clip-padding = Klipo paraštė
 settings-preroll = Sekundės prieš įvykį
 settings-postroll = Sekundės po įvykio
