@@ -1,6 +1,6 @@
 //! Lambda Slicer desktop app
 //!
-//! `lambda-slicer-gui [PATH...] [--locale TAG] [--settings] [--timeline]
+//! `lambda-slicer-gui [PATH...] [--locale TAG] [--settings [--section NAME]] [--timeline]
 //! [--dates] [--pseudo] [--size WxH] [--cache FILE] [--clips FILE]
 //! [--demo FILE [--window N] [--event N] [--refine LIST] [--tab TAB] [--export DIR]]
 //! [--screenshot OUT.png [--frames N]]
@@ -17,7 +17,8 @@
 //! comma-separated `LIST` on with `--refine`, from `midair`, `both`, `one`,
 //! `speed`, `killer`, `victim` and `wallgauss`. `--tab` shows the inspector's
 //! `events`, `clips` or `scoreboard` tab, and `--export` exports its clips
-//! into `DIR`. `--settings` opens the settings window, `--timeline` opens
+//! into `DIR`. `--settings` opens the settings window, on its `general`,
+//! `library`, `viewer` or `clips` section with `--section`, `--timeline` opens
 //! the player lanes under the timeline, `--dates` turns on both date
 //! filters, `--pseudo` lengthens and accents every message to find text that does
 //! not fit, and `--size` sets the window size. `--screenshot` saves the window to a
@@ -65,7 +66,7 @@ use std::path::PathBuf;
 
 use eframe::egui;
 
-use app::{App, Launch, Screenshot};
+use app::{App, Launch, Screenshot, SettingsTab};
 use demo::InspectorTab;
 use i18n::Locale;
 use kill_filters::{KillFilters, MidairMode, SpeedSubject};
@@ -106,6 +107,7 @@ fn main() -> eframe::Result {
     let mut event = None;
     let mut refine = KillFilters::default();
     let mut tab = InspectorTab::default();
+    let mut section = SettingsTab::default();
     let mut size = [1280., 800.];
     let mut dates = false;
     let mut export = None;
@@ -143,6 +145,14 @@ fn main() -> eframe::Result {
             "--refine" => {
                 if let Some(list) = args.next() {
                     refine = refinements(&list);
+                }
+            }
+            "--section" => {
+                section = match args.next().as_deref() {
+                    Some("library") => SettingsTab::Library,
+                    Some("viewer") => SettingsTab::Viewer,
+                    Some("clips") => SettingsTab::Clips,
+                    _ => SettingsTab::General,
                 }
             }
             "--tab" => {
@@ -240,7 +250,7 @@ fn main() -> eframe::Result {
         settings.locale = locale;
     }
     if show_timeline {
-        settings.show_timeline = true;
+        settings.player_lanes = true;
     }
     if export.is_some() {
         settings.export_folder = export.clone();
@@ -289,6 +299,7 @@ fn main() -> eframe::Result {
                     viewer_gamma,
                     viewer_see_through,
                     tab,
+                    section,
                     viewer_capture: capture_times.map(|(times, folder)| viewer::Capture {
                         times,
                         folder,

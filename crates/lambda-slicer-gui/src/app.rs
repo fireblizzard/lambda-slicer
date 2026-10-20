@@ -10,14 +10,18 @@ use lambda_slicer_core::container::Limits;
 use lambda_slicer_core::library::cache::default_path;
 use lambda_slicer_core::library::scan::ScanOptions;
 
+mod settings_window;
+
+pub use settings_window::SettingsTab;
+
 use crate::clips::{ClipStore, LoadProblem};
 use crate::demo::{self, DemoView, InspectorTab, Request, Setup, Surroundings, WorkspaceUi};
 use crate::game_setup::{self, Refusal};
 use crate::i18n::{Catalog, Locale};
 use crate::jobs::{Problem, ScanJob};
 use crate::layout;
-use crate::library::{LibraryView, ListAction, parse_number};
-use crate::settings::{FOV, MAX_PADDING, Settings, ViewerSettings};
+use crate::library::{LibraryView, ListAction};
+use crate::settings::Settings;
 use crate::text::{self, Look};
 use crate::theme;
 use crate::widgets::{self, Icon, IconButton, Variant};
@@ -80,6 +84,8 @@ pub struct Launch {
     pub viewer_see_through: bool,
     /// The inspector tab shown at start
     pub tab: InspectorTab,
+    /// The settings window's section shown at start
+    pub section: SettingsTab,
 }
 
 pub struct App {
@@ -88,7 +94,13 @@ pub struct App {
     catalog: Catalog,
     title: Option<Locale>,
     show_settings: bool,
+    /// The section the settings window shows, the last one visited this run
     settings_tab: SettingsTab,
+    /// The settings window has the keys, so playback leaves them alone
+    settings_keyboard: bool,
+    /// A control had the focus at the end of the last frame, so an Escape
+    /// now only takes the focus from it
+    focused_last_frame: bool,
     show_problems: bool,
     screenshot: Option<Screenshot>,
     /// A screenshot was asked for and its image has not come back
@@ -123,8 +135,8 @@ pub struct App {
     viewer_play: Option<f64>,
     viewer_gamma: Option<lambda_slicer_render::gamma::Gamma>,
     viewer_see_through: bool,
-    /// The viewer changed a setting, saved once the pointer is let go
-    viewer_unsaved: bool,
+    /// A setting changed, saved once the pointer is let go
+    settings_unsaved: bool,
     /// The window's GPU device, which the viewer draws with
     pub render_state: Option<eframe::egui_wgpu::RenderState>,
     /// The app's icon for the toolbar, made on the first frame
@@ -184,6 +196,13 @@ impl App {
         if let (Some(l), Some(d)) = (&mut library, &launch.demo) {
             l.select_path(d);
         }
+
+        // The filters as they were left
+        if let Some(l) = &mut library {
+            l.filters_open = settings.layout.filters_open;
+            l.list_filters_open = settings.layout.list_filters_open;
+        }
+
         if let Some(l) = &mut library
             && launch.dates
         {
@@ -227,6 +246,7 @@ impl App {
                 )
             }
         });
+        let settings_layout = settings.layout.clone();
         Self {
             settings,
             settings_path,
@@ -237,7 +257,9 @@ impl App {
             catalog,
             title: None,
             show_settings: launch.show_settings,
-            settings_tab: SettingsTab::default(),
+            settings_tab: launch.section,
+            settings_keyboard: false,
+            focused_last_frame: false,
             show_problems: false,
             screenshot: launch.screenshot,
             screenshot_requested: false,
@@ -260,11 +282,13 @@ impl App {
             viewer_play: launch.viewer_play,
             viewer_gamma: launch.viewer_gamma,
             viewer_see_through: launch.viewer_see_through,
-            viewer_unsaved: false,
+            settings_unsaved: false,
             render_state: None,
             brand: None,
             workspace: WorkspaceUi {
                 inspector_tab: launch.tab,
+                inspector_width: settings_layout.inspector_width,
+                list_hidden: settings_layout.list_hidden,
                 ..WorkspaceUi::default()
             },
             setup_refusal: None,
@@ -604,12 +628,8 @@ impl App {
             if (v.settings.volume, v.settings.see_through) != (saved.volume, shown) {
                 saved.volume = v.settings.volume;
                 saved.see_through = v.settings.see_through;
-                self.viewer_unsaved = true;
+                self.settings_unsaved = true;
             }
-        }
-        if self.viewer_unsaved && !ui.input(|i| i.pointer.any_down()) {
-            self.viewer_unsaved = false;
-            self.save_settings();
         }
 
         if let Some(d) = &mut self.demo
@@ -620,20 +640,87 @@ impl App {
             self.save_clips(&path, clips);
         }
 
-        // The timeline choice carries over to the next demo and the next run
+        // The player lanes carry over to the next demo and the next run
         if let Some(d) = &self.demo
-            && d.show_timeline != self.settings.show_timeline
+            && d.lanes_open != self.settings.player_lanes
         {
-            self.settings.show_timeline = d.show_timeline;
-            self.save_settings();
+            self.settings.player_lanes = d.lanes_open;
+            self.settings_unsaved = true;
         }
 
         if close {
-            self.drop_demo();
-            self.direct = None;
-            if let Some(l) = &mut self.library {
-                l.selected = None;
-            }
+            self.close_demo();
+        }
+    }
+
+    /// Close the open demo, back to the library
+    fn close_demo(&mut self) {
+        self.drop_demo();
+        self.direct = None;
+        if let Some(l) = &mut self.library {
+            l.selected = None;
+        }
+    }
+
+    /// Ask which demos to open
+    fn open_dialog(&mut self, ctx: &egui::Context) {
+        let files = rfd::FileDialog::new()
+            .add_filter(self.catalog.text("dialog-demos"), &["dem"])
+            .pick_files();
+        if let Some(files) = files {
+            self.open_files(ctx, files);
+        }
+    }
+
+    /// Ctrl+O opens demos and Ctrl+comma opens or closes the settings, in
+    /// any part of the app
+    fn app_shortcuts(&mut self, ctx: &egui::Context) {
+        let command = |key| ctx.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, key));
+        if command(egui::Key::O) {
+            self.open_dialog(ctx);
+        }
+        if command(egui::Key::Comma) {
+            self.show_settings = !self.show_settings;
+        }
+    }
+
+    /// Escape nothing closer took, a drag, a menu, the list over the view or
+    /// a control leaving its focus, closes the settings, or else the demo
+    fn escape(&mut self, ctx: &egui::Context) {
+        let focused = std::mem::replace(
+            &mut self.focused_last_frame,
+            ctx.memory(|m| m.focused().is_some()),
+        );
+        if focused || egui::Popup::is_any_open(ctx) || text::typing(ctx) {
+            return;
+        }
+        if !ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape)) {
+            return;
+        }
+
+        if self.show_settings {
+            self.show_settings = false;
+        } else if self.demo.is_some() {
+            self.close_demo();
+        }
+    }
+
+    /// Note how the window is laid out, for the next run to open the same
+    /// way. The settings window keeps its own place as it moves
+    fn keep_layout(&mut self) {
+        let mut layout = self.settings.layout.clone();
+        if let Some(l) = &self.library {
+            layout.filters_open = l.filters_open;
+            layout.list_filters_open = l.list_filters_open;
+        }
+        layout.list_hidden = self.workspace.list_hidden;
+        if let Some(width) = self.workspace.inspector_width {
+            layout.inspector_width = Some(width);
+        }
+
+        if layout != self.settings.layout {
+            self.settings.layout = layout;
+            self.settings_unsaved = true;
         }
     }
 
@@ -809,11 +896,8 @@ impl App {
             if ui
                 .add(self.tool(&ctx, Icon::Open, "toolbar-open"))
                 .clicked()
-                && let Some(files) = rfd::FileDialog::new()
-                    .add_filter(self.catalog.text("dialog-demos"), &["dem"])
-                    .pick_files()
             {
-                self.open_files(&ctx, files);
+                self.open_dialog(&ctx);
             }
 
             let add_folder = self.tool(&ctx, Icon::AddFolder, "toolbar-add-folder");
@@ -976,436 +1060,6 @@ impl App {
         self.show_problems = open;
     }
 
-    fn settings_window(&mut self, ctx: &egui::Context) {
-        let mut open = self.show_settings;
-        let rtl = self.rtl();
-        let title = self.t(ctx, "settings-title");
-        let tabs = [
-            (SettingsTab::General, self.t(ctx, "settings-tab-general")),
-            (SettingsTab::Viewer, self.t(ctx, "settings-viewer")),
-        ];
-        // No taller than the app's window below the toolbar, scrolling
-        // whatever does not fit
-        let max_height = (ctx.content_rect().height() - 140.).max(160.);
-        egui::Window::new(title)
-            .open(&mut open)
-            .resizable(false)
-            .default_width(420.)
-            .anchor(
-                if rtl {
-                    egui::Align2::LEFT_TOP
-                } else {
-                    egui::Align2::RIGHT_TOP
-                },
-                egui::vec2(if rtl { 16. } else { -16. }, 48.),
-            )
-            .show(ctx, |ui| {
-                layout::row(ui, rtl, |ui| {
-                    for (tab, label) in tabs {
-                        ui.selectable_value(&mut self.settings_tab, tab, label);
-                    }
-                });
-                ui.separator();
-                egui::ScrollArea::vertical()
-                    .max_height(max_height)
-                    .min_scrolled_height(max_height)
-                    .auto_shrink([false, true])
-                    .show(ui, |ui| {
-                        layout::column(ui, rtl, |ui| match self.settings_tab {
-                            SettingsTab::General => self.general_settings(ui, rtl),
-                            SettingsTab::Viewer => self.viewer_settings(ui, rtl),
-                        });
-                    });
-            });
-        self.show_settings = open;
-    }
-
-    /// The settings window's general tab, every folder first
-    fn general_settings(&mut self, ui: &mut egui::Ui, rtl: bool) {
-        let ctx = ui.ctx().clone();
-
-        heading(
-            ui,
-            &self.catalog,
-            "settings-section-folders",
-            None,
-            rtl,
-            true,
-        );
-        self.installation_settings(ui, rtl);
-
-        ui.add_space(6.);
-        labelled(
-            ui,
-            &self.catalog,
-            "settings-folders",
-            Some("settings-folders-hint"),
-            rtl,
-        );
-        if self.settings.folders.is_empty() {
-            path(ui, &self.catalog.text("settings-folders-empty"), rtl);
-        }
-        let mut remove = None;
-        for (i, f) in self.settings.folders.iter().enumerate() {
-            layout::row(ui, rtl, |ui| {
-                ui.label(text::widget_text(
-                    ui.ctx(),
-                    &f.display().to_string(),
-                    rtl,
-                    None,
-                    Look::Weak,
-                ));
-                if ui
-                    .small_button(self.t(ui.ctx(), "settings-remove"))
-                    .clicked()
-                {
-                    remove = Some(i);
-                }
-            });
-        }
-        if let Some(i) = remove {
-            self.settings.folders.remove(i);
-            self.save_settings();
-        }
-        let add = layout::row(ui, rtl, |ui| {
-            let label = self.t(&ctx, "toolbar-add-folder");
-            let add = widgets::Button::new(Some(Icon::AddFolder), label, Variant::Default, rtl);
-            ui.add(add).clicked()
-        });
-        if add && let Some(folders) = rfd::FileDialog::new().pick_folders() {
-            self.add_folders(&ctx, folders);
-        }
-
-        ui.add_space(6.);
-        labelled(
-            ui,
-            &self.catalog,
-            "settings-export-folder",
-            Some("settings-export-hint"),
-            rtl,
-        );
-        let shown = match &self.settings.export_folder {
-            Some(f) => f.display().to_string(),
-            None => self.catalog.text("settings-export-beside"),
-        };
-        path(ui, &shown, rtl);
-        let mut chosen = None;
-        layout::row(ui, rtl, |ui| {
-            if ui.button(self.t(&ctx, "settings-export-choose")).clicked()
-                && let Some(f) = rfd::FileDialog::new().pick_folder()
-            {
-                chosen = Some(Some(f));
-            }
-            if self.settings.export_folder.is_some()
-                && ui.button(self.t(&ctx, "settings-export-beside")).clicked()
-            {
-                chosen = Some(None);
-            }
-        });
-        if let Some(f) = chosen {
-            self.settings.export_folder = f;
-            self.save_settings();
-        }
-
-        ui.add_space(6.);
-        labelled(ui, &self.catalog, "settings-cache", None, rtl);
-        let cache = self.cache_path.as_ref().map(|p| p.display().to_string());
-        path(ui, &cache.unwrap_or_default(), rtl);
-
-        // A draft translation says so beside the heading
-        let unreviewed = (!self.catalog.locale.reviewed()).then_some("settings-unreviewed");
-        heading(
-            ui,
-            &self.catalog,
-            "settings-language",
-            unreviewed,
-            rtl,
-            false,
-        );
-        let current = self.catalog.locale;
-        let mut chosen = None;
-        layout::row(ui, rtl, |ui| {
-            egui::ComboBox::from_id_salt("language")
-                .selected_text(current.native_name())
-                .show_ui(ui, |ui| {
-                    for l in Locale::ALL {
-                        let name =
-                            text::widget_text(ui.ctx(), l.native_name(), false, None, Look::Plain);
-                        if ui.selectable_label(l == current, name).clicked() {
-                            chosen = Some(l);
-                        }
-                    }
-                });
-        });
-        if let Some(l) = chosen
-            && l != current
-        {
-            self.set_locale(Some(l));
-        }
-
-        heading(
-            ui,
-            &self.catalog,
-            "settings-workers",
-            Some("settings-workers-hint"),
-            rtl,
-            false,
-        );
-        let mut workers = self.settings.workers;
-        let moved = layout::row(ui, rtl, |ui| {
-            ui.add(egui::Slider::new(&mut workers, 1..=4)).changed()
-        });
-        if moved {
-            self.settings.workers = workers;
-            self.save_settings();
-        }
-
-        // How much a clip made around an event keeps on each side
-        heading(
-            ui,
-            &self.catalog,
-            "settings-clip-padding",
-            Some("settings-clip-padding-hint"),
-            rtl,
-            false,
-        );
-        let catalog = &self.catalog;
-        let ids = ["settings-preroll", "settings-postroll"];
-        let width = label_width(ui, catalog, &ids, rtl);
-        let mut padding = [self.settings.preroll, self.settings.postroll];
-        let mut changed = false;
-        for (id, value) in ids.into_iter().zip(&mut padding) {
-            field(ui, catalog, id, width, rtl, |ui| {
-                changed |= ui
-                    .add(
-                        egui::DragValue::new(value)
-                            .range(0.0..=MAX_PADDING)
-                            .speed(0.1)
-                            .custom_formatter(|v, _| catalog.number(v, 1))
-                            .custom_parser(parse_number),
-                    )
-                    .changed();
-            });
-        }
-        if changed {
-            [self.settings.preroll, self.settings.postroll] = padding;
-            self.save_settings();
-        }
-    }
-
-    /// The Half-Life folder the viewer reads, and on Windows the game's
-    /// executable that finds it, both checked the same way as the setup
-    /// notice's choice. A choice that holds no game is refused with the
-    /// reason, keeping the one before
-    fn installation_settings(&mut self, ui: &mut egui::Ui, rtl: bool) {
-        let ctx = ui.ctx().clone();
-        let setup_needed = self.install_root().is_none();
-        let mut chosen = None;
-
-        labelled(
-            ui,
-            &self.catalog,
-            "settings-viewer-game",
-            Some("settings-viewer-game-hint"),
-            rtl,
-        );
-        let shown = match &self.settings.viewer.game {
-            Some(f) => f.display().to_string(),
-            None => self.catalog.text("settings-viewer-game-none"),
-        };
-        path(ui, &shown, rtl);
-        layout::row(ui, rtl, |ui| {
-            if ui.button(self.t(&ctx, "settings-export-choose")).clicked() {
-                let start = self.settings.viewer.game.clone().filter(|g| g.is_dir());
-                let mut dialog = rfd::FileDialog::new();
-                if let Some(start) = start {
-                    dialog = dialog.set_directory(start);
-                }
-                chosen = dialog.pick_folder();
-            }
-        });
-
-        // The executable only finds the folder, so a folder that holds the
-        // game needs none, and Linux chooses the folder itself
-        if cfg!(windows) {
-            ui.add_space(6.);
-            labelled(
-                ui,
-                &self.catalog,
-                "settings-executable",
-                Some("settings-executable-hint"),
-                rtl,
-            );
-            let present = self.executable_present();
-            let (line, look) = match (&self.settings.viewer.executable, present) {
-                (Some(e), Some(true)) => (e.display().to_string(), Look::Weak),
-                (Some(e), _) => {
-                    let gone = FluentValue::from(e.display().to_string());
-                    let line = self
-                        .catalog
-                        .text_with("settings-executable-missing", &[("path", gone)]);
-                    (line, Look::Color(theme::WARNING))
-                }
-                (None, _) if setup_needed => (
-                    self.catalog.text("settings-executable-not-set"),
-                    Look::Color(theme::WARNING),
-                ),
-                (None, _) => (
-                    self.catalog.text("settings-executable-optional"),
-                    Look::Weak,
-                ),
-            };
-            let width = Some(ui.available_width());
-            ui.add(egui::Label::new(text::widget_text(&ctx, &line, rtl, width, look)).wrap());
-
-            // Highlighted only while the viewer has no game files
-            let variant = if setup_needed {
-                Variant::Primary
-            } else {
-                Variant::Default
-            };
-            layout::row(ui, rtl, |ui| {
-                let label = self.t(&ctx, "settings-browse");
-                let browse = widgets::Button::new(None, label, variant, rtl);
-                if ui.add(browse).clicked() {
-                    let start = self.settings.viewer.game.clone();
-                    let filter = self.catalog.text("dialog-executables");
-                    chosen = game_setup::pick(start.as_deref(), &filter);
-                }
-            });
-        }
-
-        if let Some(chosen) = chosen {
-            self.accept_install(&chosen);
-        }
-
-        // Why the last choice was refused, where it was made
-        if let Some(refusal) = &self.setup_refusal {
-            let line = refusal.message(&self.catalog);
-            let width = Some(ui.available_width());
-            let look = Look::Color(theme::ERROR);
-            ui.add(egui::Label::new(text::widget_text(&ctx, &line, rtl, width, look)).wrap());
-        }
-
-        // A folder given for this run comes first, and a choice here waits
-        // for the next run
-        if let Some(game) = &self.game {
-            let game = FluentValue::from(game.display().to_string());
-            let line = self
-                .catalog
-                .text_with("settings-game-override", &[("path", game)]);
-            let width = Some(ui.available_width());
-            ui.add(egui::Label::new(text::widget_text(&ctx, &line, rtl, width, Look::Weak)).wrap());
-        }
-    }
-
-    /// The settings window's tab for the demo viewer, every setting that
-    /// changes only how it shows and plays a demo
-    fn viewer_settings(&mut self, ui: &mut egui::Ui, rtl: bool) {
-        let ctx = ui.ctx().clone();
-        let catalog = &self.catalog;
-        let t = |id: &str| text::widget_text(&ctx, &catalog.text(id), rtl, None, Look::Plain);
-        let mut viewer = self.settings.viewer.clone();
-
-        // The game's gamma settings, at the game's steps
-        heading(
-            ui,
-            catalog,
-            "settings-section-picture",
-            Some("settings-gamma-hint"),
-            rtl,
-            true,
-        );
-        let ids = [
-            "settings-gamma",
-            "settings-brightness",
-            "settings-texgamma",
-            "settings-lightgamma",
-        ];
-        let width = label_width(ui, catalog, &ids, rtl);
-        let values = [
-            (&mut viewer.gamma, 1.8..=3.),
-            (&mut viewer.brightness, 0. ..=3.),
-            (&mut viewer.texgamma, 1.8..=3.),
-            (&mut viewer.lightgamma, 1.8..=3.),
-        ];
-        for (id, (value, range)) in ids.into_iter().zip(values) {
-            field(ui, catalog, id, width, rtl, |ui| {
-                ui.add(
-                    egui::DragValue::new(value)
-                        .range(range)
-                        .speed(0.01)
-                        .custom_formatter(|v, _| catalog.number(v, 2))
-                        .custom_parser(parse_number),
-                );
-            });
-        }
-        layout::row(ui, rtl, |ui| {
-            ui.checkbox(&mut viewer.overbright, t("settings-overbright"));
-        });
-        layout::row(ui, rtl, |ui| {
-            if ui.button(t("settings-gamma-defaults")).clicked() {
-                let d = ViewerSettings::default();
-                (viewer.gamma, viewer.brightness) = (d.gamma, d.brightness);
-                (viewer.texgamma, viewer.lightgamma) = (d.texgamma, d.lightgamma);
-                viewer.overbright = d.overbright;
-            }
-        });
-
-        ui.add_space(6.);
-        layout::row(ui, rtl, |ui| {
-            let mut recorded = viewer.fov.is_none();
-            if ui
-                .checkbox(&mut recorded, t("settings-fov-recorded"))
-                .changed()
-            {
-                viewer.fov = (!recorded).then_some(90.);
-            }
-            if let Some(fov) = &mut viewer.fov {
-                ui.label(t("settings-fov"));
-                ui.add(
-                    egui::DragValue::new(fov)
-                        .range(FOV.0..=FOV.1)
-                        .speed(0.5)
-                        .custom_formatter(|v, _| catalog.number(v, 0))
-                        .custom_parser(parse_number),
-                );
-            }
-        });
-        layout::row(ui, rtl, |ui| {
-            ui.checkbox(&mut viewer.viewmodel, t("settings-viewmodel"));
-        });
-
-        heading(
-            ui,
-            catalog,
-            "viewer-see-through",
-            Some("settings-see-through-hint"),
-            rtl,
-            false,
-        );
-        layout::row(ui, rtl, |ui| {
-            ui.checkbox(&mut viewer.see_through, t("settings-see-through"));
-        });
-        layout::row(ui, rtl, |ui| {
-            ui.checkbox(
-                &mut viewer.see_through_items,
-                t("settings-see-through-items"),
-            );
-        });
-
-        heading(ui, catalog, "settings-section-sound", None, rtl, false);
-        layout::row(ui, rtl, |ui| {
-            ui.label(t("viewer-volume"));
-            ui.add(egui::Slider::new(&mut viewer.volume, 0. ..=1.).show_value(false));
-        });
-
-        if viewer != self.settings.viewer {
-            self.settings.viewer = viewer;
-            self.save_settings();
-        }
-    }
-
     fn take_screenshot(&mut self, ctx: &egui::Context) {
         // The image comes back once later frames have read it from the GPU,
         // and nothing else may ask for them
@@ -1455,6 +1109,7 @@ impl eframe::App for App {
         }
 
         self.handle_drops(&ctx);
+        self.app_shortcuts(&ctx);
         if let Some(job) = &mut self.scan
             && job.drain()
             && let Some(l) = &mut self.library
@@ -1535,7 +1190,7 @@ impl eframe::App for App {
                     d.refine(filters);
                 }
                 d.export_on_load = std::mem::take(&mut self.export_on_open);
-                d.show_timeline = self.settings.show_timeline;
+                d.lanes_open = self.settings.player_lanes;
                 d.clips = self.clips.get(path);
                 self.demo = Some(d);
             }
@@ -1546,7 +1201,7 @@ impl eframe::App for App {
         // The demo takes in its background work once, before any of it draws
         self.apply_demo_settings();
         if let Some(d) = &mut self.demo {
-            d.begin_frame(&ctx);
+            d.begin_frame(&ctx, !self.settings_keyboard);
         }
 
         if let Some(l) = &mut self.library
@@ -1591,104 +1246,16 @@ impl eframe::App for App {
 
         self.settings_window(&ctx);
         self.problems_window(&ctx);
+        self.escape(&ctx);
+        self.keep_layout();
+
+        // Saved once nothing is being dragged, so a slider is not written out
+        // on every step
+        if self.settings_unsaved && !ui.input(|i| i.pointer.any_down()) {
+            self.settings_unsaved = false;
+            self.save_settings();
+        }
+
         self.take_screenshot(&ctx);
     }
-}
-
-/// The settings window's tabs
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum SettingsTab {
-    #[default]
-    General,
-    /// What changes only how the demo viewer shows and plays a demo
-    Viewer,
-}
-
-/// A section's heading, with space above it unless it is the first, and a
-/// question mark explaining `hint` when there is one
-fn heading(
-    ui: &mut egui::Ui,
-    catalog: &Catalog,
-    id: &str,
-    hint: Option<&str>,
-    rtl: bool,
-    first: bool,
-) {
-    if !first {
-        ui.add_space(10.);
-    }
-    layout::row(ui, rtl, |ui| {
-        ui.label(text::widget_text(
-            ui.ctx(),
-            &catalog.text(id),
-            rtl,
-            None,
-            Look::Strong,
-        ));
-        if let Some(hint) = hint {
-            widgets::help(ui, &catalog.text(hint), rtl);
-        }
-    });
-}
-
-/// A setting's label, with a question mark explaining `hint` when there is
-/// one
-fn labelled(ui: &mut egui::Ui, catalog: &Catalog, id: &str, hint: Option<&str>, rtl: bool) {
-    layout::row(ui, rtl, |ui| {
-        ui.label(text::widget_text(
-            ui.ctx(),
-            &catalog.text(id),
-            rtl,
-            None,
-            Look::Plain,
-        ));
-        if let Some(hint) = hint {
-            widgets::help(ui, &catalog.text(hint), rtl);
-        }
-    });
-}
-
-/// A folder or file the settings name, or what stands in for one
-fn path(ui: &mut egui::Ui, shown: &str, rtl: bool) {
-    ui.label(text::widget_text(ui.ctx(), shown, rtl, None, Look::Weak));
-}
-
-/// The width of the widest of these labels, for their fields to line up
-fn label_width(ui: &egui::Ui, catalog: &Catalog, ids: &[&str], rtl: bool) -> f32 {
-    let mut widest: f32 = 0.;
-    for id in ids {
-        let label = text::widget_text(ui.ctx(), &catalog.text(id), rtl, None, Look::Plain);
-        let galley = label.into_galley(
-            ui,
-            Some(egui::TextWrapMode::Extend),
-            f32::INFINITY,
-            egui::TextStyle::Body,
-        );
-        widest = widest.max(galley.size().x);
-    }
-    widest
-}
-
-/// A row with a label `width` wide and its field after it, so the fields of
-/// rows one under another line up
-fn field(
-    ui: &mut egui::Ui,
-    catalog: &Catalog,
-    id: &str,
-    width: f32,
-    rtl: bool,
-    add: impl FnOnce(&mut egui::Ui),
-) {
-    layout::row(ui, rtl, |ui| {
-        layout::cell(ui, rtl, width, |ui| {
-            ui.label(text::widget_text(
-                ui.ctx(),
-                &catalog.text(id),
-                rtl,
-                None,
-                Look::Plain,
-            ));
-        });
-        add(ui);
-    });
 }

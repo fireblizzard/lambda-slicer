@@ -905,18 +905,7 @@ impl DemoView {
     /// Buttons to the shown event before or after the selected one, or
     /// before or after the playhead when the selected one is not shown
     fn event_nav(&mut self, ui: &mut Ui, catalog: &Catalog, model: &Model) {
-        let at = self
-            .selected
-            .and_then(|s| self.rows.iter().position(|&r| r == s));
-        let now = self.viewer.as_ref().map_or(0., |v| v.time());
-        let previous = match at {
-            Some(i) => i.checked_sub(1),
-            None => self.rows.iter().rposition(|&r| model.events[r].time < now),
-        };
-        let next = match at {
-            Some(i) => Some(i + 1).filter(|&n| n < self.rows.len()),
-            None => self.rows.iter().position(|&r| model.events[r].time > now),
-        };
+        let (previous, next) = self.neighbours(model);
 
         let mut chosen = None;
         let label = catalog.text("event-previous");
@@ -940,6 +929,26 @@ impl DemoView {
                 from_list: false,
             });
         }
+    }
+
+    /// The places among the shown events of the ones before and after the
+    /// selected event, or before and after the current moment when the
+    /// selected event is not shown
+    pub(super) fn neighbours(&self, model: &Model) -> (Option<usize>, Option<usize>) {
+        let at = self
+            .selected
+            .and_then(|s| self.rows.iter().position(|&r| r == s));
+        let now = self.viewer.as_ref().map_or(0., |v| v.time());
+
+        let previous = match at {
+            Some(i) => i.checked_sub(1),
+            None => self.rows.iter().rposition(|&r| model.events[r].time < now),
+        };
+        let next = match at {
+            Some(i) => Some(i + 1).filter(|&n| n < self.rows.len()),
+            None => self.rows.iter().position(|&r| model.events[r].time > now),
+        };
+        (previous, next)
     }
 }
 

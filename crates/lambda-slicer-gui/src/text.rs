@@ -395,6 +395,13 @@ fn ordered(
     WidgetText::Galley(merge(ctx, text, lines, &font, color, rtl_base))
 }
 
+/// Whether text is being typed, in a field or through an input method, when
+/// no key is a shortcut
+pub fn typing(ctx: &Context) -> bool {
+    let composing = ctx.input(|i| i.events.iter().any(|e| matches!(e, egui::Event::Ime(_))));
+    ctx.text_edit_focused() || composing
+}
+
 /// How wide an explanation in a tooltip wraps
 pub const HELP_WIDTH: f32 = 360.;
 

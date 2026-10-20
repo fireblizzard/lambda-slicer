@@ -11,7 +11,9 @@ use crate::i18n::Locale;
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
-    /// None follows the system language
+    /// None follows the system language. A language this version does not
+    /// know follows the system's too, rather than losing every other setting
+    #[serde(deserialize_with = "known_locale")]
     pub locale: Option<Locale>,
     /// Parallel analyses, 1 to 4
     pub workers: u8,
@@ -20,8 +22,10 @@ pub struct Settings {
     pub cache: Option<PathBuf>,
     /// Library columns left out, gauss shots by default
     pub hidden_columns: Vec<String>,
-    /// Whether a demo shows its timeline, hidden until asked for
-    pub show_timeline: bool,
+    /// Whether a demo opens with its player lanes under the timeline. Files
+    /// from before the timeline was always shown name it `show_timeline`
+    #[serde(alias = "show_timeline")]
+    pub player_lanes: bool,
     /// Seconds a new clip keeps before and after the event it is made
     /// around
     pub preroll: f32,
@@ -29,6 +33,73 @@ pub struct Settings {
     /// Where clips are exported, beside each demo when none is set
     pub export_folder: Option<PathBuf>,
     pub viewer: ViewerSettings,
+    /// A layout this version cannot read opens the first way, keeping every
+    /// other setting
+    #[serde(deserialize_with = "readable_layout")]
+    pub layout: LayoutSettings,
+}
+
+/// How the window was laid out, kept so the app opens the way it was left
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct LayoutSettings {
+    /// The filter pane beside the library's table, and the filters over the
+    /// narrow list beside an open demo
+    pub filters_open: bool,
+    pub list_filters_open: bool,
+    /// The demo list was hidden beside an open demo
+    pub list_hidden: bool,
+    /// The width the inspector was dragged to, none for its first width
+    pub inspector_width: Option<f32>,
+    /// Where the settings window was left, none to open it in the middle
+    pub settings_at: Option<[f32; 2]>,
+}
+
+impl Default for LayoutSettings {
+    fn default() -> Self {
+        Self {
+            filters_open: true,
+            list_filters_open: false,
+            list_hidden: false,
+            inspector_width: None,
+            settings_at: None,
+        }
+    }
+}
+
+impl LayoutSettings {
+    /// Sizes and places that are numbers, others forgotten
+    fn clamped(self) -> Self {
+        let width = self.inspector_width.filter(|w| w.is_finite() && *w > 0.);
+        let settings_at = self
+            .settings_at
+            .filter(|at| at.iter().all(|c| c.is_finite()));
+        Self {
+            inspector_width: width,
+            settings_at,
+            ..self
+        }
+    }
+}
+
+/// The saved layout, or the first one when it cannot be read
+fn readable_layout<'de, D>(deserializer: D) -> Result<LayoutSettings, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = serde_json::Value::deserialize(deserializer)?;
+    Ok(serde_json::from_value(value).unwrap_or_default())
+}
+
+/// A saved language this version knows, or none to follow the system's.
+/// Anything else, even a value that is not text, follows the system's
+fn known_locale<'de, D>(deserializer: D) -> Result<Option<Locale>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = serde_json::Value::deserialize(deserializer)?;
+    let locale = value.as_str().and_then(Locale::from_tag);
+    Ok(locale)
 }
 
 /// How the demo viewer shows and plays a demo
@@ -126,11 +197,12 @@ impl Default for Settings {
             folders: Vec::new(),
             cache: None,
             hidden_columns: vec!["gauss".into()],
-            show_timeline: false,
+            player_lanes: false,
             preroll: 5.,
             postroll: 3.,
             export_folder: None,
             viewer: ViewerSettings::default(),
+            layout: LayoutSettings::default(),
         }
     }
 }
@@ -184,6 +256,7 @@ impl Settings {
         self.preroll = padding(self.preroll);
         self.postroll = padding(self.postroll);
         self.viewer = self.viewer.clamped();
+        self.layout = self.layout.clamped();
         self
     }
 
@@ -209,7 +282,7 @@ mod tests {
             folders: vec![PathBuf::from("F:/demos")],
             cache: None,
             hidden_columns: Vec::new(),
-            show_timeline: true,
+            player_lanes: true,
             preroll: 2.5,
             postroll: 0.,
             export_folder: Some(PathBuf::from("F:/clips")),
@@ -224,6 +297,13 @@ mod tests {
                 viewmodel: false,
                 volume: 0.25,
                 ..ViewerSettings::default()
+            },
+            layout: LayoutSettings {
+                filters_open: false,
+                list_hidden: true,
+                inspector_width: Some(400.),
+                settings_at: Some([120., 80.]),
+                ..LayoutSettings::default()
             },
         };
         s.save_to(&path).unwrap();
@@ -266,5 +346,49 @@ mod tests {
         assert_eq!(loaded.viewer.executable, None);
         assert_eq!((loaded.viewer.volume, loaded.preroll), (0.5, 2.));
         assert_eq!(loaded.folders, [PathBuf::from("F:/demos")]);
+    }
+
+    #[test]
+    fn an_old_timeline_choice_opens_the_player_lanes() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+
+        // Shown before means the lanes now, and hidden only leaves them shut,
+        // as the timeline itself is always there
+        std::fs::write(&path, br#"{"show_timeline": true}"#).unwrap();
+        assert!(Settings::load_from(&path).player_lanes);
+        std::fs::write(&path, br#"{"show_timeline": false}"#).unwrap();
+        assert!(!Settings::load_from(&path).player_lanes);
+
+        // Saved again, it goes under its new name and reads back the same
+        let lanes = Settings {
+            player_lanes: true,
+            ..Settings::default()
+        };
+        lanes.save_to(&path).unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains("player_lanes") && !text.contains("show_timeline"));
+        assert!(Settings::load_from(&path).player_lanes);
+    }
+
+    #[test]
+    fn values_this_version_cannot_read_lose_nothing_else() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        let saved = br#"{"locale": "xx-Unknown", "folders": ["F:/demos"],
+            "viewer": {"game": "F:/Half-Life"},
+            "layout": {"inspector_width": "wide", "settings_at": [1, 3]}}"#;
+        std::fs::write(&path, saved).unwrap();
+
+        let loaded = Settings::load_from(&path);
+        assert_eq!(loaded.locale, None);
+        assert_eq!(loaded.folders, [PathBuf::from("F:/demos")]);
+        assert_eq!(loaded.viewer.game, Some(PathBuf::from("F:/Half-Life")));
+        assert_eq!(loaded.layout, LayoutSettings::default());
+
+        // A language saved as something other than text follows the system's
+        std::fs::write(&path, br#"{"locale": 3, "workers": 2}"#).unwrap();
+        let loaded = Settings::load_from(&path);
+        assert_eq!((loaded.locale, loaded.workers), (None, 2));
     }
 }

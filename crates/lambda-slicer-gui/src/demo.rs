@@ -465,7 +465,7 @@ pub struct DemoView {
     pub export_on_load: bool,
     /// The player lanes are hidden under the timeline until asked for, as
     /// they take some reading
-    pub show_timeline: bool,
+    pub lanes_open: bool,
     /// This demo's clips. The app saves them when `clips_changed` is set
     pub clips: Vec<Clip>,
     pub clips_changed: bool,
@@ -531,7 +531,7 @@ impl DemoView {
             window: None,
             open_window: None,
             open_event: None,
-            show_timeline: false,
+            lanes_open: false,
             clips: Vec::new(),
             clips_changed: false,
             clip_ids: Vec::new(),
@@ -881,9 +881,10 @@ impl DemoView {
     }
 
     /// Take in the analysis, export results and playback state, and the
-    /// keys that drive playback. Called once a frame before anything of the
-    /// demo draws, whichever of its parts are shown
-    pub fn begin_frame(&mut self, ctx: &egui::Context) {
+    /// keys that drive playback when `keys` says they are the demo's. Called
+    /// once a frame before anything of the demo draws, whichever of its
+    /// parts are shown
+    pub fn begin_frame(&mut self, ctx: &egui::Context, keys: bool) {
         self.poll();
         self.poll_export();
 
@@ -923,9 +924,52 @@ impl DemoView {
             }
         }
 
+        if keys {
+            if let Some(viewer) = &mut self.viewer {
+                viewer.shortcuts(ctx);
+            }
+            self.shortcuts(ctx);
+        }
         if let Some(viewer) = &mut self.viewer {
-            viewer.shortcuts(ctx);
             viewer.begin_frame(ctx);
+        }
+    }
+
+    /// Ctrl+Left and Ctrl+Right go to the shown event before or after, and
+    /// I and O set the chosen clip's start and end to the current moment.
+    /// While text is typed every key is the text's
+    fn shortcuts(&mut self, ctx: &egui::Context) {
+        if text::typing(ctx) {
+            return;
+        }
+
+        let command = |key| ctx.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, key));
+        let back = command(egui::Key::ArrowLeft);
+        let forward = command(egui::Key::ArrowRight);
+        if (back || forward)
+            && let Some(model) = self.model.clone()
+        {
+            let (previous, next) = self.neighbours(&model);
+            let row = if back { previous } else { next };
+            if let Some(&event) = row.and_then(|r| self.rows.get(r)) {
+                self.actions.push(DemoAction::Select {
+                    event,
+                    from_list: false,
+                });
+            }
+        }
+
+        // Only the clip chosen, never a new one
+        let plain = |key| ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, key));
+        let edge = if plain(egui::Key::I) {
+            Some(Edge::Start)
+        } else if plain(egui::Key::O) {
+            Some(Edge::End)
+        } else {
+            None
+        };
+        if let (Some(edge), Some(i)) = (edge, self.chosen_clip) {
+            self.edge_to_playhead(i, edge);
         }
     }
 
@@ -1122,7 +1166,7 @@ impl DemoView {
             let shown = layout::trailing_panel("inspector", rtl)
                 .frame(frame)
                 .resizable(true)
-                .default_size(width)
+                .default_size(workspace.inspector_width.unwrap_or(width))
                 .size_range(INSPECTOR_RANGE)
                 .show(ui, |ui| self.inspector(ui, catalog, rtl, workspace));
 
@@ -1851,5 +1895,46 @@ mod tests {
 
         // Its name is plain text, without the marks around a message's number
         assert_eq!(clip.name, "Clip 1");
+    }
+
+    /// The actions `view` asks for after `key` is pressed with Ctrl
+    fn press_with_ctrl(view: &mut DemoView, key: egui::Key) -> Vec<DemoAction> {
+        let ctx = egui::Context::default();
+        let input = egui::RawInput {
+            events: vec![egui::Event::Key {
+                key,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: egui::Modifiers::COMMAND,
+            }],
+            ..Default::default()
+        };
+        let mut output = ctx.run_ui(input, |ui| view.shortcuts(ui.ctx()));
+
+        // Nothing is drawn, so the fonts egui made go unused
+        output.textures_delta.clear();
+        std::mem::take(&mut view.actions)
+    }
+
+    #[test]
+    fn ctrl_and_the_arrows_step_through_the_shown_events() {
+        let events = vec![kill(0, 1., Some(true)), shot(2.), kill(0, 3., Some(true))];
+        let mut view = view_of(events, GroupIndex::default());
+        view.refresh_rows();
+        view.selected = Some(0);
+
+        // The shot is hidden, so the next shown event is the second kill
+        let next = press_with_ctrl(&mut view, egui::Key::ArrowRight);
+        assert_eq!(
+            next,
+            [DemoAction::Select {
+                event: 2,
+                from_list: false
+            }]
+        );
+
+        // Nothing comes before the first
+        assert!(press_with_ctrl(&mut view, egui::Key::ArrowLeft).is_empty());
     }
 }

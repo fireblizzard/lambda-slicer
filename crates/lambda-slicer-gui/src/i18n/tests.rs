@@ -363,6 +363,7 @@ fn english_has_every_message_the_gui_names() {
     ];
     let sources = [
         include_str!("../app.rs"),
+        include_str!("../app/settings_window.rs"),
         include_str!("../library.rs"),
         include_str!("../jobs.rs"),
         include_str!("../demo.rs"),

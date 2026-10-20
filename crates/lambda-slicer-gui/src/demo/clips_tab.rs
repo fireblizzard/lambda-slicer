@@ -178,7 +178,7 @@ impl DemoView {
             );
             let label = ui.add(egui::Label::new(line).truncate().sense(Sense::click()));
             if button.clicked() || label.clicked() {
-                self.requests.push(Request::Settings(SettingsTab::General));
+                self.requests.push(Request::Settings(SettingsTab::Clips));
             }
         });
     }
@@ -280,10 +280,19 @@ impl DemoView {
         let button = ui
             .add_enabled(playhead.is_some(), IconButton::new(Icon::Crosshair, &label))
             .on_disabled_hover_text(catalog.text("clip-no-playhead"));
-        if !button.clicked() {
-            return;
+        if button.clicked() {
+            self.edge_to_playhead(i, edge);
         }
-        let Some(time) = playhead else {
+    }
+
+    /// Set an edge of clip `i` to the current moment, to the whole
+    /// millisecond as the fields show it. Nothing changes without a viewer
+    /// to give the moment
+    pub(super) fn edge_to_playhead(&mut self, i: usize, edge: Edge) {
+        let Some(time) = self.viewer.as_ref().map(|v| v.time()) else {
+            return;
+        };
+        let Some(clip) = self.clips.get_mut(i) else {
             return;
         };
 
@@ -291,8 +300,8 @@ impl DemoView {
         let ms = (f64::from(time.max(0.)) * 1000.).round() as i64;
         let time = DemoTime::from_micros(ms * 1000);
         match edge {
-            Edge::Start => self.clips[i].start = time,
-            Edge::End => self.clips[i].end = time,
+            Edge::Start => clip.start = time,
+            Edge::End => clip.end = time,
         }
         self.chosen_clip = Some(i);
         self.typing = None;

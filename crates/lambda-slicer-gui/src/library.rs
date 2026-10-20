@@ -434,9 +434,9 @@ pub struct LibraryView {
     pub hidden: Vec<String>,
     pub columns_changed: bool,
     /// The filter pane beside the full table is open
-    filters_open: bool,
+    pub filters_open: bool,
     /// The narrow list shows its filters in place of its rows
-    list_filters_open: bool,
+    pub list_filters_open: bool,
     /// The table row the arrow keys have reached, and that it should be
     /// scrolled into view
     cursor: Option<usize>,

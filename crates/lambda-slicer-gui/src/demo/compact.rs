@@ -216,7 +216,7 @@ impl DemoView {
         ui.add_space(theme::GAP_XS);
         self.overview(ui, extent);
 
-        if self.show_timeline {
+        if self.lanes_open {
             self.lanes(ui, catalog, rtl, most_lanes, across);
         }
 
@@ -249,9 +249,9 @@ impl DemoView {
 
                 let lanes = catalog.text("timeline-lanes");
                 let lanes = text::widget_text(ui.ctx(), &lanes, rtl, None, Look::Plain);
-                let toggle = egui::Button::selectable(self.show_timeline, lanes);
+                let toggle = egui::Button::selectable(self.lanes_open, lanes);
                 if ui.add_enabled(self.model.is_some(), toggle).clicked() {
-                    self.show_timeline = !self.show_timeline;
+                    self.lanes_open = !self.lanes_open;
                 }
 
                 let gestures = catalog.text("timeline-gestures");
