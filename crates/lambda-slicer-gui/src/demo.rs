@@ -8,7 +8,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver};
 use std::thread::JoinHandle;
 
@@ -94,6 +94,41 @@ enum RowAction {
     /// Loop the clip, or stop looping it
     Loop(bool),
 }
+
+/// What a control of the demo view asked for. Controls only collect these
+/// while they draw, and the view applies them once everything has drawn, so
+/// a button, a timeline click and a keyboard shortcut for the same thing
+/// all go through one place
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum DemoAction {
+    /// Choose an event and seek to it. From the event list the list keeps
+    /// its place, otherwise it scrolls to the event
+    Select {
+        event: usize,
+        from_list: bool,
+    },
+    /// Move the playhead with no event chosen, choosing the clip there
+    Seek(f32),
+    /// Play an event once from its preroll through its postroll
+    PlayEvent(usize),
+    /// Show the whole recording on the timeline
+    Fit,
+    /// Shade one of the most intense moments and bring it into view
+    ChooseHighlight(usize),
+    /// Add a clip of ten seconds to edit by hand
+    NewClip,
+    /// Add a clip around the selected event, or the chosen highlight
+    ClipEvent,
+    ClipHighlight,
+    /// Show the final scores rather than those at the selected event
+    ShowFinal,
+    /// Close the demo
+    Close,
+}
+
+/// A number for each demo view opened, so state kept by egui for one demo
+/// is never taken for another's
+static GENERATION: AtomicU64 = AtomicU64::new(0);
 
 /// A clip's start or end
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -193,6 +228,10 @@ impl Shown {
 
 pub struct DemoView {
     pub path: PathBuf,
+    /// Which demo view this is, for egui state that must not carry over
+    generation: u64,
+    /// What the controls asked for this frame, applied once they have drawn
+    actions: Vec<DemoAction>,
     loader: Option<Loader>,
     model: Option<Arc<Model>>,
     failed: Option<String>,
@@ -249,6 +288,8 @@ impl DemoView {
         Self {
             loader: Some(Loader::start(path.clone(), duration, ctx.clone())),
             path,
+            generation: GENERATION.fetch_add(1, Ordering::Relaxed),
+            actions: Vec::new(),
             model: None,
             failed: None,
             view: (0., duration.max(MIN_SPAN)),
@@ -371,7 +412,6 @@ impl DemoView {
         self.rows_for = Some(shown);
     }
 
-    /// Select an event and bring it into view
     /// Choose an event, bring it into view and move the viewer's playhead
     /// to it
     fn select(&mut self, event: usize, from_table: bool) {
@@ -398,6 +438,15 @@ impl DemoView {
         let e = m.events.get(self.selected?)?;
         let range = self.clamped(e.time - self.padding.0, e.time + self.padding.1);
         self.starts_in(range.0, e.segment).then_some(range)
+    }
+
+    /// The range clipping the chosen highlight would take, padded as an
+    /// event's is, when it starts in the highlight's own session
+    fn highlight_range(&self) -> Option<(f32, f32)> {
+        let m = self.model.as_ref()?;
+        let w = m.windows.get(self.window?)?;
+        let range = self.clamped(w.start - self.padding.0, w.end + self.padding.1);
+        self.starts_in(range.0, w.segment).then_some(range)
     }
 
     /// Whether a clip starting at `time` starts in `segment`
@@ -477,11 +526,8 @@ impl DemoView {
                         ui.selectable_value(&mut self.shown.weapon, Some(w), w.name());
                     }
                 });
-            if ui.button(t("timeline-fit")).clicked()
-                && let Some(m) = &self.model
-            {
-                self.view = (m.start, m.end.max(m.start + MIN_SPAN));
-                self.window = None;
+            if ui.button(t("timeline-fit")).clicked() {
+                self.actions.push(DemoAction::Fit);
             }
 
             // Jump to the best stretches of play, the first being the best
@@ -537,12 +583,7 @@ impl DemoView {
                     }
                 });
             if let Some(i) = chosen {
-                let w = &m.windows[i];
-                // The minute with a little room on both sides
-                let pad = ((w.end - w.start) * 0.1).max(3.);
-                self.view = (w.start - pad, w.end + pad);
-                self.window = Some(i);
-                self.scroll_to_window = 3;
+                self.actions.push(DemoAction::ChooseHighlight(i));
             }
         });
     }
@@ -1005,23 +1046,16 @@ impl DemoView {
                     ui.label(tip);
                 });
             if response.clicked() {
-                self.select(event, false);
+                self.actions.push(DemoAction::Select {
+                    event,
+                    from_list: false,
+                });
             }
         } else if response.clicked()
             && let Some(p) = pointer
         {
             let at = a + (p.x - plot.min.x) * per_px;
-            if let Some(viewer) = &mut self.viewer {
-                viewer.seek(at);
-            }
-            let t = DemoTime::from_f32(at);
-            if let Some(i) = self
-                .clips
-                .iter()
-                .rposition(|c| t.is_some_and(|t| t >= c.start && t < c.end))
-            {
-                self.chosen_clip = Some(i);
-            }
+            self.actions.push(DemoAction::Seek(at));
         }
     }
 
@@ -1054,9 +1088,7 @@ impl DemoView {
             // ten seconds from where the timeline shows, or from the start,
             // to edit and check like any other clip
             if ui.button(t("clips-new")).clicked() {
-                let from = if self.show_timeline { self.view.0 } else { 0. };
-                let range = self.clamped(from, from + NEW_CLIP_SECONDS);
-                self.add_clip(catalog, range);
+                self.actions.push(DemoAction::NewClip);
             }
 
             // Around the selected event, the button naming the range
@@ -1075,20 +1107,17 @@ impl DemoView {
                 (Some(_), None) => r.on_disabled_hover_text(t("clips-other-session")),
                 _ => r,
             };
-            if r.clicked()
-                && let Some(range) = proposal
-            {
-                self.add_clip(catalog, range);
+            if r.clicked() {
+                self.actions.push(DemoAction::ClipEvent);
             }
 
             // Around the chosen intense moment
-            if let Some(w) = self.window.and_then(|i| model.windows.get(i)) {
-                let range = self.clamped(w.start - self.padding.0, w.end + self.padding.1);
-                let allowed = self.starts_in(range.0, w.segment);
+            if self.window.is_some_and(|i| i < model.windows.len()) {
+                let allowed = self.highlight_range().is_some();
                 let r = ui.add_enabled(allowed, egui::Button::new(t("clips-add-window")));
                 let r = r.on_disabled_hover_text(t("clips-other-session"));
                 if r.clicked() {
-                    self.add_clip(catalog, range);
+                    self.actions.push(DemoAction::ClipHighlight);
                 }
             }
 
@@ -1477,21 +1506,21 @@ impl DemoView {
                 chosen = next;
             }
             if self.viewer.is_some() {
-                let event = self.selected.and_then(|i| model.events.get(i));
+                let event = self.selected.filter(|&i| i < model.events.len());
                 let r = ui.add_enabled(event.is_some(), egui::Button::new(t("event-play")));
                 let r = r.on_disabled_hover_text(t("clips-select-event"));
                 if r.clicked()
-                    && let (Some(e), Some(viewer)) = (event, &mut self.viewer)
+                    && let Some(event) = event
                 {
-                    // Played once, through any clip's loop
-                    self.looping = None;
-                    viewer.set_loop(None);
-                    viewer.play_range(e.time - self.padding.0, e.time + self.padding.1);
+                    self.actions.push(DemoAction::PlayEvent(event));
                 }
             }
         });
-        if let Some(row) = chosen.and_then(|i| self.rows.get(i).copied()) {
-            self.select(row, false);
+        if let Some(event) = chosen.and_then(|i| self.rows.get(i).copied()) {
+            self.actions.push(DemoAction::Select {
+                event,
+                from_list: false,
+            });
         }
     }
 
@@ -1514,7 +1543,10 @@ impl DemoView {
             cols.reverse();
         }
         let row_height = ui.text_style_height(&egui::TextStyle::Body) + 4.;
+
+        // Its scroll position belongs to this demo, not to the next one opened
         let mut table = TableBuilder::new(ui)
+            .id_salt(("events", self.generation))
             .striped(true)
             .resizable(true)
             .sense(Sense::click())
@@ -1616,8 +1648,11 @@ impl DemoView {
                     }
                 });
             });
-        if let Some(i) = clicked {
-            self.select(i, true);
+        if let Some(event) = clicked {
+            self.actions.push(DemoAction::Select {
+                event,
+                from_list: true,
+            });
         }
     }
 
@@ -1774,7 +1809,7 @@ impl DemoView {
                     ))
                     .clicked()
             {
-                self.selected = None;
+                self.actions.push(DemoAction::ShowFinal);
             }
         });
 
@@ -2009,17 +2044,13 @@ impl DemoView {
             });
     }
 
-    /// The whole view. Returns true when it should close
-    pub fn ui(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool) -> bool {
+    /// Take in the analysis, export results and playback state, and the
+    /// keys that drive playback. Called once a frame before anything of the
+    /// demo draws, whichever of its parts are shown
+    pub fn begin_frame(&mut self, ctx: &egui::Context) {
         self.poll();
-        // A looped clip's edits move its loop too
-        if let (Some(c), Some(viewer)) = (
-            self.looping.and_then(|i| self.clips.get(i)),
-            &mut self.viewer,
-        ) {
-            viewer.set_loop(Some((secs(c.start), secs(c.end))));
-        }
         self.poll_export();
+
         if self.export_on_load && self.model.is_some() {
             self.export_on_load = false;
             let clips = self.clips.clone();
@@ -2028,15 +2059,148 @@ impl DemoView {
                 .filter(|c| self.snap(c).is_ok())
                 .map(|c| (c.start, c.end))
                 .collect();
-            self.start_export(ui.ctx(), keys);
+            self.start_export(ctx, keys);
         }
+
+        if let Some(viewer) = &mut self.viewer {
+            viewer.shortcuts(ctx);
+            viewer.begin_frame(ctx);
+        }
+    }
+
+    /// Apply what the controls asked for, then bring the loop and the sound
+    /// in line with the edits. Called once a frame after everything has
+    /// drawn. Returns true when the demo should close
+    pub fn finish_frame(&mut self, ctx: &egui::Context, catalog: &Catalog) -> bool {
+        let actions = std::mem::take(&mut self.actions);
+        let mut close = false;
+        for action in &actions {
+            match action {
+                DemoAction::Close => close = true,
+                _ => self.apply(*action, catalog),
+            }
+        }
+
+        // What an action changed shows on the next frame, asked for here as
+        // nothing else may come to ask for one
+        if !actions.is_empty() {
+            ctx.request_repaint();
+        }
+
+        // A looped clip's edits move its loop too
+        if let (Some(c), Some(viewer)) = (
+            self.looping.and_then(|i| self.clips.get(i)),
+            &mut self.viewer,
+        ) {
+            viewer.set_loop(Some((secs(c.start), secs(c.end))));
+        }
+
+        if let Some(viewer) = &mut self.viewer {
+            viewer.finish_frame(ctx);
+        }
+
+        close
+    }
+
+    fn apply(&mut self, action: DemoAction, catalog: &Catalog) {
+        match action {
+            DemoAction::Select { event, from_list } => self.select(event, from_list),
+            DemoAction::Seek(at) => {
+                if let Some(viewer) = &mut self.viewer {
+                    viewer.seek(at);
+                }
+
+                let t = DemoTime::from_f32(at);
+                if let Some(i) = self
+                    .clips
+                    .iter()
+                    .rposition(|c| t.is_some_and(|t| t >= c.start && t < c.end))
+                {
+                    self.chosen_clip = Some(i);
+                }
+            }
+            DemoAction::PlayEvent(event) => {
+                let Some(e) = self.model.as_ref().and_then(|m| m.events.get(event)) else {
+                    return;
+                };
+                let range = (e.time - self.padding.0, e.time + self.padding.1);
+
+                if let Some(viewer) = &mut self.viewer {
+                    // Played once, through any clip's loop
+                    self.looping = None;
+                    viewer.set_loop(None);
+                    viewer.play_range(range.0, range.1);
+                }
+            }
+            DemoAction::Fit => {
+                if let Some(m) = &self.model {
+                    self.view = (m.start, m.end.max(m.start + MIN_SPAN));
+                    self.window = None;
+                }
+            }
+            DemoAction::ChooseHighlight(i) => {
+                let Some(w) = self.model.as_ref().and_then(|m| m.windows.get(i)) else {
+                    return;
+                };
+
+                // The minute with a little room on both sides
+                let pad = ((w.end - w.start) * 0.1).max(3.);
+                self.view = (w.start - pad, w.end + pad);
+                self.window = Some(i);
+                self.scroll_to_window = 3;
+            }
+            DemoAction::NewClip => {
+                // Any range, for a demo with no events or moments to start
+                // from, ten seconds from where the timeline shows, or from
+                // the start, to edit and check like any other clip
+                let from = if self.show_timeline { self.view.0 } else { 0. };
+                let range = self.clamped(from, from + NEW_CLIP_SECONDS);
+                self.add_clip(catalog, range);
+            }
+            DemoAction::ClipEvent => {
+                if let Some(range) = self.proposal() {
+                    self.add_clip(catalog, range);
+                }
+            }
+            DemoAction::ClipHighlight => {
+                if let Some(range) = self.highlight_range() {
+                    self.add_clip(catalog, range);
+                }
+            }
+            DemoAction::ShowFinal => self.selected = None,
+            DemoAction::Close => {}
+        }
+    }
+
+    /// Keep a clip time still being typed when it reads as a time, as
+    /// leaving its field would, before the demo is closed or replaced
+    pub fn commit_typing(&mut self) {
+        let Some((i, edge, text)) = self.typing.take() else {
+            return;
+        };
+        let (Some(clip), Some(t)) = (self.clips.get_mut(i), parse_time(&text)) else {
+            return;
+        };
+
+        let current = match edge {
+            Edge::Start => &mut clip.start,
+            Edge::End => &mut clip.end,
+        };
+        if *current != t {
+            *current = t;
+            self.clips_changed = true;
+        }
+    }
+
+    /// The whole view. What its controls ask for is applied by
+    /// [`Self::finish_frame`]
+    pub fn ui(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool) {
         let ctx = ui.ctx().clone();
         let name = self
             .path
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_default();
-        let mut close = false;
         layout::row(ui, rtl, |ui| {
             if ui
                 .button(text::widget_text(
@@ -2048,7 +2212,7 @@ impl DemoView {
                 ))
                 .clicked()
             {
-                close = true;
+                self.actions.push(DemoAction::Close);
             }
             ui.label(text::widget_text(
                 &ctx,
@@ -2060,7 +2224,8 @@ impl DemoView {
         });
         if let Some(viewer) = &mut self.viewer {
             let height = (ui.available_height() * 0.45).min(ui.available_width() * 9. / 16.);
-            viewer.ui(ui, catalog, rtl, height);
+            viewer.viewport_ui(ui, catalog, rtl, height);
+            viewer.transport_ui(ui, catalog, rtl);
             ui.separator();
         }
 
@@ -2071,7 +2236,7 @@ impl DemoView {
                     catalog.text_with("demo-loading", &[("name", FluentValue::from(name.clone()))]);
                 ui.label(text::widget_text(&ctx, &msg, rtl, None, Look::Plain));
             });
-            return close;
+            return;
         }
         if let Some(code) = &self.failed {
             text::label(
@@ -2079,10 +2244,10 @@ impl DemoView {
                 &catalog.text_or(code, &catalog.text("status-failed")),
                 rtl,
             );
-            return close;
+            return;
         }
         let Some(model) = self.model.clone() else {
-            return close;
+            return;
         };
         layout::column(ui, rtl, |ui| {
             for n in &model.coverage_notes {
@@ -2117,6 +2282,5 @@ impl DemoView {
         ui.separator();
         self.event_nav(ui, catalog, rtl);
         self.table(ui, catalog, rtl);
-        close
     }
 }

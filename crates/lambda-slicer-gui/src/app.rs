@@ -243,6 +243,42 @@ impl App {
         });
     }
 
+    /// Give the open demo the settings it works with this frame, this run's
+    /// choices from the command line over the saved ones
+    fn apply_demo_settings(&mut self) {
+        let Some(d) = &mut self.demo else {
+            return;
+        };
+        d.padding = (self.settings.preroll, self.settings.postroll);
+        d.export_folder = self.settings.export_folder.clone();
+
+        let Some(v) = &mut d.viewer else {
+            return;
+        };
+        v.settings = self.settings.viewer.clone();
+
+        if let Some(g) = self.viewer_gamma {
+            v.settings.gamma = g.gamma;
+            v.settings.brightness = g.brightness;
+            v.settings.texgamma = g.texgamma;
+            v.settings.lightgamma = g.lightgamma;
+            v.settings.overbright = g.overbright;
+        }
+        v.settings.see_through |= self.viewer_see_through;
+    }
+
+    /// Close the open demo, keeping a clip time still being typed and any
+    /// clip edits not saved yet
+    fn drop_demo(&mut self) {
+        let Some(mut d) = self.demo.take() else {
+            return;
+        };
+        d.commit_typing();
+        if d.clips_changed {
+            self.save_clips(&d.path, d.clips.clone());
+        }
+    }
+
     fn save_settings(&self) {
         if let Some(p) = &self.settings_path
             && let Err(e) = self.settings.save_to(p)
@@ -1033,6 +1069,8 @@ impl eframe::App for App {
         match (&selected, &self.demo) {
             (Some((path, _)), Some(d)) if *path == d.path => {}
             (Some((path, duration)), _) => {
+                self.drop_demo();
+
                 let mut d = DemoView::open(path.clone(), *duration, &ctx);
                 d.open_window = self.open_window.take();
                 d.export_on_load = std::mem::take(&mut self.export_on_open);
@@ -1040,9 +1078,15 @@ impl eframe::App for App {
                 d.clips = self.clips.get(path);
                 self.demo = Some(d);
             }
-            (None, _) => self.demo = None,
+            (None, _) => self.drop_demo(),
         }
         self.open_viewer(&ctx);
+
+        // The demo takes in its background work once, before any of it draws
+        self.apply_demo_settings();
+        if let Some(d) = &mut self.demo {
+            d.begin_frame(&ctx);
+        }
 
         let compact = self.demo.is_some();
         let library = |app: &mut Self, ui: &mut egui::Ui| match &mut app.library {
@@ -1069,37 +1113,29 @@ impl eframe::App for App {
                 .default_size(width * 0.42)
                 .size_range(320.0..=width * 0.8)
                 .show(ui, |ui| library(self, ui));
-            let mut close = false;
             egui::CentralPanel::default().show(ui, |ui| {
                 if let Some(d) = &mut self.demo {
-                    d.padding = (self.settings.preroll, self.settings.postroll);
-                    d.export_folder = self.settings.export_folder.clone();
-                    if let Some(v) = &mut d.viewer {
-                        v.settings = self.settings.viewer.clone();
-                        if let Some(g) = self.viewer_gamma {
-                            v.settings.gamma = g.gamma;
-                            v.settings.brightness = g.brightness;
-                            v.settings.texgamma = g.texgamma;
-                            v.settings.lightgamma = g.lightgamma;
-                            v.settings.overbright = g.overbright;
-                        }
-                        v.settings.see_through |= self.viewer_see_through;
-                    }
-                    close = d.ui(ui, &self.catalog, rtl);
-                    // The viewer's volume slider and see-through button are
-                    // settings
-                    if let Some(v) = &d.viewer {
-                        let saved = &mut self.settings.viewer;
-                        // As the run's flag left it, which is not saved
-                        let shown = saved.see_through || self.viewer_see_through;
-                        if (v.settings.volume, v.settings.see_through) != (saved.volume, shown) {
-                            saved.volume = v.settings.volume;
-                            saved.see_through = v.settings.see_through;
-                            self.viewer_unsaved = true;
-                        }
-                    }
+                    d.ui(ui, &self.catalog, rtl);
                 }
             });
+
+            let mut close = false;
+            if let Some(d) = &mut self.demo {
+                close = d.finish_frame(&ctx, &self.catalog);
+
+                // The viewer's volume slider and see-through button are
+                // settings
+                if let Some(v) = &d.viewer {
+                    let saved = &mut self.settings.viewer;
+                    // As the run's flag left it, which is not saved
+                    let shown = saved.see_through || self.viewer_see_through;
+                    if (v.settings.volume, v.settings.see_through) != (saved.volume, shown) {
+                        saved.volume = v.settings.volume;
+                        saved.see_through = v.settings.see_through;
+                        self.viewer_unsaved = true;
+                    }
+                }
+            }
             if self.viewer_unsaved && !ui.input(|i| i.pointer.any_down()) {
                 self.viewer_unsaved = false;
                 self.save_settings();
@@ -1119,7 +1155,7 @@ impl eframe::App for App {
                 self.save_settings();
             }
             if close {
-                self.demo = None;
+                self.drop_demo();
                 self.direct = None;
                 if let Some(l) = &mut self.library {
                     l.selected = None;

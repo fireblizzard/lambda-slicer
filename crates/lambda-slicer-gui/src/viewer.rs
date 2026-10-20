@@ -316,6 +316,11 @@ pub struct Viewer {
     duration: f64,
     bench: Option<Benching>,
     capturing: Option<Capturing>,
+    /// The size a capture run draws at this frame, set as the frame begins
+    capture_size: Option<[u32; 2]>,
+    /// What the view painted this frame, for the frame's end
+    drawn: usize,
+    drawn_at: Option<f64>,
     /// Seconds to play for, and when playing began
     play: Option<(f64, Option<Instant>)>,
     last_frame: Option<Instant>,
@@ -459,6 +464,9 @@ impl Viewer {
                 next: 0,
                 phase: CapturePhase::Seek,
             }),
+            capture_size: None,
+            drawn: 0,
+            drawn_at: None,
             last_frame: None,
             flashes_to: f64::NEG_INFINITY,
             palette,
@@ -1189,21 +1197,22 @@ impl Viewer {
         (Some(size), false)
     }
 
-    /// The view in `height` points with its controls under it, or all the
-    /// space left in a bench run
-    pub fn ui(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool, height: f32) {
+    /// Take the worker's answers and the loaded assets, and step a capture
+    /// run. Called once a frame before the view or its controls draw, so
+    /// they all see the same playback state
+    pub fn begin_frame(&mut self, ctx: &egui::Context) {
         if let Some(sound) = &self.sound
             && sound.volume() != self.settings.volume
         {
             sound.set_volume(self.settings.volume);
         }
-        self.shortcuts(ui.ctx());
+
         self.poll();
         self.request_assets();
         if let Some(frame) = &self.frame {
             self.decals.update(&frame.decals, frame.decal_revision);
         }
-        let ctx = ui.ctx().clone();
+
         let (capture_size, captured) = self.step_capture();
         if captured {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
@@ -1211,6 +1220,19 @@ impl Viewer {
         if capture_size.is_some() {
             ctx.request_repaint();
         }
+        self.capture_size = capture_size;
+
+        // Nothing is painted yet this frame
+        self.drawn = 0;
+        self.drawn_at = None;
+    }
+
+    /// The view in `height` points, or in a bench run all the space left
+    /// above the transport, with what it could not read and why playback
+    /// stopped under it
+    pub fn viewport_ui(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool, height: f32) {
+        let ctx = ui.ctx().clone();
+
         if let Some(problem) = self.controller.failed() {
             text::label(ui, &catalog.message(problem), rtl);
             return;
@@ -1224,6 +1246,7 @@ impl Viewer {
         };
         let size = egui::vec2(ui.available_width(), height.max(1.));
         let (rect, clicked) = ui.allocate_exact_size(size, Sense::click());
+
         // A click on the view pauses, or plays on the way it went last,
         // rewinding again after a pause while rewinding, unless the rewind
         // reached the start
@@ -1240,6 +1263,8 @@ impl Viewer {
             self.command(command);
             ctx.request_repaint();
         }
+
+        let capture_size = self.capture_size;
         let mut drawn = 0;
         let mut drawn_at = None;
         if let Some((map, error)) = self.failed_map() {
@@ -1281,6 +1306,9 @@ impl Viewer {
                 }
             }
         }
+        self.drawn = drawn;
+        self.drawn_at = drawn_at;
+
         self.missing_files(ui, catalog, rtl);
         if let Some(stopped) = self.frame.as_ref().and_then(|f| f.stopped.as_ref()) {
             let reason = catalog.message(stopped);
@@ -1290,8 +1318,27 @@ impl Viewer {
                 rtl,
             );
         }
-        if let Some(at) = drawn_at {
+    }
+
+    /// The transport under the view. Nothing while playback has failed
+    pub fn transport_ui(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool) {
+        if self.controller.failed().is_some() {
+            return;
+        }
+        self.controls(ui, catalog, rtl);
+    }
+
+    /// Feed the sound from the playback state every control has had its say
+    /// on, and ask for the next frame while playing. Called once a frame
+    /// after everything has drawn, whether or not the view was painted
+    pub fn finish_frame(&mut self, ctx: &egui::Context) {
+        if self.controller.failed().is_some() {
+            return;
+        }
+
+        if let Some(at) = self.drawn_at {
             self.flashes_to = at;
+
             // How far the picture painted trails the playhead
             let now = self.controller.time(self.wall()).0;
             if let Some((_, lags)) = &mut self.video_lag {
@@ -1303,8 +1350,8 @@ impl Viewer {
         if self.step_play() {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
-        self.controls(ui, catalog, rtl);
-        if self.controller.playing() || drawn > 0 && self.bench.is_some() {
+
+        if self.controller.playing() || self.drawn > 0 && self.bench.is_some() {
             ctx.request_repaint();
         }
     }
@@ -1346,13 +1393,12 @@ impl Viewer {
         }
     }
 
-    /// Tell the sound mixer what the frame shown plays
     /// The keys that drive playback while no text is being typed. Space and
     /// L play forward or pause, J plays backward or pauses, K pauses, comma
     /// and period step one recorded group back or forward, and the left and
     /// right arrows seek five seconds. While a control has the keyboard's
     /// focus, space and the arrows are its own
-    fn shortcuts(&mut self, ctx: &egui::Context) {
+    pub fn shortcuts(&mut self, ctx: &egui::Context) {
         // Typing goes to the text, other controls keep only space and the
         // arrows for themselves
         if ctx.text_edit_focused() {
@@ -1399,6 +1445,7 @@ impl Viewer {
         }
     }
 
+    /// Tell the sound mixer what the frame shown plays
     fn feed_sound(&self) {
         let (Some(sound), Some(frame), Some(demo)) =
             (&self.sound, &self.frame, self.worker.loaded())
