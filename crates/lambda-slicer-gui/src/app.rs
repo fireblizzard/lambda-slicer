@@ -11,7 +11,7 @@ use lambda_slicer_core::library::cache::default_path;
 use lambda_slicer_core::library::scan::ScanOptions;
 
 use crate::clips::{ClipStore, LoadProblem};
-use crate::demo::{self, DemoView, Request, Setup, Surroundings, WorkspaceUi};
+use crate::demo::{self, DemoView, InspectorTab, Request, Setup, Surroundings, WorkspaceUi};
 use crate::game_setup::{self, Refusal};
 use crate::i18n::{Catalog, Locale};
 use crate::jobs::{Problem, ScanJob};
@@ -78,6 +78,8 @@ pub struct Launch {
     pub viewer_gamma: Option<lambda_slicer_render::gamma::Gamma>,
     /// Players shown through walls for this run
     pub viewer_see_through: bool,
+    /// The inspector tab shown at start
+    pub tab: InspectorTab,
 }
 
 pub struct App {
@@ -261,7 +263,10 @@ impl App {
             viewer_unsaved: false,
             render_state: None,
             brand: None,
-            workspace: WorkspaceUi::default(),
+            workspace: WorkspaceUi {
+                inspector_tab: launch.tab,
+                ..WorkspaceUi::default()
+            },
             setup_refusal: None,
             install_checked: None,
             executable_checked: None,

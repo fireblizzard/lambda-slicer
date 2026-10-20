@@ -2,7 +2,7 @@
 //!
 //! `lambda-slicer-gui [PATH...] [--locale TAG] [--settings] [--timeline]
 //! [--dates] [--pseudo] [--size WxH] [--cache FILE] [--clips FILE]
-//! [--demo FILE [--window N] [--event N] [--refine LIST] [--export DIR]]
+//! [--demo FILE [--window N] [--event N] [--refine LIST] [--tab TAB] [--export DIR]]
 //! [--screenshot OUT.png [--frames N]]
 //! [--game DIR [--viewer-at SECONDS] [--viewer-bench SECONDS OUT.txt]
 //! [--viewer-capture TIMES FOLDER] [--viewer-size WxH] [--viewer-play SECONDS]
@@ -15,7 +15,8 @@
 //! its `N`th golden minute candidate with `--window`, with its `N`th shown
 //! event selected with `--event`, and with the kill refinements in the
 //! comma-separated `LIST` on with `--refine`, from `midair`, `both`, `one`,
-//! `speed`, `killer`, `victim` and `wallgauss`. `--export` exports its clips
+//! `speed`, `killer`, `victim` and `wallgauss`. `--tab` shows the inspector's
+//! `events`, `clips` or `scoreboard` tab, and `--export` exports its clips
 //! into `DIR`. `--settings` opens the settings window, `--timeline` opens
 //! the player lanes under the timeline, `--dates` turns on both date
 //! filters, `--pseudo` lengthens and accents every message to find text that does
@@ -65,6 +66,7 @@ use std::path::PathBuf;
 use eframe::egui;
 
 use app::{App, Launch, Screenshot};
+use demo::InspectorTab;
 use i18n::Locale;
 use kill_filters::{KillFilters, MidairMode, SpeedSubject};
 use settings::Settings;
@@ -103,6 +105,7 @@ fn main() -> eframe::Result {
     let mut window = None;
     let mut event = None;
     let mut refine = KillFilters::default();
+    let mut tab = InspectorTab::default();
     let mut size = [1280., 800.];
     let mut dates = false;
     let mut export = None;
@@ -140,6 +143,13 @@ fn main() -> eframe::Result {
             "--refine" => {
                 if let Some(list) = args.next() {
                     refine = refinements(&list);
+                }
+            }
+            "--tab" => {
+                tab = match args.next().as_deref() {
+                    Some("clips") => InspectorTab::Clips,
+                    Some("scoreboard") => InspectorTab::Scoreboard,
+                    _ => InspectorTab::Events,
                 }
             }
             "--size" => {
@@ -278,6 +288,7 @@ fn main() -> eframe::Result {
                     viewer_play,
                     viewer_gamma,
                     viewer_see_through,
+                    tab,
                     viewer_capture: capture_times.map(|(times, folder)| viewer::Capture {
                         times,
                         folder,

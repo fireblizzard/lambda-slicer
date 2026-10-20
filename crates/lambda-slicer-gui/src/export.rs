@@ -5,7 +5,10 @@
 //! and never replaces one. Each clip's file name is chosen just before its
 //! export, so clips of one job never take the same name. Cancelling skips
 //! the clips not yet started, as a clip under way runs to its end. A job
-//! dropped with its demo view is cancelled the same way and not waited for
+//! dropped with its demo view is cancelled the same way and not waited for.
+//!
+//! Each clip's range is taken when the job starts, so editing a clip later
+//! never makes its result look like an export of the new range
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -22,6 +25,14 @@ use lambda_slicer_core::timeline::time::DemoTime;
 
 /// A clip by its requested range, which is what its export depends on
 pub type ClipKey = (DemoTime, DemoTime);
+
+/// A clip to export, by the demo view's identity for it and the range it
+/// had when the export was asked for
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ExportItem {
+    pub id: u64,
+    pub range: ClipKey,
+}
 
 /// A finished export
 #[derive(Clone, Debug, PartialEq)]
@@ -40,12 +51,14 @@ pub enum ExportState {
     Done(Exported),
     Failed(Message),
     Cancelled,
+    /// Left out of an export of every clip, as it cannot be exported
+    Skipped(Message),
 }
 
 enum Event {
-    Started(ClipKey),
-    Finished(ClipKey, Result<Exported, Message>),
-    Cancelled(ClipKey),
+    Started(u64),
+    Finished(u64, Result<Exported, Message>),
+    Cancelled(u64),
 }
 
 pub struct ExportJob {
@@ -60,7 +73,7 @@ impl ExportJob {
     pub fn start(
         source: PathBuf,
         folder: PathBuf,
-        clips: Vec<ClipKey>,
+        clips: Vec<ExportItem>,
         ctx: egui::Context,
     ) -> Self {
         let cancel = Arc::new(AtomicBool::new(false));
@@ -70,14 +83,14 @@ impl ExportJob {
         std::thread::Builder::new()
             .name("clip export".into())
             .spawn(move || {
-                for (start, end) in clips {
-                    let key = (start, end);
+                for item in clips {
+                    let (start, end) = item.range;
                     if thread_cancel.load(Ordering::Relaxed) {
-                        let _ = tx.send(Event::Cancelled(key));
+                        let _ = tx.send(Event::Cancelled(item.id));
                         ctx.request_repaint();
                         continue;
                     }
-                    let _ = tx.send(Event::Started(key));
+                    let _ = tx.send(Event::Started(item.id));
                     ctx.request_repaint();
                     let dest = free_path(&folder, &clip_file_name(&source, start, end));
                     // A panic fails this clip, not the job
@@ -94,7 +107,7 @@ impl ExportJob {
                         )
                         .message()),
                     };
-                    let _ = tx.send(Event::Finished(key, result));
+                    let _ = tx.send(Event::Finished(item.id, result));
                     ctx.request_repaint();
                 }
             })
@@ -111,25 +124,23 @@ impl ExportJob {
         self.cancel.load(Ordering::Relaxed)
     }
 
-    /// Apply what happened since the last call. Returns true once every
-    /// clip is accounted for
-    pub fn poll(&mut self, states: &mut std::collections::HashMap<ClipKey, ExportState>) -> bool {
+    /// Hand `update` each clip's new state since the last call, by its
+    /// identity. Returns true once every clip is accounted for
+    pub fn poll(&mut self, mut update: impl FnMut(u64, ExportState)) -> bool {
         while let Ok(event) = self.rx.try_recv() {
             match event {
-                Event::Started(key) => {
-                    states.insert(key, ExportState::Running);
-                }
-                Event::Finished(key, result) => {
+                Event::Started(id) => update(id, ExportState::Running),
+                Event::Finished(id, result) => {
                     self.open -= 1;
                     let state = match result {
                         Ok(e) => ExportState::Done(e),
                         Err(m) => ExportState::Failed(m),
                     };
-                    states.insert(key, state);
+                    update(id, state);
                 }
-                Event::Cancelled(key) => {
+                Event::Cancelled(id) => {
                     self.open -= 1;
-                    states.insert(key, ExportState::Cancelled);
+                    update(id, ExportState::Cancelled);
                 }
             }
         }

@@ -69,6 +69,16 @@ pub enum Icon {
     Next,
     /// An outlined triangle, for playing something once
     Play,
+    /// A plus, for adding
+    Plus,
+    /// An arrow down onto a line, for exporting
+    Download,
+    /// Two arrows chasing each other round, for looping
+    Repeat,
+    /// A bin, for removing
+    Trash,
+    /// A circle with a cross through it, for taking the playhead's time
+    Crosshair,
 }
 
 /// The width of an icon's lines
@@ -385,6 +395,46 @@ pub fn paint_icon_facing(
         Icon::Play => {
             let forward = vec![p(4.5, 3.), p(13., 8.), p(4.5, 13.)];
             painter.add(Shape::closed_line(forward, stroke));
+        }
+        Icon::Plus => {
+            painter.line_segment([p(8., 3.), p(8., 13.)], stroke);
+            painter.line_segment([p(3., 8.), p(13., 8.)], stroke);
+        }
+        Icon::Download => {
+            painter.line_segment([p(8., 2.), p(8., 10.)], stroke);
+            painter.add(Shape::line(
+                vec![p(4.5, 6.5), p(8., 10.), p(11.5, 6.5)],
+                stroke,
+            ));
+            painter.line_segment([p(3., 13.5), p(13., 13.5)], stroke);
+        }
+        Icon::Repeat => {
+            // Two rounded arms of a loop, each ending in an arrowhead
+            let top = vec![p(3., 9.), p(3., 5.), p(13., 5.)];
+            painter.add(Shape::line(top, stroke));
+            painter.add(Shape::line(
+                vec![p(11., 3.), p(13., 5.), p(11., 7.)],
+                stroke,
+            ));
+
+            let bottom = vec![p(13., 7.), p(13., 11.), p(3., 11.)];
+            painter.add(Shape::line(bottom, stroke));
+            painter.add(Shape::line(vec![p(5., 9.), p(3., 11.), p(5., 13.)], stroke));
+        }
+        Icon::Trash => {
+            painter.line_segment([p(2.5, 4.), p(13.5, 4.)], stroke);
+            let lid = vec![p(6., 4.), p(6., 2.), p(10., 2.), p(10., 4.)];
+            painter.add(Shape::line(lid, stroke));
+
+            let bin = vec![p(4., 4.), p(5., 14.), p(11., 14.), p(12., 4.)];
+            painter.add(Shape::line(bin, stroke));
+        }
+        Icon::Crosshair => {
+            painter.circle_stroke(p(8., 8.), 5. * unit, stroke);
+            painter.line_segment([p(8., 1.), p(8., 5.)], stroke);
+            painter.line_segment([p(8., 11.), p(8., 15.)], stroke);
+            painter.line_segment([p(1., 8.), p(5., 8.)], stroke);
+            painter.line_segment([p(11., 8.), p(15., 8.)], stroke);
         }
     }
 }

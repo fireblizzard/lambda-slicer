@@ -5,8 +5,10 @@
 //! occurrences are not kept in the cache. Only the compact timeline model
 //! crosses back to the window. Choosing another demo cancels the analysis
 
+mod clips_tab;
 mod compact;
 mod events;
+mod scores;
 mod track;
 
 use std::collections::HashMap;
@@ -16,7 +18,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver};
 use std::thread::JoinHandle;
 
-use eframe::egui::{self, Color32, Pos2, Rect, Sense, Stroke, Ui, Vec2};
+use eframe::egui::{self, Color32, Pos2, Rect, Sense, Ui, Vec2};
 use fluent_bundle::FluentValue;
 use lambda_slicer_core::analysis::analyze_demo_with;
 use lambda_slicer_core::analysis::weapons::{Action, Weapon};
@@ -29,7 +31,7 @@ use lambda_slicer_core::timeline::time::DemoTime;
 
 use crate::app::SettingsTab;
 use crate::clips::{Clip, next_name, parse_time};
-use crate::export::{ClipKey, ExportJob, ExportState};
+use crate::export::{ClipKey, ExportItem, ExportJob, ExportState};
 use crate::i18n::Catalog;
 use crate::kill_analysis::Walls;
 use crate::kill_filters::{KillFilters, Verdict};
@@ -38,8 +40,6 @@ use crate::text::{self, Look};
 use crate::theme;
 use crate::timeline::{Event, EventKind, MarkKind, Model};
 use crate::widgets::{self, Icon, IconButton, Variant};
-use lambda_slicer_core::analysis::accuracy::accuracy;
-use lambda_slicer_core::analysis::context::{PlayerScore, StandingSide, standing_at};
 use track::{Density, MarkerBin, RowMark, Side, Transform};
 
 /// A demo time in seconds, as the viewer takes them
@@ -71,24 +71,6 @@ const WINDOW_TINT: Color32 = Color32::from_rgba_premultiplied(40, 32, 10, 40);
 
 /// The length of a clip made with New clip, before it is edited
 const NEW_CLIP_SECONDS: f32 = 10.;
-
-/// Clips to export, acted on once every clip row has drawn
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum ExportRequest {
-    All,
-    One(usize),
-}
-
-/// What a clip row's buttons asked for
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum RowAction {
-    Remove,
-    Export,
-    /// Play the clip once
-    Play,
-    /// Loop the clip, or stop looping it
-    Loop(bool),
-}
 
 /// What a control of the demo view asked for. Controls only collect these
 /// while they draw, and the view applies them once everything has drawn, so
@@ -487,6 +469,10 @@ pub struct DemoView {
     /// This demo's clips. The app saves them when `clips_changed` is set
     pub clips: Vec<Clip>,
     pub clips_changed: bool,
+    /// Each clip's identity for this view, in the order of `clips`, which
+    /// stays while the clip is edited and moved, and the next one to give
+    clip_ids: Vec<u64>,
+    next_clip_id: u64,
     chosen_clip: Option<usize>,
     /// A clip's start or end while it is being typed
     typing: Option<(usize, Edge, String)>,
@@ -497,8 +483,9 @@ pub struct DemoView {
     /// Where exports go, the demo's own folder when none is set
     pub export_folder: Option<PathBuf>,
     export: Option<ExportJob>,
-    /// How each clip's latest export went, by its requested range
-    exports: HashMap<ClipKey, ExportState>,
+    /// How each clip's latest export went, by its identity, with the range
+    /// that export was asked for
+    exports: HashMap<u64, (ClipKey, ExportState)>,
     /// The demo viewer, when a game folder is known
     pub viewer: Option<crate::viewer::Viewer>,
     /// The game folder the viewer was opened with
@@ -547,6 +534,8 @@ impl DemoView {
             show_timeline: false,
             clips: Vec::new(),
             clips_changed: false,
+            clip_ids: Vec::new(),
+            next_clip_id: 0,
             chosen_clip: None,
             typing: None,
             padding: (0., 0.),
@@ -572,22 +561,55 @@ impl DemoView {
             .unwrap_or_default()
     }
 
-    /// Export these clips one after another, unless an export is under way
-    fn start_export(&mut self, ctx: &egui::Context, mut keys: Vec<ClipKey>) {
-        keys.dedup();
-        if self.export.is_some() || keys.is_empty() {
+    /// Give every clip an identity. Clips the app hands over arrive without
+    fn identify_clips(&mut self) {
+        while self.clip_ids.len() < self.clips.len() {
+            self.clip_ids.push(self.next_clip_id);
+            self.next_clip_id += 1;
+        }
+        self.clip_ids.truncate(self.clips.len());
+    }
+
+    /// Note how clip `i`'s export stands, for its range as it is now
+    fn mark_export(&mut self, i: usize, state: ExportState) {
+        self.identify_clips();
+        let (Some(clip), Some(&id)) = (self.clips.get(i), self.clip_ids.get(i)) else {
+            return;
+        };
+        self.exports.insert(id, ((clip.start, clip.end), state));
+    }
+
+    /// Export these clips one after another with their ranges as they are
+    /// now, unless an export is under way
+    fn start_export(&mut self, ctx: &egui::Context, clips: &[usize]) {
+        if self.export.is_some() || clips.is_empty() {
             return;
         }
-        for k in &keys {
-            self.exports.insert(*k, ExportState::Waiting);
+
+        self.identify_clips();
+        let mut items = Vec::new();
+        for &i in clips {
+            let (Some(clip), Some(&id)) = (self.clips.get(i), self.clip_ids.get(i)) else {
+                continue;
+            };
+            let range = (clip.start, clip.end);
+            self.exports.insert(id, (range, ExportState::Waiting));
+            items.push(ExportItem { id, range });
         }
-        let job = ExportJob::start(self.path.clone(), self.export_dir(), keys, ctx.clone());
+
+        let job = ExportJob::start(self.path.clone(), self.export_dir(), items, ctx.clone());
         self.export = Some(job);
     }
 
     fn poll_export(&mut self) {
+        let exports = &mut self.exports;
+        let update = |id: u64, state: ExportState| {
+            if let Some(export) = exports.get_mut(&id) {
+                export.1 = state;
+            }
+        };
         if let Some(job) = &mut self.export
-            && job.poll(&mut self.exports)
+            && job.poll(update)
         {
             self.export = None;
         }
@@ -771,10 +793,15 @@ impl DemoView {
         let (Some(start), Some(end)) = (DemoTime::from_f32(from), DemoTime::from_f32(to)) else {
             return;
         };
+        // A name is kept and typed in, so it holds none of the marks that
+        // keep a message's number apart from its text
         let name = next_name(&self.clips, |n| {
-            catalog.text_with("clip-default-name", &[("number", n.into())])
+            let name = catalog.text_with("clip-default-name", &[("number", n.into())]);
+            name.replace(['\u{2068}', '\u{2069}'], "")
         });
+        self.identify_clips();
         self.clips.push(Clip { name, start, end });
+        self.identify_clips();
         self.chosen_clip = Some(self.clips.len() - 1);
         self.clips_changed = true;
     }
@@ -853,710 +880,6 @@ impl DemoView {
         }
     }
 
-    /// The clips, with buttons to add one around the selected event or the
-    /// chosen intense moment
-    fn clips_ui(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool) {
-        let Some(model) = self.model.clone() else {
-            return;
-        };
-        let ctx = ui.ctx().clone();
-        let mut request: Option<ExportRequest> = None;
-        let t = |id: &str| text::widget_text(&ctx, &catalog.text(id), rtl, None, Look::Plain);
-        let clock = |t: f32| {
-            FluentValue::from(
-                DemoTime::from_f32(t)
-                    .map(|d| d.to_string())
-                    .unwrap_or_default(),
-            )
-        };
-        layout::wrapping_row(ui, rtl, |ui| {
-            ui.label(text::widget_text(
-                &ctx,
-                &catalog.text("clips-title"),
-                rtl,
-                None,
-                Look::Strong,
-            ));
-
-            // Any range, for a demo with no events or moments to start from,
-            // ten seconds from where the timeline shows, or from the start,
-            // to edit and check like any other clip
-            if ui.button(t("clips-new")).clicked() {
-                self.actions.push(DemoAction::NewClip);
-            }
-
-            // Around the selected event, the button naming the range
-            let event = self.selected.and_then(|i| model.events.get(i));
-            let proposal = self.proposal();
-            let label = match proposal {
-                Some((s, e)) => {
-                    catalog.text_with("clips-add-event", &[("start", clock(s)), ("end", clock(e))])
-                }
-                None => catalog.text("clips-add-event-none"),
-            };
-            let label = text::widget_text(&ctx, &label, rtl, None, Look::Plain);
-            let r = ui.add_enabled(proposal.is_some(), egui::Button::new(label));
-            let r = match (event, proposal) {
-                (None, _) => r.on_disabled_hover_text(t("clips-select-event")),
-                (Some(_), None) => r.on_disabled_hover_text(t("clips-other-session")),
-                _ => r,
-            };
-            if r.clicked() {
-                self.actions.push(DemoAction::ClipEvent);
-            }
-
-            // Around the chosen intense moment
-            if self.window.is_some_and(|i| i < model.windows.len()) {
-                let allowed = self.highlight_range().is_some();
-                let r = ui.add_enabled(allowed, egui::Button::new(t("clips-add-window")));
-                let r = r.on_disabled_hover_text(t("clips-other-session"));
-                if r.clicked() {
-                    self.actions.push(DemoAction::ClipHighlight);
-                }
-            }
-
-            // Every clip an export would not refuse, or stop after the clip
-            // under way
-            match &self.export {
-                Some(job) => {
-                    let r =
-                        ui.add_enabled(!job.cancelling(), egui::Button::new(t("export-cancel")));
-                    if r.clicked() {
-                        job.cancel();
-                    }
-                }
-                None => {
-                    let clips = self.clips.clone();
-                    let any = clips.iter().any(|c| self.snap(c).is_ok());
-                    let r = ui.add_enabled(any, egui::Button::new(t("export-all")));
-                    if r.clicked() {
-                        request = Some(ExportRequest::All);
-                    }
-                }
-            }
-        });
-
-        if self.clips.is_empty() {
-            layout::column(ui, rtl, |ui| {
-                text::label(ui, &catalog.text("clips-empty"), rtl);
-            });
-            return;
-        }
-        let folder = self.export_dir().display().to_string();
-        let id = if self.export_folder.is_some() {
-            "export-folder"
-        } else {
-            "export-folder-beside"
-        };
-        let line = catalog.text_with(id, &[("folder", FluentValue::from(folder))]);
-        layout::column(ui, rtl, |ui| {
-            let width = Some(ui.available_width());
-            ui.label(text::widget_text(&ctx, &line, rtl, width, Look::Weak));
-        });
-        // The clips scroll with the tab they are in
-        let mut remove = None;
-        for i in 0..self.clips.len() {
-            match self.clip_row(ui, catalog, rtl, i) {
-                Some(RowAction::Remove) => remove = Some(i),
-                Some(RowAction::Export) => request = Some(ExportRequest::One(i)),
-                Some(RowAction::Play) => {
-                    self.looping = None;
-                    if let Some(viewer) = &mut self.viewer {
-                        let c = &self.clips[i];
-                        viewer.set_loop(None);
-                        viewer.play_range(secs(c.start), secs(c.end));
-                    }
-                }
-                Some(RowAction::Loop(on)) => {
-                    self.looping = on.then_some(i);
-                    if let Some(viewer) = &mut self.viewer {
-                        let c = &self.clips[i];
-                        if on {
-                            viewer.play_loop(secs(c.start), secs(c.end));
-                        } else {
-                            viewer.set_loop(None);
-                        }
-                    }
-                }
-                None => {}
-            }
-        }
-
-        // A time typed into a field commits when the field loses focus, which
-        // the same click that presses Export does, while the rows draw. So
-        // exports read the clips only now, never a copy from before the rows
-        if let Some(request) = request {
-            let clips = self.clips.clone();
-            let chosen: Vec<&Clip> = match request {
-                ExportRequest::All => clips.iter().collect(),
-                ExportRequest::One(i) => clips.get(i).into_iter().collect(),
-            };
-            let keys = chosen
-                .into_iter()
-                .filter(|c| self.snap(c).is_ok())
-                .map(|c| (c.start, c.end))
-                .collect();
-            self.start_export(&ctx, keys);
-        }
-        if let Some(i) = remove {
-            self.clips.remove(i);
-            self.chosen_clip = match self.chosen_clip {
-                Some(c) if c == i => None,
-                Some(c) if c > i => Some(c - 1),
-                c => c,
-            };
-            self.looping = match self.looping {
-                Some(c) if c == i => {
-                    // The removed clip's loop goes with it
-                    if let Some(viewer) = &mut self.viewer {
-                        viewer.set_loop(None);
-                    }
-                    None
-                }
-                Some(c) if c > i => Some(c - 1),
-                c => c,
-            };
-            self.typing = None;
-            self.clips_changed = true;
-
-            // The clips after it move up a place, so a drag of a clip's edge
-            // could now move another clip's, and it is given up
-            if matches!(self.drag, Some(Drag::ClipEdge { .. })) {
-                self.drag = Some(Drag::Cancelled);
-            }
-        }
-    }
-
-    /// One clip's name, requested range and length, and below them what an
-    /// export would cut. Returns what its buttons asked for
-    fn clip_row(
-        &mut self,
-        ui: &mut Ui,
-        catalog: &Catalog,
-        rtl: bool,
-        i: usize,
-    ) -> Option<RowAction> {
-        let ctx = ui.ctx().clone();
-        let t = |id: &str| text::widget_text(&ctx, &catalog.text(id), rtl, None, Look::Plain);
-        let chosen = self.chosen_clip == Some(i);
-        let fill = if chosen {
-            ui.visuals().selection.bg_fill.gamma_multiply(0.35)
-        } else {
-            Color32::TRANSPARENT
-        };
-        let (mut remove, mut show, mut export) = (false, false, false);
-        let (mut play, mut looped) = (false, None);
-        let clip = self.clips[i].clone();
-        let snapped = self.snap(&clip);
-        let state = self.exports.get(&(clip.start, clip.end)).cloned();
-        let can_export = snapped.is_ok() && self.export.is_none();
-        egui::Frame::new()
-            .inner_margin(4.)
-            .corner_radius(3.)
-            .fill(fill)
-            .show(ui, |ui| {
-                ui.set_width(ui.available_width());
-                layout::wrapping_row(ui, rtl, |ui| {
-                    let r = ui.add(
-                        egui::TextEdit::singleline(&mut self.clips[i].name)
-                            .desired_width(140.)
-                            .hint_text(catalog.text("clip-name")),
-                    );
-                    if r.changed() {
-                        self.clips_changed = true;
-                    }
-                    if r.gained_focus() {
-                        self.chosen_clip = Some(i);
-                    }
-                    // A range reads start to end in the interface's direction
-                    self.time_field(ui, catalog, i, Edge::Start);
-                    ui.label("–");
-                    self.time_field(ui, catalog, i, Edge::End);
-                    export = ui
-                        .add_enabled(can_export, egui::Button::new(t("export-one")).small())
-                        .clicked();
-                    show = ui.small_button(t("clip-show")).clicked();
-                    if self.viewer.is_some() {
-                        play = ui.small_button(t("viewer-play")).clicked();
-                        let mut on = self.looping == Some(i);
-                        if ui.toggle_value(&mut on, t("clip-loop")).clicked() {
-                            looped = Some(on);
-                        }
-                    }
-                    remove = ui.small_button(t("clip-remove")).clicked();
-                });
-
-                let (line, warn) = match &snapped {
-                    Ok(s) if s.start == clip.start && s.end == clip.end => {
-                        (catalog.text("clip-exact"), false)
-                    }
-                    Ok(s) => {
-                        let length =
-                            DemoTime::from_micros((s.end.micros() - s.start.micros()).max(0));
-                        let text = catalog.text_with(
-                            "clip-effective",
-                            &[
-                                ("start", FluentValue::from(s.start.to_string())),
-                                ("end", FluentValue::from(s.end.to_string())),
-                                ("duration", FluentValue::from(length.to_string())),
-                            ],
-                        );
-                        (text, false)
-                    }
-                    Err(m) => (catalog.message(m), true),
-                };
-                // The requested length, then the cut or the reason there is none
-                let length = catalog.text_with(
-                    "clip-length",
-                    &[("duration", FluentValue::from(clip.length().to_string()))],
-                );
-                layout::column(ui, rtl, |ui| {
-                    let width = Some(ui.available_width());
-                    let lines = if warn {
-                        let warning = Look::Color(ui.visuals().warn_fg_color);
-                        vec![(length, Look::Weak), (line, warning)]
-                    } else {
-                        vec![(format!("{length} · {line}"), Look::Weak)]
-                    };
-                    for (line, look) in lines {
-                        ui.label(text::widget_text(&ctx, &line, rtl, width, look));
-                    }
-                });
-                if let Some(state) = &state {
-                    Self::export_state(ui, catalog, rtl, state);
-                }
-            });
-        if show {
-            self.show_clip(i);
-        }
-        match (remove, export, play, looped) {
-            (true, ..) => Some(RowAction::Remove),
-            (_, true, ..) => Some(RowAction::Export),
-            (_, _, true, _) => Some(RowAction::Play),
-            (.., Some(on)) => Some(RowAction::Loop(on)),
-            _ => None,
-        }
-    }
-
-    /// How a clip's export went, and for a saved file how to play it
-    fn export_state(ui: &mut Ui, catalog: &Catalog, rtl: bool, state: &ExportState) {
-        let ctx = ui.ctx().clone();
-        let width = Some(ui.available_width());
-        let line = |ui: &mut Ui, s: &str, look: Look| {
-            ui.label(text::widget_text(&ctx, s, rtl, width, look));
-        };
-        match state {
-            ExportState::Waiting => {
-                layout::column(ui, rtl, |ui| {
-                    line(ui, &catalog.text("export-waiting"), Look::Weak)
-                });
-            }
-            ExportState::Running => {
-                layout::row(ui, rtl, |ui| {
-                    ui.spinner();
-                    line(ui, &catalog.text("export-running"), Look::Plain);
-                });
-            }
-            ExportState::Cancelled => {
-                layout::column(ui, rtl, |ui| {
-                    line(ui, &catalog.text("export-cancelled"), Look::Weak)
-                });
-            }
-            ExportState::Failed(m) => {
-                let warning = Look::Color(ui.visuals().warn_fg_color);
-                layout::column(ui, rtl, |ui| line(ui, &catalog.message(m), warning));
-            }
-            ExportState::Done(e) => {
-                let saved = catalog.text_with(
-                    "export-saved",
-                    &[
-                        ("path", FluentValue::from(e.path.display().to_string())),
-                        ("count", FluentValue::from(e.compared as f64)),
-                    ],
-                );
-                layout::column(ui, rtl, |ui| line(ui, &saved, Look::Plain));
-                // The console command, or where the file must go first
-                let name = e
-                    .path
-                    .file_stem()
-                    .map(|s| s.to_string_lossy().into_owned())
-                    .unwrap_or_default();
-                let (hint, command) = match &e.playdemo {
-                    Some(c) => (catalog.text("export-playdemo"), c.clone()),
-                    None => (
-                        catalog.text_with(
-                            "export-copy-first",
-                            &[("name", FluentValue::from(format!("{name}.dem")))],
-                        ),
-                        format!("playdemo {name}"),
-                    ),
-                };
-                layout::column(ui, rtl, |ui| line(ui, &hint, Look::Weak));
-                layout::row(ui, rtl, |ui| {
-                    ui.label(egui::RichText::new(&command).monospace().strong());
-                    let copy = text::widget_text(
-                        &ctx,
-                        &catalog.text("export-copy"),
-                        rtl,
-                        None,
-                        Look::Plain,
-                    );
-                    if ui.small_button(copy).clicked() {
-                        ui.ctx().copy_text(command.clone());
-                    }
-                });
-            }
-        }
-    }
-
-    /// A clip's start or end as text, read back when typing ends. Text that
-    /// is not a time is outlined and left as it was
-    fn time_field(&mut self, ui: &mut Ui, catalog: &Catalog, i: usize, edge: Edge) {
-        let current = match edge {
-            Edge::Start => self.clips[i].start,
-            Edge::End => self.clips[i].end,
-        };
-        let mut text = match &self.typing {
-            Some((c, e, t)) if *c == i && *e == edge => t.clone(),
-            _ => current.to_string(),
-        };
-        // Wide enough for HH:MM:SS.mmm, and wider for longer text
-        let font = egui::TextStyle::Monospace.resolve(ui.style());
-        let width = ui.fonts_mut(|f| f.glyph_width(&font, '0')) * 13.;
-        let r = ui.add(
-            egui::TextEdit::singleline(&mut text)
-                .desired_width(width)
-                .clip_text(false)
-                .font(egui::TextStyle::Monospace),
-        );
-        if r.changed() {
-            self.typing = Some((i, edge, text.clone()));
-        }
-        if r.gained_focus() {
-            self.chosen_clip = Some(i);
-        }
-        let parsed = parse_time(&text);
-        if parsed.is_none() {
-            ui.painter().rect_stroke(
-                r.rect,
-                2.,
-                Stroke::new(1.5, ui.visuals().error_fg_color),
-                egui::StrokeKind::Outside,
-            );
-        }
-        let r = r.on_hover_text(catalog.text("clip-time-help"));
-        if r.lost_focus() {
-            if let Some(t) = parsed
-                && t != current
-            {
-                match edge {
-                    Edge::Start => self.clips[i].start = t,
-                    Edge::End => self.clips[i].end = t,
-                }
-                self.clips_changed = true;
-                if let Some(viewer) = &mut self.viewer {
-                    viewer.preview(secs(t));
-                }
-            }
-            self.typing = None;
-        }
-    }
-
-    /// The scores at the selected event, or the final scores. Teams and the
-    /// two players of a duel get a column each, and other players share one
-    /// ranked list. Headshot kills count those the recording could see
-    fn scores(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool) {
-        let Some(model) = self.model.clone() else {
-            return;
-        };
-        let selected = self.selected.and_then(|i| model.events.get(i));
-        let time = selected.map(|e| e.time);
-        // The selected event's moment, or the last kill for the final scores,
-        // since players often leave once a game is over
-        let last_kill = model
-            .events
-            .iter()
-            .rev()
-            .find(|e| matches!(e.kind, EventKind::Kill { .. }));
-        let (segment, at) = match (selected, last_kill) {
-            (Some(e), _) | (None, Some(e)) => (e.segment, e.time),
-            (None, None) => (
-                model.score_updates.last().map_or(0, |u| u.segment),
-                f32::INFINITY,
-            ),
-        };
-        let standing = standing_at(&model.score_updates, &model.team_score_updates, segment, at);
-        // Other players' kills and shots often happen outside what the
-        // recording client receives, so their headshots and accuracy are
-        // incomplete. Only the recording player's are shown, and in a duel
-        // the opponent's headshots too, since every kill there is of the
-        // recording player, whose death the recording always shows
-        let recorder = model.recorder;
-        // Two players, as teams of one or without teams
-        let players: Vec<(u8, u32)> = standing
-            .sides
-            .iter()
-            .flat_map(|s| s.players.iter().map(|p| (p.slot, p.incarnation)))
-            .collect();
-        let duel = players.len() == 2 && recorder.is_some_and(|r| players.contains(&r));
-        let shows_heads = |key: (u8, u32)| duel || Some(key) == recorder;
-        let shows_accuracy = |key: (u8, u32)| Some(key) == recorder;
-        if standing.sides.is_empty() {
-            return;
-        }
-        let ctx = ui.ctx().clone();
-        let heading = match time {
-            Some(t) => catalog.text_with(
-                "scores-at",
-                &[(
-                    "time",
-                    FluentValue::from(
-                        DemoTime::from_f32(t)
-                            .map(|d| d.to_string())
-                            .unwrap_or_default(),
-                    ),
-                )],
-            ),
-            None => catalog.text_with(
-                "scores-final",
-                &[(
-                    "time",
-                    FluentValue::from(
-                        last_kill
-                            .and_then(|e| DemoTime::from_f32(e.time))
-                            .map(|d| d.to_string())
-                            .unwrap_or_default(),
-                    ),
-                )],
-            ),
-        };
-        layout::row(ui, rtl, |ui| {
-            ui.label(text::widget_text(&ctx, &heading, rtl, None, Look::Strong));
-            if time.is_some()
-                && ui
-                    .small_button(text::widget_text(
-                        &ctx,
-                        &catalog.text("scores-show-final"),
-                        rtl,
-                        None,
-                        Look::Plain,
-                    ))
-                    .clicked()
-            {
-                self.actions.push(DemoAction::ShowFinal);
-            }
-        });
-
-        // Columns run right to left in a right-to-left interface
-        let mut sides: Vec<&StandingSide> = if standing.teams || standing.sides.len() == 2 {
-            standing.sides.iter().collect()
-        } else {
-            Vec::new()
-        };
-        if rtl {
-            sides.reverse();
-        }
-        let frags = catalog.text("scores-frags");
-        let deaths = catalog.text("scores-deaths");
-        let heads_title = catalog.text("scores-headshots");
-        let accuracy_title = catalog.text("scores-accuracy");
-        let heads_help = catalog.text("help-headshots");
-        let accuracy_help = catalog.text("help-accuracy");
-        // Shots, hits, chance matches and exactness per connection up to the
-        // moment shown
-        let mut aims: std::collections::HashMap<(u8, u32), (u32, u32, u32, bool)> =
-            Default::default();
-        for s in model
-            .shots
-            .iter()
-            .filter(|s| s.segment == segment && s.time <= at)
-        {
-            let e = aims.entry((s.slot, s.incarnation)).or_default();
-            e.0 += 1;
-            e.1 += u32::from(s.hit);
-            e.2 += u32::from(s.chance);
-            e.3 |= s.exact;
-        }
-        // Headshot kills per connection up to the moment shown
-        let mut heads: std::collections::HashMap<(u8, u32), u32> = Default::default();
-        for e in &model.events {
-            if e.segment != segment || e.time > at {
-                continue;
-            }
-            if let EventKind::Kill {
-                killer: Some(k),
-                headshot: Some(true),
-                ..
-            } = e.kind
-            {
-                *heads.entry(k).or_default() += 1;
-            }
-        }
-        let side_ui = |ui: &mut Ui, side: &StandingSide, title: bool| {
-            if title {
-                let name = text::player_name(&side.name);
-                let color = match side.name.to_lowercase().as_str() {
-                    "red" => Some(theme::TEAM_RED),
-                    "blue" => Some(theme::TEAM_BLUE),
-                    _ => None,
-                };
-                let line = format!("{name}  {}", side.frags);
-                let look = color.map_or(Look::Strong, Look::Color);
-                ui.label(text::widget_text(
-                    &ctx,
-                    &line,
-                    text::starts_rtl(&name),
-                    None,
-                    look,
-                ));
-            }
-            // Name, frags and deaths as on the game's scoreboard, the other
-            // way round in a right-to-left interface
-            let cell = |ui: &mut Ui, k: usize, p: Option<&PlayerScore>| match (k, p) {
-                (0, None) => {
-                    ui.label("");
-                }
-                (1, None) => {
-                    ui.weak(frags.as_str());
-                }
-                (2, None) => {
-                    ui.weak(deaths.as_str());
-                }
-                (3, None) => {
-                    ui.weak(heads_title.as_str())
-                        .on_hover_text(text::help(&ctx, &heads_help, rtl));
-                }
-                (_, None) => {
-                    ui.weak(accuracy_title.as_str()).on_hover_text(text::help(
-                        &ctx,
-                        &accuracy_help,
-                        rtl,
-                    ));
-                }
-                (0, Some(p)) => {
-                    let name = text::player_name(&p.name);
-                    ui.set_min_width(120.);
-                    ui.label(text::widget_text(
-                        &ctx,
-                        &name,
-                        text::starts_rtl(&name),
-                        None,
-                        Look::Plain,
-                    ));
-                }
-                (1, Some(p)) => {
-                    ui.label(p.frags.to_string());
-                }
-                (2, Some(p)) => {
-                    ui.label(p.deaths.to_string());
-                }
-                (3, Some(p)) => {
-                    let key = (p.slot, p.incarnation);
-                    if shows_heads(key) {
-                        let n = heads.get(&key).copied().unwrap_or(0);
-                        ui.label(n.to_string());
-                    } else {
-                        ui.label("");
-                    }
-                }
-                (_, Some(p)) => {
-                    // Blank for others, and with too few shots to tell
-                    let key = (p.slot, p.incarnation);
-                    let text = aims
-                        .get(&key)
-                        .filter(|_| shows_accuracy(key))
-                        .and_then(|&(s, h, c, _)| accuracy(s, h, c))
-                        .map(|v| {
-                            catalog.text_with(
-                                "library-percent",
-                                &[("percent", FluentValue::from((v * 100.).round()))],
-                            )
-                        })
-                        .unwrap_or_default();
-                    ui.label(text::widget_text(&ctx, &text, rtl, None, Look::Plain));
-                }
-            };
-            let order: [usize; 5] = if rtl {
-                [4, 3, 2, 1, 0]
-            } else {
-                [0, 1, 2, 3, 4]
-            };
-            egui::Grid::new(ui.next_auto_id())
-                .num_columns(5)
-                .spacing([16., 2.])
-                .show(ui, |ui| {
-                    for k in order {
-                        cell(ui, k, None);
-                    }
-                    ui.end_row();
-                    for p in &side.players {
-                        for k in order {
-                            cell(ui, k, Some(p));
-                        }
-                        ui.end_row();
-                    }
-                });
-        };
-
-        // Sides stand next to each other when their grids fit, otherwise one
-        // above the other, so a narrow pane never spills over
-        let side_width = {
-            let font = egui::TextStyle::Body.resolve(ui.style());
-            let measure = |s: &str| {
-                ui.fonts_mut(|f| {
-                    f.layout_no_wrap(s.to_string(), font.clone(), Color32::PLACEHOLDER)
-                })
-                .size()
-                .x
-            };
-            let numbers: f32 = [&frags, &deaths, &heads_title, &accuracy_title]
-                .into_iter()
-                .map(|h| measure(h).max(measure("000")))
-                .sum();
-            let names = standing
-                .sides
-                .iter()
-                .flat_map(|s| &s.players)
-                .map(|p| measure(&text::player_name(&p.name)))
-                .fold(120f32, f32::max);
-            names + numbers + 16. * 4. + 8.
-        };
-        // The scroll bar takes its share of the width too
-        let room = ui.available_width() - ui.spacing().scroll.allocated_width();
-        let stacked = side_width * sides.len() as f32 > room;
-
-        // The scores scroll with the tab they are in
-        if sides.is_empty() {
-            // Three or more players without teams, as one ranked list
-            let all = StandingSide {
-                name: String::new(),
-                frags: 0,
-                deaths: 0,
-                players: standing
-                    .sides
-                    .iter()
-                    .flat_map(|s| s.players.clone())
-                    .collect(),
-            };
-            side_ui(ui, &all, false);
-        } else if stacked {
-            // Top to bottom in the scoreboard's own order
-            let mut sides = sides.clone();
-            if rtl {
-                sides.reverse();
-            }
-            for side in sides {
-                side_ui(ui, side, true);
-            }
-        } else {
-            ui.columns(sides.len(), |cols| {
-                for (col, side) in cols.iter_mut().zip(&sides) {
-                    side_ui(col, side, true);
-                }
-            });
-        }
-    }
-
     /// Take in the analysis, export results and playback state, and the
     /// keys that drive playback. Called once a frame before anything of the
     /// demo draws, whichever of its parts are shown
@@ -1564,15 +887,16 @@ impl DemoView {
         self.poll();
         self.poll_export();
 
+        self.identify_clips();
         if self.export_on_load && self.model.is_some() {
             self.export_on_load = false;
-            let clips = self.clips.clone();
-            let keys = clips
-                .iter()
-                .filter(|c| self.snap(c).is_ok())
-                .map(|c| (c.start, c.end))
-                .collect();
-            self.start_export(ctx, keys);
+            let mut eligible = Vec::new();
+            for (i, clip) in self.clips.clone().iter().enumerate() {
+                if self.snap(clip).is_ok() {
+                    eligible.push(i);
+                }
+            }
+            self.start_export(ctx, &eligible);
         }
 
         // Which Gauss kills went through a wall, once the analysis is in,
@@ -1717,11 +1041,16 @@ impl DemoView {
             }
             DemoAction::NewClip => {
                 // Any range, for a demo with no events or moments to start
-                // from, ten seconds from where the timeline shows, to edit
-                // and check like any other clip
-                let from = self.view.0;
+                // from, ten seconds from the playhead, or from where the
+                // timeline shows without a viewer. A range the recording's
+                // end leaves empty says why it cannot be exported
+                let from = match &self.viewer {
+                    Some(viewer) => viewer.time(),
+                    None => self.view.0,
+                };
                 let range = self.clamped(from, from + NEW_CLIP_SECONDS);
                 self.add_clip(catalog, range);
+                self.wanted_tab = Some(InspectorTab::Clips);
             }
             DemoAction::ClipEvent => {
                 if let Some(range) = self.proposal() {
@@ -2159,16 +1488,8 @@ impl DemoView {
         }
         match workspace.inspector_tab {
             InspectorTab::Events => self.events_tab(ui, catalog, rtl),
-            InspectorTab::Clips => {
-                egui::ScrollArea::vertical()
-                    .id_salt(("clips", self.generation))
-                    .show(ui, |ui| self.clips_ui(ui, catalog, rtl));
-            }
-            InspectorTab::Scoreboard => {
-                egui::ScrollArea::vertical()
-                    .id_salt(("scores", self.generation))
-                    .show(ui, |ui| self.scores(ui, catalog, rtl));
-            }
+            InspectorTab::Clips => self.clips_tab(ui, catalog, rtl),
+            InspectorTab::Scoreboard => self.scores_tab(ui, catalog, rtl),
         }
     }
 
@@ -2454,5 +1775,81 @@ mod tests {
         view.refresh_rows();
         assert_eq!(view.rows, [0]);
         assert_eq!(view.unknown_kills, 1);
+    }
+
+    /// A demo view with clips from 1 to 2, 3 to 4 and 5 to 6 seconds
+    fn view_with_clips() -> DemoView {
+        let ctx = egui::Context::default();
+        let mut view = DemoView::open(PathBuf::from("not-there.dem"), 10., &ctx);
+        for k in 0..3 {
+            let start = DemoTime::from_micros((1 + 2 * k) * 1_000_000);
+            let end = DemoTime::from_micros((2 + 2 * k) * 1_000_000);
+            let name = format!("Clip {k}");
+            view.clips.push(Clip { name, start, end });
+        }
+        view.identify_clips();
+        view
+    }
+
+    #[test]
+    fn an_export_result_stays_with_its_clip_and_its_range() {
+        let mut view = view_with_clips();
+        view.mark_export(2, ExportState::Cancelled);
+        view.looping = Some(2);
+
+        // Removing an earlier clip moves the result and the loop with their
+        // clip, never onto another
+        view.remove_clip(0);
+        let id = view.clip_ids[1];
+        let (range, state) = view.exports[&id].clone();
+        assert_eq!(state, ExportState::Cancelled);
+        assert_eq!(view.looping, Some(1));
+
+        // Editing the clip keeps the range the export was of
+        view.clips[1].end = DemoTime::from_micros(9_000_000);
+        assert_eq!(
+            range,
+            (
+                DemoTime::from_micros(5_000_000),
+                DemoTime::from_micros(6_000_000)
+            )
+        );
+
+        // Removing the clip takes its result and its loop with it
+        view.remove_clip(1);
+        assert!(!view.exports.contains_key(&id));
+        assert_eq!(view.looping, None);
+    }
+
+    #[test]
+    fn exporting_every_clip_says_which_were_left_out() {
+        let ctx = egui::Context::default();
+        let mut view = view_with_clips();
+
+        // Without the analysis no clip can be cut, so each is skipped with
+        // why, and nothing starts
+        view.export_clips(&ctx, clips_tab::ExportRequest::All);
+        assert!(view.export.is_none());
+        for id in &view.clip_ids {
+            assert!(matches!(view.exports[id].1, ExportState::Skipped(_)));
+        }
+    }
+
+    #[test]
+    fn a_new_clip_without_a_viewer_starts_where_the_timeline_shows() {
+        let catalog = Catalog::new(crate::i18n::Locale::En);
+        let ctx = egui::Context::default();
+        let mut view = DemoView::open(PathBuf::from("not-there.dem"), 60., &ctx);
+        view.view = (20., 40.);
+
+        view.apply(DemoAction::NewClip, &catalog);
+        let clip = &view.clips[0];
+        assert_eq!(clip.start, DemoTime::from_micros(20_000_000));
+        assert_eq!(clip.end, DemoTime::from_micros(30_000_000));
+        assert_eq!(view.wanted_tab, Some(InspectorTab::Clips));
+        assert_eq!(view.chosen_clip, Some(0));
+
+        // Its name is plain text, without the marks around a message's number
+        assert_eq!(clip.name, "Clip 1");
     }
 }
