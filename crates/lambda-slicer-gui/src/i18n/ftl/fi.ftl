@@ -36,6 +36,37 @@ library-demos = { $count ->
    *[other] { $count } demoa
 }
 library-percent = { $percent } %
+library-demos-of = { $shown } / { $total ->
+    [one] { $total } demo
+   *[other] { $total } demoa
+}
+library-total = { $count ->
+    [one] Kirjastossa { $count } demo
+   *[other] Kirjastossa { $count } demoa
+}
+filters-title = Suodattimet
+filters-find = Etsi
+filters-pov = Näkökulma
+filters-quality = Laatu
+filters-recorded = Tallennettu
+pov-any = Kaikki
+pov-playing = Pelaten
+pov-spectating = Katsojana
+help-pov = ”Pelaten” tarkoittaa, että tallenne oli katsojana enintään puolet toistostaan, ja ”Katsojana” yli puolet.
+columns-button = Sarakkeet
+list-back = Takaisin kirjaston taulukkoon
+sort-by = Lajittele
+sort-ascending = Nouseva
+sort-descending = Laskeva
+score-more-sides = { $count ->
+    [one] { $count } puoli lisää
+   *[other] { $count } puolta lisää
+}
+intensity-help = Kiivaus { $score }. Palkki vertaa sitä kirjaston suurimpaan, { $max }.
+value-unknown = Ei tiedossa
+path-copy = Kopioi polku
+path-show = Näytä kansiossa
+path-show-failed = Kansiota ei voitu avata ({ $detail }). Kopioi polku sen sijaan.
 
 filter-search = Hae poluista
 filter-map = Kartta

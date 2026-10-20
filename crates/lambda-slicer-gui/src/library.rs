@@ -1,19 +1,27 @@
-//! The library list (implementation plan §8)
+//! The library, as a full table beside a filter pane or as a narrow list
+//! beside an open demo (GUI redesign plan §7)
 //!
-//! Rows come from the cache a page at a time as they scroll into view, so a
-//! library of any size costs only the visible pages. Changing a filter or
-//! the order counts the matches again and drops the loaded pages. While a
-//! scan stores files the list refreshes at most once a second
+//! Both show the same query of the cache in the same order. Rows come from
+//! the cache a page at a time as they scroll into view, so a library of any
+//! size costs only the visible pages. Changing a filter or the order counts
+//! the matches again and drops the loaded pages. While a scan stores files
+//! the list refreshes at most once a second
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use eframe::egui::{self, Color32, RichText, Ui, WidgetText};
+use eframe::egui::{
+    self, CornerRadius, Popup, PopupCloseBehavior, Pos2, Rect, Response, RichText, Role, Sense,
+    TextStyle, TextWrapMode, Ui, Vec2, WidgetInfo, WidgetText,
+};
 use egui_extras::{Column, TableBuilder};
 use fluent_bundle::FluentValue;
+use lambda_slicer_core::analysis::context::Scoreboard;
 use lambda_slicer_core::analysis::weapons::Weapon;
-use lambda_slicer_core::library::cache::{Cache, FileQuery, FileRow, Sort};
+use lambda_slicer_core::library::cache::{
+    Cache, FileQuery, FileRow, KillQuery, LibraryStats, Sort,
+};
 use lambda_slicer_core::message::{Coded, Message};
 use lambda_slicer_core::timeline::time::DemoTime;
 
@@ -21,7 +29,7 @@ use crate::i18n::{Catalog, DateOrder, Ymd};
 use crate::layout;
 use crate::text::{self, Look};
 use crate::theme;
-use crate::widgets::{self, AnalysisState};
+use crate::widgets::{self, AnalysisState, Icon, IconButton, Variant};
 
 /// A date bound with a checkbox to use it, its fields in the locale's order.
 /// The checkbox and the fields wrap together as one group
@@ -123,6 +131,29 @@ const PAGE: usize = 100;
 /// Shortest time between refreshes while a scan stores files
 const REFRESH: Duration = Duration::from_secs(1);
 
+/// The filter pane's width at first, and the narrowest and widest it can be
+/// dragged to
+const FILTER_PANE: f32 = 248.;
+const FILTER_PANE_RANGE: std::ops::RangeInclusive<f32> = 220.0..=340.0;
+
+/// The height of a table row and of a narrow list's two-line row
+const TABLE_ROW: f32 = 32.;
+const LIST_ROW: f32 = 48.;
+
+/// Where a narrow row's two lines are centred, from its top
+const LIST_LINES: [f32; 2] = [16., 34.];
+
+/// The intensity bar beside its number, and how strongly its fill shows
+const INTENSITY_BAR: Vec2 = Vec2::new(64., 4.);
+const INTENSITY_FILL: f32 = 0.8;
+
+/// The narrow list's order menu, and the least its search field shrinks to
+const SORT_MENU_WIDTH: f32 = 104.;
+const SEARCH_MIN_WIDTH: f32 = 60.;
+
+/// The room a slider leaves beside it for its value
+const SLIDER_VALUE_ROOM: f32 = 56.;
+
 /// Weapons that leave events, so a shot count can show their use
 pub const WEAPONS: [Weapon; 12] = [
     Weapon::Gauss,
@@ -166,9 +197,62 @@ pub struct Filters {
     pub min_accuracy: f32,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+impl Filters {
+    /// How many filters are on, each date bound on its own. Text of only
+    /// spaces filters nothing, so it does not count
+    pub fn active(&self) -> usize {
+        let mut count = 0;
+        for text in [&self.text, &self.map, &self.player] {
+            if !text.trim().is_empty() {
+                count += 1;
+            }
+        }
+
+        let others = [
+            self.weapon.is_some(),
+            self.min_minutes > 0.,
+            self.spectating != Spectating::Any,
+            self.headshot,
+            self.min_accuracy > 0.,
+            self.from.is_some(),
+            self.to.is_some(),
+        ];
+        for on in others {
+            if on {
+                count += 1;
+            }
+        }
+        count
+    }
+
+    /// The cache query for these filters in this order, a page long
+    fn query(&self, sort: Sort, descending: bool) -> FileQuery {
+        let text = |s: &str| (!s.trim().is_empty()).then(|| s.trim().to_string());
+        FileQuery {
+            text: text(&self.text),
+            map: text(&self.map),
+            player: text(&self.player),
+            weapon_used: self.weapon.map(|w| w.name().to_string()),
+            min_duration: (self.min_minutes > 0.).then_some(self.min_minutes * 60.),
+            min_spectating: (self.spectating == Spectating::Mostly).then_some(0.5000001),
+            max_spectating: (self.spectating == Spectating::Playing).then_some(0.5),
+            min_accuracy: (self.min_accuracy > 0.).then_some(f64::from(self.min_accuracy) / 100.),
+            from_date: self.from.map(Ymd::iso),
+            to_date: self.to.map(Ymd::iso),
+            kills: KillQuery {
+                headshot: self.headshot,
+                ..Default::default()
+            },
+            sort,
+            descending,
+            limit: PAGE,
+            ..Default::default()
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Col {
-    Status,
     Name,
     Date,
     Map,
@@ -183,8 +267,7 @@ enum Col {
 }
 
 impl Col {
-    const ALL: [Col; 12] = [
-        Col::Status,
+    const ALL: [Col; 11] = [
         Col::Name,
         Col::Date,
         Col::Map,
@@ -198,10 +281,10 @@ impl Col {
         Col::Spectating,
     ];
 
-    /// The name kept in settings
+    /// The name kept in settings. The status column of earlier versions is
+    /// now a symbol beside the name, so its key no longer hides anything
     fn key(self) -> &'static str {
         match self {
-            Col::Status => "status",
             Col::Name => "name",
             Col::Date => "date",
             Col::Map => "map",
@@ -218,7 +301,6 @@ impl Col {
 
     fn title(self) -> &'static str {
         match self {
-            Col::Status => "column-status",
             Col::Name => "column-name",
             Col::Date => "column-date",
             Col::Map => "column-map",
@@ -242,41 +324,86 @@ impl Col {
         }
     }
 
-    fn sort(self) -> Option<Sort> {
+    fn sort(self) -> Sort {
         match self {
-            Col::Status | Col::Score => None,
-            Col::Name => Some(Sort::Path),
-            Col::Date => Some(Sort::Date),
-            Col::Map => Some(Sort::Map),
-            Col::Duration => Some(Sort::Duration),
-            Col::Gauss => Some(Sort::Gauss),
-            Col::Kills => Some(Sort::Kills),
-            Col::Headshots => Some(Sort::Headshots),
-            Col::Accuracy => Some(Sort::Accuracy),
-            Col::Action => Some(Sort::Action),
-            Col::Spectating => Some(Sort::Spectating),
+            Col::Name => Sort::Path,
+            Col::Date => Sort::Date,
+            Col::Map => Sort::Map,
+            Col::Duration => Sort::Duration,
+            Col::Score => Sort::Score,
+            Col::Gauss => Sort::Gauss,
+            Col::Kills => Sort::Kills,
+            Col::Headshots => Sort::Headshots,
+            Col::Accuracy => Sort::Accuracy,
+            Col::Action => Sort::Action,
+            Col::Spectating => Sort::Spectating,
         }
     }
 
+    /// Every column is a size of its own the user can change, so a table
+    /// wider than the window scrolls sideways rather than dropping columns
     fn column(self) -> Column {
-        match self {
-            Col::Status => Column::initial(150.).at_least(60.),
-            Col::Name => Column::remainder().at_least(160.),
-            Col::Date => Column::initial(95.).at_least(70.),
-            Col::Map => Column::initial(120.).at_least(60.),
-            Col::Duration => Column::initial(90.).at_least(70.),
-            Col::Score => Column::initial(110.).at_least(60.),
-            _ => Column::initial(80.).at_least(50.),
-        }
+        let (width, least) = match self {
+            Col::Name => (280., 180.),
+            Col::Date => (112., 80.),
+            Col::Map => (128., 60.),
+            Col::Duration => (80., 64.),
+            Col::Score => (128., 64.),
+            Col::Gauss | Col::Kills => (64., 48.),
+            Col::Headshots => (56., 48.),
+            Col::Accuracy => (80., 56.),
+            Col::Action => (144., 96.),
+            Col::Spectating => (96., 64.),
+        };
+        Column::initial(width).at_least(least).clip(true)
     }
+}
 
-    /// Columns kept beside an open demo
-    fn compact(self) -> bool {
-        matches!(
-            self,
-            Col::Name | Col::Date | Col::Map | Col::Duration | Col::Score | Col::Gauss
-        )
+/// Names and paths sort from the start of the alphabet, figures from the
+/// highest
+fn descending_first(sort: Sort) -> bool {
+    !matches!(sort, Sort::Path | Sort::Map)
+}
+
+/// The first two sides' frags as `170 : 155`, and how many sides there are
+/// past those two
+pub fn compact_score(board: &Scoreboard) -> Option<(String, usize)> {
+    let first = board.sides.first()?;
+    let shown = match board.sides.get(1) {
+        Some(second) => format!("{} : {}", first.frags, second.frags),
+        None => first.frags.to_string(),
+    };
+    let more = board.sides.len().saturating_sub(2);
+
+    Some((shown, more))
+}
+
+/// A row's score for display, from its scoreboard, or else the stored
+/// summary, which cannot say how many sides it leaves out
+fn score_of(file: &FileRow) -> Option<(String, usize)> {
+    if let Some(score) = file.scoreboard.as_ref().and_then(compact_score) {
+        return Some(score);
     }
+    file.score.clone().map(|summary| (summary, 0))
+}
+
+/// A file name without the `.dem` every demo has
+fn display_name(file: &FileRow) -> String {
+    let name = Path::new(&file.path)
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| file.path.clone());
+
+    match name.strip_suffix(".dem") {
+        Some(stem) if !stem.is_empty() => stem.to_string(),
+        _ => name,
+    }
+}
+
+/// A length in seconds as `HH:MM:SS`
+fn clock(seconds: Option<f32>) -> Option<String> {
+    let time = DemoTime::from_f32(seconds?)?.to_string();
+    time.split('.').next().map(str::to_string)
 }
 
 pub struct LibraryView {
@@ -286,7 +413,9 @@ pub struct LibraryView {
     applied: Option<(Filters, Sort, bool)>,
     sort: Sort,
     descending: bool,
+    /// Files matching the filters, and figures over the whole library
     total: u64,
+    stats: LibraryStats,
     pages: HashMap<usize, Vec<FileRow>>,
     stale: bool,
     last_refresh: Instant,
@@ -295,6 +424,21 @@ pub struct LibraryView {
     /// Column keys left out, and whether that changed this frame
     pub hidden: Vec<String>,
     pub columns_changed: bool,
+    /// The filter pane beside the full table is open
+    filters_open: bool,
+    /// The narrow list shows its filters in place of its rows
+    list_filters_open: bool,
+    /// The table row the arrow keys have reached, and that it should be
+    /// scrolled into view
+    cursor: Option<usize>,
+    scroll_to_cursor: bool,
+    /// How far the table scrolled sideways can go, as last drawn, and that
+    /// it should go there so a right-to-left table starts at its leading
+    /// columns
+    max_scroll_x: Option<f32>,
+    reach_leading: bool,
+    /// The direction the table was last drawn in
+    last_rtl: Option<bool>,
 }
 
 impl LibraryView {
@@ -306,14 +450,23 @@ impl LibraryView {
             cache: None,
             filters: Filters::default(),
             applied: None,
-            sort: Sort::Date,
+            // The most intense demos first, as finding footage starts there
+            sort: Sort::Action,
             descending: true,
             total: 0,
+            stats: LibraryStats::default(),
             pages: HashMap::new(),
             stale: true,
             last_refresh: Instant::now() - REFRESH,
             selected: None,
             error: None,
+            filters_open: true,
+            list_filters_open: false,
+            cursor: None,
+            scroll_to_cursor: false,
+            max_scroll_x: None,
+            reach_leading: false,
+            last_rtl: None,
         }
     }
 
@@ -335,29 +488,13 @@ impl LibraryView {
         self.stale = true;
     }
 
+    /// Current files in the cache, whatever the filters leave out
+    pub fn library_files(&self) -> u64 {
+        self.stats.files
+    }
+
     fn query(&self) -> FileQuery {
-        let f = &self.filters;
-        let text = |s: &str| (!s.trim().is_empty()).then(|| s.trim().to_string());
-        FileQuery {
-            text: text(&f.text),
-            map: text(&f.map),
-            player: text(&f.player),
-            weapon_used: f.weapon.map(|w| w.name().to_string()),
-            min_duration: (f.min_minutes > 0.).then_some(f.min_minutes * 60.),
-            min_spectating: (f.spectating == Spectating::Mostly).then_some(0.5000001),
-            max_spectating: (f.spectating == Spectating::Playing).then_some(0.5),
-            min_accuracy: (f.min_accuracy > 0.).then_some(f64::from(f.min_accuracy) / 100.),
-            from_date: f.from.map(Ymd::iso),
-            to_date: f.to.map(Ymd::iso),
-            kills: lambda_slicer_core::library::cache::KillQuery {
-                headshot: f.headshot,
-                ..Default::default()
-            },
-            sort: self.sort,
-            descending: self.descending,
-            limit: PAGE,
-            ..Default::default()
-        }
+        self.filters.query(self.sort, self.descending)
     }
 
     fn cache(&mut self) -> Option<&Cache> {
@@ -385,6 +522,7 @@ impl LibraryView {
         if !changed && !due {
             return;
         }
+
         let query = self.query();
         let count = self.cache().map(|c| c.count(&query));
         match count {
@@ -394,6 +532,18 @@ impl LibraryView {
             }
             Some(Err(e)) => self.error = Some(e.message()),
             None => self.total = 0,
+        }
+
+        let stats = self.cache().map(Cache::library_stats);
+        match stats {
+            Some(Ok(stats)) => self.stats = stats,
+            Some(Err(e)) => self.error = Some(e.message()),
+            None => self.stats = LibraryStats::default(),
+        }
+
+        // A row the keyboard reached means another file in another list
+        if changed {
+            self.cursor = None;
         }
         self.pages.clear();
         self.applied = Some(wanted);
@@ -420,43 +570,126 @@ impl LibraryView {
         self.pages.get(&page)?.get(index % PAGE).cloned()
     }
 
-    fn filters_ui(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool) {
+    /// Sort by `sort`, turning the order round when it is already the order
+    fn sort_by(&mut self, sort: Sort) {
+        if sort == self.sort {
+            self.descending = !self.descending;
+        } else {
+            self.sort = sort;
+            self.descending = descending_first(sort);
+        }
+    }
+
+    /// How many demos match, and of how many when the filters leave some out
+    fn count_line(&self, catalog: &Catalog) -> String {
+        let shown = self.total as i64;
+        let total = self.stats.files as i64;
+        if self.filters.active() == 0 || shown == total {
+            return catalog.text_with("library-demos", &[("count", shown.into())]);
+        }
+
+        catalog.text_with(
+            "library-demos-of",
+            &[("shown", shown.into()), ("total", total.into())],
+        )
+    }
+
+    /// Why nothing is listed, or the cache's error
+    fn empty_ui(&self, ui: &mut Ui, catalog: &Catalog, rtl: bool) {
+        layout::column(ui, rtl, |ui| {
+            if let Some(e) = &self.error {
+                text::label(ui, &catalog.message(e), rtl);
+            }
+
+            if self.total == 0 {
+                let id = if self.filters.active() == 0 {
+                    "library-empty"
+                } else {
+                    "library-no-matches"
+                };
+                text::label(ui, &catalog.text(id), rtl);
+            }
+        });
+    }
+
+    /// The filters as groups one under another, for the filter pane and the
+    /// narrow list alike
+    fn filter_form(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool) {
         let ctx = ui.ctx().clone();
         let t = |id: &str| text::widget_text(&ctx, &catalog.text(id), rtl, None, Look::Plain);
-        layout::wrapping_row(ui, rtl, |ui| {
-            ui.add(
-                egui::TextEdit::singleline(&mut self.filters.text)
-                    .hint_text(t("filter-search"))
-                    .desired_width(180.),
-            );
-            ui.add(
-                egui::TextEdit::singleline(&mut self.filters.map)
-                    .hint_text(t("filter-map"))
-                    .desired_width(110.),
-            );
-            ui.add(
-                egui::TextEdit::singleline(&mut self.filters.player)
-                    .hint_text(t("filter-player"))
-                    .desired_width(130.),
-            );
 
-            let weapon = self
-                .filters
-                .weapon
-                .map_or_else(|| t("filter-weapon-any"), |w| WidgetText::from(w.name()));
-            egui::ComboBox::from_id_salt("weapon")
-                .selected_text(weapon)
-                .show_ui(ui, |ui| {
-                    ui.selectable_value(&mut self.filters.weapon, None, t("filter-weapon-any"));
-                    for w in WEAPONS {
-                        ui.selectable_value(&mut self.filters.weapon, Some(w), w.name());
+        // Find, with the reset of every filter beside its title
+        let active = self.filters.active();
+        layout::row(ui, rtl, |ui| {
+            widgets::section_title(ui, &catalog.text("filters-find"), rtl);
+            if active > 0 {
+                layout::trailing(ui, rtl, |ui| {
+                    let reset = widgets::Button::new(None, t("filter-clear"), Variant::Ghost, rtl);
+                    if ui.add(reset).clicked() {
+                        self.filters = Filters::default();
                     }
                 });
+            }
+        });
 
-            // The label and its field wrap together
-            let minutes = &mut self.filters.min_minutes;
-            layout::unbroken(ui, "minutes", |ui| {
-                ui.label(t("filter-min-minutes"));
+        let fields = [
+            (&mut self.filters.text, "filter-search"),
+            (&mut self.filters.player, "filter-player"),
+            (&mut self.filters.map, "filter-map"),
+        ];
+        for (value, hint) in fields {
+            let field = egui::TextEdit::singleline(value)
+                .hint_text(t(hint))
+                .desired_width(f32::INFINITY);
+            ui.add(field);
+        }
+
+        let weapon = self
+            .filters
+            .weapon
+            .map_or_else(|| t("filter-weapon-any"), |w| WidgetText::from(w.name()));
+        egui::ComboBox::from_id_salt("weapon")
+            .selected_text(weapon)
+            .width(ui.available_width())
+            .show_ui(ui, |ui| {
+                ui.selectable_value(&mut self.filters.weapon, None, t("filter-weapon-any"));
+                for w in WEAPONS {
+                    ui.selectable_value(&mut self.filters.weapon, Some(w), w.name());
+                }
+            });
+        ui.add_space(theme::GAP_M);
+
+        // Point of view, by the share of the recording spent spectating
+        layout::row(ui, rtl, |ui| {
+            widgets::section_title(ui, &catalog.text("filters-pov"), rtl);
+            widgets::help(ui, &catalog.text("help-pov"), rtl);
+        });
+
+        let choices = [
+            (Spectating::Any, "pov-any"),
+            (Spectating::Playing, "pov-playing"),
+            (Spectating::Mostly, "pov-spectating"),
+        ];
+        layout::row(ui, rtl, |ui| {
+            let spacing = ui.spacing().item_spacing.x;
+            let width = (ui.available_width() - spacing * 2.) / 3.;
+            for (choice, id) in choices {
+                let chosen = self.filters.spectating == choice;
+                let button = egui::Button::selectable(chosen, t(id)).min_size(Vec2::new(width, 0.));
+                if ui.add(button).clicked() {
+                    self.filters.spectating = choice;
+                }
+            }
+        });
+        ui.add_space(theme::GAP_M);
+
+        // Quality
+        widgets::section_title(ui, &catalog.text("filters-quality"), rtl);
+
+        let minutes = &mut self.filters.min_minutes;
+        layout::row(ui, rtl, |ui| {
+            ui.label(t("filter-min-minutes"));
+            layout::trailing(ui, rtl, |ui| {
                 ui.add(
                     egui::DragValue::new(minutes)
                         .range(0.0..=120.0)
@@ -465,36 +698,32 @@ impl LibraryView {
                         .custom_parser(parse_number),
                 );
             });
+        });
 
-            let spectating = |s: Spectating| match s {
-                Spectating::Any => "filter-spectating-any",
-                Spectating::Mostly => "filter-spectating-mostly",
-                Spectating::Playing => "filter-spectating-playing",
-            };
-            egui::ComboBox::from_id_salt("spectating")
-                .selected_text(t(spectating(self.filters.spectating)))
-                .show_ui(ui, |ui| {
-                    for s in [Spectating::Any, Spectating::Mostly, Spectating::Playing] {
-                        ui.selectable_value(&mut self.filters.spectating, s, t(spectating(s)));
-                    }
-                });
+        let accuracy_help = catalog.text("help-accuracy-filter");
+        let min_accuracy = &mut self.filters.min_accuracy;
+        layout::row(ui, rtl, |ui| {
+            ui.label(t("filter-min-accuracy"));
+            widgets::help(ui, &accuracy_help, rtl);
+        });
+        ui.spacing_mut().slider_width = ui.available_width() - SLIDER_VALUE_ROOM;
+        ui.add(
+            egui::Slider::new(min_accuracy, 0.0..=100.0)
+                .step_by(1.)
+                .custom_formatter(|v, _| catalog.number(v, 0))
+                .custom_parser(parse_number),
+        );
 
-            ui.checkbox(&mut self.filters.headshot, t("filter-headshots"))
-                .on_hover_text(text::help(&ctx, &catalog.text("help-headshot-filter"), rtl));
-            let accuracy_help = text::help(&ctx, &catalog.text("help-accuracy-filter"), rtl);
-            let min_accuracy = &mut self.filters.min_accuracy;
-            layout::unbroken(ui, "accuracy", |ui| {
-                ui.label(t("filter-min-accuracy"))
-                    .on_hover_text(accuracy_help.clone());
-                ui.add(
-                    egui::DragValue::new(min_accuracy)
-                        .range(0.0..=100.0)
-                        .speed(1.)
-                        .custom_formatter(|v, _| catalog.number(v, 0))
-                        .custom_parser(parse_number),
-                )
-                .on_hover_text(accuracy_help);
-            });
+        layout::row(ui, rtl, |ui| {
+            ui.checkbox(&mut self.filters.headshot, t("filter-headshots"));
+            widgets::help(ui, &catalog.text("help-headshot-filter"), rtl);
+        });
+        ui.add_space(theme::GAP_M);
+
+        // Recorded, both bounds inclusive
+        widgets::section_title(ui, &catalog.text("filters-recorded"), rtl);
+
+        layout::wrapping_row(ui, rtl, |ui| {
             date_filter(
                 ui,
                 catalog,
@@ -502,292 +731,759 @@ impl LibraryView {
                 &mut self.filters.from,
                 "from",
             );
+        });
+        layout::wrapping_row(ui, rtl, |ui| {
             date_filter(ui, catalog, &t("filter-to"), &mut self.filters.to, "to");
-
-            if self.filters != Filters::default() && ui.button(t("filter-clear")).clicked() {
-                self.filters = Filters::default();
-            }
         });
     }
 
-    /// A row's analysis state as a symbol and its name, with the stored
-    /// error when there is one on hover
-    fn status(ui: &mut Ui, row: &FileRow, catalog: &Catalog, rtl: bool) {
-        let state = AnalysisState::of(&row.status, row.shots);
-        let name = catalog.text(state.message_id());
-        let color = match state {
-            AnalysisState::Complete | AnalysisState::NoWeaponUse => None,
-            AnalysisState::Partial | AnalysisState::Unsupported => Some(theme::WARNING),
-            AnalysisState::Failed => Some(theme::ERROR),
-        };
-        let error = row.error.as_ref().map(|m| catalog.stored(m));
-
-        let ctx = ui.ctx().clone();
-        layout::row(ui, rtl, |ui| {
-            widgets::status_symbol(ui, state, &name);
-            let r = Self::cell(ui, &ctx, &name, rtl, color);
-            if let Some(error) = error {
-                r.on_hover_text(error);
-            }
-        });
-    }
-
-    fn cell(
-        ui: &mut Ui,
-        ctx: &egui::Context,
-        text: &str,
-        rtl: bool,
-        color: Option<Color32>,
-    ) -> egui::Response {
-        let w = match color {
-            Some(c) if !rtl && !text::has_rtl(text) => RichText::new(text).color(c).into(),
-            _ => text::widget_text(ctx, text, rtl, None, Look::Plain),
-        };
-        ui.add(egui::Label::new(w).selectable(false).truncate())
-    }
-
-    /// The list with its filters. `compact` keeps the columns that fit
-    /// beside an open demo
-    pub fn ui(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool, compact: bool) {
-        self.filters_ui(ui, catalog, rtl);
+    /// The full library, its filter pane beside the table while open
+    pub fn table_ui(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool) {
         self.refresh(ui.ctx());
-        ui.add_space(4.);
 
-        let ctx = ui.ctx().clone();
-        let total = self.total;
-        let empty = if self.filters == Filters::default() {
-            "library-empty"
-        } else {
-            "library-no-matches"
-        };
-        layout::column(ui, rtl, |ui| {
-            if let Some(e) = &self.error {
-                text::label(ui, &catalog.message(e), rtl);
-            }
-            let line = match total {
-                0 => catalog.text(empty),
-                n => catalog.text_with("library-demos", &[("count", (n as i64).into())]),
-            };
-            text::label(ui, &line, rtl);
-        });
-        if total == 0 {
+        if self.filters_open {
+            let frame = egui::Frame::new()
+                .fill(theme::PANE)
+                .inner_margin(theme::GAP_M as i8);
+            layout::leading_panel("filters", rtl)
+                .resizable(true)
+                .default_size(FILTER_PANE)
+                .size_range(FILTER_PANE_RANGE)
+                .frame(frame)
+                .show(ui, |ui| {
+                    egui::ScrollArea::vertical()
+                        .id_salt("filter pane")
+                        .show(ui, |ui| self.filter_form(ui, catalog, rtl));
+                });
+        }
+
+        self.table_header(ui, catalog, rtl);
+        ui.separator();
+
+        if self.error.is_some() || self.total == 0 {
+            self.empty_ui(ui, catalog, rtl);
             return;
+        }
+        self.table(ui, catalog, rtl);
+    }
+
+    /// Filters with how many are on, the count of demos, and the columns
+    fn table_header(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool) {
+        let ctx = ui.ctx().clone();
+        let active = self.filters.active();
+        let count = self.count_line(catalog);
+
+        layout::row(ui, rtl, |ui| {
+            let variant = if self.filters_open {
+                Variant::Default
+            } else {
+                Variant::Ghost
+            };
+            let label =
+                text::widget_text(&ctx, &catalog.text("filters-title"), rtl, None, Look::Plain);
+            let filters = widgets::Button::new(Some(Icon::Filter), label, variant, rtl);
+            if ui.add(filters).clicked() {
+                self.filters_open = !self.filters_open;
+            }
+            if active > 0 {
+                widgets::badge(ui, active);
+            }
+
+            ui.label(text::widget_text(&ctx, &count, rtl, None, Look::Weak));
+
+            layout::trailing(ui, rtl, |ui| {
+                let label = text::widget_text(
+                    &ctx,
+                    &catalog.text("columns-button"),
+                    rtl,
+                    None,
+                    Look::Plain,
+                );
+                let columns = widgets::Button::new(Some(Icon::Columns), label, Variant::Ghost, rtl);
+                let response = ui.add(columns);
+                Popup::menu(&response)
+                    .close_behavior(PopupCloseBehavior::CloseOnClickOutside)
+                    .show(|ui| self.column_choices(ui, catalog, rtl));
+            });
+        });
+    }
+
+    /// A checkbox for every column but the demo's name, which always shows
+    fn column_choices(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool) {
+        for col in Col::ALL {
+            if col == Col::Name {
+                continue;
+            }
+
+            let mut shown = !self.hidden.iter().any(|h| h == col.key());
+            let label =
+                text::widget_text(ui.ctx(), &catalog.text(col.title()), rtl, None, Look::Plain);
+            if ui.checkbox(&mut shown, label).changed() {
+                self.hidden.retain(|h| h != col.key());
+                if !shown {
+                    self.hidden.push(col.key().to_string());
+                }
+                self.columns_changed = true;
+            }
+        }
+    }
+
+    /// The arrow keys move through the table's rows and Enter opens the one
+    /// reached, unless a text field or another control has the keyboard.
+    /// Returns the row to open
+    fn keyboard(&mut self, ctx: &egui::Context) -> Option<usize> {
+        if ctx.text_edit_focused() || ctx.memory(|m| m.focused().is_some()) {
+            return None;
+        }
+
+        let rows = self.total as usize;
+        if rows == 0 {
+            return None;
+        }
+
+        let pressed = |key| ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, key));
+        let last = rows - 1;
+        let moved = if pressed(egui::Key::ArrowDown) {
+            Some(self.cursor.map_or(0, |c| (c + 1).min(last)))
+        } else if pressed(egui::Key::ArrowUp) {
+            Some(self.cursor.map_or(0, |c| c.saturating_sub(1)))
+        } else {
+            None
+        };
+        if let Some(row) = moved {
+            self.cursor = Some(row);
+            self.scroll_to_cursor = true;
+        }
+
+        if pressed(egui::Key::Enter) {
+            return self.cursor.filter(|&c| c < rows);
+        }
+        None
+    }
+
+    /// The columns shown, in the interface's reading order
+    fn shown_columns(&self, rtl: bool) -> Vec<Col> {
+        // The name always shows, whatever an older setting hid
+        let mut cols = Vec::new();
+        for col in Col::ALL {
+            let hidden = self.hidden.iter().any(|h| h == col.key());
+            if col == Col::Name || !hidden {
+                cols.push(col);
+            }
         }
 
         // Columns run right to left in a right-to-left interface
-        let mut cols: Vec<Col> = Col::ALL
-            .into_iter()
-            .filter(|c| *c == Col::Name || !self.hidden.iter().any(|h| h == c.key()))
-            .filter(|c| !compact || c.compact())
-            .collect();
         if rtl {
             cols.reverse();
         }
-        let row_height = ui.text_style_height(&egui::TextStyle::Body) + 4.;
+        cols
+    }
+
+    fn table(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool) {
+        let ctx = ui.ctx().clone();
+        let open = self.keyboard(&ctx);
+        let cols = self.shown_columns(rtl);
         let mut clicked = None;
         let mut sort_by = None;
-        let mut table = TableBuilder::new(ui)
-            .striped(true)
-            .resizable(true)
-            .sense(egui::Sense::click())
-            .max_scroll_height(f32::INFINITY)
-            .min_scrolled_height(0.)
-            .auto_shrink(false);
-        for c in &cols {
-            table = table.column(c.column().clip(true));
-        }
-        table
-            .header(row_height + 4., |mut header| {
-                for c in &cols {
-                    header.col(|ui| {
-                        let mut title = catalog.text(c.title());
-                        if c.sort() == Some(self.sort) {
-                            title.push_str(if self.descending { " ▼" } else { " ▲" });
-                        }
-                        let w = text::widget_text(&ctx, &title, rtl, None, Look::Strong);
-                        let r = ui.add(
-                            egui::Label::new(w)
-                                .selectable(false)
-                                .sense(egui::Sense::click()),
-                        );
-                        let r = match c.help() {
-                            Some(key) => r.on_hover_text(text::help(&ctx, &catalog.text(key), rtl)),
-                            None => r,
-                        };
-                        if r.clicked() {
-                            sort_by = c.sort();
-                        }
-                        // Right-click any heading to choose the columns
-                        r.context_menu(|ui| {
-                            for col in Col::ALL.into_iter().filter(|c| *c != Col::Name) {
-                                let mut shown = !self.hidden.iter().any(|h| h == col.key());
-                                let label = text::widget_text(
-                                    &ctx,
-                                    &catalog.text(col.title()),
-                                    rtl,
-                                    None,
-                                    Look::Plain,
-                                );
-                                if ui.checkbox(&mut shown, label).changed() {
-                                    self.hidden.retain(|h| h != col.key());
-                                    if !shown {
-                                        self.hidden.push(col.key().to_string());
-                                    }
-                                    self.columns_changed = true;
-                                }
-                            }
-                        });
-                    });
-                }
-            })
-            .body(|body| {
-                body.rows(row_height, self.total as usize, |mut row| {
-                    let index = row.index();
-                    let Some(file) = self.row(index) else {
-                        return;
-                    };
-                    let selected = self.selected.as_ref().is_some_and(|s| s.id == file.id);
-                    row.set_selected(selected);
-                    let name = Path::new(&file.path)
-                        .file_name()
-                        .map(|n| n.to_string_lossy().into_owned())
-                        .unwrap_or_else(|| file.path.clone());
-                    for c in &cols {
-                        row.col(|ui| match c {
-                            Col::Status => Self::status(ui, &file, catalog, rtl),
-                            // Names keep their own direction in any interface
-                            Col::Name => {
-                                Self::cell(ui, &ctx, &name, text::starts_rtl(&name), None)
-                                    .on_hover_text(&file.path);
-                            }
-                            Col::Map => {
-                                let map = file.map.as_deref().unwrap_or("");
-                                Self::cell(ui, &ctx, map, text::starts_rtl(map), None);
-                            }
-                            Col::Date => {
-                                if let Some(d) = file.recorded_at.as_deref().and_then(Ymd::parse) {
-                                    let tip = match file.date_source.as_deref() {
-                                        Some("file_name") => catalog.text("date-from-name"),
-                                        _ => catalog.text("date-from-modified"),
-                                    };
-                                    let time = file
-                                        .recorded_at
-                                        .as_deref()
-                                        .and_then(|t| t.get(11..))
-                                        .unwrap_or("");
-                                    let tip = format!("{} {time}\n{tip}", catalog.date(d));
-                                    Self::cell(ui, &ctx, &catalog.date(d), false, None)
-                                        .on_hover_text(text::widget_text(
-                                            &ctx,
-                                            &tip,
-                                            rtl,
-                                            None,
-                                            Look::Plain,
-                                        ));
-                                }
-                            }
-                            Col::Score => {
-                                Self::cell(
-                                    ui,
-                                    &ctx,
-                                    file.score.as_deref().unwrap_or(""),
-                                    false,
-                                    None,
-                                );
-                            }
-                            Col::Duration => {
-                                let d = file
-                                    .duration
-                                    .and_then(DemoTime::from_f32)
-                                    .map(|d| d.to_string())
-                                    .unwrap_or_default();
-                                let d = d.split('.').next().unwrap_or("").to_string();
-                                Self::cell(ui, &ctx, &d, false, None);
-                            }
-                            Col::Gauss => {
-                                let n = file.gauss.unwrap_or(0);
-                                let text = if n > 0 {
-                                    catalog.number(n as f64, 0)
-                                } else {
-                                    String::new()
-                                };
-                                let color = Some(ui.visuals().hyperlink_color);
-                                Self::cell(ui, &ctx, &text, false, color);
-                            }
-                            Col::Accuracy => {
-                                let text = file
-                                    .accuracy
-                                    .map(|a| {
-                                        catalog.text_with(
-                                            "library-percent",
-                                            &[("percent", FluentValue::from((a * 100.).round()))],
-                                        )
-                                    })
-                                    .unwrap_or_default();
-                                Self::cell(ui, &ctx, &text, rtl, None);
-                            }
-                            Col::Headshots => {
-                                let text = file
-                                    .headshots
-                                    .filter(|k| *k > 0)
-                                    .map(|k| catalog.number(k as f64, 0))
-                                    .unwrap_or_default();
-                                Self::cell(ui, &ctx, &text, false, None);
-                            }
-                            Col::Kills => {
-                                let text = file
-                                    .kills
-                                    .filter(|k| *k > 0)
-                                    .map(|k| catalog.number(k as f64, 0))
-                                    .unwrap_or_default();
-                                Self::cell(ui, &ctx, &text, false, None);
-                            }
-                            Col::Action => {
-                                let text = file
-                                    .best_window
-                                    .map(|s| catalog.number(s, 2))
-                                    .unwrap_or_default();
-                                Self::cell(ui, &ctx, &text, false, None);
-                            }
-                            Col::Spectating => {
-                                let text = file
-                                    .spectator_fraction
-                                    .filter(|s| *s > 0.)
-                                    .map(|s| {
-                                        catalog.text_with(
-                                            "library-percent",
-                                            &[("percent", FluentValue::from((s * 100.).round()))],
-                                        )
-                                    })
-                                    .unwrap_or_default();
-                                Self::cell(ui, &ctx, &text, rtl, None);
-                            }
-                        });
-                    }
-                    if row.response().clicked() {
-                        clicked = Some(file);
-                    }
-                });
-            });
 
-        if let Some(s) = sort_by {
-            if s == self.sort {
-                self.descending = !self.descending;
-            } else {
-                self.sort = s;
-                // Counts and scores read best from the top
-                self.descending = !matches!(s, Sort::Path | Sort::Map);
+        // A right-to-left table starts scrolled to its leading columns, on the
+        // right, once its width is known
+        if self.last_rtl != Some(rtl) {
+            self.last_rtl = Some(rtl);
+            self.reach_leading = rtl;
+        }
+        let mut scroll = egui::ScrollArea::horizontal().id_salt("library columns");
+        if self.reach_leading
+            && let Some(max) = self.max_scroll_x
+        {
+            scroll = scroll.horizontal_scroll_offset(max);
+            self.reach_leading = false;
+        }
+
+        // Cells are centred in their rows and start on the leading side
+        let cell_layout = if rtl {
+            egui::Layout::right_to_left(egui::Align::Center)
+        } else {
+            egui::Layout::left_to_right(egui::Align::Center)
+        };
+
+        // The heading and the rows scroll sideways together when the columns
+        // are wider than the window
+        let output = scroll.show(ui, |ui| {
+            let mut table = TableBuilder::new(ui)
+                .id_salt("library")
+                .cell_layout(cell_layout)
+                .resizable(true)
+                .sense(Sense::click())
+                .max_scroll_height(f32::INFINITY)
+                .min_scrolled_height(0.)
+                .auto_shrink(false);
+            for c in &cols {
+                table = table.column(c.column());
+            }
+            if std::mem::take(&mut self.scroll_to_cursor)
+                && let Some(cursor) = self.cursor
+            {
+                table = table.scroll_to_row(cursor, None);
+            }
+
+            table
+                .header(TABLE_ROW, |mut header| {
+                    for c in &cols {
+                        header.col(|ui| {
+                            if self.heading(ui, *c, catalog, rtl) {
+                                sort_by = Some(c.sort());
+                            }
+                        });
+                    }
+                })
+                .body(|body| {
+                    body.rows(TABLE_ROW, self.total as usize, |mut row| {
+                        let index = row.index();
+                        let Some(file) = self.row(index) else {
+                            return;
+                        };
+                        let selected = self.selected.as_ref().is_some_and(|s| s.id == file.id);
+                        row.set_selected(selected);
+                        row.set_hovered(self.cursor == Some(index));
+
+                        for c in &cols {
+                            row.col(|ui| self.cell(ui, *c, &file, selected, catalog, rtl));
+                        }
+                        if row.response().clicked() {
+                            clicked = Some(index);
+                        }
+                    });
+                });
+        });
+        let overflow = output.content_size.x - output.inner_rect.width();
+        self.max_scroll_x = Some(overflow.max(0.));
+
+        if let Some(sort) = sort_by {
+            self.sort_by(sort);
+        }
+
+        let chosen = clicked.or(open);
+        if let Some(index) = chosen {
+            self.cursor = Some(index);
+            self.selected = self.row(index);
+        }
+    }
+
+    /// A column's heading, which sorts by it when clicked and offers the
+    /// columns when right-clicked. Returns true when clicked
+    fn heading(&mut self, ui: &mut Ui, col: Col, catalog: &Catalog, rtl: bool) -> bool {
+        let ctx = ui.ctx().clone();
+        let sorted = col.sort() == self.sort;
+        let color = if sorted {
+            theme::FOREGROUND
+        } else {
+            theme::MUTED
+        };
+
+        layout::row(ui, rtl, |ui| {
+            let title = catalog.text(col.title());
+            let title =
+                text::styled_text(&ctx, &title, rtl, Look::Color(color), &theme::secondary());
+            let response = ui.add(
+                egui::Label::new(title)
+                    .selectable(false)
+                    .sense(Sense::click()),
+            );
+
+            if sorted {
+                let arrow = if self.descending {
+                    Icon::SortDown
+                } else {
+                    Icon::SortUp
+                };
+                let (rect, _) = ui.allocate_exact_size(Vec2::splat(12.), Sense::hover());
+                widgets::paint_icon(ui.painter(), rect, arrow, theme::ACCENT);
+            }
+
+            let response = match col.help() {
+                Some(key) => response.on_hover_text(text::help(&ctx, &catalog.text(key), rtl)),
+                None => response,
+            };
+            response.context_menu(|ui| self.column_choices(ui, catalog, rtl));
+            response.clicked()
+        })
+    }
+
+    /// One cell of a row. A figure that is not known shows as a dash, and a
+    /// known zero as 0
+    fn cell(
+        &self,
+        ui: &mut Ui,
+        col: Col,
+        file: &FileRow,
+        selected: bool,
+        catalog: &Catalog,
+        rtl: bool,
+    ) {
+        let percent = |fraction: f64| {
+            catalog.text_with(
+                "library-percent",
+                &[("percent", FluentValue::from((fraction * 100.).round()))],
+            )
+        };
+        let whole = |n: i64| catalog.number(n as f64, 0);
+
+        // A weapon count is known once a file was analysed, and none means
+        // the weapon was never used
+        let analysed = file.shots.is_some();
+
+        match col {
+            Col::Name => self.name_cell(ui, file, selected, catalog, rtl),
+            Col::Date => self.date_cell(ui, file, catalog, rtl),
+            Col::Map => {
+                let map = file.map.as_deref().unwrap_or("");
+                text_cell(ui, map, text::starts_rtl(map), Look::Plain);
+            }
+            Col::Score => score_cell(ui, file, catalog, rtl),
+            Col::Action => self.intensity_cell(ui, file.best_window, catalog, rtl),
+            figure => {
+                let value = match figure {
+                    Col::Duration => clock(file.duration),
+                    Col::Gauss => file.gauss.or(analysed.then_some(0)).map(whole),
+                    Col::Kills => file.kills.map(whole),
+                    Col::Headshots => file.headshots.map(whole),
+                    Col::Accuracy => file.accuracy.map(percent),
+                    _ => file.spectator_fraction.map(percent),
+                };
+                number_cell(ui, value, catalog, rtl);
             }
         }
-        if let Some(f) = clicked {
-            self.selected = Some(f);
+    }
+
+    /// The status symbol and the file's name, the whole path on hover. A
+    /// chosen row has an accent edge on its leading side
+    fn name_cell(&self, ui: &mut Ui, file: &FileRow, selected: bool, catalog: &Catalog, rtl: bool) {
+        if selected {
+            let cell = ui.max_rect();
+            let edge_x = if rtl {
+                cell.max.x - theme::SELECTED_EDGE
+            } else {
+                cell.min.x
+            };
+            let size = Vec2::new(theme::SELECTED_EDGE, cell.height());
+            let edge = Rect::from_min_size(Pos2::new(edge_x, cell.min.y), size);
+            ui.painter().rect_filled(edge, 0., theme::ACCENT);
+        }
+
+        let state = AnalysisState::of(&file.status, file.shots);
+        let mut status = catalog.text(state.message_id());
+        if let Some(error) = &file.error {
+            status = format!("{status}\n{}", catalog.stored(error));
+        }
+        let name = display_name(file);
+
+        layout::row(ui, rtl, |ui| {
+            widgets::status_symbol(ui, state, &status);
+            text_cell(ui, &name, text::starts_rtl(&name), Look::Plain).on_hover_text(&file.path);
+        });
+    }
+
+    /// The recording date in the locale's form, with the time and where the
+    /// date came from on hover
+    fn date_cell(&self, ui: &mut Ui, file: &FileRow, catalog: &Catalog, rtl: bool) {
+        let Some(day) = file.recorded_at.as_deref().and_then(Ymd::parse) else {
+            number_cell(ui, None, catalog, rtl);
+            return;
+        };
+
+        let source = match file.date_source.as_deref() {
+            Some("file_name") => catalog.text("date-from-name"),
+            _ => catalog.text("date-from-modified"),
+        };
+        let time = file
+            .recorded_at
+            .as_deref()
+            .and_then(|t| t.get(11..))
+            .unwrap_or("");
+        let tip = format!("{} {time}\n{source}", catalog.date(day));
+
+        let ctx = ui.ctx().clone();
+        let tip = text::widget_text(&ctx, &tip, rtl, None, Look::Plain);
+        number_cell(ui, Some(catalog.date(day)), catalog, rtl).on_hover_text(tip);
+    }
+
+    /// The best action window's score with a bar scaled to the highest in
+    /// the library, so filtering never changes what a bar's length means
+    fn intensity_cell(&self, ui: &mut Ui, score: Option<f64>, catalog: &Catalog, rtl: bool) {
+        let Some(score) = score else {
+            number_cell(ui, None, catalog, rtl);
+            return;
+        };
+
+        let fill = match self.stats.max_action {
+            Some(max) if score > 0. => (score / max).clamp(0., 1.) as f32,
+            _ => 0.,
+        };
+        let max = self.stats.max_action.unwrap_or(0.);
+        let tip = catalog.text_with(
+            "intensity-help",
+            &[
+                ("score", FluentValue::from(catalog.number(score, 2))),
+                ("max", FluentValue::from(catalog.number(max, 2))),
+            ],
+        );
+
+        layout::row(ui, rtl, |ui| {
+            let (rect, bar) = ui.allocate_exact_size(INTENSITY_BAR, Sense::hover());
+            // Ends rounded fully, half the bar's thickness
+            let radius = CornerRadius::same((INTENSITY_BAR.y / 2.) as u8);
+            ui.painter().rect_filled(rect, radius, theme::RAISED);
+
+            // The bar fills from the interface's leading side
+            let length = rect.width() * fill;
+            let filled = if rtl {
+                Rect::from_min_max(Pos2::new(rect.max.x - length, rect.min.y), rect.max)
+            } else {
+                Rect::from_min_size(rect.min, Vec2::new(length, rect.height()))
+            };
+            ui.painter()
+                .rect_filled(filled, radius, theme::ACCENT.gamma_multiply(INTENSITY_FILL));
+
+            let ctx = ui.ctx().clone();
+            let help = text::help(&ctx, &tip, rtl);
+            bar.on_hover_text(help.clone());
+            number_cell(ui, Some(catalog.number(score, 1)), catalog, rtl).on_hover_text(help);
+        });
+    }
+
+    /// The narrow list beside an open demo, two lines a demo, or its filters
+    /// in place of the rows. Returns true when Back to the library table was
+    /// pressed
+    pub fn list_ui(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool) -> bool {
+        self.refresh(ui.ctx());
+
+        let back = self.list_header(ui, catalog, rtl);
+        ui.separator();
+
+        if self.list_filters_open {
+            egui::ScrollArea::vertical()
+                .id_salt("list filters")
+                .show(ui, |ui| self.filter_form(ui, catalog, rtl));
+            return back;
+        }
+
+        self.list_search(ui, catalog, rtl);
+        ui.separator();
+
+        if self.error.is_some() || self.total == 0 {
+            self.empty_ui(ui, catalog, rtl);
+            return back;
+        }
+
+        let mut clicked = None;
+        egui::ScrollArea::vertical()
+            .id_salt("demo list")
+            .auto_shrink(false)
+            .show_rows(ui, LIST_ROW, self.total as usize, |ui, rows| {
+                ui.spacing_mut().item_spacing.y = 0.;
+                for index in rows {
+                    let Some(file) = self.row(index) else {
+                        continue;
+                    };
+                    if self.list_row(ui, &file, catalog, rtl).clicked() {
+                        clicked = Some(file);
+                    }
+                }
+            });
+
+        if let Some(file) = clicked {
+            self.selected = Some(file);
+        }
+        back
+    }
+
+    /// Back to the table, the count, and the filters with how many are on.
+    /// Returns true when Back was pressed
+    fn list_header(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool) -> bool {
+        let ctx = ui.ctx().clone();
+        let active = self.filters.active();
+        let count = self.count_line(catalog);
+
+        layout::row(ui, rtl, |ui| {
+            let back_label = catalog.text("list-back");
+            let back = ui.add(IconButton::new(Icon::Table, &back_label)).clicked();
+            ui.label(text::widget_text(&ctx, &count, rtl, None, Look::Weak));
+
+            layout::trailing(ui, rtl, |ui| {
+                let label = catalog.text("filters-title");
+                let filters =
+                    IconButton::new(Icon::Filter, &label).selected(self.list_filters_open);
+                if ui.add(filters).clicked() {
+                    self.list_filters_open = !self.list_filters_open;
+                }
+                if active > 0 && !self.list_filters_open {
+                    widgets::badge(ui, active);
+                }
+            });
+            back
+        })
+    }
+
+    /// The path search and the order, the same as the table's
+    fn list_search(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool) {
+        let ctx = ui.ctx().clone();
+        let t = |id: &str| text::widget_text(&ctx, &catalog.text(id), rtl, None, Look::Plain);
+
+        layout::row(ui, rtl, |ui| {
+            let spacing = ui.spacing().item_spacing.x;
+            let search_width =
+                ui.available_width() - SORT_MENU_WIDTH - theme::CONTROL_HEIGHT - spacing * 2.;
+            let search = egui::TextEdit::singleline(&mut self.filters.text)
+                .hint_text(t("filter-search"))
+                .desired_width(search_width.max(SEARCH_MIN_WIDTH));
+            ui.add(search);
+
+            let mut sort = self.sort;
+            let current = Col::ALL
+                .into_iter()
+                .find(|c| c.sort() == sort)
+                .map_or_else(String::new, |c| catalog.text(c.title()));
+            egui::ComboBox::from_id_salt("list sort")
+                .width(SORT_MENU_WIDTH)
+                .selected_text(text::widget_text(&ctx, &current, rtl, None, Look::Plain))
+                .show_ui(ui, |ui| {
+                    for col in Col::ALL {
+                        ui.selectable_value(&mut sort, col.sort(), t(col.title()));
+                    }
+                })
+                .response
+                .on_hover_text(catalog.text("sort-by"));
+            if sort != self.sort {
+                self.sort = sort;
+                self.descending = descending_first(sort);
+            }
+
+            let (icon, id) = if self.descending {
+                (Icon::SortDown, "sort-descending")
+            } else {
+                (Icon::SortUp, "sort-ascending")
+            };
+            let label = catalog.text(id);
+            if ui.add(IconButton::new(icon, &label)).clicked() {
+                self.descending = !self.descending;
+            }
+        });
+    }
+
+    /// One demo in two lines, its status and name, then its map, length and
+    /// score. The date, recorder, intensity, accuracy and path show on hover
+    fn list_row(&self, ui: &mut Ui, file: &FileRow, catalog: &Catalog, rtl: bool) -> Response {
+        let size = Vec2::new(ui.available_width(), LIST_ROW);
+        let (rect, response) = ui.allocate_exact_size(size, Sense::click());
+        let selected = self.selected.as_ref().is_some_and(|s| s.id == file.id);
+        let name = display_name(file);
+        response.widget_info(|| WidgetInfo::selected(Role::Button, true, selected, &name));
+
+        if !ui.is_rect_visible(rect) {
+            return response;
+        }
+
+        // A chosen row in the soft accent with an accent edge on its leading
+        // side, a hovered one raised
+        let painter = ui.painter();
+        if selected {
+            painter.rect_filled(rect, 0., theme::ACCENT_SOFT);
+            let edge_x = if rtl {
+                rect.max.x - theme::SELECTED_EDGE
+            } else {
+                rect.min.x
+            };
+            let size = Vec2::new(theme::SELECTED_EDGE, LIST_ROW);
+            let edge = Rect::from_min_size(Pos2::new(edge_x, rect.min.y), size);
+            painter.rect_filled(edge, 0., theme::ACCENT);
+        } else if response.hovered() {
+            painter.rect_filled(rect, 0., theme::RAISED);
+        }
+
+        // Places measured from the leading side, the right one in a
+        // right-to-left interface
+        let inner = rect.shrink2(Vec2::new(theme::GAP_M, 0.));
+        let lead = |offset: f32, width: f32| {
+            if rtl {
+                inner.max.x - offset - width
+            } else {
+                inner.min.x + offset
+            }
+        };
+        let first_line = rect.min.y + LIST_LINES[0];
+        let second_line = rect.min.y + LIST_LINES[1];
+
+        // The first line
+        let state = AnalysisState::of(&file.status, file.shots);
+        let symbol_x = lead(0., theme::ICON_SIZE) + theme::ICON_SIZE / 2.;
+        widgets::paint_status(painter, Pos2::new(symbol_x, first_line), state);
+
+        let name_room = inner.width() - theme::ICON_SIZE - theme::GAP_S;
+        let look = if selected {
+            Look::Color(theme::ACCENT)
+        } else {
+            Look::Plain
+        };
+        let name_text = text::widget_text(ui.ctx(), &name, text::starts_rtl(&name), None, look);
+        let name_galley =
+            name_text.into_galley(ui, Some(TextWrapMode::Truncate), name_room, TextStyle::Body);
+        let name_x = lead(theme::ICON_SIZE + theme::GAP_S, name_galley.size().x);
+        let name_at = Pos2::new(name_x, first_line - name_galley.size().y / 2.);
+        ui.painter().galley(name_at, name_galley, theme::FOREGROUND);
+
+        // The second line, the score on the trailing side
+        let score = score_of(file).map(|(shown, more)| match more {
+            0 => shown,
+            more => format!("{shown} +{more}"),
+        });
+        let score_galley = score.map(|score| {
+            let text = RichText::new(score).monospace().color(theme::MUTED);
+            WidgetText::from(text).into_galley(
+                ui,
+                Some(TextWrapMode::Extend),
+                f32::INFINITY,
+                TextStyle::Monospace,
+            )
+        });
+        let score_width = score_galley.as_ref().map_or(0., |g| g.size().x);
+        if let Some(galley) = score_galley {
+            let x = if rtl {
+                inner.min.x
+            } else {
+                inner.max.x - galley.size().x
+            };
+            let at = Pos2::new(x, second_line - galley.size().y / 2.);
+            ui.painter().galley(at, galley, theme::MUTED);
+        }
+
+        let mut facts = Vec::new();
+        if let Some(map) = &file.map {
+            facts.push(map.clone());
+        }
+        if let Some(length) = clock(file.duration) {
+            facts.push(length);
+        }
+        let facts = facts.join(" · ");
+
+        let facts_room =
+            inner.width() - theme::ICON_SIZE - theme::GAP_S - score_width - theme::GAP_S;
+        let facts_text = text::styled_text(
+            ui.ctx(),
+            &facts,
+            rtl,
+            Look::Color(theme::MUTED),
+            &theme::secondary(),
+        );
+        let facts_galley = facts_text.into_galley(
+            ui,
+            Some(TextWrapMode::Truncate),
+            facts_room.max(0.),
+            theme::secondary(),
+        );
+        let facts_x = lead(theme::ICON_SIZE + theme::GAP_S, facts_galley.size().x);
+        let facts_at = Pos2::new(facts_x, second_line - facts_galley.size().y / 2.);
+        ui.painter().galley(facts_at, facts_galley, theme::MUTED);
+
+        response.on_hover_ui(|ui| self.row_details(ui, file, catalog, rtl))
+    }
+
+    /// What a narrow row leaves out, for its tooltip
+    fn row_details(&self, ui: &mut Ui, file: &FileRow, catalog: &Catalog, rtl: bool) {
+        let mut lines = Vec::new();
+        if let Some(day) = file.recorded_at.as_deref().and_then(Ymd::parse) {
+            lines.push(catalog.date(day));
+        }
+        if let Some(recorder) = &file.recorder {
+            let name = FluentValue::from(text::player_name(recorder));
+            lines.push(catalog.text_with("details-recorder", &[("name", name)]));
+        }
+        if let Some(score) = file.best_window {
+            let score = FluentValue::from(score);
+            lines.push(catalog.text_with("details-action", &[("score", score)]));
+        }
+        if let Some(accuracy) = file.accuracy {
+            let title = catalog.text("column-accuracy");
+            let percent = FluentValue::from((accuracy * 100.).round());
+            let value = catalog.text_with("library-percent", &[("percent", percent)]);
+            lines.push(format!("{title} {value}"));
+        }
+
+        for line in lines {
+            text::label(ui, &line, rtl);
+        }
+        ui.label(RichText::new(&file.path).monospace());
+    }
+}
+
+/// Text that is cut short with an ellipsis rather than wrapped
+fn text_cell(ui: &mut Ui, text: &str, rtl: bool, look: Look) -> Response {
+    let text = text::widget_text(ui.ctx(), text, rtl, None, look);
+    ui.add(egui::Label::new(text).selectable(false).truncate())
+}
+
+/// A figure in monospace, or a faint dash saying it is not known
+fn number_cell(ui: &mut Ui, value: Option<String>, catalog: &Catalog, rtl: bool) -> Response {
+    match value {
+        Some(value) => {
+            let text = RichText::new(value).monospace();
+            ui.add(egui::Label::new(text).selectable(false).truncate())
+        }
+        None => {
+            let dash = RichText::new("—").color(theme::FAINT);
+            let unknown = text::widget_text(
+                ui.ctx(),
+                &catalog.text("value-unknown"),
+                rtl,
+                None,
+                Look::Plain,
+            );
+            ui.add(egui::Label::new(dash).selectable(false))
+                .on_hover_text(unknown)
         }
     }
 }
 
+/// The compact score, the sides past the first two counted after it, and
+/// every side with its frags on hover
+fn score_cell(ui: &mut Ui, file: &FileRow, catalog: &Catalog, rtl: bool) {
+    let Some((shown, more)) = score_of(file) else {
+        number_cell(ui, None, catalog, rtl);
+        return;
+    };
+
+    let mut sides = Vec::new();
+    if let Some(board) = &file.scoreboard {
+        for side in &board.sides {
+            sides.push(format!("{}  {}", text::player_name(&side.name), side.frags));
+        }
+    }
+
+    layout::row(ui, rtl, |ui| {
+        let score = number_cell(ui, Some(shown), catalog, rtl);
+        if !sides.is_empty() {
+            let ctx = ui.ctx().clone();
+            let list = text::widget_text(&ctx, &sides.join("\n"), rtl, None, Look::Plain);
+            score.on_hover_text(list);
+        }
+
+        if more > 0 {
+            let count = FluentValue::from(more as i64);
+            let tip = catalog.text_with("score-more-sides", &[("count", count)]);
+            let text = RichText::new(format!("+{more}"))
+                .monospace()
+                .color(theme::FAINT);
+            ui.add(egui::Label::new(text).selectable(false))
+                .on_hover_text(tip);
+        }
+    });
+}
+
 #[cfg(test)]
 mod tests {
-    use super::parse_number;
+    use lambda_slicer_core::analysis::context::ScoreSide;
+
+    use super::*;
 
     #[test]
     fn numbers_parse_with_either_decimal_mark() {
@@ -795,5 +1491,100 @@ mod tests {
         assert_eq!(parse_number(" 2.5 "), Some(2.5));
         assert_eq!(parse_number("1\u{a0}000,5"), Some(1000.5));
         assert_eq!(parse_number("x"), None);
+    }
+
+    fn board(frags: &[i32]) -> Scoreboard {
+        let mut sides = Vec::new();
+        for (i, frags) in frags.iter().enumerate() {
+            sides.push(ScoreSide {
+                name: format!("side {i}"),
+                frags: *frags,
+                deaths: 0,
+            });
+        }
+        Scoreboard { teams: true, sides }
+    }
+
+    #[test]
+    fn scores_show_two_sides_and_count_the_rest() {
+        assert_eq!(compact_score(&board(&[])), None);
+        assert_eq!(compact_score(&board(&[7])), Some(("7".into(), 0)));
+        assert_eq!(
+            compact_score(&board(&[170, 155])),
+            Some(("170 : 155".into(), 0))
+        );
+        assert_eq!(
+            compact_score(&board(&[50, 44, 38, 20])),
+            Some(("50 : 44".into(), 2))
+        );
+        assert_eq!(compact_score(&board(&[3, -1])), Some(("3 : -1".into(), 0)));
+    }
+
+    #[test]
+    fn active_filters_count_what_filters_and_bind_the_same_query() {
+        let mut filters = Filters::default();
+        assert_eq!(filters.active(), 0);
+
+        // Spaces alone filter nothing, in the count and in the query
+        filters.text = "   ".into();
+        assert_eq!(filters.active(), 0);
+        assert_eq!(filters.query(Sort::Action, true).text, None);
+
+        let day = Ymd {
+            year: 2021,
+            month: 12,
+            day: 31,
+        };
+        filters.map = " crossfire ".into();
+        filters.from = Some(day);
+        filters.to = Some(day);
+        filters.spectating = Spectating::Mostly;
+        assert_eq!(filters.active(), 4);
+
+        let query = filters.query(Sort::Score, false);
+        assert_eq!(query.map.as_deref(), Some("crossfire"));
+        assert_eq!(query.from_date.as_deref(), Some("2021-12-31"));
+        assert_eq!(query.to_date.as_deref(), Some("2021-12-31"));
+        // More than half the playback spectating, and at most half playing
+        assert!(query.min_spectating.is_some_and(|s| s > 0.5));
+        assert_eq!(query.max_spectating, None);
+        assert_eq!((query.sort, query.descending), (Sort::Score, false));
+
+        filters.spectating = Spectating::Playing;
+        let query = filters.query(Sort::Score, false);
+        assert_eq!(
+            (query.min_spectating, query.max_spectating),
+            (None, Some(0.5))
+        );
+    }
+
+    #[test]
+    fn names_lose_only_their_dem_ending() {
+        let row = |path: &str| FileRow {
+            id: 0,
+            path: path.into(),
+            status: "complete".into(),
+            error: None,
+            map: None,
+            duration: None,
+            recording_kind: None,
+            recorder: None,
+            recorded_at: None,
+            date_source: None,
+            score: None,
+            scoreboard: None,
+            spectator_fraction: None,
+            shots: None,
+            gauss: None,
+            kills: None,
+            headshots: None,
+            accuracy: None,
+            best_window: None,
+            matching_kills: Vec::new(),
+            native: Vec::new(),
+        };
+        assert_eq!(display_name(&row("F:/demos/run_92.dem")), "run_92");
+        assert_eq!(display_name(&row("F:/demos/.dem")), ".dem");
+        assert_eq!(display_name(&row("F:/demos/notes.txt")), "notes.txt");
     }
 }

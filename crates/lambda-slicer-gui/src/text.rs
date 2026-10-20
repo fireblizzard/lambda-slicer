@@ -336,8 +336,45 @@ pub fn widget_text(
             Look::Color(c) => WidgetText::from(RichText::new(text).color(c)),
         };
     }
+
+    ordered(ctx, text, rtl_base, wrap, look, &egui::TextStyle::Body)
+}
+
+/// [`widget_text`] in another text style than the body's, such as the
+/// smaller one of secondary text
+pub fn styled_text(
+    ctx: &Context,
+    text: &str,
+    rtl_base: bool,
+    look: Look,
+    style: &egui::TextStyle,
+) -> WidgetText {
+    if !rtl_base && !has_rtl(text) {
+        let rich = RichText::new(text).text_style(style.clone());
+        let rich = match look {
+            Look::Plain => rich,
+            Look::Strong => rich.strong(),
+            Look::Weak => rich.weak(),
+            Look::Color(c) => rich.color(c),
+        };
+        return WidgetText::from(rich);
+    }
+
+    ordered(ctx, text, rtl_base, None, look, style)
+}
+
+/// Text holding right-to-left letters, or in a right-to-left interface, as
+/// one galley of pieces in visual order
+fn ordered(
+    ctx: &Context,
+    text: &str,
+    rtl_base: bool,
+    wrap: Option<f32>,
+    look: Look,
+    text_style: &egui::TextStyle,
+) -> WidgetText {
     let style = ctx.global_style();
-    let font = egui::TextStyle::Body.resolve(&style);
+    let font = text_style.resolve(&style);
     let color = match look {
         Look::Plain => Color32::PLACEHOLDER,
         Look::Strong => style.visuals.strong_text_color(),

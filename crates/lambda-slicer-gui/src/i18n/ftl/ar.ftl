@@ -40,6 +40,49 @@ library-demos = { $count ->
    *[other] { $count } تسجيل
 }
 library-percent = { $percent }٪
+library-demos-of = { $shown } من { $total ->
+    [zero] { $total } تسجيل
+    [one] تسجيل واحد
+    [two] تسجيلين
+    [few] { $total } تسجيلات
+    [many] { $total } تسجيلًا
+   *[other] { $total } تسجيل
+}
+library-total = { $count ->
+    [zero] لا توجد تسجيلات في المكتبة
+    [one] تسجيل واحد في المكتبة
+    [two] تسجيلان في المكتبة
+    [few] { $count } تسجيلات في المكتبة
+    [many] { $count } تسجيلًا في المكتبة
+   *[other] { $count } تسجيل في المكتبة
+}
+filters-title = المرشحات
+filters-find = البحث
+filters-pov = زاوية الرؤية
+filters-quality = الجودة
+filters-recorded = تاريخ التسجيل
+pov-any = الكل
+pov-playing = لعب
+pov-spectating = مشاهدة
+help-pov = «لعب» يعني أن التسجيل قضى نصف مدة تشغيله أو أقل في المشاهدة، و«مشاهدة» يعني أكثر من النصف.
+columns-button = الأعمدة
+list-back = العودة إلى جدول المكتبة
+sort-by = الترتيب حسب
+sort-ascending = تصاعدي
+sort-descending = تنازلي
+score-more-sides = { $count ->
+    [zero] لا أطراف أخرى
+    [one] طرف آخر
+    [two] طرفان آخران
+    [few] { $count } أطراف أخرى
+    [many] { $count } طرفًا آخر
+   *[other] { $count } طرف آخر
+}
+intensity-help = الحماس { $score }. يقارنه الشريط بأعلى قيمة في المكتبة، { $max }.
+value-unknown = غير معروف
+path-copy = نسخ المسار
+path-show = إظهار في المجلد
+path-show-failed = تعذر فتح المجلد ({ $detail }). انسخ المسار بدلًا من ذلك.
 
 filter-search = البحث في المسارات
 filter-map = الخريطة

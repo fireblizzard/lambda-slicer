@@ -37,6 +37,40 @@ library-demos = { $count ->
    *[other] { $count } démos
 }
 library-percent = { $percent } %
+library-demos-of = { $shown } sur { $total ->
+    [one] { $total } démo
+    [many] { $total } de démos
+   *[other] { $total } démos
+}
+library-total = { $count ->
+    [one] { $count } démo dans la bibliothèque
+    [many] { $count } de démos dans la bibliothèque
+   *[other] { $count } démos dans la bibliothèque
+}
+filters-title = Filtres
+filters-find = Rechercher
+filters-pov = Point de vue
+filters-quality = Qualité
+filters-recorded = Enregistrée
+pov-any = Toutes
+pov-playing = En jeu
+pov-spectating = Spectateur
+help-pov = « En jeu » veut dire que l’enregistrement a passé au plus la moitié de sa lecture en spectateur, et « Spectateur » plus de la moitié.
+columns-button = Colonnes
+list-back = Retour au tableau de la bibliothèque
+sort-by = Trier par
+sort-ascending = Croissant
+sort-descending = Décroissant
+score-more-sides = { $count ->
+    [one] { $count } camp de plus
+    [many] { $count } de camps de plus
+   *[other] { $count } camps de plus
+}
+intensity-help = Intensité { $score }. La barre la compare à la plus haute de la bibliothèque, { $max }.
+value-unknown = Inconnu
+path-copy = Copier le chemin
+path-show = Afficher dans le dossier
+path-show-failed = Impossible d’ouvrir le dossier ({ $detail }). Copie plutôt le chemin.
 
 filter-search = Rechercher dans les chemins
 filter-map = Carte

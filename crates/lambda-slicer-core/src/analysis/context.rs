@@ -293,7 +293,7 @@ fn kill_weapon(name: &str) -> Option<Weapon> {
 }
 
 /// One side of the final score, a team or a player
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ScoreSide {
     pub name: String,
     pub frags: i32,
@@ -303,7 +303,7 @@ pub struct ScoreSide {
 /// The final score of the recording's last session, as the scores stood at
 /// its last kill. Players often leave between the end of a game and the end
 /// of the recording, and their frags still belong to the result
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Scoreboard {
     /// Whether sides are teams rather than players
     pub teams: bool,

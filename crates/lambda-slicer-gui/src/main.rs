@@ -46,6 +46,7 @@ mod i18n;
 mod jobs;
 mod layout;
 mod library;
+mod platform;
 mod settings;
 mod text;
 mod theme;

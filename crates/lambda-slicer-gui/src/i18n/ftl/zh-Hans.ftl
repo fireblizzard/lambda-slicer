@@ -35,6 +35,28 @@ library-demos = { $count ->
    *[other] { $count } 个录像
 }
 library-percent = { $percent }%
+library-demos-of = { $shown } / { $total } 个录像
+library-total = 库中共 { $count } 个录像
+filters-title = 筛选
+filters-find = 查找
+filters-pov = 视角
+filters-quality = 质量
+filters-recorded = 录制日期
+pov-any = 全部
+pov-playing = 游戏
+pov-spectating = 观战
+help-pov = “游戏”指录像观战时间不超过回放的一半，“观战”指超过一半。
+columns-button = 列
+list-back = 返回录像库表格
+sort-by = 排序方式
+sort-ascending = 升序
+sort-descending = 降序
+score-more-sides = 另有 { $count } 方
+intensity-help = 激烈度 { $score }。进度条与库中最高值 { $max } 比较。
+value-unknown = 未知
+path-copy = 复制路径
+path-show = 在文件夹中显示
+path-show-failed = 无法打开文件夹（{ $detail }）。请改为复制路径。
 
 filter-search = 搜索路径
 filter-map = 地图

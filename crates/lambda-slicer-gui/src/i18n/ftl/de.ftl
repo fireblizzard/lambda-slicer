@@ -36,6 +36,37 @@ library-demos = { $count ->
    *[other] { $count } Demos
 }
 library-percent = { $percent } %
+library-demos-of = { $shown } von { $total ->
+    [one] { $total } Demo
+   *[other] { $total } Demos
+}
+library-total = { $count ->
+    [one] { $count } Demo in der Bibliothek
+   *[other] { $count } Demos in der Bibliothek
+}
+filters-title = Filter
+filters-find = Suchen
+filters-pov = Perspektive
+filters-quality = Qualität
+filters-recorded = Aufgenommen
+pov-any = Alle
+pov-playing = Spielend
+pov-spectating = Zuschauend
+help-pov = „Spielend“ heißt, die Aufnahme war höchstens die Hälfte der Wiedergabe im Zuschauermodus, „Zuschauend“ heißt mehr als die Hälfte.
+columns-button = Spalten
+list-back = Zurück zur Bibliothekstabelle
+sort-by = Sortieren nach
+sort-ascending = Aufsteigend
+sort-descending = Absteigend
+score-more-sides = { $count ->
+    [one] { $count } weitere Seite
+   *[other] { $count } weitere Seiten
+}
+intensity-help = Intensität { $score }. Der Balken vergleicht sie mit der höchsten der Bibliothek, { $max }.
+value-unknown = Unbekannt
+path-copy = Pfad kopieren
+path-show = Im Ordner zeigen
+path-show-failed = Der Ordner ließ sich nicht öffnen ({ $detail }). Kopiere stattdessen den Pfad.
 
 filter-search = Pfade durchsuchen
 filter-map = Map

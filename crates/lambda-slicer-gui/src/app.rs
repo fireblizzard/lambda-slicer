@@ -21,6 +21,11 @@ use crate::text::{self, Look};
 use crate::theme;
 use crate::widgets::{self, Icon, IconButton, Variant};
 
+/// The narrow demo list's width beside an open demo at first, and the
+/// narrowest and widest it can be dragged to
+const LIST_WIDTH: f32 = 280.;
+const LIST_WIDTH_RANGE: std::ops::RangeInclusive<f32> = 240.0..=360.0;
+
 /// Save a screenshot after this many frames and close, for checking how a
 /// language renders
 pub struct Screenshot {
@@ -77,6 +82,8 @@ pub struct App {
     clips_path: Option<PathBuf>,
     /// A problem with the clips file, shown until dismissed
     clips_notice: Option<String>,
+    /// Why a folder could not be shown, until dismissed
+    path_notice: Option<String>,
     library: Option<LibraryView>,
     scan: Option<ScanJob>,
     demo: Option<DemoView>,
@@ -190,6 +197,7 @@ impl App {
             clips,
             clips_path,
             clips_notice,
+            path_notice: None,
             catalog,
             title: None,
             show_settings: launch.show_settings,
@@ -533,7 +541,15 @@ impl App {
     fn status_bar(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
         let rtl = self.rtl();
+
+        // Without a scan, how many demos the library holds
         let Some(job) = &self.scan else {
+            let files = self.library.as_ref().map_or(0, LibraryView::library_files);
+            let count = FluentValue::from(files as i64);
+            let line = self.catalog.text_with("library-total", &[("count", count)]);
+            layout::row(ui, rtl, |ui| {
+                ui.label(text::widget_text(&ctx, &line, rtl, None, Look::Weak));
+            });
             return;
         };
         let p = &job.progress;
@@ -585,6 +601,21 @@ impl App {
         }
     }
 
+    /// A notice that wraps, in the warning colour, with its dismiss button
+    /// under it. Returns true when dismissed
+    fn notice(&self, ui: &mut egui::Ui, notice: &str) -> bool {
+        let rtl = self.rtl();
+        layout::column(ui, rtl, |ui| {
+            let warn = Look::Color(ui.visuals().warn_fg_color);
+            let width = Some(ui.available_width());
+            let w = text::widget_text(ui.ctx(), notice, rtl, width, warn);
+            ui.add(egui::Label::new(w).wrap());
+
+            ui.small_button(self.t(ui.ctx(), "notice-dismiss"))
+                .clicked()
+        })
+    }
+
     fn problems_window(&mut self, ctx: &egui::Context) {
         let Some(job) = &self.scan else {
             return;
@@ -612,14 +643,32 @@ impl App {
         self.show_problems = open;
     }
 
-    fn details(&self, ui: &mut egui::Ui) {
+    fn details(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
         let rtl = self.rtl();
         let Some(f) = self.library.as_ref().and_then(|l| l.selected.as_ref()) else {
             return;
         };
+
+        let mut show_failed = None;
         layout::column(ui, self.rtl(), |ui| {
-            ui.label(RichText::new(&f.path).monospace());
+            // The whole path, which copies whole however it is cut short
+            layout::row(ui, rtl, |ui| {
+                let copy = self.catalog.text("path-copy");
+                if ui.add(IconButton::new(Icon::Copy, &copy)).clicked() {
+                    ui.ctx().copy_text(f.path.clone());
+                }
+
+                let show = self.catalog.text("path-show");
+                if ui.add(IconButton::new(Icon::Folder, &show)).clicked()
+                    && let Err(e) = crate::platform::show_in_folder(&f.source())
+                {
+                    show_failed = Some(e.to_string());
+                }
+
+                ui.add(egui::Label::new(RichText::new(&f.path).monospace()).truncate());
+            });
+
             let mut facts = Vec::new();
             if let Some(r) = &f.recorder {
                 facts.push(self.catalog.text_with(
@@ -661,6 +710,14 @@ impl App {
                 text::label(ui, &self.catalog.stored(e), rtl);
             }
         });
+
+        if let Some(detail) = show_failed {
+            let detail = FluentValue::from(detail);
+            let notice = self
+                .catalog
+                .text_with("path-show-failed", &[("detail", detail)]);
+            self.path_notice = Some(notice);
+        }
     }
 
     fn settings_window(&mut self, ctx: &egui::Context) {
@@ -1079,48 +1136,40 @@ impl eframe::App for App {
             .frame(toolbar)
             .show(ui, |ui| self.toolbar(ui));
 
-        if self.scan.is_some() || !self.rejected.is_empty() || self.clips_notice.is_some() {
-            let status = egui::Frame::new()
-                .fill(theme::SURFACE)
-                .inner_margin(egui::Margin::symmetric(theme::GAP_M as i8, 2));
-            egui::Panel::bottom("status")
-                .min_size(theme::STATUS_HEIGHT)
-                .frame(status)
-                .show(ui, |ui| {
-                    ui.add_space(2.);
+        // Always there, so the library's state can always be read
+        let status = egui::Frame::new()
+            .fill(theme::SURFACE)
+            .inner_margin(egui::Margin::symmetric(theme::GAP_M as i8, 2));
+        egui::Panel::bottom("status")
+            .min_size(theme::STATUS_HEIGHT)
+            .frame(status)
+            .show(ui, |ui| {
+                ui.add_space(2.);
 
-                    // The message wraps, with the button under it
-                    if let Some(notice) = self.clips_notice.clone() {
-                        let rtl = self.rtl();
-                        layout::column(ui, rtl, |ui| {
-                            let warn = Look::Color(ui.visuals().warn_fg_color);
-                            let width = Some(ui.available_width());
-                            let w = text::widget_text(ui.ctx(), &notice, rtl, width, warn);
-                            ui.add(egui::Label::new(w).wrap());
-                            if ui
-                                .small_button(self.t(ui.ctx(), "notice-dismiss"))
-                                .clicked()
-                            {
-                                self.clips_notice = None;
-                            }
-                        });
-                    }
+                // Notices wrap, each with its dismiss button under it
+                if let Some(notice) = self.clips_notice.clone()
+                    && self.notice(ui, &notice)
+                {
+                    self.clips_notice = None;
+                }
+                if let Some(notice) = self.path_notice.clone()
+                    && self.notice(ui, &notice)
+                {
+                    self.path_notice = None;
+                }
 
-                    if self.scan.is_some() {
-                        self.status_bar(ui);
-                    }
+                self.status_bar(ui);
 
-                    if !self.rejected.is_empty() {
-                        let names = self.rejected.join(", ");
-                        let msg = self
-                            .catalog
-                            .text_with("drop-not-demo", &[("names", FluentValue::from(names))]);
-                        text::label(ui, &msg, self.rtl());
-                    }
+                if !self.rejected.is_empty() {
+                    let names = self.rejected.join(", ");
+                    let msg = self
+                        .catalog
+                        .text_with("drop-not-demo", &[("names", FluentValue::from(names))]);
+                    text::label(ui, &msg, self.rtl());
+                }
 
-                    ui.add_space(2.);
-                });
-        }
+                ui.add_space(2.);
+            });
 
         if self.library.as_ref().is_some_and(|l| l.selected.is_some()) {
             egui::Panel::bottom("details").show(ui, |ui| {
@@ -1164,13 +1213,6 @@ impl eframe::App for App {
             d.begin_frame(&ctx);
         }
 
-        let compact = self.demo.is_some();
-        let library = |app: &mut Self, ui: &mut egui::Ui| match &mut app.library {
-            Some(l) => l.ui(ui, &app.catalog, rtl, compact),
-            None => {
-                text::label(ui, &app.catalog.text("library-no-cache"), rtl);
-            }
-        };
         if let Some(l) = &mut self.library
             && l.columns_changed
         {
@@ -1179,21 +1221,30 @@ impl eframe::App for App {
             self.save_settings();
         }
         if self.demo.is_some() {
-            let width = ctx.content_rect().width();
+            // The narrow list beside the demo, the same query as the table
+            let mut back = false;
+            let pane = egui::Frame::side_top_panel(&ctx.global_style()).fill(theme::PANE);
             layout::leading_panel("library", rtl)
+                .frame(pane)
                 .resizable(true)
-                .default_size(width * 0.42)
-                .size_range(320.0..=width * 0.8)
-                .show(ui, |ui| library(self, ui));
+                .default_size(LIST_WIDTH)
+                .size_range(LIST_WIDTH_RANGE)
+                .show(ui, |ui| match &mut self.library {
+                    Some(l) => back = l.list_ui(ui, &self.catalog, rtl),
+                    None => {
+                        text::label(ui, &self.catalog.text("library-no-cache"), rtl);
+                    }
+                });
             egui::CentralPanel::default().show(ui, |ui| {
                 if let Some(d) = &mut self.demo {
                     d.ui(ui, &self.catalog, rtl);
                 }
             });
 
-            let mut close = false;
+            // Back to the table closes the demo as Close does
+            let mut close = back;
             if let Some(d) = &mut self.demo {
-                close = d.finish_frame(&ctx, &self.catalog);
+                close |= d.finish_frame(&ctx, &self.catalog);
 
                 // The viewer's volume slider and see-through button are
                 // settings
@@ -1234,7 +1285,12 @@ impl eframe::App for App {
                 }
             }
         } else {
-            egui::CentralPanel::default().show(ui, |ui| library(self, ui));
+            egui::CentralPanel::default().show(ui, |ui| match &mut self.library {
+                Some(l) => l.table_ui(ui, &self.catalog, rtl),
+                None => {
+                    text::label(ui, &self.catalog.text("library-no-cache"), rtl);
+                }
+            });
         }
 
         if ctx.input(|i| !i.raw.hovered_files.is_empty()) {

@@ -37,6 +37,37 @@ library-demos = { $count ->
    *[other] { $count } demos
 }
 library-percent = { $percent }%
+library-demos-of = { $shown } of { $total ->
+    [one] { $total } demo
+   *[other] { $total } demos
+}
+library-total = { $count ->
+    [one] { $count } demo in the library
+   *[other] { $count } demos in the library
+}
+filters-title = Filters
+filters-find = Find
+filters-pov = Point of view
+filters-quality = Quality
+filters-recorded = Recorded
+pov-any = Any
+pov-playing = Playing
+pov-spectating = Spectating
+help-pov = Playing means the recording spent at most half of its playback spectating, and Spectating means more than half.
+columns-button = Columns
+list-back = Back to the library table
+sort-by = Sort by
+sort-ascending = Ascending
+sort-descending = Descending
+score-more-sides = { $count ->
+    [one] { $count } more side
+   *[other] { $count } more sides
+}
+intensity-help = Intensity { $score }. The bar compares it with the highest in the library, { $max }.
+value-unknown = Not known
+path-copy = Copy path
+path-show = Show in folder
+path-show-failed = The folder could not be opened ({ $detail }). Copy the path instead.
 
 filter-search = Search paths
 filter-map = Map

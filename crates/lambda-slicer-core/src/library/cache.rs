@@ -15,6 +15,7 @@ use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};
 use serde::Serialize;
 
 use super::date::recorded;
+use crate::analysis::context::Scoreboard;
 use crate::analysis::weapons::{Actor, PROFILE};
 use crate::analysis::{ANALYSIS_SCHEMA, AnalysisReport};
 use crate::message::Message;
@@ -279,6 +280,14 @@ pub struct CacheStats {
     pub windows: u64,
 }
 
+/// Figures over every current file, whatever a query filters
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct LibraryStats {
+    pub files: u64,
+    /// The highest best action window score that is a positive number
+    pub max_action: Option<f64>,
+}
+
 /// Kill conditions. A file matches when one kill meets all of them
 #[derive(Clone, Debug, Default)]
 pub struct KillQuery {
@@ -330,6 +339,8 @@ pub enum Sort {
     Date,
     Headshots,
     Accuracy,
+    /// The frags of the final scoreboard's first side, the highest
+    Score,
 }
 
 impl Sort {
@@ -346,6 +357,12 @@ impl Sort {
             Sort::Date => "f.recorded_at",
             Sort::Headshots => "f.headshots",
             Sort::Accuracy => "f.accuracy",
+            // Nothing for a stored score that is not valid JSON, so it sorts
+            // with the files that have no score
+            Sort::Score => {
+                "CASE WHEN json_valid(f.score_json)
+                 THEN json_extract(f.score_json, '$.sides[0].frags') END"
+            }
         }
     }
 }
@@ -420,6 +437,11 @@ pub struct FileRow {
     pub date_source: Option<String>,
     /// The final score, such as `88 – 74`
     pub score: Option<String>,
+    /// The final scoreboard the score was made from, none when the cache
+    /// holds none or it cannot be read. Only for display, the command line's
+    /// JSON keeps the summary alone
+    #[serde(skip)]
+    pub scoreboard: Option<Scoreboard>,
     pub spectator_fraction: Option<f64>,
     pub shots: Option<i64>,
     /// Gauss shots, the weapon the library highlights
@@ -732,6 +754,23 @@ impl Cache {
         })
     }
 
+    /// How many current files there are and their highest action score,
+    /// for showing a filtered count against the whole and scaling intensity
+    /// the same whatever is filtered
+    pub fn library_stats(&self) -> Result<LibraryStats, CacheError> {
+        let (files, max_action) = self.conn.query_row(
+            "SELECT COUNT(*), MAX(CASE WHEN best_window > 0 THEN best_window END)
+             FROM files WHERE version = ?1",
+            [analysis_version()],
+            |r| Ok((r.get::<_, i64>(0)?, r.get::<_, Option<f64>>(1)?)),
+        )?;
+
+        Ok(LibraryStats {
+            files: files as u64,
+            max_action: max_action.filter(|m| m.is_finite()),
+        })
+    }
+
     /// Kill conditions as SQL over the `kills` table aliased `k`
     fn kill_conditions(q: &KillQuery, args: &mut Vec<Box<dyn ToSql>>) -> String {
         let mut c = vec!["1".to_string()];
@@ -853,7 +892,8 @@ impl Cache {
                 f.recorder, f.shots,
                 (SELECT w.shots FROM weapons w WHERE w.file_id = f.id AND w.weapon = 'gauss')
                     AS gauss,
-                f.recorded_at, f.date_source, f.score, f.headshots, f.accuracy, f.path_blob
+                f.recorded_at, f.date_source, f.score, f.headshots, f.accuracy, f.path_blob,
+                f.score_json
              FROM files f WHERE {conditions}
              ORDER BY {} {direction} NULLS LAST, f.path
              LIMIT ?{limit} OFFSET ?{offset}",
@@ -873,6 +913,9 @@ impl Cache {
                 recorded_at: r.get(15)?,
                 date_source: r.get(16)?,
                 score: r.get(17)?,
+                scoreboard: r
+                    .get::<_, Option<String>>(21)?
+                    .and_then(|json| serde_json::from_str(&json).ok()),
                 headshots: r.get(18)?,
                 accuracy: r.get(19)?,
                 native: r.get(20)?,
@@ -962,5 +1005,129 @@ impl Cache {
         })?;
 
         Ok(rows.collect::<Result<_, _>>()?)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A cache of files named `a.dem`, `b.dem` and so on, each with the
+    /// stored score JSON and best action score given
+    fn cache(files: &[(&str, Option<&str>, Option<f64>)]) -> Cache {
+        let mut c = Cache::in_memory().unwrap();
+        for (name, score_json, best_window) in files {
+            let path = Path::new(name);
+            c.store(&Entry {
+                path,
+                size: 1,
+                mtime_ns: None,
+                file_identity: None,
+                quick_hash: None,
+                full_hash: None,
+                header: None,
+                report: None,
+                error: None,
+            })
+            .unwrap();
+
+            // Stored as an analysis would have
+            c.conn
+                .execute(
+                    "UPDATE files SET score_json = ?1, best_window = ?2 WHERE path = ?3",
+                    params![score_json, best_window, name],
+                )
+                .unwrap();
+        }
+        c
+    }
+
+    fn side(frags: i32) -> String {
+        format!(r#"{{"name":"s{frags}","frags":{frags},"deaths":0}}"#)
+    }
+
+    #[test]
+    fn score_sorts_by_the_first_side_across_pages() {
+        let two = format!(r#"{{"teams":true,"sides":[{},{}]}}"#, side(10), side(5));
+        let negative = format!(r#"{{"teams":false,"sides":[{}]}}"#, side(-3));
+        let tied = format!(
+            r#"{{"teams":false,"sides":[{},{},{}]}}"#,
+            side(10),
+            side(2),
+            side(1)
+        );
+        let c = cache(&[
+            ("e.dem", Some("{not json"), None),
+            ("c.dem", Some(&tied), Some(12.5)),
+            ("a.dem", Some(&two), Some(5.)),
+            ("b.dem", Some(&negative), Some(-1.)),
+            ("d.dem", None, None),
+        ]);
+
+        let page = |descending: bool, offset: usize| -> Vec<String> {
+            let q = FileQuery {
+                sort: Sort::Score,
+                descending,
+                offset,
+                limit: 2,
+                ..Default::default()
+            };
+            c.query(&q).unwrap().into_iter().map(|r| r.path).collect()
+        };
+
+        // Equal scores fall back to the path, and files without a score that
+        // can be read come last either way
+        let mut highest = Vec::new();
+        for offset in [0, 2, 4] {
+            highest.extend(page(true, offset));
+        }
+        assert_eq!(highest, ["a.dem", "c.dem", "b.dem", "d.dem", "e.dem"]);
+
+        let mut lowest = Vec::new();
+        for offset in [0, 2, 4] {
+            lowest.extend(page(false, offset));
+        }
+        assert_eq!(lowest, ["b.dem", "a.dem", "c.dem", "d.dem", "e.dem"]);
+    }
+
+    #[test]
+    fn stored_scoreboards_read_back_and_bad_ones_are_none() {
+        let two = format!(r#"{{"teams":true,"sides":[{},{}]}}"#, side(170), side(155));
+        let c = cache(&[
+            ("a.dem", Some(&two), None),
+            ("b.dem", Some("[1, 2"), None),
+            ("c.dem", None, None),
+        ]);
+        let rows = c
+            .query(&FileQuery {
+                limit: 10,
+                ..Default::default()
+            })
+            .unwrap();
+
+        let board = rows[0].scoreboard.as_ref().unwrap();
+        assert!(board.teams);
+        let frags: Vec<i32> = board.sides.iter().map(|s| s.frags).collect();
+        assert_eq!(frags, [170, 155]);
+
+        assert_eq!(rows[1].scoreboard, None);
+        assert_eq!(rows[2].scoreboard, None);
+    }
+
+    #[test]
+    fn library_stats_cover_every_file_whatever_is_filtered() {
+        let c = cache(&[
+            ("a.dem", None, Some(5.)),
+            ("b.dem", None, Some(-1.)),
+            ("c.dem", None, Some(12.5)),
+            ("d.dem", None, None),
+        ]);
+        let stats = c.library_stats().unwrap();
+        assert_eq!(stats.files, 4);
+        assert_eq!(stats.max_action, Some(12.5));
+
+        // Nothing positive leaves no scale
+        let c = cache(&[("a.dem", None, Some(0.)), ("b.dem", None, None)]);
+        assert_eq!(c.library_stats().unwrap().max_action, None);
     }
 }

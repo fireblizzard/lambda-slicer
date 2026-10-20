@@ -38,6 +38,43 @@ library-demos = { $count ->
    *[other] { $count } dema
 }
 library-percent = { $percent }%
+library-demos-of = { $shown } z { $total ->
+    [one] { $total } dema
+    [few] { $total } dem
+    [many] { $total } dem
+   *[other] { $total } dema
+}
+library-total = { $count ->
+    [one] { $count } demo w bibliotece
+    [few] { $count } dema w bibliotece
+    [many] { $count } dem w bibliotece
+   *[other] { $count } dema w bibliotece
+}
+filters-title = Filtry
+filters-find = Szukaj
+filters-pov = Perspektywa
+filters-quality = Jakość
+filters-recorded = Nagrane
+pov-any = Wszystkie
+pov-playing = Gra
+pov-spectating = Obserwacja
+help-pov = „Gra” oznacza, że nagranie było w trybie obserwatora najwyżej przez połowę odtwarzania, a „Obserwacja” – ponad połowę.
+columns-button = Kolumny
+list-back = Wróć do tabeli biblioteki
+sort-by = Sortuj według
+sort-ascending = Rosnąco
+sort-descending = Malejąco
+score-more-sides = { $count ->
+    [one] jeszcze { $count } strona
+    [few] jeszcze { $count } strony
+    [many] jeszcze { $count } stron
+   *[other] jeszcze { $count } strony
+}
+intensity-help = Intensywność { $score }. Pasek porównuje ją z najwyższą w bibliotece, { $max }.
+value-unknown = Nieznane
+path-copy = Kopiuj ścieżkę
+path-show = Pokaż w folderze
+path-show-failed = Nie udało się otworzyć folderu ({ $detail }). Skopiuj ścieżkę.
 
 filter-search = Szukaj w ścieżkach
 filter-map = Mapa

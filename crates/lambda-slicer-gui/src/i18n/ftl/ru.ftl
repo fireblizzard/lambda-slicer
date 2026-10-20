@@ -38,6 +38,43 @@ library-demos = { $count ->
    *[other] { $count } демозаписи
 }
 library-percent = { $percent } %
+library-demos-of = { $shown } из { $total ->
+    [one] { $total } демозаписи
+    [few] { $total } демозаписей
+    [many] { $total } демозаписей
+   *[other] { $total } демозаписи
+}
+library-total = { $count ->
+    [one] В библиотеке { $count } демозапись
+    [few] В библиотеке { $count } демозаписи
+    [many] В библиотеке { $count } демозаписей
+   *[other] В библиотеке { $count } демозаписи
+}
+filters-title = Фильтры
+filters-find = Поиск
+filters-pov = Вид
+filters-quality = Качество
+filters-recorded = Дата записи
+pov-any = Все
+pov-playing = Игра
+pov-spectating = Наблюдение
+help-pov = «Игра» значит, что запись провела в наблюдении не больше половины воспроизведения, «Наблюдение» — больше половины.
+columns-button = Столбцы
+list-back = Назад к таблице библиотеки
+sort-by = Сортировка
+sort-ascending = По возрастанию
+sort-descending = По убыванию
+score-more-sides = { $count ->
+    [one] ещё { $count } сторона
+    [few] ещё { $count } стороны
+    [many] ещё { $count } сторон
+   *[other] ещё { $count } стороны
+}
+intensity-help = Накал { $score }. Полоса сравнивает его с самым высоким в библиотеке, { $max }.
+value-unknown = Неизвестно
+path-copy = Копировать путь
+path-show = Показать в папке
+path-show-failed = Не удалось открыть папку ({ $detail }). Скопируйте путь.
 
 filter-search = Поиск по путям
 filter-map = Карта

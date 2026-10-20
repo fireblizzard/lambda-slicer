@@ -38,6 +38,43 @@ library-demos = { $count ->
    *[other] { $count } демозапису
 }
 library-percent = { $percent } %
+library-demos-of = { $shown } з { $total ->
+    [one] { $total } демозапису
+    [few] { $total } демозаписів
+    [many] { $total } демозаписів
+   *[other] { $total } демозапису
+}
+library-total = { $count ->
+    [one] У бібліотеці { $count } демозапис
+    [few] У бібліотеці { $count } демозаписи
+    [many] У бібліотеці { $count } демозаписів
+   *[other] У бібліотеці { $count } демозапису
+}
+filters-title = Фільтри
+filters-find = Пошук
+filters-pov = Вигляд
+filters-quality = Якість
+filters-recorded = Дата запису
+pov-any = Усі
+pov-playing = Гра
+pov-spectating = Спостереження
+help-pov = «Гра» означає, що запис провів у спостереженні не більше половини відтворення, «Спостереження» — більше половини.
+columns-button = Стовпці
+list-back = Назад до таблиці бібліотеки
+sort-by = Сортування
+sort-ascending = За зростанням
+sort-descending = За спаданням
+score-more-sides = { $count ->
+    [one] ще { $count } сторона
+    [few] ще { $count } сторони
+    [many] ще { $count } сторін
+   *[other] ще { $count } сторони
+}
+intensity-help = Напруга { $score }. Смуга порівнює її з найвищою в бібліотеці, { $max }.
+value-unknown = Невідомо
+path-copy = Копіювати шлях
+path-show = Показати в теці
+path-show-failed = Не вдалося відкрити теку ({ $detail }). Скопіюйте шлях.
 
 filter-search = Пошук за шляхами
 filter-map = Мапа

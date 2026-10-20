@@ -38,6 +38,43 @@ library-demos = { $count ->
    *[other] { $count } įrašų
 }
 library-percent = { $percent } %
+library-demos-of = { $shown } iš { $total ->
+    [one] { $total } įrašo
+    [few] { $total } įrašų
+    [many] { $total } įrašo
+   *[other] { $total } įrašų
+}
+library-total = { $count ->
+    [one] Bibliotekoje { $count } įrašas
+    [few] Bibliotekoje { $count } įrašai
+    [many] Bibliotekoje { $count } įrašo
+   *[other] Bibliotekoje { $count } įrašų
+}
+filters-title = Filtrai
+filters-find = Paieška
+filters-pov = Požiūris
+filters-quality = Kokybė
+filters-recorded = Įrašyta
+pov-any = Visi
+pov-playing = Žaidžiant
+pov-spectating = Stebint
+help-pov = „Žaidžiant“ reiškia, kad įrašas stebėjo ne daugiau kaip pusę atkūrimo, o „Stebint“ – daugiau nei pusę.
+columns-button = Stulpeliai
+list-back = Atgal į bibliotekos lentelę
+sort-by = Rikiuoti pagal
+sort-ascending = Didėjančiai
+sort-descending = Mažėjančiai
+score-more-sides = { $count ->
+    [one] dar { $count } pusė
+    [few] dar { $count } pusės
+    [many] dar { $count } pusės
+   *[other] dar { $count } pusių
+}
+intensity-help = Intensyvumas { $score }. Juosta jį lygina su didžiausiu bibliotekoje, { $max }.
+value-unknown = Nežinoma
+path-copy = Kopijuoti kelią
+path-show = Rodyti aplanke
+path-show-failed = Nepavyko atidaryti aplanko ({ $detail }). Nukopijuokite kelią.
 
 filter-search = Ieškoti keliuose
 filter-map = Žemėlapis

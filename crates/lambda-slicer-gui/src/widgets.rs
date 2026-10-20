@@ -25,6 +25,17 @@ pub enum Icon {
     Close,
     Settings,
     Help,
+    /// A grid, for the full library table
+    Table,
+    /// Three sliders, for filters
+    Filter,
+    Columns,
+    /// Arrows for an order, highest first or lowest first
+    SortDown,
+    SortUp,
+    Copy,
+    /// A folder, for showing a file in its folder
+    Folder,
 }
 
 /// The width of an icon's lines
@@ -126,6 +137,62 @@ pub fn paint_icon(painter: &egui::Painter, rect: Rect, icon: Icon, color: Color3
             let font = egui::FontId::proportional(10. * unit);
             painter.text(center, egui::Align2::CENTER_CENTER, "?", font, color);
         }
+        Icon::Table => {
+            let frame = Rect::from_min_max(p(2., 3.), p(14., 13.));
+            painter.rect_stroke(frame, 1., stroke, StrokeKind::Middle);
+
+            // A heading row and two columns
+            painter.line_segment([p(2., 6.5), p(14., 6.5)], stroke);
+            painter.line_segment([p(2., 10.), p(14., 10.)], stroke);
+            painter.line_segment([p(6., 3.), p(6., 13.)], stroke);
+        }
+        Icon::Filter => {
+            // Three sliders, each knob at a different place
+            for (y, knob) in [(4., 10.), (8., 5.), (12., 11.)] {
+                painter.line_segment([p(2., y), p(14., y)], stroke);
+                painter.circle_filled(p(knob, y), 2. * unit, color);
+            }
+        }
+        Icon::Columns => {
+            let frame = Rect::from_min_max(p(2., 3.), p(14., 13.));
+            painter.rect_stroke(frame, 1., stroke, StrokeKind::Middle);
+            painter.line_segment([p(6., 3.), p(6., 13.)], stroke);
+            painter.line_segment([p(10., 3.), p(10., 13.)], stroke);
+        }
+        Icon::SortDown => {
+            painter.line_segment([p(8., 3.), p(8., 13.)], stroke);
+            painter.add(Shape::line(vec![p(4., 9.), p(8., 13.), p(12., 9.)], stroke));
+        }
+        Icon::SortUp => {
+            painter.line_segment([p(8., 13.), p(8., 3.)], stroke);
+            painter.add(Shape::line(vec![p(4., 7.), p(8., 3.), p(12., 7.)], stroke));
+        }
+        Icon::Copy => {
+            // A sheet in front of another, the one behind showing at the
+            // top right
+            let front = Rect::from_min_max(p(2.5, 5.5), p(10.5, 13.5));
+            painter.rect_stroke(front, 1., stroke, StrokeKind::Middle);
+
+            let behind = vec![
+                p(5.5, 5.5),
+                p(5.5, 2.5),
+                p(13.5, 2.5),
+                p(13.5, 10.5),
+                p(10.5, 10.5),
+            ];
+            painter.add(Shape::line(behind, stroke));
+        }
+        Icon::Folder => {
+            let folder = vec![
+                p(1.5, 3.),
+                p(6., 3.),
+                p(7.5, 4.5),
+                p(14.5, 4.5),
+                p(14.5, 13.5),
+                p(1.5, 13.5),
+            ];
+            painter.add(Shape::closed_line(folder, stroke));
+        }
     }
 }
 
@@ -195,6 +262,27 @@ impl Widget for IconButton<'_> {
         focus_outline(ui, &response, rect);
         response
     }
+}
+
+/// A small heading over a group of controls
+pub fn section_title(ui: &mut Ui, title: &str, rtl: bool) -> Response {
+    let look = text::Look::Color(theme::MUTED);
+    let title = text::styled_text(ui.ctx(), title, rtl, look, &TextStyle::Small);
+    ui.label(title)
+}
+
+/// A count in the accent, such as how many filters are on, beside what it
+/// counts
+pub fn badge(ui: &mut Ui, count: usize) -> Response {
+    let text = egui::RichText::new(count.to_string())
+        .text_style(TextStyle::Small)
+        .color(theme::BACKGROUND);
+    let frame = egui::Frame::new()
+        .fill(theme::ACCENT)
+        .corner_radius(CornerRadius::same(theme::RADIUS_SMALL))
+        .inner_margin(egui::Margin::symmetric(4, 0));
+
+    frame.show(ui, |ui| ui.label(text)).response
 }
 
 /// The icon of a button with text, and the gap between it and the text
@@ -331,8 +419,12 @@ pub fn status_symbol(ui: &mut Ui, state: AnalysisState, label: &str) -> Response
     let (rect, response) = ui.allocate_exact_size(Vec2::splat(theme::ICON_SIZE), Sense::hover());
     response.widget_info(|| WidgetInfo::labeled(Role::Label, true, label));
 
-    let painter = ui.painter();
-    let center = rect.center();
+    paint_status(ui.painter(), rect.center(), state);
+    response.on_hover_text(label)
+}
+
+/// Paint the symbol of an analysis state around `center`
+pub fn paint_status(painter: &egui::Painter, center: Pos2, state: AnalysisState) {
     let radius = 3.5;
     let stroke = |color| Stroke::new(ICON_LINE, color);
 
@@ -371,8 +463,6 @@ pub fn status_symbol(ui: &mut Ui, state: AnalysisState, label: &str) -> Response
             painter.add(Shape::convex_polygon(triangle, theme::ERROR, Stroke::NONE));
         }
     }
-
-    response.on_hover_text(label)
 }
 
 /// The glyph of a help question mark, a little smaller than other icons as it

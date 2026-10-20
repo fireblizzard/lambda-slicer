@@ -36,6 +36,28 @@ library-demos = { $count ->
    *[other] { $count } demo
 }
 library-percent = %{ $percent }
+library-demos-of = { $total } demodan { $shown }
+library-total = Kütüphanede { $count } demo
+filters-title = Filtreler
+filters-find = Bul
+filters-pov = Bakış açısı
+filters-quality = Kalite
+filters-recorded = Kayıt tarihi
+pov-any = Tümü
+pov-playing = Oynayan
+pov-spectating = İzleyici
+help-pov = Oynayan, kaydın oynatmanın en fazla yarısında izleyici olduğu, İzleyici ise yarısından fazlasında izleyici olduğu demolardır.
+columns-button = Sütunlar
+list-back = Kütüphane tablosuna dön
+sort-by = Sırala
+sort-ascending = Artan
+sort-descending = Azalan
+score-more-sides = { $count } taraf daha
+intensity-help = Yoğunluk { $score }. Çubuk bunu kütüphanedeki en yüksek değerle, { $max }, karşılaştırır.
+value-unknown = Bilinmiyor
+path-copy = Yolu kopyala
+path-show = Klasörde göster
+path-show-failed = Klasör açılamadı ({ $detail }). Bunun yerine yolu kopyala.
 
 filter-search = Yollarda ara
 filter-map = Harita

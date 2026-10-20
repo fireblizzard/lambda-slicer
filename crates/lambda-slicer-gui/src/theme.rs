@@ -38,9 +38,10 @@ pub const WARNING: Color32 = Color32::from_rgb(0xd9, 0xb6, 0x4f);
 /// Failures
 pub const ERROR: Color32 = Color32::from_rgb(0xd9, 0x67, 0x5f);
 
-/// What egui fills faintly, such as a grid's alternate rows, a shade between
-/// the background and the surface
-const FAINT_FILL: Color32 = Color32::from_rgb(0x1b, 0x1d, 0x21);
+/// Side panes such as the library's filters, a shade between the background
+/// and the surface so the fields in them stand out. egui's faint fills, such
+/// as a grid's alternate rows, use it too
+pub const PANE: Color32 = Color32::from_rgb(0x1b, 0x1d, 0x21);
 
 /// Main text, secondary and numeric text, small headings, and the titles of
 /// windows and notices
@@ -58,6 +59,8 @@ pub const BUTTON_PADDING: Vec2 = Vec2::new(10., 4.);
 const CONTROL_MIN_WIDTH: f32 = 40.;
 /// The glyph inside an icon button
 pub const ICON_SIZE: f32 = 16.;
+/// The accent edge on a chosen row's leading side
+pub const SELECTED_EDGE: f32 = 2.;
 
 /// The main toolbar and the status strip under everything
 pub const TOOLBAR_HEIGHT: f32 = 44.;
@@ -72,6 +75,12 @@ pub const GAP_M: f32 = 12.;
 pub const RADIUS_SMALL: u8 = 4;
 pub const RADIUS_CONTROL: u8 = 6;
 pub const RADIUS_CARD: u8 = 8;
+
+/// The text style of secondary text, such as a row's second line of
+/// metadata
+pub fn secondary() -> TextStyle {
+    TextStyle::Name("secondary".into())
+}
 
 /// The dark theme, whatever the system's preference, for every style egui
 /// keeps
@@ -90,6 +99,7 @@ fn apply(style: &mut egui::Style) {
         (TextStyle::Button, FontId::new(TEXT_BODY, Proportional)),
         (TextStyle::Heading, FontId::new(TEXT_TITLE, Proportional)),
         (TextStyle::Monospace, FontId::new(TEXT_SECONDARY, Monospace)),
+        (secondary(), FontId::new(TEXT_SECONDARY, Proportional)),
     ]
     .into();
 
@@ -109,7 +119,7 @@ fn apply(style: &mut egui::Style) {
     visuals.menu_corner_radius = CornerRadius::same(RADIUS_CONTROL);
     visuals.extreme_bg_color = SURFACE;
     visuals.text_edit_bg_color = Some(SURFACE);
-    visuals.faint_bg_color = FAINT_FILL;
+    visuals.faint_bg_color = PANE;
     visuals.code_bg_color = RAISED;
     visuals.hyperlink_color = ACCENT;
     visuals.warn_fg_color = WARNING;
