@@ -250,6 +250,7 @@ viewer-no-sound = Немає звуку
 viewer-play-backward = Перемотати назад
 viewer-step-back = Попередній кадр
 viewer-step-forward = Наступний кадр
+viewer-position = Позиція в демозаписі
 viewer-skip-back = Назад на 10 секунд
 viewer-skip-forward = Вперед на 10 секунд
 viewer-rate = { $rate }×

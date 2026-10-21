@@ -249,6 +249,7 @@ viewer-no-sound = Pas de son
 viewer-play-backward = Rembobiner
 viewer-step-back = Image précédente
 viewer-step-forward = Image suivante
+viewer-position = Position dans la démo
 viewer-skip-back = Reculer de 10 secondes
 viewer-skip-forward = Avancer de 10 secondes
 viewer-rate = { $rate }×

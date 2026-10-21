@@ -220,6 +220,7 @@ viewer-no-sound = 无声音
 viewer-play-backward = 倒带
 viewer-step-back = 上一帧
 viewer-step-forward = 下一帧
+viewer-position = 录像中的位置
 viewer-skip-back = 后退 10 秒
 viewer-skip-forward = 前进 10 秒
 viewer-rate = { $rate }×

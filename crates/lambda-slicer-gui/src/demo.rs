@@ -1222,6 +1222,10 @@ impl DemoView {
         let transport = egui::Panel::bottom("transport")
             .frame(transport)
             .show(ui, |ui| {
+                // The seek bar spans the picture above it, past the margin
+                if let Some(viewer) = &mut self.viewer {
+                    viewer.seek_bar_ui(ui, catalog, f32::from(margin.left));
+                }
                 if let Some(viewer) = &mut self.viewer
                     && viewer.transport_ui(ui, catalog, rtl)
                 {

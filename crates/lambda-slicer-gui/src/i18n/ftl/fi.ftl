@@ -237,6 +237,7 @@ viewer-no-sound = Ei ääntä
 viewer-play-backward = Kelaa taaksepäin
 viewer-step-back = Edellinen ruutu
 viewer-step-forward = Seuraava ruutu
+viewer-position = Kohta demossa
 viewer-skip-back = 10 sekuntia taaksepäin
 viewer-skip-forward = 10 sekuntia eteenpäin
 viewer-rate = { $rate }×

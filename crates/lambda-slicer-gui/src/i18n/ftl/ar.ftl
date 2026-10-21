@@ -273,6 +273,7 @@ viewer-no-sound = لا صوت
 viewer-play-backward = ترجيع
 viewer-step-back = الإطار السابق
 viewer-step-forward = الإطار التالي
+viewer-position = الموضع في التسجيل
 viewer-skip-back = الرجوع 10 ثوانٍ
 viewer-skip-forward = التقدّم 10 ثوانٍ
 viewer-rate = { $rate }×

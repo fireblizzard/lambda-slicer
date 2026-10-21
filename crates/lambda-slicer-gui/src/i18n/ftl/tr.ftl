@@ -225,6 +225,7 @@ viewer-no-sound = Ses yok
 viewer-play-backward = Geri sar
 viewer-step-back = Önceki kare
 viewer-step-forward = Sonraki kare
+viewer-position = Demodaki konum
 viewer-skip-back = 10 saniye geri
 viewer-skip-forward = 10 saniye ileri
 viewer-rate = { $rate }×

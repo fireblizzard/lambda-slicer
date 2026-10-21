@@ -250,6 +250,7 @@ viewer-no-sound = Brak dźwięku
 viewer-play-backward = Przewiń do tyłu
 viewer-step-back = Poprzednia klatka
 viewer-step-forward = Następna klatka
+viewer-position = Pozycja w demie
 viewer-skip-back = 10 sekund do tyłu
 viewer-skip-forward = 10 sekund do przodu
 viewer-rate = { $rate }×

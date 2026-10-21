@@ -250,6 +250,7 @@ viewer-no-sound = Nėra garso
 viewer-play-backward = Atsukti
 viewer-step-back = Ankstesnis kadras
 viewer-step-forward = Kitas kadras
+viewer-position = Vieta įraše
 viewer-skip-back = 10 sekundžių atgal
 viewer-skip-forward = 10 sekundžių pirmyn
 viewer-rate = { $rate }×

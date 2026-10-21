@@ -1627,6 +1627,69 @@ impl Viewer {
         indexed.max(self.duration).max(now)
     }
 
+    /// A bar along the bottom of the picture, as video players have. A
+    /// click moves the playhead there and a drag scrubs, the same playhead
+    /// the timeline shows. It reaches `reach` past the room it is given on
+    /// each side, to the picture's edges, and runs left to right in every
+    /// language, as time does
+    pub fn seek_bar_ui(&mut self, ui: &mut Ui, catalog: &Catalog, reach: f32) {
+        if self.controller.failed().is_some() {
+            return;
+        }
+
+        let now = self.controller.time(self.wall()).0;
+        let end = self.length(now).max(f64::EPSILON);
+        let size = egui::vec2(ui.available_width(), SEEK_BAR_HEIGHT);
+        let (rect, response) = ui.allocate_exact_size(size, Sense::click_and_drag());
+        let track = rect.expand2(egui::vec2(reach, 0.));
+        let time_at = |x: f32| f64::from(((x - track.left()) / track.width()).clamp(0., 1.)) * end;
+        response
+            .widget_info(|| egui::WidgetInfo::slider(true, now, catalog.text("viewer-position")));
+
+        // A drag scrubs, a click seeks
+        if let Some(pointer) = response.interact_pointer_pos() {
+            let at = time_at(pointer.x) as f32;
+            if response.dragged() {
+                self.scrub(at);
+            } else if response.clicked() {
+                self.seek(at);
+            }
+        }
+        if response.drag_stopped() {
+            self.end_scrub();
+        }
+
+        // Thicker with a knob while the pointer is on it, along the top so
+        // it touches the picture
+        let active = response.hovered() || response.dragged();
+        let thickness = if active {
+            SEEK_TRACK_ACTIVE
+        } else {
+            SEEK_TRACK
+        };
+        let bar = egui::Rect::from_min_size(track.min, egui::vec2(track.width(), thickness));
+        let played_x = track.left() + track.width() * (now / end).clamp(0., 1.) as f32;
+        let played = egui::Rect::from_min_max(bar.min, egui::pos2(played_x, bar.bottom()));
+        let painter = ui.painter_at(track);
+        painter.rect_filled(bar, 0., theme::RAISED);
+        painter.rect_filled(played, 0., theme::ACCENT);
+        if active {
+            painter.circle_filled(
+                egui::pos2(played_x, bar.center().y),
+                SEEK_KNOB,
+                theme::ACCENT,
+            );
+        }
+
+        // The moment under the pointer
+        if let Some(pointer) = response.hover_pos() {
+            let at = DemoTime::from_f32(time_at(pointer.x) as f32)
+                .map(|t| t.to_string())
+                .unwrap_or_default();
+            response.on_hover_text_at_pointer(at);
+        }
+    }
+
     /// The playhead to the millisecond and the demo's length to the second,
     /// the length fainter
     fn time_readout(&self, ui: &mut Ui) {
@@ -2359,6 +2422,13 @@ fn skew_path() -> Option<PathBuf> {
 const NOTE_SHADE: u8 = 190;
 const NOTE_MARGIN_Y: i8 = 2;
 const MISSING_LIST_HEIGHT: f32 = 240.;
+
+/// The seek bar's height, its track's thickness at rest and under the
+/// pointer, and its knob's radius
+const SEEK_BAR_HEIGHT: f32 = 12.;
+const SEEK_TRACK: f32 = 4.;
+const SEEK_TRACK_ACTIVE: f32 = 6.;
+const SEEK_KNOB: f32 = 6.;
 
 /// The narrowest the transport fits on one row, the rate menu's width and
 /// the volume slider's

@@ -2,7 +2,7 @@
 - [ ] Add the name of the player that we're watching, at the bottom
 - [x] Fix gauss charging sound being cut in `aghldmtv_law_vs_cas_cross.dem`.  i can only hear it starting to charge and releasing, but no sound in between
 - [x] Fix gauss shots or aiming being off in `aghldmtv_law_vs_cas_cross.dem`, it seems the player is looking at one place but the shot going much higher at times
-- [ ] Add a bar at the bottom of the demo player so that you can go to any point of the demo by clicking on it, and it has to be synced with the other playhead.  don't remove the existing playhead below the demo player, it's useful but people are more used to the web browser style of video players, and dragging the current playhead which is not visually touching the demo player feels a bit weird
+- [x] Add a bar at the bottom of the demo player so that you can go to any point of the demo by clicking on it, and it has to be synced with the other playhead.  don't remove the existing playhead below the demo player, it's useful but people are more used to the web browser style of video players, and dragging the current playhead which is not visually touching the demo player feels a bit weird
 - [x] Add another two for rewinding/advancing 10 seconds beside the previous/next frame buttons
 - [ ] Add the rest of HUD elements from AG, like the mini scoreboard at the top left, votes, chat, and everything else that comes from AG events/usermessages
 - [ ] Add a way to toggle free camera mode, where you get detached from the recorder's camera and can fly around like with noclip by using WASD, Ctrl (down) and Space (up)
@@ -11,8 +11,13 @@
 - [x] Railings on crossfire have a very subtle blue colored border, as if the transparency isn't being applied correctly and leaves a small residue of blue when it's touching other colors (like red in this case, from the railing part of the texture)
 - [x] Default pre-clip duration to 4s and post-clip to 1s
 - [x] Fix rescan. The new clips I made were exported to a folder that is in the library, and after I hit rescan and it finished scanning, I sorted by date and I couldn't see the new clips. After restarting Lambda Slicer and sorting by date I could see them finally, but shouldn't need a restart for them to appear in the table
-- [ ] Add right clicking on the demo (in the table or on the list at the left after the demo player shows up) with a context menu to Open location, which opens the file explorer with the demo file selected
+- [x] Add right clicking on the demo (in the table or on the list at the left after the demo player shows up) with a context menu to Open location, which opens the file explorer with the demo file selected
 - [ ] When selecting a highlight like the Golden minute, "Clip it" should set the start/end time to the highlight's instead of the selected event, plus the configured pre-clip and post-clip duration
+- [ ] Add crosshair to the demo player, and a setting to disable it
+- [ ] Buttons that are bottom left under the demo player should be centered
+- [ ] Try to reduce lag when watching a demo while it's scanning folders, prioritize the demo player
+- [ ] Fix library only showing one map on demos with multiple maps, like on `20240120_192554_ag_hidden_lab`, that has `ag_hidden_lab` and `elixir`. it should probably just add a comma, space and the next map name (e.g. `ag_hidden_lab, elixir`) and when filtering by map it should still work when typing part of any of the map names
+- On `20240120_192554_ag_hidden_lab` there's an intermission (map change) at 0:15:10. we should probably render some text saying that the server is changing to X map
 
 # Ideas
 - [ ] Add a filter for player name in the event list of a demo

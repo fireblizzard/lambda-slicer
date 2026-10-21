@@ -249,6 +249,7 @@ viewer-no-sound = Sem som
 viewer-play-backward = Rebobinar
 viewer-step-back = Frame anterior
 viewer-step-forward = Próximo frame
+viewer-position = Posição na demo
 viewer-skip-back = Voltar 10 segundos
 viewer-skip-forward = Avançar 10 segundos
 viewer-rate = { $rate }×
