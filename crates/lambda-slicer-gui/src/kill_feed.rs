@@ -2,7 +2,8 @@
 //! (OpenAG's `CHudDeathNotice`)
 //!
 //! Each line stands at the top right, the killer's name, the weapon's icon
-//! and the victim's name, the victim's ending at the view's edge. A death
+//! and the victim's name, the victim's ending a little short of the view's
+//! edge. A death
 //! no player caused shows the icon and the victim alone. Lines start 34 of
 //! the game's 480 rows down and stand 20 apart, and everything is sized to
 //! the view as the game's 640 by 480 screen would be.
@@ -31,6 +32,10 @@ const FIRST_LINE: f32 = 34.;
 const LINE_STEP: f32 = 20.;
 const KILLER_GAP: f32 = 5.;
 const TEXT_SIZE: f32 = 13.;
+
+/// The room between the victim's name and the view's right edge, in the
+/// app's own points
+const RIGHT_MARGIN: f32 = 8.;
 
 /// The icon's colour, and a team kill's
 const ICON: Color32 = Color32::from_rgb(255, 80, 0);
@@ -206,7 +211,7 @@ impl KillFeed {
 
             // From the right edge, the victim, the icon and then the killer
             let victim = painter.layout_job(name_job(&notice.victim, font.clone()));
-            let victim_x = rect.right() - victim.size().x;
+            let victim_x = rect.right() - RIGHT_MARGIN - victim.size().x;
             let icon_x = victim_x - icon_size.x;
             painter.galley(Pos2::new(victim_x, top), victim, Color32::WHITE);
 
