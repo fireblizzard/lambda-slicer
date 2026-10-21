@@ -1264,6 +1264,11 @@ impl eframe::App for App {
             });
         }
 
+        // A folder a right click on a demo could not show
+        if let Some(notice) = self.library.as_mut().and_then(|l| l.path_notice.take()) {
+            self.path_notice = Some(notice);
+        }
+
         if ctx.input(|i| !i.raw.hovered_files.is_empty()) {
             let painter = ctx.layer_painter(egui::LayerId::new(
                 egui::Order::Foreground,

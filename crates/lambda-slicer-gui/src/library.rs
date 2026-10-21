@@ -255,6 +255,24 @@ impl Filters {
     }
 }
 
+/// The menu a right click on a demo's row opens, to show the demo in its
+/// folder. Returns why the folder could not be shown
+fn row_menu(response: &Response, file: &FileRow, catalog: &Catalog, rtl: bool) -> Option<String> {
+    let mut failed = None;
+    response.context_menu(|ui| {
+        let label = text::widget_text(ui.ctx(), &catalog.text("path-show"), rtl, None, Look::Plain);
+        let show = widgets::Button::new(Some(Icon::Folder), label, Variant::Default, rtl);
+        if ui.add(show).clicked() {
+            if let Err(e) = crate::platform::show_in_folder(Path::new(&file.path)) {
+                let detail = FluentValue::from(e.to_string());
+                failed = Some(catalog.text_with("path-show-failed", &[("detail", detail)]));
+            }
+            ui.close();
+        }
+    });
+    failed
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Col {
     Name,
@@ -452,6 +470,8 @@ pub struct LibraryView {
     reach_leading: bool,
     /// The direction the table was last drawn in
     last_rtl: Option<bool>,
+    /// Why a demo's folder could not be shown, for the app to tell
+    pub path_notice: Option<String>,
 }
 
 impl LibraryView {
@@ -476,6 +496,7 @@ impl LibraryView {
             filters_open: true,
             list_filters_open: false,
             cursor: None,
+            path_notice: None,
             scroll_to_cursor: false,
             max_scroll_x: None,
             reach_leading: false,
@@ -967,8 +988,12 @@ impl LibraryView {
                         for c in &cols {
                             row.col(|ui| self.cell(ui, *c, &file, selected, catalog, rtl));
                         }
-                        if row.response().clicked() {
+                        let response = row.response();
+                        if response.clicked() {
                             clicked = Some(index);
+                        }
+                        if let Some(failed) = row_menu(&response, &file, catalog, rtl) {
+                            self.path_notice = Some(failed);
                         }
                     });
                 });
@@ -1205,7 +1230,11 @@ impl LibraryView {
                     let Some(file) = self.row(index) else {
                         continue;
                     };
-                    if self.list_row(ui, &file, catalog, rtl).clicked() {
+                    let response = self.list_row(ui, &file, catalog, rtl);
+                    if let Some(failed) = row_menu(&response, &file, catalog, rtl) {
+                        self.path_notice = Some(failed);
+                    }
+                    if response.clicked() {
                         clicked = Some(file);
                     }
                 }
@@ -1513,6 +1542,70 @@ mod tests {
 
     use super::*;
 
+    /// A library row for the file at `path`, with nothing analysed
+    fn file_row(path: &str) -> FileRow {
+        FileRow {
+            id: 0,
+            path: path.into(),
+            status: "complete".into(),
+            error: None,
+            map: None,
+            duration: None,
+            recording_kind: None,
+            recorder: None,
+            recorded_at: None,
+            date_source: None,
+            score: None,
+            scoreboard: None,
+            spectator_fraction: None,
+            shots: None,
+            gauss: None,
+            kills: None,
+            headshots: None,
+            accuracy: None,
+            best_window: None,
+            matching_kills: Vec::new(),
+            native: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn a_right_click_on_a_demo_offers_its_folder() {
+        let ctx = egui::Context::default();
+        theme::install(&ctx);
+        let catalog = Catalog::new(crate::i18n::Locale::En);
+        let view = LibraryView::new(PathBuf::from("not-there.sqlite"), Vec::new());
+        let file = file_row("F:/demos/run_92.dem");
+
+        // The row drawn once with `events` for input, and its middle
+        let frame = |events: Vec<egui::Event>| {
+            let input = egui::RawInput {
+                events,
+                ..Default::default()
+            };
+            let mut middle = egui::Pos2::ZERO;
+            let mut output = ctx.run_ui(input, |ui| {
+                let response = view.list_row(ui, &file, &catalog, false);
+                middle = response.rect.center();
+                row_menu(&response, &file, &catalog, false);
+            });
+            output.textures_delta.clear();
+            middle
+        };
+        let at = frame(Vec::new());
+        let button = |pressed| egui::Event::PointerButton {
+            pos: at,
+            button: egui::PointerButton::Secondary,
+            pressed,
+            modifiers: egui::Modifiers::NONE,
+        };
+        frame(vec![egui::Event::PointerMoved(at)]);
+        frame(vec![button(true)]);
+        frame(vec![button(false)]);
+        frame(Vec::new());
+        assert!(egui::Popup::is_any_open(&ctx));
+    }
+
     #[test]
     fn numbers_parse_with_either_decimal_mark() {
         assert_eq!(parse_number("2,5"), Some(2.5));
@@ -1588,29 +1681,7 @@ mod tests {
 
     #[test]
     fn names_lose_only_their_dem_ending() {
-        let row = |path: &str| FileRow {
-            id: 0,
-            path: path.into(),
-            status: "complete".into(),
-            error: None,
-            map: None,
-            duration: None,
-            recording_kind: None,
-            recorder: None,
-            recorded_at: None,
-            date_source: None,
-            score: None,
-            scoreboard: None,
-            spectator_fraction: None,
-            shots: None,
-            gauss: None,
-            kills: None,
-            headshots: None,
-            accuracy: None,
-            best_window: None,
-            matching_kills: Vec::new(),
-            native: Vec::new(),
-        };
+        let row = file_row;
         assert_eq!(display_name(&row("F:/demos/run_92.dem")), "run_92");
         assert_eq!(display_name(&row("F:/demos/.dem")), ".dem");
         assert_eq!(display_name(&row("F:/demos/notes.txt")), "notes.txt");
