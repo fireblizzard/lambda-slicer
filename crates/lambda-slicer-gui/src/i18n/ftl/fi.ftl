@@ -268,7 +268,7 @@ refine-airborne = Ilmassa
 refine-either = Kumpi vain
 midair-both = Molemmat
 midair-one = Vain toinen
-help-midair-either = Tappaja, uhri tai molemmat olivat ilmassa. Tappaja tarkistetaan tappoon liitetyn laukauksen kohdalla, tai tapon kohdalla, jos sellaista ei ole, ja uhri kuoleman hetkellä.
+help-midair-either = Tappaja, uhri tai molemmat olivat ilmassa. Tappaja tarkistetaan tappoon liitetyn laukauksen kohdalla, tai tapon kohdalla, jos sellaista ei ole, ja uhri kuoleman hetkellä. Pelkkää hyppyä alle 50 yksikön korkeudella maasta ei lasketa. Tähän tarvitaan valittu Half-Life-kansio, jotta tiedetään, missä maa on.
 help-midair-both = Tappaja ja uhri olivat molemmat ilmassa, kumpikin omalla tarkistushetkellään.
 help-midair-one = Täsmälleen toinen heistä oli ilmassa, ja toisen tiedetään olleen maassa.
 speed-at-least = Vähintään
@@ -337,6 +337,7 @@ legend-switch = Aseen vaihto
 
 column-headshots = Päälaukaukset
 filter-headshots = Päälaukaustapot
+filter-midair = Midair-tapot
 event-headshot = päälaukaus
 scores-headshots = PL
 
@@ -348,6 +349,7 @@ help-headshots = Tapot osumalla päähän, tunnistettu uhrin kuolinanimaatiosta.
 help-headshots-column = Tallentajan tapot osumalla päähän, tunnistettu uhrin kuolinanimaatiosta. Räjähdykset eivät lasketa. Muiden pelaajien tappoja ei lasketa, koska ne tapahtuvat usein tallennuksen näkymän ulkopuolella.
 help-accuracy = Osuneiden laukausten osuus, päätelty verestä, jonka osuma jättää tähtäyslinjalle, vähennettynä sattumanvaraisilla osumilla. Mukana ovat glock, python, MP5:n luodit, haulikko, tähtäimellä ammuttu varsijousi ja gauss-säteen suorat osumat. Räjähdykset ja gaussin heijastukset eivät jätä verta eivätkä lasketa. Näytetään vain tallentajalle ja vasta vähintään 50 laukauksen jälkeen.
 help-headshot-filter = Demot, joissa on vähintään yksi tallennuksessa näkyvä päälaukaustappo, kenen tahansa.
+help-midair-filter = Demot, joissa on vähintään yksi tappo, jonka hetkellä tappaja tai uhri oli ilmassa vähintään 50 yksikön korkeudella maasta. Ilman valittua Half-Life-kansiota myös pelkkä hyppy lasketaan.
 help-accuracy-filter = Demot, joissa tallentaja osui vähintään tähän osuuteen laukauksistaan.
 
 clips-new = Uusi klippi

@@ -253,7 +253,7 @@ refine-airborne = 谁在空中
 refine-either = 任一方
 midair-both = 双方
 midair-one = 仅一方
-help-midair-either = 击杀者、受害者或双方在空中。击杀者在与击杀关联的射击时检查，没有关联射击则在击杀时检查；受害者在死亡时检查。
+help-midair-either = 击杀者、受害者或双方在空中。击杀者在与击杀关联的射击时检查，没有关联射击则在击杀时检查；受害者在死亡时检查。只是普通跳跃、离地面不到 50 单位的不算。需要先选择 Half-Life 文件夹，才能知道地面在哪里。
 help-midair-both = 击杀者和受害者在各自检查时都在空中。
 help-midair-one = 恰好其中一方在空中，且已知另一方在地面上。
 speed-at-least = 至少
@@ -321,6 +321,7 @@ legend-switch = 切换武器
 
 column-headshots = 爆头
 filter-headshots = 爆头击杀
+filter-midair = 空中击杀
 event-headshot = 爆头
 scores-headshots = 爆头
 
@@ -332,6 +333,7 @@ help-headshots = 爆头击杀，根据受害者的死亡动作判断。爆炸不
 help-headshots-column = 录制者的爆头击杀，根据受害者的死亡动作判断。爆炸不计入。其他玩家的击杀不计入，因为它们常发生在录像视野之外。
 help-accuracy = 命中射击所占比例，根据命中在瞄准线上留下的血迹判断，并扣除偶然重合。包括格洛克、蟒蛇、MP5 子弹、霰弹枪、开镜十字弩和高斯光束的直接命中。爆炸和高斯反射不留血迹，不计入。只显示录制者的命中率，且至少 50 次射击后才显示。
 help-headshot-filter = 至少有一次录像中可见的爆头击杀的录像，任何玩家均可。
+help-midair-filter = 至少有一次击杀时击杀者或受害者在空中、离地面至少 50 单位的录像。未选择 Half-Life 文件夹时，普通跳跃也算。
 help-accuracy-filter = 录制者命中率至少达到该比例的录像。
 
 clips-new = 新建片段

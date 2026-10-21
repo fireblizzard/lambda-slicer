@@ -277,7 +277,7 @@ refine-airborne = No ar
 refine-either = Qualquer um
 midair-both = Ambos
 midair-one = Só um
-help-midair-either = O matador, a vítima ou ambos estavam no ar. O matador é verificado no disparo ligado ao abate, ou no abate se não houver um, e a vítima na morte.
+help-midair-either = O matador, a vítima ou ambos estavam no ar. O matador é verificado no disparo ligado ao abate, ou no abate se não houver um, e a vítima na morte. Um simples pulo, a menos de 50 unidades acima do chão, não conta. É preciso ter escolhido a pasta do Half-Life para saber onde fica o chão.
 help-midair-both = O matador e a vítima estavam ambos no ar, cada um ao ser verificado.
 help-midair-one = Exatamente um dos dois estava no ar, e sabe-se que o outro estava no chão.
 speed-at-least = Pelo menos
@@ -347,6 +347,7 @@ legend-switch = Troca de arma
 
 column-headshots = Headshots
 filter-headshots = Abates com headshot
+filter-midair = Abates em midair
 event-headshot = headshot
 scores-headshots = HS
 
@@ -358,6 +359,7 @@ help-headshots = Abates por headshot, lidos da animação de morte da vítima. E
 help-headshots-column = Headshots de quem gravou, lidos da animação de morte da vítima. Explosões não contam. Os dos outros jogadores não contam, porque costumam acontecer fora da visão da gravação.
 help-accuracy = A parte dos disparos que acertaram, pelo sangue que um acerto deixa na linha de mira, descontando coincidências ao acaso. Vale para a glock, a python, as balas da MP5, a escopeta, a besta com zoom e os acertos diretos do raio gauss. Explosões e reflexos do gauss não deixam sangue e não contam. Aparece só para quem gravou, depois de pelo menos 50 disparos.
 help-headshot-filter = Demos com pelo menos um headshot que a gravação viu, de qualquer jogador.
+help-midair-filter = Demos com pelo menos um abate em que o matador ou a vítima estava no ar, a 50 unidades ou mais acima do chão. Sem a pasta do Half-Life escolhida, um simples pulo também conta.
 help-accuracy-filter = Demos em que quem gravou acertou pelo menos esta parte dos disparos.
 
 clips-new = Novo clipe

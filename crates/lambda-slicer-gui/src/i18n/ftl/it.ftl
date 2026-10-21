@@ -277,7 +277,7 @@ refine-airborne = In aria
 refine-either = Almeno uno
 midair-both = Entrambi
 midair-one = Solo uno
-help-midair-either = Il killer, la vittima o entrambi erano in aria. Il killer è controllato al colpo legato all’uccisione, o all’uccisione se non c’è, e la vittima alla morte.
+help-midair-either = Il killer, la vittima o entrambi erano in aria. Il killer è controllato al colpo legato all’uccisione, o all’uccisione se non c’è, e la vittima alla morte. Un semplice salto, a meno di 50 unità dal terreno, non conta. Serve aver scelto la cartella di Half-Life, per sapere dov’è il terreno.
 help-midair-both = Il killer e la vittima erano entrambi in aria, ciascuno al momento del controllo.
 help-midair-one = Esattamente uno dei due era in aria, e dell’altro si sa che era a terra.
 speed-at-least = Almeno
@@ -347,6 +347,7 @@ legend-switch = Cambio d’arma
 
 column-headshots = Colpi alla testa
 filter-headshots = Uccisioni con colpo alla testa
+filter-midair = Uccisioni in midair
 event-headshot = colpo alla testa
 scores-headshots = CT
 
@@ -358,6 +359,7 @@ help-headshots = Uccisioni con un colpo alla testa, riconosciute dall’animazio
 help-headshots-column = Uccisioni di chi registra con un colpo alla testa, riconosciute dall’animazione di morte della vittima. Le esplosioni non contano. Quelle degli altri giocatori non contano, perché avvengono spesso fuori dalla vista della registrazione.
 help-accuracy = La quota di colpi andati a segno, in base al sangue che un colpo lascia lungo la linea di mira, meno le corrispondenze casuali. Comprende glock, python, proiettili dell’MP5, fucile a pompa, balestra con zoom e i colpi diretti del raggio gauss. Esplosioni e rimbalzi del gauss non lasciano sangue e non contano. Mostrata solo per chi registra, dopo almeno 50 colpi.
 help-headshot-filter = Demo con almeno un’uccisione con colpo alla testa visibile nella registrazione, di qualsiasi giocatore.
+help-midair-filter = Demo con almeno un’uccisione in cui il killer o la vittima era in aria, ad almeno 50 unità dal terreno. Senza aver scelto la cartella di Half-Life, conta anche un semplice salto.
 help-accuracy-filter = Demo in cui chi registra ha colpito almeno questa quota dei suoi colpi.
 
 clips-new = Nuova clip

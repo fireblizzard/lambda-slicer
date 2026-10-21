@@ -126,15 +126,17 @@ fn summary_of(weapons: &mut Vec<WeaponSummary>, weapon: Weapon) -> &mut WeaponSu
 }
 
 pub fn analyze_demo(path: &Path, limits: Limits) -> AnalysisReport {
-    analyze_demo_with(path, limits, None)
+    analyze_demo_with(path, limits, None, None)
 }
 
 /// [`analyze_demo`] that stops when `cancel` is set, reporting
-/// [`DecodeStatus::Cancelled`]
+/// [`DecodeStatus::Cancelled`], and that keeps players just off the floor
+/// out of the air when `floors` can read the maps
 pub fn analyze_demo_with(
     path: &Path,
     limits: Limits,
     cancel: Option<Arc<AtomicBool>>,
+    floors: Option<&motion::Floors>,
 ) -> AnalysisReport {
     let options = DecodeOptions {
         limits,
@@ -257,7 +259,12 @@ pub fn analyze_demo_with(
         segment,
         time,
     ));
-    link_kills(&mut kills, &derived.occurrences, motion::gravity(&d));
+    link_kills(
+        &mut kills,
+        &derived.occurrences,
+        motion::gravity(&d),
+        floors,
+    );
     let action_windows = action_windows(&kills, ACTION_WINDOW, ACTION_WINDOWS);
 
     AnalysisReport {

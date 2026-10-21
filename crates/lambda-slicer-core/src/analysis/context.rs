@@ -19,7 +19,7 @@ use crate::message::Message as Note;
 use serde::{Deserialize, Serialize};
 
 use super::highlights::KillContext;
-use super::motion::{Motion, MotionState, Sample, gravity, state_at};
+use super::motion::{MapName, Motion, MotionState, Sample, gravity, state_at};
 use super::weapons::Weapon;
 use crate::protocol::messages::{Message, ParsedMessage};
 use crate::state::{Decoder, FrameLocation, PlayerIdentity};
@@ -74,6 +74,8 @@ pub struct Kill {
     /// The killer's recent samples, to judge its movement at the shot
     #[serde(skip)]
     pub killer_samples: Vec<Sample>,
+    /// The session's map, where the floor under the players is
+    pub map: Option<MapName>,
     /// Movement, linked shot and distance, filled after the decode
     pub context: Option<KillContext>,
     /// Whether the killing hit was to the head, from the victim's death
@@ -510,6 +512,8 @@ pub fn standing_at(
 pub struct Context {
     pub kills: Vec<Kill>,
     pub switches: Vec<WeaponSwitch>,
+    /// The session's map
+    map: Option<MapName>,
     /// The weapon the LOADING entry left in hand, per session, which
     /// playback starts with rather than switches to
     loading_weapon: Option<(u32, i8)>,
@@ -634,7 +638,11 @@ impl Context {
                 origin,
             });
         }
-        if let Message::ServerInfo(_) = &m.message {
+        if let Message::ServerInfo(info) = &m.message {
+            self.map = Some(MapName {
+                game_dir: String::from_utf8_lossy(&info.game_dir).into_owned(),
+                path: String::from_utf8_lossy(&info.map_name).into_owned(),
+            });
             self.pending_deaths.clear();
             self.teams.clear();
             self.scores.clear();
@@ -675,6 +683,7 @@ impl Context {
                     weapon,
                     victim_state,
                     killer_samples: self.motion.samples(killer.into()),
+                    map: self.map.clone(),
                     context: None,
                     headshot: None,
                 });

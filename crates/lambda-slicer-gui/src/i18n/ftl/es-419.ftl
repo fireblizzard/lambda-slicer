@@ -277,7 +277,7 @@ refine-airborne = En el aire
 refine-either = Cualquiera
 midair-both = Ambos
 midair-one = Solo uno
-help-midair-either = El asesino, la víctima o ambos estaban en el aire. Al asesino se lo revisa en el disparo vinculado a la baja, o en la baja si no hay uno, y a la víctima en la muerte.
+help-midair-either = El asesino, la víctima o ambos estaban en el aire. Al asesino se lo revisa en el disparo vinculado a la baja, o en la baja si no hay uno, y a la víctima en la muerte. Alguien que solo salta, a menos de 50 unidades sobre el suelo, no cuenta. Requiere elegir la carpeta de Half-Life para saber dónde está el suelo.
 help-midair-both = El asesino y la víctima estaban ambos en el aire, cada uno al revisarlo.
 help-midair-one = Exactamente uno de los dos estaba en el aire, y se sabe que el otro estaba en el suelo.
 speed-at-least = Al menos
@@ -347,6 +347,7 @@ legend-switch = Cambio de arma
 
 column-headshots = Headshots
 filter-headshots = Bajas con headshot
+filter-midair = Bajas en midair
 event-headshot = headshot
 scores-headshots = HS
 
@@ -358,6 +359,7 @@ help-headshots = Bajas por headshot, según la animación de muerte de la vícti
 help-headshots-column = Headshots de quien grabó, según la animación de muerte de la víctima. Las explosiones no cuentan. Los de los demás jugadores no se cuentan, porque suelen ocurrir fuera de la vista de la grabación.
 help-accuracy = La parte de los disparos que impactaron, según la sangre que deja un impacto en la línea de tiro, descontando las coincidencias casuales. Incluye la glock, la python, las balas de la MP5, la escopeta, la ballesta con zoom y los impactos directos del rayo de la gauss. Las explosiones y los rebotes de la gauss no dejan sangre y no cuentan. Solo se muestra para quien grabó, después de al menos 50 disparos.
 help-headshot-filter = Demos con al menos un headshot que la grabación vio, de cualquier jugador.
+help-midair-filter = Demos con al menos una baja en la que el asesino o la víctima estaba en el aire, a 50 unidades o más sobre el suelo. Sin la carpeta de Half-Life elegida, también cuenta un salto normal.
 help-accuracy-filter = Demos en las que quien grabó acertó al menos esta parte de sus disparos.
 
 clips-new = Nuevo clip

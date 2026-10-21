@@ -40,6 +40,34 @@ pub struct Hull {
     pub faces: Vec<HullFace>,
 }
 
+/// The map's world as the game moves players through it, for a standing
+/// player's box and a ducking one's. Each is the world's brushes grown by
+/// the box, so a point traced through it is where the box's middle can go
+#[derive(Clone, Debug, PartialEq)]
+pub struct PlayerHulls {
+    pub standing: Hull,
+    pub ducking: Hull,
+}
+
+/// How far below a player a floor is looked for
+const FLOOR_SEARCH: f32 = 8192.;
+
+impl PlayerHulls {
+    /// How far a player whose origin is `origin` could drop before their
+    /// box meets the world, standing or else ducking where a standing box
+    /// does not fit, none where neither does
+    pub fn height_above_floor(&self, origin: [f32; 3]) -> Option<f32> {
+        let below = [origin[0], origin[1], origin[2] - FLOOR_SEARCH];
+        for hull in [&self.standing, &self.ducking] {
+            let drop = hull.trace(origin, below);
+            if !drop.start_solid {
+                return Some(origin[2] - drop.end[2]);
+            }
+        }
+        None
+    }
+}
+
 /// A face as a trace finds it
 #[derive(Clone, Debug, PartialEq)]
 pub struct HullFace {

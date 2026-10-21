@@ -735,6 +735,7 @@ mod tests {
             weapon: Some(Weapon::Gauss),
             victim_state: MotionState::not_visible(),
             killer_samples: Vec::new(),
+            map: None,
             context,
             headshot: None,
         }

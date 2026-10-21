@@ -23,6 +23,7 @@ use serde::Serialize;
 use super::cache::{Cache, CacheError, Entry, HeaderInfo, analysis_version};
 use super::discover::{self, Found};
 use super::fingerprint::{file_identity, file_metadata, hash_file_until, quick_fingerprint};
+use crate::analysis::motion::Floors;
 use crate::analysis::{AnalysisReport, analyze_demo_with};
 use crate::container::{DemoReader, Limits};
 use crate::message::{Coded, Message, io_message};
@@ -45,6 +46,27 @@ pub struct ScanOptions {
     /// Also hash every analysed file in full
     pub full_hash: bool,
     pub limits: Limits,
+    /// The maps to tell how high above the floor players are, none
+    /// without the game's files
+    pub floors: Option<ScanFloors>,
+}
+
+/// The maps a scan reads for the floor under players, and which game files
+/// they come from. A file analysed with other game files, or none, is
+/// analysed again
+#[derive(Clone)]
+pub struct ScanFloors {
+    /// Which game files, by the folder they are in
+    pub files: String,
+    pub floors: Floors,
+}
+
+impl std::fmt::Debug for ScanFloors {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ScanFloors")
+            .field("files", &self.files)
+            .finish_non_exhaustive()
+    }
 }
 
 #[derive(Default)]
@@ -196,6 +218,7 @@ struct Analysed {
     header: Option<HeaderInfo>,
     report: Option<AnalysisReport>,
     error: Option<Message>,
+    floors: Option<String>,
 }
 
 enum Update {
@@ -294,6 +317,7 @@ impl Worker<'_> {
             && c.size == size
             && c.mtime_ns == mtime
             && c.version == self.version
+            && c.floors == self.options.floors.as_ref().map(|f| f.files.clone())
         {
             if let Some(of) = c.file_identity.as_deref().and_then(|i| self.claim(i, path)) {
                 return (
@@ -341,8 +365,9 @@ impl Worker<'_> {
         let header = header_info(path, self.options.limits);
 
         let cancel = Some(self.control.cancel.clone());
+        let floors = self.options.floors.as_ref();
         let result = catch_unwind(AssertUnwindSafe(|| {
-            analyze_demo_with(path, self.options.limits, cancel)
+            analyze_demo_with(path, self.options.limits, cancel, floors.map(|f| &f.floors))
         }));
         bytes += size;
         let (report, error) = match result {
@@ -373,6 +398,7 @@ impl Worker<'_> {
             header,
             report,
             error,
+            floors: floors.map(|f| f.files.clone()),
         };
         // The writer fills in the stored status
         (
@@ -476,6 +502,7 @@ pub fn scan(
                             header: a.header.clone(),
                             report: a.report.as_ref(),
                             error: a.error.clone(),
+                            floors: a.floors.clone(),
                         };
                         outcome = match writer.store(&entry) {
                             Ok(_) => Outcome::Analyzed {

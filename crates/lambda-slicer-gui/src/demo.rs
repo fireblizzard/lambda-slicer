@@ -21,6 +21,7 @@ use std::thread::JoinHandle;
 use eframe::egui::{self, Color32, Pos2, Rect, Sense, Ui, Vec2};
 use fluent_bundle::FluentValue;
 use lambda_slicer_core::analysis::analyze_demo_with;
+use lambda_slicer_core::analysis::motion::Floors;
 use lambda_slicer_core::analysis::weapons::{Action, Weapon};
 use lambda_slicer_core::container::Limits;
 use lambda_slicer_core::library::cache::FileRow;
@@ -272,14 +273,15 @@ struct Loader {
 }
 
 impl Loader {
-    fn start(path: PathBuf, duration: f32, ctx: egui::Context) -> Self {
+    fn start(path: PathBuf, duration: f32, floors: Option<Floors>, ctx: egui::Context) -> Self {
         let cancel = Arc::new(AtomicBool::new(false));
         let (tx, rx) = mpsc::channel();
         let thread_cancel = cancel.clone();
         let thread = std::thread::Builder::new()
             .name("demo analysis".into())
             .spawn(move || {
-                let report = analyze_demo_with(&path, Limits::default(), Some(thread_cancel));
+                let cancel = Some(thread_cancel);
+                let report = analyze_demo_with(&path, Limits::default(), cancel, floors.as_ref());
                 let loaded = match report.decode {
                     DecodeStatus::Cancelled => return,
                     DecodeStatus::Failed | DecodeStatus::Unsupported => Loaded::Failed(
@@ -502,9 +504,11 @@ pub struct DemoView {
 }
 
 impl DemoView {
-    pub fn open(path: PathBuf, duration: f32, ctx: &egui::Context) -> Self {
+    /// Open the demo at `path`, analysing it in the background with the
+    /// floor under players read from the maps when `floors` can
+    pub fn open(path: PathBuf, duration: f32, floors: Option<Floors>, ctx: &egui::Context) -> Self {
         Self {
-            loader: Some(Loader::start(path.clone(), duration, ctx.clone())),
+            loader: Some(Loader::start(path.clone(), duration, floors, ctx.clone())),
             path,
             generation: GENERATION.fetch_add(1, Ordering::Relaxed),
             actions: Vec::new(),
@@ -1615,7 +1619,7 @@ mod tests {
     /// seconds whose start is being typed as `typed`
     fn view_typing(typed: &str) -> DemoView {
         let ctx = egui::Context::default();
-        let mut view = DemoView::open(PathBuf::from("not-there.dem"), 10., &ctx);
+        let mut view = DemoView::open(PathBuf::from("not-there.dem"), 10., None, &ctx);
         view.clips.push(Clip {
             name: "Clip 1".into(),
             start: DemoTime::from_micros(1_000_000),
@@ -1728,7 +1732,7 @@ mod tests {
     /// A demo view whose analysis is in with `events` and `groups`
     fn view_of(events: Vec<Event>, groups: GroupIndex) -> DemoView {
         let ctx = egui::Context::default();
-        let mut view = DemoView::open(PathBuf::from("not-there.dem"), 100., &ctx);
+        let mut view = DemoView::open(PathBuf::from("not-there.dem"), 100., None, &ctx);
         view.loader = None;
         view.model = Some(Arc::new(Model {
             events,
@@ -1824,7 +1828,7 @@ mod tests {
     /// A demo view with clips from 1 to 2, 3 to 4 and 5 to 6 seconds
     fn view_with_clips() -> DemoView {
         let ctx = egui::Context::default();
-        let mut view = DemoView::open(PathBuf::from("not-there.dem"), 10., &ctx);
+        let mut view = DemoView::open(PathBuf::from("not-there.dem"), 10., None, &ctx);
         for k in 0..3 {
             let start = DemoTime::from_micros((1 + 2 * k) * 1_000_000);
             let end = DemoTime::from_micros((2 + 2 * k) * 1_000_000);
@@ -1883,7 +1887,7 @@ mod tests {
     fn a_new_clip_without_a_viewer_starts_where_the_timeline_shows() {
         let catalog = Catalog::new(crate::i18n::Locale::En);
         let ctx = egui::Context::default();
-        let mut view = DemoView::open(PathBuf::from("not-there.dem"), 60., &ctx);
+        let mut view = DemoView::open(PathBuf::from("not-there.dem"), 60., None, &ctx);
         view.view = (20., 40.);
 
         view.apply(DemoAction::NewClip, &catalog);

@@ -286,7 +286,7 @@ refine-airborne = W powietrzu
 refine-either = Dowolny
 midair-both = Obaj
 midair-one = Tylko jeden
-help-midair-either = Zabójca, ofiara lub obaj byli w powietrzu. Zabójcę sprawdza się przy strzale powiązanym z zabójstwem, a bez takiego strzału przy zabójstwie, ofiarę zaś w chwili śmierci.
+help-midair-either = Zabójca, ofiara lub obaj byli w powietrzu. Zabójcę sprawdza się przy strzale powiązanym z zabójstwem, a bez takiego strzału przy zabójstwie, ofiarę zaś w chwili śmierci. Zwykły skok, mniej niż 50 jednostek nad podłożem, się nie liczy. Wymaga to wybrania folderu Half-Life, żeby wiedzieć, gdzie jest podłoże.
 help-midair-both = Zabójca i ofiara byli obaj w powietrzu, każdy w chwili sprawdzenia.
 help-midair-one = Dokładnie jeden z nich był w powietrzu, a o drugim wiadomo, że był na ziemi.
 speed-at-least = Co najmniej
@@ -357,6 +357,7 @@ legend-switch = Zmiana broni
 
 column-headshots = Strzały w głowę
 filter-headshots = Zabójstwa strzałem w głowę
+filter-midair = Zabójstwa midair
 event-headshot = w głowę
 scores-headshots = SG
 
@@ -368,6 +369,7 @@ help-headshots = Zabójstwa trafieniem w głowę, rozpoznane po animacji śmierc
 help-headshots-column = Zabójstwa nagrywającego trafieniem w głowę, rozpoznane po animacji śmierci ofiary. Wybuchy się nie liczą. Zabójstwa innych graczy nie są liczone, bo często dzieją się poza polem widzenia nagrania.
 help-accuracy = Odsetek strzałów, które trafiły, ustalony na podstawie krwi, jaką trafienie zostawia na linii celowania, po odjęciu przypadkowych dopasowań. Obejmuje glocka, pythona, pociski MP5, strzelbę, kuszę z lunetą i bezpośrednie trafienia wiązki gaussa. Wybuchy i odbicia gaussa nie zostawiają krwi i nie są liczone. Pokazywany tylko dla nagrywającego, po co najmniej 50 strzałach.
 help-headshot-filter = Dema z co najmniej jednym zabójstwem w głowę widocznym w nagraniu, przez dowolnego gracza.
+help-midair-filter = Dema z co najmniej jednym zabójstwem, przy którym zabójca lub ofiara byli w powietrzu, co najmniej 50 jednostek nad podłożem. Bez wybranego folderu Half-Life liczy się też zwykły skok.
 help-accuracy-filter = Dema, w których nagrywający trafił co najmniej taki odsetek strzałów.
 
 clips-new = Nowy klip

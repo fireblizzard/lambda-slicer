@@ -548,6 +548,7 @@ fn run() -> Result<ExitCode> {
                 force,
                 full_hash: !no_full_hash,
                 limits: Limits::default(),
+                floors: None,
             };
             return scan_cmd(&options, verbose, json.as_deref());
         }
@@ -597,6 +598,7 @@ fn run() -> Result<ExitCode> {
                     weapon: kill_weapon,
                     victim_airborne,
                     killer_airborne,
+                    midair: false,
                     min_speed,
                     headshot,
                 },

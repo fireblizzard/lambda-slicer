@@ -42,7 +42,7 @@ fn probe(install: &Path, demo: &Path) {
     };
     let library = Arc::new(Library::new(search, AssetLimits::default()));
 
-    let report = analyze_demo_with(demo, Limits::default(), None);
+    let report = analyze_demo_with(demo, Limits::default(), None, None);
     let recorder = report.recorder.as_ref().map(|p| u16::from(p.slot) + 1);
     let mut gauss: Vec<&Kill> = Vec::new();
     let mut kills: Vec<GaussKill> = Vec::new();

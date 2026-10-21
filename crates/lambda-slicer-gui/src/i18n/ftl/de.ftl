@@ -268,7 +268,7 @@ refine-airborne = In der Luft
 refine-either = Beliebig
 midair-both = Beide
 midair-one = Nur einer
-help-midair-either = Der Schütze, das Opfer oder beide waren in der Luft. Der Schütze wird beim mit dem Abschuss verknüpften Schuss geprüft, ohne einen solchen beim Abschuss, und das Opfer beim Tod.
+help-midair-either = Der Schütze, das Opfer oder beide waren in der Luft. Der Schütze wird beim mit dem Abschuss verknüpften Schuss geprüft, ohne einen solchen beim Abschuss, und das Opfer beim Tod. Wer nur springt, weniger als 50 Units über dem Boden, zählt nicht. Dafür muss der Half-Life-Ordner gewählt sein, um zu wissen, wo der Boden ist.
 help-midair-both = Schütze und Opfer waren beide in der Luft, jeweils zum Zeitpunkt der Prüfung.
 help-midair-one = Genau einer von beiden war in der Luft, und vom anderen ist bekannt, dass er am Boden war.
 speed-at-least = Mindestens
@@ -337,6 +337,7 @@ legend-switch = Waffenwechsel
 
 column-headshots = Kopfschüsse
 filter-headshots = Abschüsse per Kopfschuss
+filter-midair = Midair-Abschüsse
 event-headshot = Kopfschuss
 scores-headshots = KS
 
@@ -348,6 +349,7 @@ help-headshots = Abschüsse durch einen Treffer am Kopf, erkannt an der Todesani
 help-headshots-column = Abschüsse der aufnehmenden Person durch einen Treffer am Kopf, erkannt an der Todesanimation des Opfers. Explosionen zählen nicht. Abschüsse anderer Spieler zählen nicht, weil sie oft außerhalb des Blickfelds der Aufnahme geschehen.
 help-accuracy = Der Anteil der Schüsse, die trafen, anhand des Bluts, das ein Treffer entlang der Schusslinie hinterlässt, abzüglich zufälliger Übereinstimmungen. Er umfasst Glock, Python, MP5-Kugeln, Schrotflinte, Armbrust mit Zoom und direkte Treffer des Gauss-Strahls. Explosionen und Gauss-Reflexionen hinterlassen kein Blut und zählen nicht. Nur für die aufnehmende Person und erst ab 50 Schüssen.
 help-headshot-filter = Demos mit mindestens einem Kopfschuss-Abschuss, den die Aufnahme zeigt, von beliebigen Spielern.
+help-midair-filter = Demos mit mindestens einem Abschuss, bei dem der Schütze oder das Opfer in der Luft war, mindestens 50 Units über dem Boden. Ohne gewählten Half-Life-Ordner zählt auch ein einfacher Sprung.
 help-accuracy-filter = Demos, in denen die aufnehmende Person mindestens diesen Anteil ihrer Schüsse traf.
 
 clips-new = Neuer Clip

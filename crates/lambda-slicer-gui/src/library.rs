@@ -193,6 +193,8 @@ pub struct Filters {
     pub to: Option<Ymd>,
     /// Only demos with a headshot kill
     pub headshot: bool,
+    /// Only demos with a kill where the killer or the victim was in the air
+    pub midair: bool,
     /// Lowest accuracy of the recording player in percent, 0 for any
     pub min_accuracy: f32,
 }
@@ -213,6 +215,7 @@ impl Filters {
             self.min_minutes > 0.,
             self.spectating != Spectating::Any,
             self.headshot,
+            self.midair,
             self.min_accuracy > 0.,
             self.from.is_some(),
             self.to.is_some(),
@@ -241,6 +244,7 @@ impl Filters {
             to_date: self.to.map(Ymd::iso),
             kills: KillQuery {
                 headshot: self.headshot,
+                midair: self.midair,
                 ..Default::default()
             },
             sort,
@@ -726,6 +730,10 @@ impl LibraryView {
         layout::row(ui, rtl, |ui| {
             ui.checkbox(&mut self.filters.headshot, t("filter-headshots"));
             widgets::help(ui, &catalog.text("help-headshot-filter"), rtl);
+        });
+        layout::row(ui, rtl, |ui| {
+            ui.checkbox(&mut self.filters.midair, t("filter-midair"));
+            widgets::help(ui, &catalog.text("help-midair-filter"), rtl);
         });
         ui.add_space(theme::GAP_M);
 

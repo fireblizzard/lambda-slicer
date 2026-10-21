@@ -277,7 +277,7 @@ refine-airborne = En l’air
 refine-either = Au moins un
 midair-both = Les deux
 midair-one = Un seul
-help-midair-either = Le tueur, la victime ou les deux étaient en l’air. Le tueur est vérifié au tir lié à l’élimination, ou à l’élimination s’il n’y en a pas, et la victime à sa mort.
+help-midair-either = Le tueur, la victime ou les deux étaient en l’air. Le tueur est vérifié au tir lié à l’élimination, ou à l’élimination s’il n’y en a pas, et la victime à sa mort. Un simple saut, à moins de 50 unités au-dessus du sol, ne compte pas. Il faut avoir choisi le dossier de Half-Life pour savoir où est le sol.
 help-midair-both = Le tueur et la victime étaient tous deux en l’air, chacun au moment de sa vérification.
 help-midair-one = Exactement l’un des deux était en l’air, et on sait que l’autre était au sol.
 speed-at-least = Au moins
@@ -347,6 +347,7 @@ legend-switch = Changement d’arme
 
 column-headshots = Tirs à la tête
 filter-headshots = Éliminations d’un tir à la tête
+filter-midair = Éliminations en midair
 event-headshot = tir à la tête
 scores-headshots = TT
 
@@ -358,6 +359,7 @@ help-headshots = Éliminations par un tir à la tête, reconnues à l’animatio
 help-headshots-column = Éliminations de la personne qui enregistre par un tir à la tête, reconnues à l’animation de mort de la victime. Les explosions ne comptent pas. Celles des autres joueurs ne comptent pas, car elles ont souvent lieu hors de la vue de l’enregistrement.
 help-accuracy = La part des tirs qui ont touché, d’après le sang qu’un impact laisse sur la ligne de visée, moins les correspondances dues au hasard. Elle couvre le glock, le python, les balles du MP5, le fusil à pompe, l’arbalète avec zoom et les impacts directs du rayon gauss. Les explosions et les rebonds du gauss ne laissent pas de sang et ne comptent pas. Affichée pour la personne qui enregistre seulement, après au moins 50 tirs.
 help-headshot-filter = Démos avec au moins une élimination d’un tir à la tête visible dans l’enregistrement, par n’importe quel joueur.
+help-midair-filter = Démos avec au moins une élimination où le tueur ou la victime était en l’air, à 50 unités ou plus au-dessus du sol. Si le dossier de Half-Life n’a pas été choisi, un simple saut compte aussi.
 help-accuracy-filter = Démos où la personne qui enregistre a touché au moins cette part de ses tirs.
 
 clips-new = Nouveau clip

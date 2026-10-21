@@ -12,7 +12,7 @@
 use serde::Serialize;
 
 use super::context::{Kill, KillCause};
-use super::motion::{MotionState, state_at};
+use super::motion::{Floors, MotionState, above_the_floor, state_at};
 use super::weapons::{Action, Actor, Weapon, WeaponOccurrence};
 
 /// The shot a kill was linked to
@@ -80,8 +80,14 @@ fn distance(a: Option<[f32; 3]>, b: Option<[f32; 3]>) -> Option<f32> {
     Some(((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2) + (a[2] - b[2]).powi(2)).sqrt())
 }
 
-/// Fill each kill's context. `gravity` is the server's
-pub fn link_kills(kills: &mut [Kill], occurrences: &[WeaponOccurrence], gravity: f32) {
+/// Fill each kill's context. `gravity` is the server's, and `floors`, when
+/// the maps can be read, keeps a player just off the floor out of the air
+pub fn link_kills(
+    kills: &mut [Kill],
+    occurrences: &[WeaponOccurrence],
+    gravity: f32,
+    floors: Option<&Floors>,
+) {
     for kill in kills.iter_mut() {
         let shot = occurrences
             .iter()
@@ -103,8 +109,12 @@ pub fn link_kills(kills: &mut [Kill], occurrences: &[WeaponOccurrence], gravity:
         let at = shot
             .as_ref()
             .map_or(kill.server_time, |s| kill.server_time - s.flight);
-        let killer = state_at(&kill.killer_samples, at, gravity);
-        let victim = kill.victim_state;
+        let mut killer = state_at(&kill.killer_samples, at, gravity);
+        let mut victim = kill.victim_state;
+        if let (Some(floors), Some(map)) = (floors, &kill.map) {
+            killer = above_the_floor(killer, map, floors);
+            victim = above_the_floor(victim, map, floors);
+        }
 
         kill.context = Some(KillContext {
             distance: distance(killer.origin, victim.origin),

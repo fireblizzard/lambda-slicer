@@ -259,7 +259,7 @@ refine-airborne = Havada
 refine-either = Herhangi biri
 midair-both = İkisi de
 midair-one = Yalnızca biri
-help-midair-either = Öldüren, kurban ya da ikisi de havadaydı. Öldüren, öldürmeye bağlı atış anında, böyle bir atış yoksa öldürme anında; kurban ise ölüm anında kontrol edilir.
+help-midair-either = Öldüren, kurban ya da ikisi de havadaydı. Öldüren, öldürmeye bağlı atış anında, böyle bir atış yoksa öldürme anında; kurban ise ölüm anında kontrol edilir. Yerden 50 birimden az yükselen sıradan bir zıplama sayılmaz. Zeminin nerede olduğunu bilmek için Half-Life klasörünün seçilmiş olması gerekir.
 help-midair-both = Öldüren de kurban da, her biri kontrol edildiği anda, havadaydı.
 help-midair-one = Tam olarak biri havadaydı ve diğerinin yerde olduğu biliniyor.
 speed-at-least = En az
@@ -328,6 +328,7 @@ legend-switch = Silah değişimi
 
 column-headshots = Kafa vuruşları
 filter-headshots = Kafadan öldürmeler
+filter-midair = Midair öldürmeler
 event-headshot = kafadan
 scores-headshots = KV
 
@@ -339,6 +340,7 @@ help-headshots = Kafaya isabetle yapılan öldürmeler; kurbanın ölüm animasy
 help-headshots-column = Kaydedenin kafaya isabetle yaptığı öldürmeler; kurbanın ölüm animasyonundan anlaşılır. Patlamalar sayılmaz. Diğer oyuncuların öldürmeleri sayılmaz, çünkü çoğu zaman kaydın göremediği yerlerde olur.
 help-accuracy = İsabet eden atışların oranı; bir isabetin nişan hattında bıraktığı kana göre, rastlantısal eşleşmeler çıkarılarak hesaplanır. Glock, python, MP5 mermileri, pompalı, dürbünlü arbalet ve gauss ışınının doğrudan isabetleri sayılır. Patlamalar ve gauss sekmeleri kan bırakmaz, sayılmaz. Yalnızca kaydeden için, en az 50 atıştan sonra gösterilir.
 help-headshot-filter = Herhangi bir oyuncunun, kayıtta görülen en az bir kafadan öldürmesi olan demolar.
+help-midair-filter = Öldürenin ya da kurbanın havada, yerden en az 50 birim yukarıda olduğu en az bir öldürme bulunan demolar. Half-Life klasörü seçilmemişse sıradan bir zıplama da sayılır.
 help-accuracy-filter = Kaydedenin atışlarının en az bu kadarını isabet ettirdiği demolar.
 
 clips-new = Yeni klip

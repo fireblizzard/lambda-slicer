@@ -1,10 +1,14 @@
 //! Library scan and cache behaviour on generated files
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
+use lambda_slicer_core::analysis::motion::Floors;
 use lambda_slicer_core::container::Limits;
 use lambda_slicer_core::library::cache::{Cache, Entry, FileQuery};
-use lambda_slicer_core::library::scan::{Outcome, ScanControl, ScanEvent, ScanOptions, scan};
+use lambda_slicer_core::library::scan::{
+    Outcome, ScanControl, ScanEvent, ScanFloors, ScanOptions, scan,
+};
 
 fn options(roots: Vec<PathBuf>, cache: &Path) -> ScanOptions {
     ScanOptions {
@@ -14,6 +18,7 @@ fn options(roots: Vec<PathBuf>, cache: &Path) -> ScanOptions {
         force: false,
         full_hash: true,
         limits: Limits::default(),
+        floors: None,
     }
 }
 
@@ -89,6 +94,29 @@ fn a_bad_file_gets_its_own_result_and_a_rescan_hits_the_cache() {
     assert_eq!(rows.len(), 2);
     assert!(rows.iter().all(|r| r.status == "failed"));
     assert_eq!(c.stats().unwrap().stale, 0);
+}
+
+#[test]
+fn other_game_files_analyse_every_file_again() {
+    let dir = tempfile::tempdir().unwrap();
+    let demos = dir.path().join("demos");
+    std::fs::create_dir(&demos).unwrap();
+    std::fs::write(demos.join("a.dem"), b"x").unwrap();
+    let mut o = options(vec![demos.clone()], &dir.path().join("cache.sqlite"));
+    outcomes(&o);
+
+    // The game's files, first set and then the same again
+    let floors: Floors = Arc::new(|_, _| Some(0.));
+    o.floors = Some(ScanFloors {
+        files: "C:/games/Half-Life".into(),
+        floors,
+    });
+    assert_eq!(outcomes(&o), [("a.dem".into(), failed())]);
+    assert_eq!(outcomes(&o), [("a.dem".into(), Outcome::CacheHit)]);
+
+    // Taken away, the file is analysed without them
+    o.floors = None;
+    assert_eq!(outcomes(&o), [("a.dem".into(), failed())]);
 }
 
 #[test]
@@ -169,6 +197,7 @@ fn cache_entries_round_trip() {
             "test-broken",
             "broken",
         )),
+        floors: None,
     };
     c.store(&entry).unwrap();
     c.store(&entry).unwrap();
@@ -211,6 +240,7 @@ fn queries_fold_case_page_count_and_sort() {
             header: Some(header(map, duration)),
             report: None,
             error: None,
+            floors: None,
         })
         .unwrap();
     }
@@ -300,6 +330,7 @@ fn dates_come_from_names_and_filter_by_range() {
             header: None,
             report: None,
             error: None,
+            floors: None,
         })
         .unwrap();
     }

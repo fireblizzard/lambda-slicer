@@ -286,7 +286,7 @@ refine-airborne = Ore
 refine-either = Bet kuris
 midair-both = Abu
 midair-one = Tik vienas
-help-midair-either = Žudikas, auka arba abu buvo ore. Žudikas tikrinamas su nužudymu susieto šūvio metu arba, jei šūvio nėra, nužudymo metu, o auka mirties metu.
+help-midair-either = Žudikas, auka arba abu buvo ore. Žudikas tikrinamas su nužudymu susieto šūvio metu arba, jei šūvio nėra, nužudymo metu, o auka mirties metu. Paprastas šuolis, mažiau nei 50 vienetų virš žemės, neskaičiuojamas. Tam reikia pasirinkti Half-Life aplanką, kad būtų žinoma, kur yra žemė.
 help-midair-both = Žudikas ir auka abu buvo ore, kiekvienas savo tikrinimo metu.
 help-midair-one = Ore buvo lygiai vienas iš jų, o apie kitą žinoma, kad jis buvo ant žemės.
 speed-at-least = Bent
@@ -357,6 +357,7 @@ legend-switch = Ginklo keitimas
 
 column-headshots = Šūviai į galvą
 filter-headshots = Nužudymai šūviu į galvą
+filter-midair = Midair nužudymai
 event-headshot = į galvą
 scores-headshots = ŠG
 
@@ -368,6 +369,7 @@ help-headshots = Nužudymai pataikius į galvą, atpažinti iš aukos mirties an
 help-headshots-column = Įrašančiojo nužudymai pataikius į galvą, atpažinti iš aukos mirties animacijos. Sprogimai neskaičiuojami. Kitų žaidėjų nužudymai neskaičiuojami, nes dažnai įvyksta už įrašo matomumo ribų.
 help-accuracy = Pataikiusių šūvių dalis, nustatyta pagal kraują, kurį pataikymas palieka taikymo linijoje, atėmus atsitiktinius sutapimus. Įtraukiami glock, python, MP5 kulkos, šautuvas, arbaletas su taikikliu ir tiesioginiai gauso spindulio pataikymai. Sprogimai ir gauso atšokimai kraujo nepalieka ir neskaičiuojami. Rodoma tik įrašančiajam ir tik po bent 50 šūvių.
 help-headshot-filter = Įrašai, kuriuose yra bent vienas įraše matomas nužudymas į galvą, bet kurio žaidėjo.
+help-midair-filter = Įrašai, kuriuose yra bent vienas nužudymas, kai žudikas arba auka buvo ore, bent 50 vienetų virš žemės. Nepasirinkus Half-Life aplanko, skaičiuojamas ir paprastas šuolis.
 help-accuracy-filter = Įrašai, kuriuose įrašantysis pataikė bent tokią šūvių dalį.
 
 clips-new = Naujas klipas

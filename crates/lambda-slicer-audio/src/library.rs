@@ -23,7 +23,7 @@ use lambda_slicer_assets::xenoxide::studio::StudioModel;
 use lambda_slicer_playback::GameFiles;
 use lambda_slicer_playback::animation::{Sequence, StudioEvent};
 use lambda_slicer_playback::audio::{SoundLength, SoundLengths, SoundName};
-use lambda_slicer_playback::trace::{Child, Hull, HullFace, SOLID};
+use lambda_slicer_playback::trace::{Child, Hull, HullFace, PlayerHulls, SOLID};
 
 /// `STUDIO_LOOPING`
 const STUDIO_LOOPING: i32 = 1;
@@ -36,6 +36,7 @@ pub struct Library {
     missing_sounds: Mutex<std::collections::BTreeMap<String, String>>,
     sequences: Mutex<HashMap<String, Option<Arc<[Sequence]>>>>,
     hulls: Mutex<HashMap<String, Option<Arc<Hull>>>>,
+    player_hulls: Mutex<HashMap<String, Option<Arc<PlayerHulls>>>>,
     sprites: Mutex<HashMap<String, Option<u32>>>,
     materials: Mutex<Option<Arc<Materials>>>,
     /// `decals.wad`'s names in its order, read once
@@ -51,6 +52,7 @@ impl Library {
             missing_sounds: Mutex::new(std::collections::BTreeMap::new()),
             sequences: Mutex::new(HashMap::new()),
             hulls: Mutex::new(HashMap::new()),
+            player_hulls: Mutex::new(HashMap::new()),
             sprites: Mutex::new(HashMap::new()),
             materials: Mutex::new(None),
             decal_names: Mutex::new(None),
@@ -201,6 +203,21 @@ impl Library {
         hull
     }
 
+    /// The world players move through on the map at `path`, none when it
+    /// cannot be read
+    pub fn player_hulls(&self, path: &str) -> Option<Arc<PlayerHulls>> {
+        let mut known = self.player_hulls.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(hulls) = known.get(path) {
+            return hulls.clone();
+        }
+        let hulls = self
+            .read(path)
+            .and_then(|bytes| player_hulls(&bytes))
+            .map(Arc::new);
+        known.insert(path.to_owned(), hulls.clone());
+        hulls
+    }
+
     /// The file at `path` through the search path, none when it is not
     /// there
     pub fn read(&self, path: &str) -> Option<Vec<u8>> {
@@ -347,6 +364,43 @@ fn world_hull(bytes: &[u8], materials: &Materials) -> Option<Hull> {
         models: bsp.models().map(|m| child(m.head_nodes[0])).collect(),
         node_faces,
         faces,
+    })
+}
+
+/// The standing and ducking players' clipping hulls of the map's world,
+/// hulls 1 and 3 of its clip node tree, whose leaves are their contents
+fn player_hulls(bytes: &[u8]) -> Option<PlayerHulls> {
+    let bsp = BspDocument::parse(bytes).ok()?;
+    let child = |c: i32| {
+        if c >= 0 {
+            Child::Node(c as usize)
+        } else {
+            Child::Contents(c)
+        }
+    };
+    let planes: Vec<_> = bsp
+        .planes()
+        .map(|p| (p.normal.map(|f| f.value), p.distance.value))
+        .collect();
+    let nodes: Vec<_> = bsp
+        .clip_nodes()
+        .map(|n| {
+            let children = n.children.map(|c| child(i32::from(c)));
+            (n.plane.max(0) as usize, children)
+        })
+        .collect();
+    let world = bsp.models().next()?;
+
+    let hull = |index: usize| Hull {
+        planes: planes.clone(),
+        nodes: nodes.clone(),
+        models: vec![child(world.head_nodes[index])],
+        node_faces: Vec::new(),
+        faces: Vec::new(),
+    };
+    Some(PlayerHulls {
+        standing: hull(1),
+        ducking: hull(3),
     })
 }
 

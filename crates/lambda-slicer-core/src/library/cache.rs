@@ -22,7 +22,7 @@ use crate::message::Message;
 use crate::state::{DECODE_REPORT_SCHEMA, DecodeStatus};
 
 /// Layout of the tables below. A different value rebuilds the cache
-pub const CACHE_SCHEMA: i64 = 5;
+pub const CACHE_SCHEMA: i64 = 6;
 
 #[derive(Debug, thiserror::Error)]
 pub enum CacheError {
@@ -123,6 +123,7 @@ CREATE TABLE files(
     quick_hash TEXT,
     full_hash TEXT,
     version TEXT NOT NULL,
+    floors TEXT,
     status TEXT NOT NULL,
     error TEXT,
     error_code TEXT,
@@ -215,6 +216,8 @@ pub struct CachedFile {
     pub mtime_ns: Option<i64>,
     pub file_identity: Option<String>,
     pub version: String,
+    /// The game files the floor under players was read from, none without
+    pub floors: Option<String>,
     pub status: String,
 }
 
@@ -243,6 +246,8 @@ pub struct Entry<'a> {
     pub report: Option<&'a AnalysisReport>,
     /// Why there is no report, or why it is incomplete
     pub error: Option<Message>,
+    /// The game files the floor under players was read from, none without
+    pub floors: Option<String>,
 }
 
 impl Entry<'_> {
@@ -296,6 +301,8 @@ pub struct KillQuery {
     pub weapon: Option<String>,
     pub victim_airborne: bool,
     pub killer_airborne: bool,
+    /// The killer or the victim in the air, or both
+    pub midair: bool,
     /// Killer or victim moving at least this fast horizontally, in units
     /// per second
     pub min_speed: Option<f32>,
@@ -308,6 +315,7 @@ impl KillQuery {
         self.weapon.is_none()
             && !self.victim_airborne
             && !self.killer_airborne
+            && !self.midair
             && self.min_speed.is_none()
             && !self.headshot
     }
@@ -547,7 +555,8 @@ impl Cache {
         Ok(self
             .conn
             .query_row(
-                "SELECT id, size, mtime_ns, file_identity, version, status FROM files WHERE path = ?1",
+                "SELECT id, size, mtime_ns, file_identity, version, status, floors FROM files
+                 WHERE path = ?1",
                 [path.display().to_string()],
                 |r| {
                     Ok(CachedFile {
@@ -557,6 +566,7 @@ impl Cache {
                         file_identity: r.get(3)?,
                         version: r.get(4)?,
                         status: r.get(5)?,
+                        floors: r.get(6)?,
                     })
                 },
             )
@@ -602,10 +612,10 @@ impl Cache {
                 demo_protocol, network_protocol, duration, recording_kind, max_clients, recorder,
                 playback, spectator_fraction, shots, unknown_shots, kills, best_window,
                 coverage_json, recorded_at, date_source, score, score_json, headshots, accuracy,
-                scanned_at)
+                scanned_at, floors)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16,
                 ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30, ?31,
-                ?32, ?33, ?34)",
+                ?32, ?33, ?34, ?35)",
             params![
                 display,
                 native_bytes(e.path),
@@ -641,6 +651,7 @@ impl Cache {
                 r.and_then(|r| r.recorder_headshots),
                 r.and_then(|r| r.recorder_accuracy),
                 scanned_at,
+                e.floors,
             ],
         )?;
         let id = tx.last_insert_rowid();
@@ -787,6 +798,9 @@ impl Cache {
         }
         if q.killer_airborne {
             c.push("k.killer_airborne = 1".into());
+        }
+        if q.midair {
+            c.push("(k.killer_airborne = 1 OR k.victim_airborne = 1)".into());
         }
         if q.headshot {
             c.push("k.headshot = 1".into());
@@ -1028,6 +1042,7 @@ mod tests {
                 header: None,
                 report: None,
                 error: None,
+                floors: None,
             })
             .unwrap();
 
@@ -1044,6 +1059,44 @@ mod tests {
 
     fn side(frags: i32) -> String {
         format!(r#"{{"name":"s{frags}","frags":{frags},"deaths":0}}"#)
+    }
+
+    #[test]
+    fn a_midair_kill_is_either_player_in_the_air() {
+        let c = cache(&[
+            ("killer.dem", None, None),
+            ("victim.dem", None, None),
+            ("ground.dem", None, None),
+        ]);
+
+        // One kill each, by who was in the air, and nobody where it is not
+        // known
+        for (name, killer, victim) in [
+            ("killer.dem", Some(true), Some(false)),
+            ("victim.dem", Some(false), Some(true)),
+            ("ground.dem", Some(false), None),
+        ] {
+            c.conn
+                .execute(
+                    "INSERT INTO kills(file_id, kill_id, segment, time, weapon, cause,
+                        killer_airborne, victim_airborne)
+                     SELECT id, 0, 0, 1.0, 'gauss', 'player_weapon', ?2, ?3
+                     FROM files WHERE path = ?1",
+                    params![name, killer, victim],
+                )
+                .unwrap();
+        }
+
+        let q = FileQuery {
+            kills: KillQuery {
+                midair: true,
+                ..KillQuery::default()
+            },
+            limit: 10,
+            ..FileQuery::default()
+        };
+        let names: Vec<String> = c.query(&q).unwrap().into_iter().map(|f| f.path).collect();
+        assert_eq!(names, ["killer.dem", "victim.dem"]);
     }
 
     #[test]

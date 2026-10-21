@@ -269,7 +269,7 @@ refine-airborne = Airborne
 refine-either = Either
 midair-both = Both
 midair-one = Only one
-help-midair-either = The killer, the victim or both were in the air. The killer is checked at the shot linked to the kill, or at the kill without one, and the victim at the death.
+help-midair-either = The killer, the victim or both were in the air. The killer is checked at the shot linked to the kill, or at the kill without one, and the victim at the death. Someone just jumping, less than 50 units above the floor, doesn't count. This needs the game folder set, to know where the floor is.
 help-midair-both = The killer and the victim were both in the air, each when checked.
 help-midair-one = Exactly one of them was in the air, and the other is known to be on the ground.
 speed-at-least = At least
@@ -338,6 +338,7 @@ legend-switch = Weapon switch
 
 column-headshots = Headshots
 filter-headshots = Headshot kills
+filter-midair = Midair kills
 event-headshot = headshot
 scores-headshots = HS
 
@@ -349,6 +350,7 @@ help-headshots = Kills by a hit to the head, read from the death animation the v
 help-headshots-column = The recording player’s kills by a hit to the head, read from the death animation the victim plays. Explosions don’t count. Other players’ kills aren’t counted, because they often happen out of the recording’s view.
 help-accuracy = The share of shots that hit, from the blood a hit leaves along the aim, minus matches that happen by chance. It covers the glock, python, MP5 bullets, shotgun, zoomed crossbow and the gauss beam’s direct hits. Explosions and gauss reflections leave no blood and aren’t counted. Shown for the recording player only, after at least 50 shots.
 help-headshot-filter = Demos with at least one kill by a hit to the head that the recording saw, by any player.
+help-midair-filter = Demos with at least one kill where the killer or the victim was in the air, at least 50 units above the floor. Without the game folder set, a plain jump counts too.
 help-accuracy-filter = Demos where the recording player hit at least this share of their shots.
 
 clips-new = New clip

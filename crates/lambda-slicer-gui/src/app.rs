@@ -8,7 +8,7 @@ use eframe::egui::{self, RichText, WidgetText};
 use fluent_bundle::FluentValue;
 use lambda_slicer_core::container::Limits;
 use lambda_slicer_core::library::cache::default_path;
-use lambda_slicer_core::library::scan::ScanOptions;
+use lambda_slicer_core::library::scan::{ScanFloors, ScanOptions};
 
 mod settings_window;
 
@@ -121,6 +121,12 @@ pub struct App {
     export_on_open: bool,
     /// A scan to start once the stopping one has stopped
     rescan: bool,
+    /// The game folder the last scan read maps from, none for a scan
+    /// without the game's files, and nothing before the first scan
+    scanned_with: Option<Option<PathBuf>>,
+    /// The floor under players on the maps of a game folder, kept while
+    /// the folder stays the same
+    floors: Option<(PathBuf, ScanFloors)>,
     /// A demo opened as a file, shown without a library row, so opening
     /// and analysing one never needs the library cache (plan §2.3)
     direct: Option<PathBuf>,
@@ -272,6 +278,8 @@ impl App {
             open_refine: Some(launch.refine),
             export_on_open: launch.export,
             rescan: false,
+            scanned_with: None,
+            floors: None,
             direct: launch.open.iter().find(|p| p.is_file()).cloned(),
             opened: launch.open,
             rejected: Vec::new(),
@@ -782,6 +790,7 @@ impl App {
             return;
         }
         self.scan = None;
+        self.scanned_with = Some(self.install_root());
         let options = ScanOptions {
             roots,
             cache,
@@ -789,8 +798,34 @@ impl App {
             force: false,
             full_hash: true,
             limits: Limits::default(),
+            floors: self.floor_reader(),
         };
         self.scan = Some(ScanJob::start(options, ctx.clone()));
+    }
+
+    /// The floor under players on the game's maps, none without the game's
+    /// files
+    fn floor_reader(&mut self) -> Option<ScanFloors> {
+        let install = self.install_root()?;
+        let kept = self
+            .floors
+            .as_ref()
+            .is_some_and(|(folder, _)| *folder == install);
+        if !kept {
+            self.floors = Some((install.clone(), crate::floors::reader(&install)));
+        }
+        self.floors.as_ref().map(|(_, floors)| floors.clone())
+    }
+
+    /// Scan again when the game's files change, so midair kills are told
+    /// with the new maps or without any
+    fn rescan_for_game(&mut self, ctx: &egui::Context) {
+        let Some(scanned) = self.scanned_with.clone() else {
+            return;
+        };
+        if scanned != self.install_root() {
+            self.start_scan(ctx);
+        }
     }
 
     fn add_folders(&mut self, ctx: &egui::Context, folders: Vec<PathBuf>) {
@@ -1119,6 +1154,7 @@ impl eframe::App for App {
         if self.rescan && !self.scanning() {
             self.start_scan(&ctx);
         }
+        self.rescan_for_game(&ctx);
 
         // The toolbar's controls sit in the middle of its height
         let margin_y = (theme::TOOLBAR_HEIGHT - theme::CONTROL_HEIGHT) / 2.;
@@ -1183,7 +1219,8 @@ impl eframe::App for App {
             (Some((path, duration)), _) => {
                 self.drop_demo();
 
-                let mut d = DemoView::open(path.clone(), *duration, &ctx);
+                let floors = self.floor_reader().map(|f| f.floors);
+                let mut d = DemoView::open(path.clone(), *duration, floors, &ctx);
                 d.open_window = self.open_window.take();
                 d.open_event = self.open_event.take();
                 if let Some(filters) = self.open_refine.take() {

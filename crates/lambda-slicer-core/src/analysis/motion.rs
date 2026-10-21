@@ -43,6 +43,22 @@ const MAX_RESIDUAL: f32 = 0.5;
 
 const DEFAULT_GRAVITY: f32 = 800.;
 
+/// How high above the floor a player in the air must be to count as
+/// airborne, above the 45 units a plain jump reaches
+pub const MIDAIR_HEIGHT: f32 = 50.;
+
+/// A session's map, by the game folder it is under and its path such as
+/// `maps/crossfire.bsp`
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct MapName {
+    pub game_dir: String,
+    pub path: String,
+}
+
+/// How far above the floor under them a standing player at an origin on a
+/// map is, none when the map cannot be read there
+pub type Floors = Arc<dyn Fn(&MapName, [f32; 3]) -> Option<f32> + Send + Sync>;
+
 #[derive(Clone, Copy, Debug)]
 pub struct Sample {
     pub time: f32,
@@ -256,6 +272,27 @@ pub fn state_at(samples: &[Sample], t: f32, gravity: f32) -> MotionState {
     }
 }
 
+/// `state` with a player in the air counted on the ground when `floors`
+/// puts them under [`MIDAIR_HEIGHT`] above the floor, as a plain jump or
+/// a drop from a spawn point leaves them. Nothing else changes, as the map
+/// leaves out platforms and doors a player may stand on
+pub fn above_the_floor(state: MotionState, map: &MapName, floors: &Floors) -> MotionState {
+    if state.airborne != Some(true) {
+        return state;
+    }
+    let Some(height) = state.origin.and_then(|origin| floors(map, origin)) else {
+        return state;
+    };
+    if height >= MIDAIR_HEIGHT {
+        return state;
+    }
+
+    MotionState {
+        airborne: Some(false),
+        ..state
+    }
+}
+
 /// Recent samples of every player entity, from the snapshots as they arrive
 #[derive(Default)]
 pub struct Motion {
@@ -458,6 +495,38 @@ mod tests {
             (s.evidence, s.horizontal_speed),
             (MotionEvidence::Unclear, None)
         );
+    }
+
+    #[test]
+    fn only_a_player_well_above_the_floor_is_in_the_air() {
+        let map = MapName {
+            game_dir: "valve".into(),
+            path: "maps/crossfire.bsp".into(),
+        };
+        let jumping = MotionState {
+            evidence: MotionEvidence::Exact,
+            airborne: Some(true),
+            speed: None,
+            horizontal_speed: None,
+            origin: Some([0., 0., 40.]),
+        };
+
+        // The floor at z = 0 under a player whose origin is the floor
+        // height here, so the height is the origin's
+        let floors: Floors = Arc::new(|_, origin| Some(origin[2]));
+        assert_eq!(
+            above_the_floor(jumping, &map, &floors).airborne,
+            Some(false)
+        );
+        let high = MotionState {
+            origin: Some([0., 0., 120.]),
+            ..jumping
+        };
+        assert_eq!(above_the_floor(high, &map, &floors).airborne, Some(true));
+
+        // A map that cannot be read leaves the estimate as it was
+        let unread: Floors = Arc::new(|_, _| None);
+        assert_eq!(above_the_floor(jumping, &map, &unread).airborne, Some(true));
     }
 
     #[test]
