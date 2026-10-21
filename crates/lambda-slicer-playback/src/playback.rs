@@ -637,6 +637,7 @@ impl Playback {
     ) -> PresentedFrame {
         let end = self.at_end();
         let indexed = self.store().indexed();
+        let world = self.world();
         let state = &self.state;
         let at = match state.position {
             Some(p) if at < p.time => p.time,
@@ -663,7 +664,10 @@ impl Playback {
             server_time: ServerTime(f32::from_bits(state.decoder.time_bits)),
             map: state.scene.map.clone(),
             scene_revision: state.scene.revision,
-            entities: Arc::new(state.scene.presented(client_time)),
+            entities: Arc::new(match &world {
+                Some(world) => scene::in_the_open(state.scene.presented(client_time), world),
+                None => state.scene.presented(client_time),
+            }),
             client_time,
             recorder: state.scene.camera.clone(),
             camera,

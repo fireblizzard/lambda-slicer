@@ -36,6 +36,7 @@ use lambda_slicer_core::state::{Decoder, EntityState, Snapshot};
 use crate::Table;
 use crate::animation::IN_EYE;
 use crate::time::{ServerTime, SourceTime};
+use crate::trace::{Hull, SOLID};
 
 /// The client's `ex_interp` in seconds, how far behind its latest snapshot
 /// it draws entities
@@ -823,9 +824,78 @@ impl Scene {
     }
 }
 
+/// How far around an entity's origin the world is looked into for open
+/// space, a small box standing in for the model's own
+const OPEN_REACH: f32 = 8.;
+
+/// The entities the game draws, leaving out a model or sprite wholly inside
+/// the world's solid, as a spare corpse is parked outside the map. The game
+/// draws an entity whose box reaches an open part of the map, which its
+/// origin and a point a little way out along each axis stand in for. Brush
+/// entities and beams keep places of their own and are always kept
+pub(crate) fn in_the_open(entities: Vec<Entity>, world: &Hull) -> Vec<Entity> {
+    entities
+        .into_iter()
+        .filter(|e| {
+            let brush = e.model.as_deref().is_some_and(|m| m.starts_with('*'));
+            if brush || e.beam {
+                return true;
+            }
+
+            let o = e.origin;
+            let mut points = vec![o];
+            for axis in 0..3 {
+                for side in [-OPEN_REACH, OPEN_REACH] {
+                    let mut p = o;
+                    p[axis] += side;
+                    points.push(p);
+                }
+            }
+            points.into_iter().any(|p| world.contents(p) != SOLID)
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_model_parked_outside_the_map_is_not_drawn() {
+        use crate::trace::Child;
+
+        // Open above the floor at z = 0, solid below
+        let world = Hull {
+            planes: vec![([0., 0., 1.], 0.)],
+            nodes: vec![(0, [Child::Contents(-1), Child::Contents(SOLID)])],
+            models: vec![Child::Node(0)],
+            node_faces: Vec::new(),
+            faces: Vec::new(),
+        };
+        let at = |number: u16, model: &str, z: f32| Entity {
+            id: EntityId {
+                number,
+                ..EntityId::default()
+            },
+            model: Some(Arc::from(model)),
+            origin: [0., 0., z],
+            ..Entity::default()
+        };
+
+        // A body in the solid, one just sunk into the floor, a brush model
+        // whose origin is the map's, and a player in the open
+        let kept = in_the_open(
+            vec![
+                at(1, "models/player.mdl", -500.),
+                at(2, "models/w_battery.mdl", -4.),
+                at(3, "*12", -500.),
+                at(4, "models/player.mdl", 36.),
+            ],
+            &world,
+        );
+        let numbers: Vec<u16> = kept.iter().map(|e| e.id.number).collect();
+        assert_eq!(numbers, [2, 3, 4]);
+    }
 
     fn track(yaw: f32) -> GaitTrack {
         GaitTrack {
