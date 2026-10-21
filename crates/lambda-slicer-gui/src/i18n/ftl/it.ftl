@@ -487,6 +487,19 @@ settings-see-through-hint = I giocatori dietro i muri appaiono come sagome del l
 settings-section-decals = Decal
 settings-decals = Massimo
 settings-decals-hint = Fori di proiettile, sangue e altri segni lasciati durante la partita. Restano solo i più recenti, e i più vecchi spariscono quando ne compaiono di nuovi. I segni che fanno parte della mappa restano sempre.
+settings-restore = Ripristina predefiniti…
+settings-restore-title = Ripristina predefiniti
+settings-restore-list = Queste impostazioni tornano com’erano all’inizio. La cartella di Half-Life e le cartelle della libreria restano come sono.
+settings-restore-none = Tutte le impostazioni sono già quelle predefinite.
+settings-restore-columns = Colonne mostrate nella libreria
+settings-restore-layout = Pannelli aperti e loro dimensioni
+settings-clear-library = Svuota la libreria…
+settings-clear-library-title = Svuota la libreria
+settings-clear-library-text = { $count ->
+    [one] Lambda Slicer dimentica quello che ha trovato in { $count } demo e analizza di nuovo le cartelle della libreria, il che può richiedere un po’ di tempo. I tuoi file delle demo, le tue clip e le tue impostazioni restano come sono.
+    [many] Lambda Slicer dimentica quello che ha trovato in { $count } di demo e analizza di nuovo le cartelle della libreria, il che può richiedere un po’ di tempo. I tuoi file delle demo, le tue clip e le tue impostazioni restano come sono.
+   *[other] Lambda Slicer dimentica quello che ha trovato in { $count } demo e analizza di nuovo le cartelle della libreria, il che può richiedere un po’ di tempo. I tuoi file delle demo, le tue clip e le tue impostazioni restano come sono.
+}
 viewer-zoom = Zoom avanti
 viewer-see-through = Vedi attraverso i muri
 settings-export-beside = Accanto a ogni demo

@@ -138,14 +138,18 @@ pub enum InspectorTab {
 pub struct WorkspaceUi {
     pub inspector_tab: InspectorTab,
     /// The inspector's width beside the view as last drawn, none before it
-    /// was
+    /// was, and its first width before any drag, as the window's width suits
     pub inspector_width: Option<f32>,
+    pub inspector_first: f32,
     /// The demo list was hidden
     pub list_hidden: bool,
     /// The window has no room for the list beside the view, so it opens
     /// over the view when asked for
     pub list_squeezed: bool,
     pub drawer_open: bool,
+    /// Counts the times the default layout was restored, so the inspector
+    /// forgets the size it was dragged to
+    pub restored: u32,
 }
 
 impl WorkspaceUi {
@@ -1243,7 +1247,7 @@ impl DemoView {
         if s.narrow {
             let room = ui.available_height() - MIN_VIEWPORT - self.around_view;
             let most = room.max(INSPECTOR_MIN_HEIGHT);
-            egui::Panel::bottom("inspector below")
+            egui::Panel::bottom(format!("inspector below {}", workspace.restored))
                 .frame(frame)
                 .resizable(true)
                 .default_size(INSPECTOR_HEIGHT)
@@ -1255,7 +1259,8 @@ impl DemoView {
             } else {
                 INSPECTOR_WIDTH
             };
-            let shown = layout::trailing_panel("inspector", rtl)
+            let id = format!("inspector {}", workspace.restored);
+            let shown = layout::trailing_panel(&id, rtl)
                 .frame(frame)
                 .resizable(true)
                 .default_size(workspace.inspector_width.unwrap_or(width))
@@ -1265,6 +1270,7 @@ impl DemoView {
             // As wide as it was dragged, for the app to know how much room
             // the view has left
             workspace.inspector_width = Some(shown.response.rect.width());
+            workspace.inspector_first = width;
         }
 
         self.middle(ui, s, workspace);

@@ -15,7 +15,7 @@ use crate::game_setup;
 use crate::i18n::{Catalog, Locale};
 use crate::layout;
 use crate::library::{self, parse_number};
-use crate::settings::{FOV, MAX_PADDING, ViewerSettings};
+use crate::settings::{FOV, MAX_PADDING, Settings, ViewerSettings};
 use crate::text::{self, Look};
 use crate::theme;
 use crate::widgets::{self, Icon, IconButton, Variant};
@@ -42,6 +42,11 @@ const FIRST_FOV: f32 = 90.;
 /// The step and decimals of a clip's padding
 const PADDING_STEP: f64 = 0.1;
 const PADDING_DECIMALS: usize = 1;
+
+/// The width of the dialog asking whether to restore the defaults, and the
+/// most height its list of settings takes before it scrolls
+const DIALOG_WIDTH: f32 = 360.;
+const DIALOG_LIST_HEIGHT: f32 = 240.;
 
 /// The settings window's sections
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
@@ -88,6 +93,12 @@ impl App {
         let rtl = self.rtl();
         let shown = window.show(ctx, |ui| self.settings_contents(ui, rtl));
         self.show_settings = open;
+        if self.confirm_restore {
+            self.restore_dialog(ctx, rtl);
+        }
+        if self.confirm_clear {
+            self.clear_dialog(ctx, rtl);
+        }
 
         let Some(shown) = shown else {
             self.settings_keyboard = false;
@@ -138,6 +149,21 @@ impl App {
                         self.settings_tab = section;
                     }
                 }
+
+                // Restoring the defaults at the foot of the sections, asked
+                // about first
+                let foot = Layout::bottom_up(if rtl { Align::Max } else { Align::Min });
+                ui.with_layout(foot, |ui| {
+                    let label = self.t(ui.ctx(), "settings-restore");
+                    let button = widgets::Button::new(None, label, Variant::Ghost, rtl);
+                    let unchanged = self.settings.restored() == self.settings;
+                    let response = ui
+                        .add_enabled(!unchanged, button)
+                        .on_disabled_hover_text(self.catalog.text("settings-restore-none"));
+                    if response.clicked() {
+                        self.confirm_restore = true;
+                    }
+                });
             });
             ui.separator();
 
@@ -347,7 +373,7 @@ impl App {
     }
 
     /// The folders scanned for demos, removed without touching their files,
-    /// and where what is found about them is kept
+    /// and where what is found about them is kept, which can be cleared
     fn library_section(&mut self, ui: &mut egui::Ui, rtl: bool) {
         let ctx = ui.ctx().clone();
         heading(
@@ -398,6 +424,17 @@ impl App {
         heading(ui, &self.catalog, "settings-cache", None, rtl, false);
         let cache = self.cache_path.as_ref().map(|p| p.display().to_string());
         path(ui, &cache.unwrap_or_default(), rtl);
+
+        // Asked about first, and nothing to clear while it is clearing
+        let clear = layout::row(ui, rtl, |ui| {
+            let label = self.t(&ctx, "settings-clear-library");
+            let button = widgets::Button::new(None, label, Variant::Default, rtl);
+            let can = self.library.is_some() && !self.clear_library;
+            ui.add_enabled(can, button).clicked()
+        });
+        if clear {
+            self.confirm_clear = true;
+        }
     }
 
     /// The column the library is sorted by when the app starts, and which
@@ -683,6 +720,209 @@ impl App {
             self.settings_unsaved = true;
         }
     }
+
+    /// Asks whether to restore the defaults, naming every setting that
+    /// would change, over the whole app until answered
+    fn restore_dialog(&mut self, ctx: &egui::Context, rtl: bool) {
+        let restored = self.settings.restored();
+        let mut changes = Vec::new();
+        for id in changed_settings(&self.settings, &restored) {
+            changes.push(self.catalog.text(id));
+        }
+
+        let text = self.catalog.text("settings-restore-list");
+        let answer = ask(
+            ctx,
+            &self.catalog,
+            rtl,
+            "settings-restore-title",
+            &text,
+            &changes,
+        );
+        match answer {
+            Some(true) => {
+                self.restore_defaults(restored);
+                self.confirm_restore = false;
+            }
+            Some(false) => self.confirm_restore = false,
+            None => {}
+        }
+    }
+
+    /// Asks whether to clear the library, saying how many demos it holds.
+    /// A scan running is stopped first, and the clearing waits for it
+    fn clear_dialog(&mut self, ctx: &egui::Context, rtl: bool) {
+        let files = self
+            .library
+            .as_ref()
+            .map_or(0, library::LibraryView::library_files);
+        let count = FluentValue::from(files as i64);
+        let text = self
+            .catalog
+            .text_with("settings-clear-library-text", &[("count", count)]);
+
+        let answer = ask(
+            ctx,
+            &self.catalog,
+            rtl,
+            "settings-clear-library-title",
+            &text,
+            &[],
+        );
+        match answer {
+            Some(true) => {
+                if let Some(job) = &self.scan {
+                    job.cancel();
+                }
+                self.clear_library = true;
+                self.confirm_clear = false;
+            }
+            Some(false) => self.confirm_clear = false,
+            None => {}
+        }
+    }
+
+    /// Take `restored` as the settings, and show it at once in the library,
+    /// the open demo and how the window is laid out
+    fn restore_defaults(&mut self, restored: Settings) {
+        if let Some(l) = &mut self.library {
+            l.hidden = restored.hidden_columns.clone();
+            l.filters_open = restored.layout.filters_open;
+            l.list_filters_open = restored.layout.list_filters_open;
+            l.sort_by_key(&restored.sort_column, restored.sort_descending);
+        }
+        if let Some(d) = &mut self.demo {
+            d.lanes_open = restored.player_lanes;
+        }
+
+        // The inspector forgets the width it was dragged to
+        self.workspace.list_hidden = restored.layout.list_hidden;
+        self.workspace.inspector_width = None;
+        self.workspace.restored += 1;
+
+        let locale = restored.locale;
+        self.settings = restored;
+        self.set_locale(locale);
+    }
+}
+
+/// A question over the whole app until it is answered, titled by the
+/// catalog's `title`, with `body` and then `items` in a list under it.
+/// Going ahead is the button named as the title is. Returns whether to go
+/// ahead once answered, no when cancelled, closed with Escape or by a click
+/// beside it, and none while it waits
+fn ask(
+    ctx: &egui::Context,
+    catalog: &Catalog,
+    rtl: bool,
+    title: &str,
+    body: &str,
+    items: &[String],
+) -> Option<bool> {
+    let mut answer = None;
+    let modal = egui::Modal::new(egui::Id::unique(title)).show(ctx, |ui| {
+        ui.set_width(DIALOG_WIDTH);
+        let ctx = ui.ctx().clone();
+        let t = |id: &str, look| text::widget_text(&ctx, &catalog.text(id), rtl, None, look);
+
+        layout::column(ui, rtl, |ui| ui.label(t(title, Look::Strong)));
+        ui.add_space(theme::GAP_S);
+        let width = Some(ui.available_width());
+        let line = text::widget_text(&ctx, body, rtl, width, Look::Plain);
+        ui.add(egui::Label::new(line).wrap());
+
+        if !items.is_empty() {
+            ui.add_space(theme::GAP_XS);
+            egui::ScrollArea::vertical()
+                .max_height(DIALOG_LIST_HEIGHT)
+                .show(ui, |ui| {
+                    for item in items {
+                        let line = format!("• {item}");
+                        let line = text::widget_text(&ctx, &line, rtl, None, Look::Weak);
+                        layout::column(ui, rtl, |ui| ui.label(line));
+                    }
+                });
+        }
+        ui.add_space(theme::GAP_M);
+
+        // Going ahead at the trailing end, and the way back before it
+        layout::trailing(ui, rtl, |ui| {
+            let ahead = widgets::Button::new(None, t(title, Look::Plain), Variant::Primary, rtl);
+            if ui.add(ahead).clicked() {
+                answer = Some(true);
+            }
+            let back = t("toolbar-cancel", Look::Plain);
+            let back = widgets::Button::new(None, back, Variant::Default, rtl);
+            if ui.add(back).clicked() {
+                answer = Some(false);
+            }
+        });
+    });
+
+    if modal.should_close() {
+        answer = answer.or(Some(false));
+    }
+    answer
+}
+
+/// The catalog names of the settings that differ between `current` and
+/// `restored`, in the order the settings window shows them, then those kept
+/// outside it
+fn changed_settings(current: &Settings, restored: &Settings) -> Vec<&'static str> {
+    let (now, then) = (current, restored);
+    let (view, first) = (&now.viewer, &then.viewer);
+    let order = |s: &Settings| (s.sort_column.clone(), s.sort_descending);
+    let checks = [
+        (now.locale != then.locale, "settings-language"),
+        (now.workers != then.workers, "settings-workers"),
+        (order(now) != order(then), "settings-sort"),
+        (view.gamma != first.gamma, "settings-gamma"),
+        (view.brightness != first.brightness, "settings-brightness"),
+        (view.texgamma != first.texgamma, "settings-texgamma"),
+        (view.lightgamma != first.lightgamma, "settings-lightgamma"),
+        (view.overbright != first.overbright, "settings-overbright"),
+        (view.fov != first.fov, "settings-fov"),
+        (view.zoom_fov != first.zoom_fov, "settings-zoom-fov"),
+        (view.viewmodel != first.viewmodel, "settings-viewmodel"),
+        (
+            view.see_through != first.see_through,
+            "settings-see-through",
+        ),
+        (
+            view.see_through_items != first.see_through_items,
+            "settings-see-through-items",
+        ),
+        (view.decals != first.decals, "settings-section-decals"),
+        (view.volume != first.volume, "viewer-volume"),
+        (
+            now.export_folder != then.export_folder,
+            "settings-export-folder",
+        ),
+        (
+            now.clip_name_files != then.clip_name_files,
+            "settings-clip-name-files",
+        ),
+        (
+            now.demo_name_first != then.demo_name_first,
+            "settings-demo-name-first",
+        ),
+        (now.preroll != then.preroll, "settings-preroll"),
+        (now.postroll != then.postroll, "settings-postroll"),
+        (
+            now.hidden_columns != then.hidden_columns,
+            "settings-restore-columns",
+        ),
+        (now.player_lanes != then.player_lanes, "timeline-lanes"),
+        (now.layout != then.layout, "settings-restore-layout"),
+    ];
+
+    let mut names = Vec::new();
+    for (changed, id) in checks {
+        if changed {
+            names.push(id);
+        }
+    }
+    names
 }
 
 /// A section's heading, with room above it unless it is the first, and a
@@ -770,4 +1010,38 @@ fn field(
         layout::cell(ui, rtl, width, label);
         add(ui);
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_settings_that_change_are_named_in_the_windows_order() {
+        let defaults = Settings::default();
+        assert!(changed_settings(&defaults, &defaults.restored()).is_empty());
+
+        let mut s = Settings {
+            workers: 3,
+            player_lanes: true,
+            ..Settings::default()
+        };
+        s.viewer.gamma = 3.;
+        s.viewer.decals = 5;
+        s.layout.list_hidden = true;
+
+        // The game's folder is kept, so it is never named
+        s.viewer.game = Some(std::path::PathBuf::from("F:/Half-Life"));
+        let names = changed_settings(&s, &s.restored());
+        assert_eq!(
+            names,
+            [
+                "settings-workers",
+                "settings-gamma",
+                "settings-section-decals",
+                "timeline-lanes",
+                "settings-restore-layout",
+            ]
+        );
+    }
 }

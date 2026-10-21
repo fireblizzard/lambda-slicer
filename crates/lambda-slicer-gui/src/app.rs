@@ -42,6 +42,9 @@ const NARROW_WINDOW: f32 = 960.;
 /// returns, so resizing near the threshold does not make it flicker
 const ROOM_MARGIN: f32 = 32.;
 
+/// How far from its first width the inspector must be to count as dragged
+const DRAGGED: f32 = 0.5;
+
 /// Save a screenshot after this many frames and close, for checking how a
 /// language renders
 pub struct Screenshot {
@@ -51,7 +54,11 @@ pub struct Screenshot {
 
 /// Choices given on the command line for one run
 pub struct Launch {
+    /// Open the settings window, asking whether to restore the defaults
+    /// with `confirm_restore` or to clear the library with `confirm_clear`
     pub show_settings: bool,
+    pub confirm_restore: bool,
+    pub confirm_clear: bool,
     pub screenshot: Option<Screenshot>,
     /// A cache used instead of the configured one, without saving it
     pub cache: Option<PathBuf>,
@@ -101,6 +108,12 @@ pub struct App {
     settings_tab: SettingsTab,
     /// The settings window has the keys, so playback leaves them alone
     settings_keyboard: bool,
+    /// Asking whether to restore the default settings
+    confirm_restore: bool,
+    /// Asking whether to clear the library, and clearing it once no scan
+    /// writes to it, then scanning again
+    confirm_clear: bool,
+    clear_library: bool,
     /// A control had the focus at the end of the last frame, so an Escape
     /// now only takes the focus from it
     focused_last_frame: bool,
@@ -273,6 +286,9 @@ impl App {
             show_settings: launch.show_settings,
             settings_tab: launch.section,
             settings_keyboard: false,
+            confirm_restore: launch.confirm_restore,
+            confirm_clear: launch.confirm_clear,
+            clear_library: false,
             focused_last_frame: false,
             show_problems: false,
             screenshot: launch.screenshot,
@@ -742,8 +758,11 @@ impl App {
             layout.list_filters_open = l.list_filters_open;
         }
         layout.list_hidden = self.workspace.list_hidden;
+
+        // The inspector's width only once dragged away from its first one
         if let Some(width) = self.workspace.inspector_width {
-            layout.inspector_width = Some(width);
+            let dragged = (width - self.workspace.inspector_first).abs() > DRAGGED;
+            layout.inspector_width = dragged.then_some(width);
         }
 
         if layout != self.settings.layout {
@@ -1195,6 +1214,16 @@ impl eframe::App for App {
             && let Some(l) = &mut self.library
         {
             l.mark_stale();
+        }
+
+        // The library is cleared once a scan stopped writing to it, and
+        // filled again from the start
+        if self.clear_library && !self.scanning() {
+            self.clear_library = false;
+            if let Some(l) = &mut self.library {
+                l.clear();
+            }
+            self.start_scan(&ctx);
         }
         if self.rescan && !self.scanning() {
             self.start_scan(&ctx);

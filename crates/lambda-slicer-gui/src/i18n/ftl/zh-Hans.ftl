@@ -458,6 +458,17 @@ settings-see-through-hint = 墙后的玩家以其上衣颜色的剪影显示，�
 settings-section-decals = 贴花
 settings-decals = 最多保留
 settings-decals-hint = 弹孔、血迹以及游戏中留下的其他痕迹。只保留最新的，新痕迹出现时最旧的会消失。地图自带的痕迹始终保留。
+settings-restore = 恢复默认设置…
+settings-restore-title = 恢复默认设置
+settings-restore-list = 以下设置将恢复到最初的样子。Half-Life 文件夹和库文件夹保持不变。
+settings-restore-none = 所有设置都已是默认值。
+settings-restore-columns = 录像库显示的列
+settings-restore-layout = 打开的面板及其大小
+settings-clear-library = 清空录像库…
+settings-clear-library-title = 清空录像库
+settings-clear-library-text = { $count ->
+   *[other] Lambda Slicer 会忘记它在 { $count } 个录像中找到的内容，并重新扫描库文件夹，这可能需要一段时间。你的录像文件、片段和设置都会保持不变。
+}
 viewer-zoom = 放大画面
 viewer-see-through = 透视墙壁
 settings-export-beside = 每个录像旁边

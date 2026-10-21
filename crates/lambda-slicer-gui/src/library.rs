@@ -553,6 +553,17 @@ impl LibraryView {
         self.mark_stale();
     }
 
+    /// Forget everything stored about every demo, for a scan to find again
+    pub fn clear(&mut self) {
+        self.cache();
+        if let Some(cache) = &mut self.cache
+            && let Err(e) = cache.clear()
+        {
+            self.error = Some(e.message());
+        }
+        self.mark_stale();
+    }
+
     /// Stored files may have changed what the list shows
     pub fn mark_stale(&mut self) {
         self.stale = true;

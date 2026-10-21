@@ -287,6 +287,21 @@ impl Settings {
     pub fn locale(&self) -> Locale {
         self.locale.unwrap_or_else(Locale::detect)
     }
+
+    /// Every setting back to its default, but for where things are, the
+    /// game, the library's folders and where the library is kept, and where
+    /// the settings window sits
+    pub fn restored(&self) -> Self {
+        let mut restored = Self {
+            folders: self.folders.clone(),
+            cache: self.cache.clone(),
+            ..Self::default()
+        };
+        restored.viewer.game = self.viewer.game.clone();
+        restored.viewer.executable = self.viewer.executable.clone();
+        restored.layout.settings_at = self.layout.settings_at;
+        restored
+    }
 }
 
 #[cfg(test)]
@@ -364,6 +379,36 @@ mod tests {
 
         std::fs::write(&path, b"not json").unwrap();
         assert_eq!(Settings::load_from(&path), Settings::default());
+    }
+
+    #[test]
+    fn restoring_keeps_where_things_are() {
+        let mut s = Settings {
+            locale: Some(Locale::Fr),
+            workers: 3,
+            folders: vec![PathBuf::from("F:/demos")],
+            cache: Some(PathBuf::from("F:/cache.sqlite")),
+            player_lanes: true,
+            ..Settings::default()
+        };
+        s.viewer.game = Some(PathBuf::from("F:/Half-Life"));
+        s.viewer.decals = 5;
+        s.layout.inspector_width = Some(400.);
+        s.layout.settings_at = Some([10., 20.]);
+
+        let restored = s.restored();
+        assert_eq!(restored.folders, s.folders);
+        assert_eq!(restored.cache, s.cache);
+        assert_eq!(restored.viewer.game, s.viewer.game);
+        assert_eq!(restored.layout.settings_at, s.layout.settings_at);
+
+        // Everything else is the default
+        let mut expected = restored.clone();
+        expected.folders.clear();
+        expected.cache = None;
+        expected.viewer.game = None;
+        expected.layout.settings_at = None;
+        assert_eq!(expected, Settings::default());
     }
 
     #[test]

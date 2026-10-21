@@ -478,6 +478,18 @@ settings-see-through-hint = Players behind walls show as silhouettes in their to
 settings-section-decals = Decals
 settings-decals = Most kept
 settings-decals-hint = Bullet holes, blood and other marks left during the game. Only the newest ones stay, and the oldest go as new ones are made. Marks that are part of the map always stay.
+settings-restore = Restore defaults…
+settings-restore-title = Restore defaults
+settings-restore-list = These settings go back to how they were at first. The Half-Life folder and the library folders stay as they are.
+settings-restore-none = Every setting is already at its default.
+settings-restore-columns = Library columns shown
+settings-restore-layout = Open panels and their sizes
+settings-clear-library = Clear library…
+settings-clear-library-title = Clear library
+settings-clear-library-text = { $count ->
+    [one] Lambda Slicer forgets what it found in { $count } demo and scans the library folders again, which can take a while. Your demo files, clips and settings stay as they are.
+   *[other] Lambda Slicer forgets what it found in { $count } demos and scans the library folders again, which can take a while. Your demo files, clips and settings stay as they are.
+}
 viewer-zoom = Zoom in
 viewer-see-through = See through walls
 settings-export-beside = Beside each demo

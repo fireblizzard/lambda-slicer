@@ -491,6 +491,19 @@ settings-see-through-hint = Les joueurs derrière les murs apparaissent en silho
 settings-section-decals = Decals
 settings-decals = Nombre maximum
 settings-decals-hint = Impacts de balles, sang et autres traces laissés pendant la partie. Seules les plus récentes restent, et les plus anciennes partent quand de nouvelles apparaissent. Les traces qui font partie de la carte restent toujours.
+settings-restore = Rétablir les paramètres par défaut…
+settings-restore-title = Rétablir les paramètres par défaut
+settings-restore-list = Ces paramètres reviennent à ce qu’ils étaient au départ. Le dossier de Half-Life et les dossiers de la bibliothèque restent tels quels.
+settings-restore-none = Tous les paramètres sont déjà par défaut.
+settings-restore-columns = Colonnes affichées dans la bibliothèque
+settings-restore-layout = Panneaux ouverts et leur taille
+settings-clear-library = Vider la bibliothèque…
+settings-clear-library-title = Vider la bibliothèque
+settings-clear-library-text = { $count ->
+    [one] Lambda Slicer oublie ce qu’il a trouvé dans { $count } démo et analyse à nouveau les dossiers de la bibliothèque, ce qui peut prendre un moment. Tes fichiers de démos, tes clips et tes paramètres restent tels quels.
+    [many] Lambda Slicer oublie ce qu’il a trouvé dans { $count } de démos et analyse à nouveau les dossiers de la bibliothèque, ce qui peut prendre un moment. Tes fichiers de démos, tes clips et tes paramètres restent tels quels.
+   *[other] Lambda Slicer oublie ce qu’il a trouvé dans { $count } démos et analyse à nouveau les dossiers de la bibliothèque, ce qui peut prendre un moment. Tes fichiers de démos, tes clips et tes paramètres restent tels quels.
+}
 viewer-zoom = Zoomer
 viewer-see-through = Voir à travers les murs
 settings-export-beside = À côté de chaque démo

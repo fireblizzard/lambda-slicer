@@ -491,6 +491,19 @@ settings-see-through-hint = Los jugadores detrás de paredes se ven como silueta
 settings-section-decals = Decals
 settings-decals = Máximo
 settings-decals-hint = Agujeros de bala, sangre y otras marcas que quedan durante la partida. Solo se quedan los más nuevos, y los más viejos se borran cuando salen nuevos. Los decals que son parte del mapa siempre se quedan.
+settings-restore = Volver a la config por defecto…
+settings-restore-title = Volver a la config por defecto
+settings-restore-list = Estas opciones vuelven a como estaban al principio. La carpeta de Half-Life y las carpetas de la biblioteca se quedan como están.
+settings-restore-none = Todas las opciones ya están en su valor por defecto.
+settings-restore-columns = Columnas que se ven en la biblioteca
+settings-restore-layout = Paneles abiertos y su tamaño
+settings-clear-library = Vaciar biblioteca…
+settings-clear-library-title = Vaciar biblioteca
+settings-clear-library-text = { $count ->
+    [one] Lambda Slicer olvida lo que encontró en { $count } demo y vuelve a escanear las carpetas de la biblioteca, lo que puede tardar un rato. Tus archivos de demos, clips y opciones se quedan como están.
+    [many] Lambda Slicer olvida lo que encontró en { $count } de demos y vuelve a escanear las carpetas de la biblioteca, lo que puede tardar un rato. Tus archivos de demos, clips y opciones se quedan como están.
+   *[other] Lambda Slicer olvida lo que encontró en { $count } demos y vuelve a escanear las carpetas de la biblioteca, lo que puede tardar un rato. Tus archivos de demos, clips y opciones se quedan como están.
+}
 viewer-zoom = Hacer zoom
 viewer-see-through = Ver tras paredes
 settings-export-beside = Junto a cada demo

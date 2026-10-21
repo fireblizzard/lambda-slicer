@@ -494,6 +494,20 @@ settings-see-through-hint = Žaidėjai už sienų rodomi kaip siluetai jų virš
 settings-section-decals = Dekalai
 settings-decals = Daugiausia
 settings-decals-hint = Kulkų skylės, kraujas ir kiti žaidimo metu palikti pėdsakai. Lieka tik naujausi, o seniausi dingsta atsiradus naujiems. Pėdsakai, kurie yra žemėlapio dalis, lieka visada.
+settings-restore = Atkurti numatytuosius…
+settings-restore-title = Atkurti numatytuosius
+settings-restore-list = Šie nustatymai grįš į tokius, kokie buvo pradžioje. Half-Life aplankas ir bibliotekos aplankai liks tokie, kokie yra.
+settings-restore-none = Visi nustatymai jau yra numatytieji.
+settings-restore-columns = Bibliotekoje rodomi stulpeliai
+settings-restore-layout = Atidaryti skydeliai ir jų dydžiai
+settings-clear-library = Išvalyti biblioteką…
+settings-clear-library-title = Išvalyti biblioteką
+settings-clear-library-text = { $count ->
+    [one] Lambda Slicer pamirš, ką rado { $count } įraše, ir iš naujo nuskaitys bibliotekos aplankus, o tai gali šiek tiek užtrukti. Jūsų įrašų failai, klipai ir nustatymai liks tokie, kokie yra.
+    [few] Lambda Slicer pamirš, ką rado { $count } įrašuose, ir iš naujo nuskaitys bibliotekos aplankus, o tai gali šiek tiek užtrukti. Jūsų įrašų failai, klipai ir nustatymai liks tokie, kokie yra.
+    [many] Lambda Slicer pamirš, ką rado { $count } įrašo, ir iš naujo nuskaitys bibliotekos aplankus, o tai gali šiek tiek užtrukti. Jūsų įrašų failai, klipai ir nustatymai liks tokie, kokie yra.
+   *[other] Lambda Slicer pamirš, ką rado { $count } įrašų, ir iš naujo nuskaitys bibliotekos aplankus, o tai gali šiek tiek užtrukti. Jūsų įrašų failai, klipai ir nustatymai liks tokie, kokie yra.
+}
 viewer-zoom = Priartinti vaizdą
 viewer-see-through = Matyti pro sienas
 settings-export-beside = Šalia kiekvieno įrašo

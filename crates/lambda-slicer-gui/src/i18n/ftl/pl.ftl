@@ -494,6 +494,20 @@ settings-see-through-hint = Gracze za ścianami są widoczni jako sylwetki w ich
 settings-section-decals = Decale
 settings-decals = Najwyżej
 settings-decals-hint = Dziury po kulach, krew i inne ślady zostawione w trakcie gry. Zostają tylko najnowsze, a najstarsze znikają, gdy pojawiają się nowe. Ślady będące częścią mapy zostają zawsze.
+settings-restore = Przywróć domyślne…
+settings-restore-title = Przywróć domyślne
+settings-restore-list = Te ustawienia wrócą do tego, jak było na początku. Folder Half-Life i foldery biblioteki zostaną bez zmian.
+settings-restore-none = Wszystkie ustawienia są już domyślne.
+settings-restore-columns = Kolumny pokazywane w bibliotece
+settings-restore-layout = Otwarte panele i ich rozmiary
+settings-clear-library = Wyczyść bibliotekę…
+settings-clear-library-title = Wyczyść bibliotekę
+settings-clear-library-text = { $count ->
+    [one] Lambda Slicer zapomni, co znalazł w { $count } demie, i ponownie przeskanuje foldery biblioteki, co może chwilę potrwać. Twoje pliki dem, klipy i ustawienia zostaną bez zmian.
+    [few] Lambda Slicer zapomni, co znalazł w { $count } demach, i ponownie przeskanuje foldery biblioteki, co może chwilę potrwać. Twoje pliki dem, klipy i ustawienia zostaną bez zmian.
+    [many] Lambda Slicer zapomni, co znalazł w { $count } demach, i ponownie przeskanuje foldery biblioteki, co może chwilę potrwać. Twoje pliki dem, klipy i ustawienia zostaną bez zmian.
+   *[other] Lambda Slicer zapomni, co znalazł w { $count } dema, i ponownie przeskanuje foldery biblioteki, co może chwilę potrwać. Twoje pliki dem, klipy i ustawienia zostaną bez zmian.
+}
 viewer-zoom = Przybliż widok
 viewer-see-through = Widź przez ściany
 settings-export-beside = Obok każdego dema

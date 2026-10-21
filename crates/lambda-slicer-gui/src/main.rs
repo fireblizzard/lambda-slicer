@@ -1,6 +1,7 @@
 //! Lambda Slicer desktop app
 //!
-//! `lambda-slicer-gui [PATH...] [--locale TAG] [--settings [--section NAME]] [--timeline]
+//! `lambda-slicer-gui [PATH...] [--locale TAG] [--settings [--section NAME] [--restore] [--clear]]
+//! [--timeline]
 //! [--dates] [--pseudo] [--size WxH] [--cache FILE] [--clips FILE]
 //! [--demo FILE [--window N] [--event N] [--refine LIST] [--player TEXT] [--tab TAB]
 //! [--export DIR]]
@@ -20,7 +21,9 @@
 //! with `TEXT` in their name with `--player`. `--tab` shows the inspector's
 //! `events`, `clips` or `scoreboard` tab, and `--export` exports its clips
 //! into `DIR`. `--settings` opens the settings window, on its `general`,
-//! `library`, `viewer` or `clips` section with `--section`, `--timeline` opens
+//! `library`, `viewer` or `clips` section with `--section` and asking
+//! whether to restore the defaults with `--restore` or to clear the
+//! library with `--clear`, `--timeline` opens
 //! the player lanes under the timeline, `--dates` turns on both date
 //! filters, `--pseudo` lengthens and accents every message to find text that does
 //! not fit, and `--size` sets the window size. `--screenshot` saves the window to a
@@ -100,6 +103,8 @@ fn main() -> eframe::Result {
     let mut args = std::env::args().skip(1);
     let mut locale = None;
     let mut show_settings = false;
+    let mut confirm_restore = false;
+    let mut confirm_clear = false;
     let mut show_timeline = false;
     let mut screenshot = None;
     let mut frames = 5;
@@ -129,6 +134,8 @@ fn main() -> eframe::Result {
         match a.as_str() {
             "--locale" => locale = args.next().as_deref().and_then(Locale::from_tag),
             "--settings" => show_settings = true,
+            "--restore" => confirm_restore = true,
+            "--clear" => confirm_clear = true,
             "--timeline" => show_timeline = true,
             "--screenshot" => screenshot = args.next().map(PathBuf::from),
             "--frames" => frames = args.next().and_then(|n| n.parse().ok()).unwrap_or(frames),
@@ -287,6 +294,8 @@ fn main() -> eframe::Result {
                 save_to,
                 Launch {
                     show_settings,
+                    confirm_restore,
+                    confirm_clear,
                     screenshot,
                     cache,
                     clips,

@@ -112,6 +112,15 @@ pub fn path_from_native(bytes: &[u8]) -> Option<PathBuf> {
     }
 }
 
+/// Every table, the ones that refer to files first
+const DROP_TABLES: &str = "
+DROP TABLE IF EXISTS windows;
+DROP TABLE IF EXISTS kills;
+DROP TABLE IF EXISTS weapons;
+DROP TABLE IF EXISTS players;
+DROP TABLE IF EXISTS files;
+";
+
 const TABLES: &str = "
 CREATE TABLE files(
     id INTEGER PRIMARY KEY,
@@ -547,13 +556,7 @@ impl Cache {
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
         let schema: i64 = tx.pragma_query_value(None, "user_version", |r| r.get(0))?;
         if schema != CACHE_SCHEMA {
-            tx.execute_batch(
-                "DROP TABLE IF EXISTS windows;
-                 DROP TABLE IF EXISTS kills;
-                 DROP TABLE IF EXISTS weapons;
-                 DROP TABLE IF EXISTS players;
-                 DROP TABLE IF EXISTS files;",
-            )?;
+            tx.execute_batch(DROP_TABLES)?;
             tx.execute_batch(TABLES)?;
             tx.pragma_update(None, "user_version", CACHE_SCHEMA)?;
         }
@@ -604,6 +607,22 @@ impl Cache {
             tx.execute("DELETE FROM files WHERE id = ?1", [id])?;
         }
         tx.commit()?;
+        Ok(())
+    }
+
+    /// Forget every stored file, so the next scan analyses every demo again,
+    /// and give the room they took back to the disk
+    pub fn clear(&mut self) -> Result<(), CacheError> {
+        let tx = self
+            .conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        tx.execute_batch(DROP_TABLES)?;
+        tx.execute_batch(TABLES)?;
+        tx.commit()?;
+
+        // Giving the room back only tidies up, so the cleared cache stands
+        // when another connection keeps it from happening
+        let _ = self.conn.execute_batch("VACUUM");
         Ok(())
     }
 
@@ -1251,6 +1270,16 @@ mod tests {
 
         assert_eq!(rows[1].scoreboard, None);
         assert_eq!(rows[2].scoreboard, None);
+    }
+
+    #[test]
+    fn clearing_forgets_every_file_and_keeps_the_cache_usable() {
+        let mut c = cache(&[("a.dem", None, None), ("b.dem", None, None)]);
+        assert_eq!(c.stored_paths().unwrap().len(), 2);
+
+        c.clear().unwrap();
+        assert!(c.stored_paths().unwrap().is_empty());
+        assert_eq!(c.count(&FileQuery::default()).unwrap(), 0);
     }
 
     #[test]

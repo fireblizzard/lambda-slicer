@@ -477,6 +477,18 @@ settings-see-through-hint = Seinien takana olevat pelaajat näkyvät siluetteina
 settings-section-decals = Decalit
 settings-decals = Enintään
 settings-decals-hint = Luodinreiät, veri ja muut pelin aikana jääneet jäljet. Vain uusimmat jäävät, ja vanhimmat katoavat, kun uusia syntyy. Kartan omat jäljet jäävät aina.
+settings-restore = Palauta oletukset…
+settings-restore-title = Palauta oletukset
+settings-restore-list = Nämä asetukset palaavat sellaisiksi kuin ne olivat alussa. Half-Life-kansio ja kirjaston kansiot pysyvät ennallaan.
+settings-restore-none = Kaikki asetukset ovat jo oletuksissaan.
+settings-restore-columns = Kirjastossa näkyvät sarakkeet
+settings-restore-layout = Avoimet paneelit ja niiden koot
+settings-clear-library = Tyhjennä kirjasto…
+settings-clear-library-title = Tyhjennä kirjasto
+settings-clear-library-text = { $count ->
+    [one] Lambda Slicer unohtaa, mitä se löysi { $count } demosta, ja skannaa kirjaston kansiot uudelleen, mikä voi kestää hetken. Demotiedostosi, klippisi ja asetuksesi pysyvät ennallaan.
+   *[other] Lambda Slicer unohtaa, mitä se löysi { $count } demosta, ja skannaa kirjaston kansiot uudelleen, mikä voi kestää hetken. Demotiedostosi, klippisi ja asetuksesi pysyvät ennallaan.
+}
 viewer-zoom = Zoomaa lähemmäs
 viewer-see-through = Näe seinien läpi
 settings-export-beside = Kunkin demon viereen

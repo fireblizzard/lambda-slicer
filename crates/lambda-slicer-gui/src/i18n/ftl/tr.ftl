@@ -465,6 +465,18 @@ settings-see-through-hint = Duvarların arkasındaki oyuncular, takım oyunları
 settings-section-decals = Decal'ler
 settings-decals = En fazla
 settings-decals-hint = Mermi delikleri, kan ve oyun sırasında kalan diğer izler. Yalnızca en yenileri kalır, yenileri oluştukça en eskileri gider. Haritanın parçası olan izler her zaman kalır.
+settings-restore = Varsayılanlara dön…
+settings-restore-title = Varsayılanlara dön
+settings-restore-list = Bu ayarlar en baştaki hallerine döner. Half-Life klasörü ve kütüphane klasörleri olduğu gibi kalır.
+settings-restore-none = Tüm ayarlar zaten varsayılan halinde.
+settings-restore-columns = Kütüphanede gösterilen sütunlar
+settings-restore-layout = Açık paneller ve boyutları
+settings-clear-library = Kütüphaneyi temizle…
+settings-clear-library-title = Kütüphaneyi temizle
+settings-clear-library-text = { $count ->
+    [one] Lambda Slicer { $count } demoda bulduklarını unutur ve kütüphane klasörlerini yeniden tarar, bu biraz sürebilir. Demo dosyalarınız, klipleriniz ve ayarlarınız olduğu gibi kalır.
+   *[other] Lambda Slicer { $count } demoda bulduklarını unutur ve kütüphane klasörlerini yeniden tarar, bu biraz sürebilir. Demo dosyalarınız, klipleriniz ve ayarlarınız olduğu gibi kalır.
+}
 viewer-zoom = Görüntüyü yakınlaştır
 viewer-see-through = Duvar arkasını gör
 settings-export-beside = Her demonun yanında
