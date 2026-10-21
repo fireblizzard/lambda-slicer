@@ -82,6 +82,16 @@ pub const RADIUS_SMALL: u8 = 4;
 pub const RADIUS_CONTROL: u8 = 6;
 pub const RADIUS_CARD: u8 = 8;
 
+/// A team's colour, only known red and blue teams getting one, by the name
+/// AG gives a side or the model a player wears
+pub fn team_colour(name: &str) -> Color32 {
+    match name.trim().to_lowercase().as_str() {
+        "red" => TEAM_RED,
+        "blue" => TEAM_BLUE,
+        _ => FOREGROUND,
+    }
+}
+
 /// The text style of secondary text, such as a row's second line of
 /// metadata
 pub fn secondary() -> TextStyle {
@@ -173,4 +183,17 @@ fn apply(style: &mut egui::Style) {
     widgets.open.bg_stroke = Stroke::new(1., BORDER);
     widgets.open.fg_stroke = Stroke::new(1., FOREGROUND);
     widgets.open.corner_radius = CornerRadius::same(RADIUS_CONTROL);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_known_red_and_blue_teams_get_team_colours() {
+        assert_eq!(team_colour("Red"), TEAM_RED);
+        assert_eq!(team_colour(" blue"), TEAM_BLUE);
+        assert_eq!(team_colour("robo"), FOREGROUND);
+        assert_eq!(team_colour(""), FOREGROUND);
+    }
 }

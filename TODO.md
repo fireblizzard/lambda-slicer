@@ -1,5 +1,5 @@
 - [ ] Add a HUD for the kill feed like they show ingame at the top right (X killed Y, and the weapon, and with colored names depending on the team or their custom colors (^1 to ^8, and ^0 to stop coloring)
-- [ ] Add the name of the player that we're watching, at the bottom
+- [x] Add the name of the player that we're watching, at the bottom
 - [x] Fix gauss charging sound being cut in `aghldmtv_law_vs_cas_cross.dem`.  i can only hear it starting to charge and releasing, but no sound in between
 - [x] Fix gauss shots or aiming being off in `aghldmtv_law_vs_cas_cross.dem`, it seems the player is looking at one place but the shot going much higher at times
 - [x] Add a bar at the bottom of the demo player so that you can go to any point of the demo by clicking on it, and it has to be synced with the other playhead.  don't remove the existing playhead below the demo player, it's useful but people are more used to the web browser style of video players, and dragging the current playhead which is not visually touching the demo player feels a bit weird

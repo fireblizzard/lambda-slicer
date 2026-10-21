@@ -37,7 +37,7 @@ use lambda_slicer_playback::PresentedFrame;
 use lambda_slicer_playback::animation::{Flash, Holder};
 use lambda_slicer_playback::controller::{Command, Controller, LoopRange, Reply, Stamp};
 use lambda_slicer_playback::hud::{Countdown, WAITING};
-use lambda_slicer_playback::scene::{Entity, EntityId};
+use lambda_slicer_playback::scene::{self, Entity, EntityId, PlayerView};
 use lambda_slicer_playback::tempents::Tint;
 use lambda_slicer_playback::time::{Rate, SourceTime};
 use lambda_slicer_playback::trace::Hull;
@@ -73,6 +73,11 @@ const DEFAULT_FOV: f32 = 90.;
 /// `OBS_IN_EYE`, a spectator seeing through the eyes of the player it
 /// observes
 const OBS_IN_EYE: i64 = 4;
+
+/// `OBS_ROAMING` and `OBS_MAP_FREE`, a spectator moving freely, following
+/// no player
+const OBS_ROAMING: i64 = 3;
+const OBS_MAP_FREE: i64 = 5;
 
 /// Time frames for this many seconds once playback runs, write what was
 /// measured to `out` and close the window. The view is drawn `size` pixels
@@ -1468,6 +1473,10 @@ impl Viewer {
                     if let Some(countdown) = &frame.countdown {
                         draw_countdown(ui.painter(), rect, countdown);
                     }
+                    let players = &frame.players;
+                    if let Some(player) = watched(&frame.recorder, frame.local_entity, players) {
+                        draw_watched(ui.painter(), rect, player);
+                    }
                     if self.time_frame(pixels, drawn) {
                         ctx.send_viewport_cmd(egui::ViewportCommand::Close);
                     }
@@ -2638,6 +2647,11 @@ impl CallbackTrait for Frame {
 /// HL's default HUD colour, which AG's countdown is drawn in
 const HUD_COLOR: egui::Color32 = egui::Color32::from_rgb(255, 160, 0);
 
+/// How many of the game's text lines above the view's bottom the watched
+/// player's name stands, and the band behind it
+const NAME_FROM_BOTTOM: f32 = 1.5;
+const NAME_BAND: egui::Color32 = egui::Color32::from_black_alpha(140);
+
 /// AG's countdown over the view where its client draws it, a line of text
 /// seven of the game's text lines from the top and the number three lines
 /// below, sized as on a 640 by 480 screen, where a line is a 32nd of the
@@ -2679,6 +2693,44 @@ fn draw_countdown(painter: &egui::Painter, rect: egui::Rect, countdown: &Countdo
     }
 }
 
+/// The player `camera` follows among `players`, the one a spectator
+/// watches or the recording player while playing, by `local` when the view
+/// names none. None while a spectator roams freely
+fn watched<'a>(
+    camera: &scene::Camera,
+    local: u16,
+    players: &'a [PlayerView],
+) -> Option<&'a PlayerView> {
+    let entity = match camera.observer_mode {
+        0 => camera.view_entity.unwrap_or(local),
+        OBS_ROAMING | OBS_MAP_FREE => return None,
+        _ => u16::try_from(camera.observer_target).ok()?,
+    };
+    players.iter().find(|p| p.entity == entity)
+}
+
+/// The watched player's name low in the middle of the view, in their team's
+/// colour, on a dark band so it reads over any picture. It is sized as the
+/// countdown's text is, a 32nd of the view's height
+fn draw_watched(painter: &egui::Painter, rect: egui::Rect, player: &PlayerView) {
+    let name = without_colours(&player.name);
+    if name.trim().is_empty() {
+        return;
+    }
+
+    let line = rect.height() / 32.;
+    let colour = theme::team_colour(player.model.as_deref().unwrap_or_default());
+    let galley = painter.layout_no_wrap(name, egui::FontId::proportional(line), colour);
+    let size = galley.size();
+    let at = egui::pos2(
+        rect.center().x - size.x / 2.,
+        rect.bottom() - NAME_FROM_BOTTOM * line - size.y,
+    );
+    let band = egui::Rect::from_min_size(at, size).expand2(egui::vec2(line / 2., line / 5.));
+    painter.rect_filled(band, theme::RADIUS_SMALL, NAME_BAND);
+    painter.galley(at, galley, colour);
+}
+
 /// A player's name without the colour codes AG writes in names, a `^` and
 /// a digit
 fn without_colours(name: &str) -> String {
@@ -2697,6 +2749,42 @@ fn without_colours(name: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_name_shown_is_the_followed_players() {
+        let player = |entity: u16, name: &str| PlayerView {
+            slot: (entity - 1) as u8,
+            entity,
+            name: name.into(),
+            model: None,
+            top_color: None,
+            bottom_color: None,
+        };
+        let players = [player(1, "ru$ty"), player(6, "naz")];
+        let name = |camera: &scene::Camera| watched(camera, 6, &players).map(|p| p.name.clone());
+
+        // Playing, the recorder's own, and watching through someone's eyes
+        // or behind them, theirs
+        assert_eq!(name(&scene::Camera::default()).as_deref(), Some("naz"));
+        let in_eye = scene::Camera {
+            observer_mode: OBS_IN_EYE,
+            observer_target: 1,
+            ..scene::Camera::default()
+        };
+        assert_eq!(name(&in_eye).as_deref(), Some("ru$ty"));
+        let chasing = scene::Camera {
+            observer_mode: 1,
+            ..in_eye.clone()
+        };
+        assert_eq!(name(&chasing).as_deref(), Some("ru$ty"));
+
+        // Roaming follows nobody
+        let roaming = scene::Camera {
+            observer_mode: OBS_ROAMING,
+            ..in_eye
+        };
+        assert_eq!(name(&roaming), None);
+    }
 
     fn playback(playing: bool, backward: bool, stop_at: Option<f64>) -> Playback {
         Playback {

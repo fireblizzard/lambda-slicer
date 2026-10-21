@@ -70,15 +70,6 @@ fn comparable(frags: &[i32]) -> bool {
     *a >= 0 && *b >= 0 && a + b > 0
 }
 
-/// A side's colour, only known red and blue ones getting a team's
-fn side_colour(name: &str) -> Color32 {
-    match name.trim().to_lowercase().as_str() {
-        "red" => theme::TEAM_RED,
-        "blue" => theme::TEAM_BLUE,
-        _ => theme::FOREGROUND,
-    }
-}
-
 /// A time as the heading gives it
 fn clock(time: f32) -> String {
     DemoTime::from_f32(time)
@@ -234,7 +225,7 @@ fn score_tables(model: &Model, segment: u32, at: f32) -> Vec<SideTable> {
     };
     let table = |side: &StandingSide, title: bool| SideTable {
         title: title.then(|| text::player_name(&side.name)),
-        colour: side_colour(&side.name),
+        colour: theme::team_colour(&side.name),
         frags: side.frags,
         players: side.players.iter().map(row).collect(),
     };
@@ -529,13 +520,5 @@ mod tests {
         assert!(!comparable(&[-2, 5]));
         assert!(!comparable(&[4]));
         assert!(!comparable(&[1, 2, 3]));
-    }
-
-    #[test]
-    fn only_known_red_and_blue_sides_get_team_colours() {
-        assert_eq!(side_colour("Red"), theme::TEAM_RED);
-        assert_eq!(side_colour(" blue"), theme::TEAM_BLUE);
-        assert_eq!(side_colour("robo"), theme::FOREGROUND);
-        assert_eq!(side_colour(""), theme::FOREGROUND);
     }
 }
