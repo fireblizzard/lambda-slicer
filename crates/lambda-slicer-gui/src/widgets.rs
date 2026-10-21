@@ -44,6 +44,9 @@ pub enum Icon {
     /// Chevrons, for a recorded group back or forward
     StepBack,
     StepForward,
+    /// Double chevrons, for ten seconds back or forward
+    SkipBack,
+    SkipForward,
     /// An eye, for seeing through walls
     Eye,
     Volume,
@@ -277,6 +280,18 @@ pub fn paint_icon_facing(
         }
         Icon::StepForward => {
             painter.add(Shape::line(vec![p(6., 3.), p(11., 8.), p(6., 13.)], stroke));
+        }
+        Icon::SkipBack => {
+            for x in [3., 8.5] {
+                let chevron = vec![p(x + 5., 3.), p(x, 8.), p(x + 5., 13.)];
+                painter.add(Shape::line(chevron, stroke));
+            }
+        }
+        Icon::SkipForward => {
+            for x in [3., 8.5] {
+                let chevron = vec![p(x, 3.), p(x + 5., 8.), p(x, 13.)];
+                painter.add(Shape::line(chevron, stroke));
+            }
         }
         Icon::Eye => {
             // Two curved lids meeting at the corners, around the pupil

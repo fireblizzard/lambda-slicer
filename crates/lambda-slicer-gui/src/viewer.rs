@@ -1494,9 +1494,13 @@ impl Viewer {
                 });
             });
         } else {
+            // The view controls under the playback ones, at the same end and
+            // in the same order as on one row
             layout::row(ui, false, |ui| self.playback_controls(ui, catalog, rtl));
             layout::row(ui, false, |ui| {
-                picture = self.view_controls(ui, catalog, rtl)
+                layout::trailing(ui, false, |ui| {
+                    picture = self.view_controls(ui, catalog, rtl);
+                });
             });
         }
 
@@ -1523,12 +1527,14 @@ impl Viewer {
         }
     }
 
-    /// Back to the start, reverse, a group back, play, a group forward, the
-    /// time and the rate. Times always read left to right
+    /// Back to the start, reverse, ten seconds back, a group back, play, a
+    /// group forward, ten seconds forward, the time and the rate. Times
+    /// always read left to right
     fn playback_controls(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool) {
         let clock = self.controller.clock();
         let forward = clock.playing() && !clock.backward();
         let backward = clock.playing() && clock.backward();
+        let now = self.controller.time(self.wall()).0;
 
         self.command_button(
             ui,
@@ -1550,6 +1556,15 @@ impl Viewer {
         };
         self.command_button(ui, catalog, icon, id, "J", command);
 
+        let shift_left = catalog.text("key-shift-left");
+        self.command_button(
+            ui,
+            catalog,
+            Icon::SkipBack,
+            "viewer-skip-back",
+            &shift_left,
+            Command::SeekTo(SourceTime((now - SKIP_STEP).max(0.))),
+        );
         self.command_button(
             ui,
             catalog,
@@ -1582,6 +1597,15 @@ impl Viewer {
             "viewer-step-forward",
             ".",
             Command::StepGroup(1),
+        );
+        let shift_right = catalog.text("key-shift-right");
+        self.command_button(
+            ui,
+            catalog,
+            Icon::SkipForward,
+            "viewer-skip-forward",
+            &shift_right,
+            Command::SeekTo(SourceTime(now + SKIP_STEP)),
         );
 
         self.time_readout(ui);
@@ -1818,6 +1842,8 @@ impl Viewer {
         let forward = clock.playing() && !clock.backward();
         let backward = clock.playing() && clock.backward();
         let pressed = |key: egui::Key| ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, key));
+        let shifted =
+            |key: egui::Key| ctx.input_mut(|i| i.consume_key(egui::Modifiers::SHIFT, key));
         let now = self.controller.time(self.wall()).0;
         let command = if self.controller.scrubbing() && pressed(egui::Key::Escape) {
             // Back to where the drag began
@@ -1843,6 +1869,10 @@ impl Viewer {
             Some(Command::StepGroup(-1))
         } else if pressed(egui::Key::Period) {
             Some(Command::StepGroup(1))
+        } else if !focused && shifted(egui::Key::ArrowLeft) {
+            Some(Command::SeekTo(SourceTime((now - SKIP_STEP).max(0.))))
+        } else if !focused && shifted(egui::Key::ArrowRight) {
+            Some(Command::SeekTo(SourceTime(now + SKIP_STEP)))
         } else if !focused && pressed(egui::Key::ArrowLeft) {
             Some(Command::SeekTo(SourceTime((now - SEEK_STEP).max(0.))))
         } else if !focused && pressed(egui::Key::ArrowRight) {
@@ -2303,12 +2333,14 @@ const MISSING_LIST_HEIGHT: f32 = 240.;
 
 /// The narrowest the transport fits on one row, the rate menu's width and
 /// the volume slider's
-const TRANSPORT_ONE_ROW: f32 = 600.;
+const TRANSPORT_ONE_ROW: f32 = 670.;
 const RATE_MENU_WIDTH: f32 = 64.;
 const VOLUME_SLIDER_WIDTH: f32 = 64.;
 
-/// Seconds the arrow keys move the playhead
+/// Seconds the arrow keys move the playhead, and the skip buttons or the
+/// arrow keys with Shift
 const SEEK_STEP: f64 = 5.;
+const SKIP_STEP: f64 = 10.;
 
 /// A tracer's colour, `tracerred`, `tracergreen` and `tracerblue` at their
 /// defaults by `traceralpha`'s, and its width either side of its line
