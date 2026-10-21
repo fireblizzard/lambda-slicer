@@ -388,6 +388,9 @@ export-copy-first = { $name } dosyasını liblist.gam bulunan mod klasörüne ko
 export-copy = Kopyala
 settings-export-folder = Dışa aktarma klasörü
 settings-export-choose = Seç…
+settings-file-names = Dosya adları
+settings-clip-name-files = Dosya için klibin adını kullan
+settings-demo-name-first = Demonun adıyla başla
 settings-viewer = Demo görüntüleyici
 settings-viewer-game = Half-Life klasörü
 settings-viewer-game-none = Seçilmedi
@@ -448,6 +451,7 @@ settings-see-through-hint = Duvarların arkasındaki oyuncular, takım oyunları
 viewer-see-through = Duvar arkasını gör
 settings-export-beside = Her demonun yanında
 settings-export-hint = liblist.gam bulunan mod klasörünüzde, örneğin Half-Life\ag, klipler tek bir playdemo komutuyla oynatılır.
+settings-file-names-hint = Klibin adını kullanmadığınız sürece, dışa aktarılan bir klip demosuna ve başlangıç ile bitiş zamanlarına göre adlandırılır. Oyun yalnızca adı İngilizce harf, rakam, - ve . karakterlerinden oluşan dosyaları açabilir, bu yüzden diğer her şey _ olur. Klip adında bunlardan hiçbiri yoksa dosya bunun yerine zamanlarına göre adlandırılır.
 
 clips-store-moved = { $path } klip dosyası okunamadı, bu yüzden { $moved } olarak saklandı ve klipler boş başlıyor. { $detail }
 clips-store-unreadable = { $path } klip dosyası okunamadı: { $detail }. Lambda Slicer kapatılana kadar klipler kaydedilmiyor, böylece dosyadaki hiçbir şey kaybolmuyor.

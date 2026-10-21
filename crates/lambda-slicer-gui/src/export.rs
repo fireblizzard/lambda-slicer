@@ -2,15 +2,17 @@
 //!
 //! An export job writes its clips one after another on its own thread with
 //! the core's restart export, which only publishes a file once it validated
-//! and never replaces one. Each clip's file name is chosen just before its
-//! export, so clips of one job never take the same name. Cancelling skips
+//! and never replaces one. Each clip's file is named after its times, or
+//! after its own name when the settings ask, and the number that keeps it
+//! apart from a file already there is chosen just before its export, so
+//! clips of one job never take the same name. Cancelling skips
 //! the clips not yet started, as a clip under way runs to its end. A job
 //! dropped with its demo view is cancelled the same way and not waited for.
 //!
-//! Each clip's range is taken when the job starts, so editing a clip later
-//! never makes its result look like an export of the new range
+//! Each clip's range and file name are taken when the job starts, so editing
+//! a clip later never makes its result look like an export of the new range
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver};
@@ -19,19 +21,54 @@ use eframe::egui;
 use lambda_slicer_core::container::Limits;
 use lambda_slicer_core::message::{Coded, Message};
 use lambda_slicer_core::slice::ExportError;
-use lambda_slicer_core::slice::naming::{clip_file_name, free_path, playdemo};
+use lambda_slicer_core::slice::naming::{
+    clip_file_name, free_path, named_clip_file_name, playdemo,
+};
 use lambda_slicer_core::slice::restart::run_restart;
 use lambda_slicer_core::timeline::time::DemoTime;
+
+use crate::clips::Clip;
 
 /// A clip by its requested range, which is what its export depends on
 pub type ClipKey = (DemoTime, DemoTime);
 
-/// A clip to export, by the demo view's identity for it and the range it
-/// had when the export was asked for
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// A clip to export, by the demo view's identity for it, and the range and
+/// file name it had when the export was asked for
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ExportItem {
     pub id: u64,
     pub range: ClipKey,
+    pub file_name: String,
+}
+
+/// How exported clips are named
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FileNaming {
+    /// After the clip's own name rather than its times
+    pub clip_name: bool,
+    /// The demo's name first, when the clip's name is used
+    pub demo_first: bool,
+}
+
+impl Default for FileNaming {
+    fn default() -> Self {
+        Self {
+            clip_name: false,
+            demo_first: true,
+        }
+    }
+}
+
+impl FileNaming {
+    /// The file name `clip` of the demo at `source` is exported under,
+    /// before any number that keeps it apart from a file already there
+    pub fn file_name(&self, source: &Path, clip: &Clip) -> String {
+        if self.clip_name {
+            let range = (clip.start, clip.end);
+            return named_clip_file_name(source, &clip.name, range, self.demo_first);
+        }
+        clip_file_name(source, clip.start, clip.end)
+    }
 }
 
 /// A finished export
@@ -92,7 +129,7 @@ impl ExportJob {
                     }
                     let _ = tx.send(Event::Started(item.id));
                     ctx.request_repaint();
-                    let dest = free_path(&folder, &clip_file_name(&source, start, end));
+                    let dest = free_path(&folder, &item.file_name);
                     // A panic fails this clip, not the job
                     let run = || run_restart(&source, &dest, start, Some(end), Limits::default());
                     let result = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(run)) {

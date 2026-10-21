@@ -548,6 +548,29 @@ impl App {
             self.settings_unsaved = true;
         }
 
+        // The demo's name first only means something with the clip's name
+        heading(
+            ui,
+            &self.catalog,
+            "settings-file-names",
+            Some("settings-file-names-hint"),
+            rtl,
+            false,
+        );
+        let mut naming = (self.settings.clip_name_files, self.settings.demo_name_first);
+        layout::row(ui, rtl, |ui| {
+            let label = self.t(&ctx, "settings-clip-name-files");
+            ui.checkbox(&mut naming.0, label);
+        });
+        layout::row(ui, rtl, |ui| {
+            let label = self.t(&ctx, "settings-demo-name-first");
+            ui.add_enabled(naming.0, egui::Checkbox::new(&mut naming.1, label));
+        });
+        if naming != (self.settings.clip_name_files, self.settings.demo_name_first) {
+            (self.settings.clip_name_files, self.settings.demo_name_first) = naming;
+            self.settings_unsaved = true;
+        }
+
         heading(
             ui,
             &self.catalog,

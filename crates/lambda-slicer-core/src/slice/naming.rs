@@ -2,11 +2,13 @@
 //! (implementation plan §8 and §9)
 //!
 //! A clip of `[1:36, 4:48)` from `source.dem` is suggested as
-//! `source__01m36s000-04m48s000.dem`. Names keep only ASCII letters, digits,
+//! `source__01m36s000-04m48s000.dem`, or after its own name as
+//! `source__name.dem` or `name.dem`. Names keep only ASCII letters, digits,
 //! `-`, `_` and `.`, since the game's console splits a command at spaces and
-//! reads paths in the system code page. The time suffix means a name is
-//! never a reserved Windows device name and never ends in a dot. A free name
-//! is only a suggestion, as publication itself refuses to replace any file
+//! reads paths in the system code page. No name ends in a dot, and a clip's
+//! own name standing alone is kept off the reserved Windows device names. A
+//! free name is only a suggestion, as publication itself refuses to replace
+//! any file
 
 use std::path::{Path, PathBuf};
 
@@ -26,9 +28,21 @@ fn stamp(t: DemoTime) -> String {
     }
 }
 
+/// Windows device names, which no file may have before its first dot
+const RESERVED: [&str; 22] = [
+    "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8",
+    "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+];
+
 /// A name part with every character the console or a file system could
-/// trip over replaced by `_`, runs of them merged
+/// trip over replaced by `_`, runs of them merged, `demo` when nothing is
+/// left
 pub fn sanitize(text: &str) -> String {
+    kept(text).unwrap_or_else(|| "demo".into())
+}
+
+/// What [`sanitize`] keeps of a name part, none when nothing is left
+fn kept(text: &str) -> Option<String> {
     let mut out = String::new();
     for c in text.chars() {
         let c = if c.is_ascii_alphanumeric() || matches!(c, '-' | '.') {
@@ -42,7 +56,8 @@ pub fn sanitize(text: &str) -> String {
     }
     let out = out.trim_matches(|c| c == '_' || c == '.');
     let out: String = out.chars().take(STEM_CHARS).collect();
-    if out.is_empty() { "demo".into() } else { out }
+    let out = out.trim_end_matches(['_', '.']);
+    (!out.is_empty()).then(|| out.to_string())
 }
 
 /// The suggested file name for `[start, end)` of `source`
@@ -52,6 +67,36 @@ pub fn clip_file_name(source: &Path, start: DemoTime, end: DemoTime) -> String {
         .map(|s| s.to_string_lossy())
         .unwrap_or_default();
     format!("{}__{}-{}.dem", sanitize(&stem), stamp(start), stamp(end))
+}
+
+/// The file name for a clip called `name` of `source`, after the source's
+/// name when `prefixed`. A name with nothing the console can keep is named
+/// by its times instead
+pub fn named_clip_file_name(
+    source: &Path,
+    name: &str,
+    (start, end): (DemoTime, DemoTime),
+    prefixed: bool,
+) -> String {
+    let Some(name) = kept(name) else {
+        return clip_file_name(source, start, end);
+    };
+
+    if prefixed {
+        let stem = source
+            .file_stem()
+            .map(|s| s.to_string_lossy())
+            .unwrap_or_default();
+        return format!("{}__{name}.dem", sanitize(&stem));
+    }
+
+    // A device name before the first dot is kept off with a `_` after it
+    let device = name.split('.').next().unwrap_or_default();
+    if RESERVED.iter().any(|r| r.eq_ignore_ascii_case(device)) {
+        let rest = &name[device.len()..];
+        return format!("{device}_{rest}.dem");
+    }
+    format!("{name}.dem")
 }
 
 /// `name` in `dir`, or with `_2`, `_3` and so on before the extension when
@@ -129,6 +174,30 @@ mod tests {
         assert_eq!(sanitize("...__"), "demo");
         assert_eq!(sanitize("CON"), "CON");
         assert_eq!(sanitize(&"x".repeat(100)).len(), STEM_CHARS);
+    }
+
+    #[test]
+    fn a_clip_named_by_its_own_name_keeps_what_the_console_can_read() {
+        let source = Path::new("F:/d/20230910_crossfire.dem");
+        let range = (at("1:36"), at("4:48"));
+        let named = |name: &str, prefixed| named_clip_file_name(source, name, range, prefixed);
+
+        assert_eq!(
+            named("Triple gauss", true),
+            "20230910_crossfire__Triple_gauss.dem"
+        );
+        assert_eq!(named("Triple gauss!", false), "Triple_gauss.dem");
+
+        // Nothing the console can read is named by the times
+        assert_eq!(
+            named("三杀", false),
+            "20230910_crossfire__01m36s000-04m48s000.dem"
+        );
+
+        // Windows keeps device names for itself
+        assert_eq!(named("con", false), "con_.dem");
+        assert_eq!(named("LPT1.final", false), "LPT1_.final.dem");
+        assert_eq!(named("con", true), "20230910_crossfire__con.dem");
     }
 
     #[test]

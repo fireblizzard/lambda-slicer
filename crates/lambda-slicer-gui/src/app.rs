@@ -16,6 +16,7 @@ pub use settings_window::SettingsTab;
 
 use crate::clips::{ClipStore, LoadProblem};
 use crate::demo::{self, DemoView, InspectorTab, Request, Setup, Surroundings, WorkspaceUi};
+use crate::export::FileNaming;
 use crate::game_setup::{self, Refusal};
 use crate::i18n::{Catalog, Locale};
 use crate::jobs::{Problem, ScanJob};
@@ -434,6 +435,10 @@ impl App {
         };
         d.padding = (self.settings.preroll, self.settings.postroll);
         d.export_folder = self.settings.export_folder.clone();
+        d.file_naming = FileNaming {
+            clip_name: self.settings.clip_name_files,
+            demo_first: self.settings.demo_name_first,
+        };
 
         let Some(v) = &mut d.viewer else {
             return;

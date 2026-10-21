@@ -417,6 +417,9 @@ export-copy-first = Nukopijuokite { $name } į modo aplanką, kuriame yra liblis
 export-copy = Kopijuoti
 settings-export-folder = Eksporto aplankas
 settings-export-choose = Pasirinkti…
+settings-file-names = Failų pavadinimai
+settings-clip-name-files = Naudoti klipo pavadinimą failui
+settings-demo-name-first = Pradėti nuo įrašo pavadinimo
 settings-viewer = Įrašų peržiūra
 settings-viewer-game = Half-Life aplankas
 settings-viewer-game-none = Nepasirinktas
@@ -477,6 +480,7 @@ settings-see-through-hint = Žaidėjai už sienų rodomi kaip siluetai jų virš
 viewer-see-through = Matyti pro sienas
 settings-export-beside = Šalia kiekvieno įrašo
 settings-export-hint = Modo aplanke, kuriame yra liblist.gam, pvz., Half-Life\ag, klipai paleidžiami viena playdemo komanda.
+settings-file-names-hint = Eksportuotas klipas pavadinamas pagal jo įrašą ir pradžios bei pabaigos laikus, nebent naudojate klipo pavadinimą. Žaidimas gali atverti tik failus, kurių pavadinimai sudaryti iš anglų abėcėlės raidžių, skaičių, - ir ., todėl visa kita pakeičiama į _. Jei klipo pavadinime nėra nė vieno iš šių ženklų, failas pavadinamas pagal laikus.
 
 clips-store-moved = Klipų failo { $path } nepavyko perskaityti, todėl jis išsaugotas kaip { $moved }, o klipų sąrašas pradedamas iš naujo. { $detail }
 clips-store-unreadable = Klipų failo { $path } nepavyko perskaityti: { $detail }. Kol Lambda Slicer neuždaryta, klipai neišsaugomi, todėl niekas iš failo nedings.

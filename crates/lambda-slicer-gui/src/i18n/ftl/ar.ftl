@@ -437,6 +437,9 @@ export-copy-first = انسخ { $name } إلى مجلد التعديل الذي �
 export-copy = نسخ
 settings-export-folder = مجلد التصدير
 settings-export-choose = اختيار…
+settings-file-names = أسماء الملفات
+settings-clip-name-files = استخدام اسم المقطع اسمًا للملف
+settings-demo-name-first = البدء باسم التسجيل
 settings-viewer = عارض التسجيلات
 settings-viewer-game = مجلد Half-Life
 settings-viewer-game-none = لم يُختر بعد
@@ -497,6 +500,7 @@ settings-see-through-hint = يظهر اللاعبون خلف الجدران كظ
 viewer-see-through = الرؤية خلف الجدران
 settings-export-beside = بجانب كل تسجيل
 settings-export-hint = داخل مجلد التعديل الذي فيه liblist.gam مثل Half-Life\ag، تُشغَّل المقاطع بأمر playdemo واحد.
+settings-file-names-hint = يُسمّى المقطع المصدَّر باسم تسجيله ووقتي بدايته ونهايته، ما لم تستخدم اسم المقطع. لا تفتح اللعبة إلا الملفات التي تتكوّن أسماؤها من حروف إنجليزية وأرقام و - و .، لذا يتحوّل كل ما عداها إلى _. وإن لم يحتوِ اسم المقطع على أيٍّ منها، يُسمّى الملف بأوقاته بدلًا من ذلك.
 
 clips-store-moved = تعذّرت قراءة ملف المقاطع { $path }، لذا حُفظ باسم { $moved } وتبدأ المقاطع فارغة. { $detail }
 clips-store-unreadable = تعذّرت قراءة ملف المقاطع { $path }: { $detail }. لن تُحفظ المقاطع حتى يُغلق Lambda Slicer، فلا يضيع شيء مما في الملف.

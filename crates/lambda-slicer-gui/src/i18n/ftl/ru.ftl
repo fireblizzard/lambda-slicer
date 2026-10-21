@@ -417,6 +417,9 @@ export-copy-first = Скопируйте { $name } в папку мода, гд�
 export-copy = Копировать
 settings-export-folder = Папка экспорта
 settings-export-choose = Выбрать…
+settings-file-names = Имена файлов
+settings-clip-name-files = Использовать название клипа как имя файла
+settings-demo-name-first = Начинать с названия демо
 settings-viewer = Просмотр демозаписей
 settings-viewer-game = Папка Half-Life
 settings-viewer-game-none = Не выбрана
@@ -477,6 +480,7 @@ settings-see-through-hint = Игроки за стенами видны силу
 viewer-see-through = Видеть сквозь стены
 settings-export-beside = Рядом с каждым демо
 settings-export-hint = В папке мода, где лежит liblist.gam, например Half-Life\ag, клипы запускаются одной командой playdemo.
+settings-file-names-hint = Экспортированный клип получает имя по своему демо и времени начала и конца, если вы не используете название клипа. Игра открывает только файлы, имена которых состоят из латинских букв, цифр, - и ., поэтому всё остальное заменяется на _. Если в названии клипа нет ни одного из этих символов, файл называется по времени.
 
 clips-store-moved = Не удалось прочитать файл клипов { $path }, поэтому он сохранён как { $moved }, а список клипов начат заново. { $detail }
 clips-store-unreadable = Не удалось прочитать файл клипов { $path }: { $detail }. Пока Lambda Slicer не закрыт, клипы не сохраняются, поэтому ничего в файле не потеряется.

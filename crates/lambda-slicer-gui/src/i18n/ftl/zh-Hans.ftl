@@ -381,6 +381,9 @@ export-copy-first = 把 { $name } 复制到包含 liblist.gam 的 mod 文件夹�
 export-copy = 复制
 settings-export-folder = 导出文件夹
 settings-export-choose = 选择…
+settings-file-names = 文件名
+settings-clip-name-files = 用片段名称作为文件名
+settings-demo-name-first = 以录像名称开头
 settings-viewer = 录像查看器
 settings-viewer-game = Half-Life 文件夹
 settings-viewer-game-none = 尚未选择
@@ -441,6 +444,7 @@ settings-see-through-hint = 墙后的玩家以其上衣颜色的剪影显示，�
 viewer-see-through = 透视墙壁
 settings-export-beside = 每个录像旁边
 settings-export-hint = 在包含 liblist.gam 的 mod 文件夹中（例如 Half-Life\ag），片段只需一条 playdemo 命令即可播放。
+settings-file-names-hint = 导出的片段以其录像和起止时间命名，除非你使用片段名称。游戏只能打开名称由英文字母、数字、- 和 . 组成的文件，所以其他字符都会变成 _。片段名称中如果没有这些字符，就改用时间命名。
 
 clips-store-moved = 无法读取片段文件 { $path }，因此已将其保留为 { $moved }，片段从空开始。{ $detail }
 clips-store-unreadable = 无法读取片段文件 { $path }：{ $detail }。在关闭 Lambda Slicer 之前不会保存片段，因此文件中的内容不会丢失。

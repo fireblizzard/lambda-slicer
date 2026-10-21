@@ -32,7 +32,7 @@ use lambda_slicer_core::timeline::time::DemoTime;
 
 use crate::app::SettingsTab;
 use crate::clips::{Clip, next_name, parse_time};
-use crate::export::{ClipKey, ExportItem, ExportJob, ExportState};
+use crate::export::{ClipKey, ExportItem, ExportJob, ExportState, FileNaming};
 use crate::i18n::Catalog;
 use crate::kill_analysis::Walls;
 use crate::kill_filters::{KillFilters, Verdict};
@@ -484,6 +484,8 @@ pub struct DemoView {
     snapped: HashMap<(DemoTime, DemoTime), Result<Snapped, Message>>,
     /// Where exports go, the demo's own folder when none is set
     pub export_folder: Option<PathBuf>,
+    /// How exported clips are named
+    pub file_naming: FileNaming,
     export: Option<ExportJob>,
     /// How each clip's latest export went, by its identity, with the range
     /// that export was asked for
@@ -545,6 +547,7 @@ impl DemoView {
             padding: (0., 0.),
             snapped: HashMap::new(),
             export_folder: None,
+            file_naming: FileNaming::default(),
             export: None,
             exports: HashMap::new(),
             export_on_load: false,
@@ -598,7 +601,12 @@ impl DemoView {
             };
             let range = (clip.start, clip.end);
             self.exports.insert(id, (range, ExportState::Waiting));
-            items.push(ExportItem { id, range });
+            let file_name = self.file_naming.file_name(&self.path, clip);
+            items.push(ExportItem {
+                id,
+                range,
+                file_name,
+            });
         }
 
         let job = ExportJob::start(self.path.clone(), self.export_dir(), items, ctx.clone());

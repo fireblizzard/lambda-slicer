@@ -32,6 +32,10 @@ pub struct Settings {
     pub postroll: f32,
     /// Where clips are exported, beside each demo when none is set
     pub export_folder: Option<PathBuf>,
+    /// Exported clips are named after the clip rather than its times, with
+    /// the demo's name first when `demo_name_first` is also set
+    pub clip_name_files: bool,
+    pub demo_name_first: bool,
     pub viewer: ViewerSettings,
     /// A layout this version cannot read opens the first way, keeping every
     /// other setting
@@ -201,6 +205,8 @@ impl Default for Settings {
             preroll: 5.,
             postroll: 3.,
             export_folder: None,
+            clip_name_files: false,
+            demo_name_first: true,
             viewer: ViewerSettings::default(),
             layout: LayoutSettings::default(),
         }
@@ -286,6 +292,8 @@ mod tests {
             preroll: 2.5,
             postroll: 0.,
             export_folder: Some(PathBuf::from("F:/clips")),
+            clip_name_files: true,
+            demo_name_first: false,
             viewer: ViewerSettings {
                 game: Some(PathBuf::from("F:/Half-Life")),
                 executable: Some(PathBuf::from("F:/Half-Life/hl.exe")),
@@ -369,6 +377,18 @@ mod tests {
         let text = std::fs::read_to_string(&path).unwrap();
         assert!(text.contains("player_lanes") && !text.contains("show_timeline"));
         assert!(Settings::load_from(&path).player_lanes);
+    }
+
+    #[test]
+    fn clips_keep_their_times_in_file_names_until_asked() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+
+        // A file from before the choice was there
+        std::fs::write(&path, br#"{"workers": 2}"#).unwrap();
+        let loaded = Settings::load_from(&path);
+        assert!(!loaded.clip_name_files);
+        assert!(loaded.demo_name_first);
     }
 
     #[test]

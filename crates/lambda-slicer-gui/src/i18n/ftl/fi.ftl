@@ -397,6 +397,9 @@ export-copy-first = Kopioi { $name } modin kansioon, jossa on liblist.gam, ja si
 export-copy = Kopioi
 settings-export-folder = Vientikansio
 settings-export-choose = Valitse…
+settings-file-names = Tiedostonimet
+settings-clip-name-files = Käytä klipin nimeä tiedostonimenä
+settings-demo-name-first = Aloita demon nimellä
 settings-viewer = Demokatselin
 settings-viewer-game = Half-Life-kansio
 settings-viewer-game-none = Ei valittu
@@ -457,6 +460,7 @@ settings-see-through-hint = Seinien takana olevat pelaajat näkyvät siluetteina
 viewer-see-through = Näe seinien läpi
 settings-export-beside = Kunkin demon viereen
 settings-export-hint = Modin kansiossa, jossa on liblist.gam, kuten Half-Life\ag, klipit toistuvat yhdellä playdemo-komennolla.
+settings-file-names-hint = Viety klippi nimetään demonsa sekä alku- ja loppuaikansa mukaan, ellet käytä klipin nimeä. Peli avaa vain tiedostoja, joiden nimessä on englannin aakkosten kirjaimia, numeroita, - ja ., joten kaikki muu muuttuu merkiksi _. Jos klipin nimessä ei ole yhtään näistä merkeistä, tiedosto nimetään sen sijaan aikojen mukaan.
 
 clips-store-moved = Klippitiedostoa { $path } ei voitu lukea, joten se säilytettiin nimellä { $moved } ja klipit alkavat tyhjästä. { $detail }
 clips-store-unreadable = Klippitiedostoa { $path } ei voitu lukea: { $detail }. Klippejä ei tallenneta ennen kuin Lambda Slicer suljetaan, joten mitään tiedoston sisällöstä ei katoa.

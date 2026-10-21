@@ -397,6 +397,9 @@ export-copy-first = Kopiere { $name } in deinen Mod-Ordner, den mit liblist.gam,
 export-copy = Kopieren
 settings-export-folder = Exportordner
 settings-export-choose = Wählen…
+settings-file-names = Dateinamen
+settings-clip-name-files = Namen des Clips für die Datei verwenden
+settings-demo-name-first = Mit dem Namen der Demo beginnen
 settings-viewer = Demo-Ansicht
 settings-viewer-game = Half-Life-Ordner
 settings-viewer-game-none = Nicht gewählt
@@ -457,6 +460,7 @@ settings-see-through-hint = Spieler hinter Wänden erscheinen als Umrisse in ihr
 viewer-see-through = Durch Wände sehen
 settings-export-beside = Neben jeder Demo
 settings-export-hint = Im Mod-Ordner, dem mit liblist.gam wie Half-Life\ag, spielen Clips mit einem einzigen playdemo-Befehl.
+settings-file-names-hint = Ein exportierter Clip wird nach seiner Demo und seiner Anfangs- und Endzeit benannt, außer du verwendest den Namen des Clips. Das Spiel kann nur Dateien öffnen, deren Namen aus Buchstaben des englischen Alphabets, Zahlen, - und . bestehen, daher wird alles andere zu _. Enthält der Name eines Clips keins dieser Zeichen, wird die Datei stattdessen nach den Zeiten benannt.
 
 clips-store-moved = Die Clip-Datei { $path } konnte nicht gelesen werden. Sie wurde als { $moved } aufbewahrt, und die Clips beginnen leer. { $detail }
 clips-store-unreadable = Die Clip-Datei { $path } konnte nicht gelesen werden: { $detail }. Bis Lambda Slicer geschlossen wird, werden Clips nicht gespeichert, damit nichts in der Datei verloren geht.

@@ -417,6 +417,9 @@ export-copy-first = Skopiuj { $name } do folderu moda, tego z liblist.gam, a pot
 export-copy = Kopiuj
 settings-export-folder = Folder eksportu
 settings-export-choose = Wybierz…
+settings-file-names = Nazwy plików
+settings-clip-name-files = Używaj nazwy klipu jako nazwy pliku
+settings-demo-name-first = Zaczynaj od nazwy dema
 settings-viewer = Podgląd dem
 settings-viewer-game = Folder Half-Life
 settings-viewer-game-none = Nie wybrano
@@ -477,6 +480,7 @@ settings-see-through-hint = Gracze za ścianami są widoczni jako sylwetki w ich
 viewer-see-through = Widź przez ściany
 settings-export-beside = Obok każdego dema
 settings-export-hint = W folderze moda, tym z liblist.gam, na przykład Half-Life\ag, klipy odtwarza jedno polecenie playdemo.
+settings-file-names-hint = Wyeksportowany klip dostaje nazwę od swojego dema oraz czasu początku i końca, chyba że używasz nazwy klipu. Gra otwiera tylko pliki, których nazwy składają się z liter alfabetu angielskiego, cyfr, - i ., więc wszystko inne zmienia się w _. Jeśli nazwa klipu nie ma żadnego z tych znaków, plik dostaje nazwę od czasów.
 
 clips-store-moved = Nie udało się odczytać pliku klipów { $path }, więc zachowano go jako { $moved }, a lista klipów zaczyna się od nowa. { $detail }
 clips-store-unreadable = Nie udało się odczytać pliku klipów { $path }: { $detail }. Dopóki Lambda Slicer nie zostanie zamknięty, klipy nie są zapisywane, więc nic w pliku nie przepadnie.

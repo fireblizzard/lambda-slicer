@@ -407,6 +407,9 @@ export-copy-first = Copia { $name } en la carpeta de tu mod, la que tiene liblis
 export-copy = Copiar
 settings-export-folder = Carpeta de exportación
 settings-export-choose = Elegir…
+settings-file-names = Nombres de archivo
+settings-clip-name-files = Usar el nombre del clip para el archivo
+settings-demo-name-first = Empezar con el nombre de la demo
 settings-viewer = Visor de demos
 settings-viewer-game = Carpeta de Half-Life
 settings-viewer-game-none = Sin elegir
@@ -467,6 +470,7 @@ settings-see-through-hint = Los jugadores detrás de paredes se ven como silueta
 viewer-see-through = Ver tras paredes
 settings-export-beside = Junto a cada demo
 settings-export-hint = Dentro de la carpeta de tu mod, la que tiene liblist.gam como Half-Life\ag, los clips se reproducen con un solo comando playdemo.
+settings-file-names-hint = Un clip exportado se nombra con su demo y sus tiempos de inicio y fin, salvo que uses el nombre del clip. El juego solo puede abrir archivos con nombres hechos de letras del alfabeto inglés, números, - y ., así que todo lo demás se cambia por _. Si el nombre de un clip no tiene ninguno de estos caracteres, el archivo se nombra por sus tiempos.
 
 clips-store-moved = No se pudo leer el archivo de clips { $path }, así que se guardó como { $moved } y los clips empiezan vacíos. { $detail }
 clips-store-unreadable = No se pudo leer el archivo de clips { $path }: { $detail }. Hasta que se cierre Lambda Slicer, los clips no se guardan, así que no se pierde nada del archivo.
