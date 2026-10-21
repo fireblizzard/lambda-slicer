@@ -32,7 +32,6 @@ use lambda_slicer_assets::xenoxide::studio_pose::BoneTransform;
 use lambda_slicer_audio::device::{Device, Feed};
 use lambda_slicer_audio::library::Library;
 use lambda_slicer_core::container::{Limits, read_header};
-use lambda_slicer_core::timeline::time::DemoTime;
 use lambda_slicer_playback::PresentedFrame;
 use lambda_slicer_playback::animation::{Flash, Holder};
 use lambda_slicer_playback::controller::{Command, Controller, LoopRange, Reply, Stamp};
@@ -385,6 +384,9 @@ pub struct Viewer {
     library: Option<Arc<Library>>,
     /// The kill feed's icons, read from the game's files as needed
     kill_feed: KillFeed,
+    /// How wide the transport's parts were last drawn, for centring the
+    /// play button under the picture
+    transport_widths: TransportWidths,
     /// Maps, models, sprites and skies that could not be read, and why
     missing: std::collections::BTreeMap<String, String>,
 }
@@ -563,6 +565,7 @@ impl Viewer {
             decals: DecalCache::new(decal_wad),
             library: glow_library,
             kill_feed: KillFeed::default(),
+            transport_widths: TransportWidths::default(),
         }
     }
 
@@ -1500,36 +1503,77 @@ impl Viewer {
         self.diagnostics(ui, rect, catalog, rtl);
     }
 
-    /// The transport under the view, the playback controls first and the
-    /// view and sound at the far end, on two rows when one is too narrow.
-    /// It runs left to right in every language, as time and the play
-    /// controls' directions do. Nothing while playback has failed. Returns
-    /// true when the picture settings were asked for
+    /// The transport under the view, the play button under the picture's
+    /// middle among the other playback buttons and the speed, the time
+    /// under it, and the view and sound at the far end. It runs left to right in every language, as time and the
+    /// play controls' directions do. Nothing while playback has failed.
+    /// Returns true when the picture settings were asked for
     pub fn transport_ui(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool) -> bool {
         if self.controller.failed().is_some() {
             return false;
         }
 
+        // Placed by how wide everything was last drawn. The view controls
+        // stay beside the buttons while the play button can still stand in
+        // the middle, then join the time, and then take a row of their own
+        let last = self.transport_widths;
+        let mut now = last;
         let mut picture = false;
-        if ui.available_width() >= TRANSPORT_ONE_ROW {
+        let full = ui.available_width();
+        let gap = ui.spacing().item_spacing.x;
+        let view_start = full - last.view - gap;
+        let buttons_lead = lead(full / 2. - last.play_middle, last.buttons, full);
+        let view_first = buttons_lead + last.buttons <= view_start;
+        let view_second = !view_first && last.time <= view_start;
+
+        // The buttons, the play button's middle under the picture's
+        layout::row(ui, false, |ui| {
+            ui.add_space(buttons_lead);
+            let group = ui.scope(|ui| self.playback_controls(ui, catalog, rtl));
+            let group_left = group.response.rect.left();
+            now.buttons = group.response.rect.width();
+            now.play_middle = group.inner - group_left;
+            if view_first {
+                (picture, now.view) = self.view_group(ui, catalog, rtl);
+            }
+        });
+
+        // The time under the play button, or short of the view controls
+        // when they are in the way
+        let end = if view_second { view_start } else { full };
+        let play_middle = buttons_lead + last.play_middle;
+        let time_lead = lead(play_middle - last.time / 2., last.time, end);
+        layout::row(ui, false, |ui| {
+            ui.add_space(time_lead);
+            now.time = self.time_readout(ui);
+            if view_second {
+                (picture, now.view) = self.view_group(ui, catalog, rtl);
+            }
+        });
+
+        if !view_first && !view_second {
             layout::row(ui, false, |ui| {
-                self.playback_controls(ui, catalog, rtl);
-                layout::trailing(ui, false, |ui| {
-                    picture = self.view_controls(ui, catalog, rtl);
-                });
-            });
-        } else {
-            // The view controls under the playback ones, at the same end and
-            // in the same order as on one row
-            layout::row(ui, false, |ui| self.playback_controls(ui, catalog, rtl));
-            layout::row(ui, false, |ui| {
-                layout::trailing(ui, false, |ui| {
-                    picture = self.view_controls(ui, catalog, rtl);
-                });
+                (picture, now.view) = self.view_group(ui, catalog, rtl);
             });
         }
 
+        // A frame drawn with other widths than these is drawn again before
+        // it shows, so the controls never jump
+        if !now.settled(&last) {
+            self.transport_widths = now;
+            ui.ctx().request_discard("transport widths");
+        }
+
         picture
+    }
+
+    /// The view controls at the row's trailing end. Returns whether the
+    /// picture settings were asked for, and how wide they are
+    fn view_group(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool) -> (bool, f32) {
+        layout::trailing(ui, false, |ui| {
+            let picture = self.view_controls(ui, catalog, rtl);
+            (picture, ui.min_rect().width())
+        })
     }
 
     /// An icon button that runs `command`, naming its keyboard shortcut
@@ -1553,9 +1597,9 @@ impl Viewer {
     }
 
     /// Back to the start, reverse, ten seconds back, a group back, play, a
-    /// group forward, ten seconds forward, the time and the rate. Times
-    /// always read left to right
-    fn playback_controls(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool) {
+    /// group forward, ten seconds forward and the speed. Returns where the
+    /// play button's middle is across the row
+    fn playback_controls(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool) -> f32 {
         let clock = self.controller.clock();
         let forward = clock.playing() && !clock.backward();
         let backward = clock.playing() && clock.backward();
@@ -1611,7 +1655,8 @@ impl Viewer {
             ("viewer-play", Command::Play)
         };
         let label = format!("{}\n{shortcut}", catalog.text(id));
-        if ui.add(PlayButton::new(forward, &label)).clicked() {
+        let play = ui.add(PlayButton::new(forward, &label));
+        if play.clicked() {
             self.command(command);
         }
 
@@ -1633,8 +1678,8 @@ impl Viewer {
             Command::SeekTo(SourceTime(now + SKIP_STEP)),
         );
 
-        self.time_readout(ui);
         self.rate_menu(ui, catalog, rtl);
+        play.rect.center().x
     }
 
     /// The demo's length as known so far, the library's figure or how far
@@ -1700,32 +1745,26 @@ impl Viewer {
 
         // The moment under the pointer
         if let Some(pointer) = response.hover_pos() {
-            let at = DemoTime::from_f32(time_at(pointer.x) as f32)
-                .map(|t| t.to_string())
-                .unwrap_or_default();
+            let at = clock(time_at(pointer.x), end > HOUR);
             response.on_hover_text_at_pointer(at);
         }
     }
 
-    /// The playhead to the millisecond and the demo's length to the second,
-    /// the length fainter
-    fn time_readout(&self, ui: &mut Ui) {
+    /// The playhead and the demo's length to the millisecond, the length
+    /// fainter, with hours only for a demo over an hour. Returns how wide
+    /// it is
+    fn time_readout(&self, ui: &mut Ui) -> f32 {
         let now = self.controller.time(self.wall()).0;
         let end = self.length(now);
-        let clock = |t: f64| {
-            DemoTime::from_f32(t as f32)
-                .map(|t| t.to_string())
-                .unwrap_or_default()
-        };
-        let whole = clock(end);
-        let length = whole.split('.').next().unwrap_or_default();
+        let hours = end > HOUR;
 
         let mut job = egui::text::LayoutJob::default();
         let font = egui::TextStyle::Monospace.resolve(ui.style());
         let format = |color| egui::TextFormat::simple(font.clone(), color);
-        job.append(&clock(now), 0., format(theme::FOREGROUND));
-        job.append(&format!(" / {length}"), 0., format(theme::FAINT));
-        ui.label(job);
+        job.append(&clock(now, hours), 0., format(theme::FOREGROUND));
+        let length = format!(" / {}", clock(end, hours));
+        job.append(&length, 0., format(theme::FAINT));
+        ui.label(job).rect.width()
     }
 
     fn rate_menu(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool) {
@@ -1765,10 +1804,11 @@ impl Viewer {
         }
     }
 
-    /// See through walls, mute and the volume, and the picture settings,
-    /// placed from the row's trailing end. The first two need the game's
-    /// files and the sound device, and say so when they are not there.
-    /// Returns true when the picture settings were asked for
+    /// The picture settings, mute and the volume, see through walls and the
+    /// zoom, placed from the row's trailing end. Sound and
+    /// seeing through walls need the sound device and the game's files,
+    /// and say so when they are not there. Returns true when the picture
+    /// settings were asked for
     fn view_controls(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool) -> bool {
         let picture_label = catalog.text("viewer-picture");
         let picture = ui
@@ -2440,6 +2480,13 @@ const NOTE_SHADE: u8 = 190;
 const NOTE_MARGIN_Y: i8 = 2;
 const MISSING_LIST_HEIGHT: f32 = 240.;
 
+/// How far a control group's width may change before the transport is laid
+/// out again
+const WIDTH_SETTLED: f32 = 0.5;
+
+/// A demo this many seconds long or shorter shows its times without hours
+const HOUR: f64 = 3600.;
+
 /// The seek bar's height, its track's thickness at rest and under the
 /// pointer, and its knob's radius
 const SEEK_BAR_HEIGHT: f32 = 12.;
@@ -2447,9 +2494,7 @@ const SEEK_TRACK: f32 = 4.;
 const SEEK_TRACK_ACTIVE: f32 = 6.;
 const SEEK_KNOB: f32 = 6.;
 
-/// The narrowest the transport fits on one row, the rate menu's width and
-/// the volume slider's
-const TRANSPORT_ONE_ROW: f32 = 706.;
+/// The rate menu's width and the volume slider's
 const RATE_MENU_WIDTH: f32 = 64.;
 const VOLUME_SLIDER_WIDTH: f32 = 64.;
 
@@ -2704,6 +2749,52 @@ fn draw_countdown(painter: &egui::Painter, rect: egui::Rect, countdown: &Countdo
 /// The player `camera` follows among `players`, the one a spectator
 /// watches or the recording player while playing, by `local` when the view
 /// names none. None while a spectator roams freely
+/// How wide the transport's parts were last drawn
+#[derive(Clone, Copy, Default)]
+struct TransportWidths {
+    /// The playback buttons with the speed, and how far into them the play
+    /// button's middle is
+    buttons: f32,
+    play_middle: f32,
+    /// The time, and the view and sound controls
+    time: f32,
+    view: f32,
+}
+
+impl TransportWidths {
+    /// Whether these are close enough to `other` to lay out the same
+    fn settled(&self, other: &Self) -> bool {
+        let pairs = [
+            (self.buttons, other.buttons),
+            (self.play_middle, other.play_middle),
+            (self.time, other.time),
+            (self.view, other.view),
+        ];
+        pairs.iter().all(|(a, b)| (a - b).abs() <= WIDTH_SETTLED)
+    }
+}
+
+/// Where a group `width` wide starts to stand at `wanted`, kept from the
+/// row's start and from passing `end`
+fn lead(wanted: f32, width: f32, end: f32) -> f32 {
+    wanted.min(end - width).max(0.)
+}
+
+/// `seconds` as minutes, seconds and milliseconds, after hours when `hours`
+fn clock(seconds: f64, hours: bool) -> String {
+    // To the microsecond first, so 62 read as 61.9999 is still 62
+    let micros = (seconds.max(0.) * 1e6).round() as u64;
+    let ms = micros / 1000;
+    let (s, millis) = (ms / 1000 % 60, ms % 1000);
+    if hours {
+        let (h, m) = (ms / 3_600_000, ms / 60_000 % 60);
+        return format!("{h:02}:{m:02}:{s:02}.{millis:03}");
+    }
+
+    let m = ms / 60_000;
+    format!("{m:02}:{s:02}.{millis:03}")
+}
+
 fn watched<'a>(
     camera: &scene::Camera,
     local: u16,
@@ -2757,6 +2848,15 @@ fn without_colours(name: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn times_show_milliseconds_and_hours_only_past_an_hour() {
+        assert_eq!(clock(62., false), "01:02.000");
+        assert_eq!(clock(1204.512, false), "20:04.512");
+        assert_eq!(clock(f64::from(61.999_999_f32), false), "01:02.000");
+        assert_eq!(clock(3723.004, true), "01:02:03.004");
+        assert_eq!(clock(-1., false), "00:00.000");
+    }
 
     #[test]
     fn the_name_shown_is_the_followed_players() {

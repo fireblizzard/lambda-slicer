@@ -14,7 +14,7 @@
 - [x] Add right clicking on the demo (in the table or on the list at the left after the demo player shows up) with a context menu to Open location, which opens the file explorer with the demo file selected
 - [x] When selecting a highlight like the Golden minute, "Clip it" should set the start/end time to the highlight's instead of the selected event, plus the configured pre-clip and post-clip duration
 - [ ] Add crosshair to the demo player, and a setting to disable it
-- [ ] Buttons that are bottom left under the demo player should be centered
+- [x] Buttons that are bottom left under the demo player should be centered
 - [ ] Try to reduce lag when watching a demo while it's scanning folders, prioritize the demo player
 - [ ] Fix library only showing one map on demos with multiple maps, like on `20240120_192554_ag_hidden_lab`, that has `ag_hidden_lab` and `elixir`. it should probably just add a comma, space and the next map name (e.g. `ag_hidden_lab, elixir`) and when filtering by map it should still work when typing part of any of the map names
 - [ ] On `20240120_192554_ag_hidden_lab` there's an intermission (map change) at 0:15:10. we should probably render some text saying that the server is changing to X map
@@ -24,6 +24,8 @@
 - [ ] Add a filter for player name in the event list of a demo
 - [ ] Add a small button to the event list that stops the player from panning to the playhead so that you can freely scroll without it scrolling back automatically. It should show enabled by default (so autopan to playhead) and get disabled as you start scrolling manually, then clicking on it pans back to where the playhead is
 - [ ] Add 8 pixels of margin to the right of the kill feed
+- [ ] Add a button in Settings to restore all settings to default, with a confirmation dialog mentioning all the custom settings/values that will revert to default
+- [ ] Remove older decals, keep the 100 most recent ones by default, add a setting for that number
 
 # Ideas for later
 - [ ] Add a Favourites tab and a Add to favourites or Remove from favourites option to the context menu of a demo
