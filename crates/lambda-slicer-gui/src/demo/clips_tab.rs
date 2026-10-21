@@ -203,17 +203,20 @@ impl DemoView {
             .corner_radius(theme::RADIUS_CARD)
             .inner_margin(CARD_PADDING);
 
+        // A click anywhere on the card chooses it. Its fields and buttons
+        // take their own clicks, as the card's are under them
         let mut action = None;
-        let card = frame.show(ui, |ui| {
-            ui.set_width(ui.available_width());
-            self.card_name(ui, catalog, rtl, i);
-            self.card_times(ui, catalog, rtl, i);
-            action = self.card_buttons(ui, catalog, rtl, i);
-            self.card_outcome(ui, catalog, rtl, i);
+        let clickable = egui::UiBuilder::new().sense(Sense::click());
+        let card = ui.scope_builder(clickable, |ui| {
+            frame.show(ui, |ui| {
+                ui.set_width(ui.available_width());
+                self.card_name(ui, catalog, rtl, i);
+                self.card_times(ui, catalog, rtl, i);
+                action = self.card_buttons(ui, catalog, rtl, i);
+                self.card_outcome(ui, catalog, rtl, i);
+            });
         });
-
-        // A click anywhere on the card chooses it
-        if card.response.interact(Sense::click()).clicked() {
+        if card.response.clicked() {
             self.chosen_clip = Some(i);
         }
 
@@ -625,5 +628,89 @@ fn export_state(ui: &mut Ui, catalog: &Catalog, rtl: bool, state: &ExportState) 
                 }
             });
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use super::*;
+    use crate::clips::Clip;
+    use crate::i18n::Locale;
+
+    /// A demo view with one clip from 1 to 2 seconds
+    fn view_with_a_clip(ctx: &egui::Context) -> DemoView {
+        let mut view = DemoView::open(PathBuf::from("not-there.dem"), 10., None, ctx);
+        view.clips.push(Clip {
+            name: "Clip 1".into(),
+            start: DemoTime::from_micros(1_000_000),
+            end: DemoTime::from_micros(2_000_000),
+        });
+        view
+    }
+
+    /// The clip card drawn once with `events` for input, and where it is
+    fn draw_card(ctx: &egui::Context, view: &mut DemoView, events: Vec<egui::Event>) -> egui::Rect {
+        let catalog = Catalog::new(Locale::En);
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(400., 300.),
+            )),
+            events,
+            ..Default::default()
+        };
+        let mut card = egui::Rect::NOTHING;
+        let mut output = ctx.run_ui(input, |ui| {
+            view.clip_card(ui, &catalog, false, 0);
+            card = ui.min_rect();
+        });
+
+        // Nothing is shown, so the fonts egui made go unused
+        output.textures_delta.clear();
+        card
+    }
+
+    /// A click at `at`, the pointer moved there first
+    fn click(ctx: &egui::Context, view: &mut DemoView, at: egui::Pos2) {
+        let button = |pressed| egui::Event::PointerButton {
+            pos: at,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::NONE,
+        };
+        draw_card(ctx, view, vec![egui::Event::PointerMoved(at)]);
+        draw_card(ctx, view, vec![button(true)]);
+        draw_card(ctx, view, vec![button(false)]);
+        draw_card(ctx, view, Vec::new());
+    }
+
+    #[test]
+    fn a_click_on_the_name_keeps_it_for_typing() {
+        let ctx = egui::Context::default();
+        let mut view = view_with_a_clip(&ctx);
+
+        // The name is the card's first field, just inside its padding
+        let card = draw_card(&ctx, &mut view, Vec::new());
+        let inset = f32::from(CARD_PADDING) + 4.;
+        click(&ctx, &mut view, card.min + egui::vec2(inset, inset));
+        assert!(ctx.text_edit_focused());
+
+        // What is typed then goes into the name, where it was clicked
+        draw_card(&ctx, &mut view, vec![egui::Event::Text("!".into())]);
+        assert_eq!(view.clips[0].name, "!Clip 1");
+    }
+
+    #[test]
+    fn a_click_on_the_card_around_its_fields_chooses_it() {
+        let ctx = egui::Context::default();
+        let mut view = view_with_a_clip(&ctx);
+        assert_eq!(view.chosen_clip, None);
+
+        // Inside its padding at the far corner, away from every field
+        let card = draw_card(&ctx, &mut view, Vec::new());
+        click(&ctx, &mut view, card.max - egui::vec2(2., 2.));
+        assert_eq!(view.chosen_clip, Some(0));
     }
 }
