@@ -31,6 +31,7 @@ use lambda_slicer_assets::wad::Wad;
 use lambda_slicer_assets::xenoxide::studio_pose::BoneTransform;
 use lambda_slicer_audio::device::{Device, Feed};
 use lambda_slicer_audio::library::Library;
+use lambda_slicer_core::analysis::context::SessionMap;
 use lambda_slicer_core::container::{Limits, read_header};
 use lambda_slicer_playback::PresentedFrame;
 use lambda_slicer_playback::animation::{Flash, Holder};
@@ -324,6 +325,9 @@ struct Resources {
 pub struct Viewer {
     /// The settings it shows and plays with, the app's each frame
     pub settings: ViewerSettings,
+    /// Each session's map and when it began, from the analysis once it is
+    /// in, to tell which map an intermission changes to
+    pub sessions: Vec<SessionMap>,
     /// The game's files are there to draw and hear the demo with. Without
     /// them the demo still plays, so the timeline and clips work
     assets: bool,
@@ -516,6 +520,7 @@ impl Viewer {
 
         Self {
             settings: ViewerSettings::default(),
+            sessions: Vec::new(),
             assets,
             resume,
             unmuted_volume: None,
@@ -1482,6 +1487,11 @@ impl Viewer {
                         .add(egui_wgpu::Callback::new_paint_callback(rect, callback));
                     if let Some(countdown) = &frame.countdown {
                         draw_countdown(ui.painter(), rect, countdown);
+                    }
+                    if let Some(next) = changing_to(&self.sessions, frame.at.0) {
+                        let map = FluentValue::from(next.name.clone());
+                        let line = catalog.text_with("viewer-map-change", &[("map", map)]);
+                        draw_map_change(ui.painter(), rect, &line);
                     }
                     if let Some(library) = &self.library {
                         self.kill_feed.draw(ui, rect, &frame.death_notices, library);
@@ -2707,6 +2717,10 @@ const HUD_COLOR: egui::Color32 = egui::Color32::from_rgb(255, 160, 0);
 const NAME_FROM_BOTTOM: f32 = 1.5;
 const NAME_BAND: egui::Color32 = egui::Color32::from_black_alpha(140);
 
+/// How many of the game's text lines below the view's top the map change
+/// stands, where AG's countdown does
+const MAP_CHANGE_FROM_TOP: f32 = 7.;
+
 /// AG's countdown over the view where its client draws it, a line of text
 /// seven of the game's text lines from the top and the number three lines
 /// below, sized as on a 640 by 480 screen, where a line is a 32nd of the
@@ -2748,9 +2762,6 @@ fn draw_countdown(painter: &egui::Painter, rect: egui::Rect, countdown: &Countdo
     }
 }
 
-/// The player `camera` follows among `players`, the one a spectator
-/// watches or the recording player while playing, by `local` when the view
-/// names none. None while a spectator roams freely
 /// How wide the transport's parts were last drawn
 #[derive(Clone, Copy, Default)]
 struct TransportWidths {
@@ -2797,6 +2808,9 @@ fn clock(seconds: f64, hours: bool) -> String {
     format!("{m:02}:{s:02}.{millis:03}")
 }
 
+/// The player `camera` follows among `players`, the one a spectator
+/// watches or the recording player while playing, by `local` when the view
+/// names none. None while a spectator roams freely
 fn watched<'a>(
     camera: &scene::Camera,
     local: u16,
@@ -2832,6 +2846,32 @@ fn draw_watched(painter: &egui::Painter, rect: egui::Rect, player: &PlayerView) 
     painter.galley(at, galley, colour);
 }
 
+/// The map the server is changing to at `at`, from the intermission until
+/// the next session begins. None outside an intermission and in the last
+/// session
+fn changing_to(sessions: &[SessionMap], at: f64) -> Option<&SessionMap> {
+    let next = sessions.iter().position(|s| f64::from(s.time) > at)?;
+    let current = sessions.get(next.checked_sub(1)?)?;
+    let began = current.intermission?;
+    (at >= f64::from(began)).then(|| &sessions[next])
+}
+
+/// Which map the server is changing to, where AG's countdown stands, on a
+/// dark band as the watched player's name is
+fn draw_map_change(painter: &egui::Painter, rect: egui::Rect, line: &str) {
+    let size = rect.height() / 32.;
+    let font = egui::FontId::proportional(size);
+    let galley = painter.layout_no_wrap(line.to_owned(), font, HUD_COLOR);
+    let at = egui::pos2(
+        rect.center().x - galley.size().x / 2.,
+        rect.top() + MAP_CHANGE_FROM_TOP * size,
+    );
+    let band = egui::Rect::from_min_size(at, galley.size());
+    let band = band.expand2(egui::vec2(size / 2., size / 5.));
+    painter.rect_filled(band, theme::RADIUS_SMALL, NAME_BAND);
+    painter.galley(at, galley, HUD_COLOR);
+}
+
 /// A player's name without the colour codes AG writes in names, a `^` and
 /// a digit
 fn without_colours(name: &str) -> String {
@@ -2858,6 +2898,27 @@ mod tests {
         assert_eq!(clock(f64::from(61.999_999_f32), false), "01:02.000");
         assert_eq!(clock(3723.004, true), "01:02:03.004");
         assert_eq!(clock(-1., false), "00:00.000");
+    }
+
+    #[test]
+    fn an_intermission_changes_to_the_next_sessions_map() {
+        let session = |time: f32, name: &str, intermission| SessionMap {
+            segment: 0,
+            time,
+            name: name.into(),
+            intermission,
+        };
+        let sessions = [
+            session(0., "ag_hidden_lab", Some(910.)),
+            session(921.6, "elixir", None),
+        ];
+        let changing = |at| changing_to(&sessions, at).map(|s| s.name.as_str());
+        assert_eq!(changing(915.), Some("elixir"));
+
+        // Before the intermission, and in a session with none to come
+        assert_eq!(changing(0.), None);
+        assert_eq!(changing(909.), None);
+        assert_eq!(changing(930.), None);
     }
 
     #[test]

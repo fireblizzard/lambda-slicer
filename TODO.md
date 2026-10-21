@@ -4,7 +4,7 @@
 - [x] Fix gauss shots or aiming being off in `aghldmtv_law_vs_cas_cross.dem`, it seems the player is looking at one place but the shot going much higher at times
 - [x] Add a bar at the bottom of the demo player so that you can go to any point of the demo by clicking on it, and it has to be synced with the other playhead.  don't remove the existing playhead below the demo player, it's useful but people are more used to the web browser style of video players, and dragging the current playhead which is not visually touching the demo player feels a bit weird
 - [x] Add another two for rewinding/advancing 10 seconds beside the previous/next frame buttons
-- [ ] Add the rest of HUD elements from AG, like the mini scoreboard at the top left, votes, chat, and everything else that comes from AG events/usermessages
+- [ ] Add the rest of HUD elements from AG, like the mini scoreboard at the top left, votes, chat, timeouts, pauses, item pickups and everything else that comes from AG events/usermessages
 - [ ] Add a way to toggle free camera mode, where you get detached from the recorder's camera and can fly around like with noclip by using WASD, Ctrl (down) and Space (up)
 - [x] On the event list on the right there should be an indicator of where you're at, so if the demo is playing, it should keep advancing/panning the event list as events happen, and the last one that happened should be either selected (i'm not completely sure)
 - [x] Add a toggle to zoom in (like default_fov 30) and back to normal under the demo player
@@ -26,9 +26,19 @@
 - [x] Add 8 pixels of margin to the right of the kill feed
 - [x] Add a button in Settings to restore all settings to default, with a confirmation dialog mentioning all the custom settings/values that will revert to default
 - [x] Remove older decals, keep the 100 most recent ones by default, add a setting for that number
+- [ ] At least some kills have their speed wrongly marked as going over 1000ups speed
+- [ ] Add a setting to start the app with the filter for minimum demo time in the library set to X minutes. It's annoying to set the number every time I launch the app to filter out dumb demos
+- [ ] Add a filter for non-bot demos. If we can't determine whether a player is a bot or not, just make it filter out scores where one side is 0 in a 2-team game
+- [ ] Add a column for the number of players (not spectators) and then a filter for that. Detect when the match begins (after agstart, after the countdown) and count the players at that time. For multimap demos keep the highest count, so if there are 2 matches with 4 and 6 players, show a 6 for that demo. For demos without a match, just get the highest number of players at any point. And for demos where the match was already started before the recording began... have to see how to detect that case, and then just count the non-spectator players at the beginning of the demo in that case
+- [ ] Add a column for the number of teams, similar approach as for the number of players column, with its own filter too
+- [ ] Add K/D (kills/death ratio) to the scoreboard where we have the kills, death, hs and accuracy%.  if deaths are 0, then do the division with 1
 
 # Ideas for later
-- [ ] Add a Favourites tab and a Add to favourites or Remove from favourites option to the context menu of a demo
+- [ ] Add a Favourites tab and an Add to favourites or Remove from favourites option to the context menu of a demo. The tab should be right after the Filters button above the table, and for now there will be 2 tabs: All and Favourites. All is the normal table and Favourite will just show the favourited demos. Demo entries in the table should show a yellow star after the name of the demo, in the same column as the name, just at the end of the text
 - [ ] Add a crosshair editor in settings that it's then used for the demo viewer
 - [ ] Add a demo viewer setting to customize the sky in the rendered demo. If none is set then just use the one found in the demo
 - [ ] Show multiple scores for multi-map demos, one for each map, maybe with a threshold of 10 to filter out short games that happen before changing the map for the actual match or after it's finished
+- [ ] Add Hide/Unhide to the context menu of a demo, and a "Hidden" tab like All/Favourites but for hidden demos. Hidden demos should not show up when we're in the All tab. They can appear in the Favourites tab if they're favourited, although that'd be weird. And they'll always show up when we're in the Hidden tab as long as the user doesn't unhide them
+- [ ] Add an easy way to clip a demo by map, so if a demo has 3 maps in it, make 3 clips from the beginning of each map until the end of it
+- [ ] Add a button to export the demo info to a text file, with the map, date, player names at the top, then the scoreboard and then the filtered event list
+- [ ] For multimap demos, instead of showing them with all that info in a single row in the library, make sub-rows for each map with their own individual info for thir part of the demo, and when clicking on it, it will show the demo player with the playhead already at the point where the map starts

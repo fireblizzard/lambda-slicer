@@ -23,14 +23,14 @@ use crate::slice::range::GroupIndex;
 use crate::state::{DecodeOptions, DecodeStatus, PlayerIdentity, decode_demo};
 use accuracy::{PlayerAccuracy, ShotOutcome};
 use context::{
-    Context, Coverage, Kill, ScoreUpdate, Scoreboard, TeamScoreUpdate, WeaponSwitch, final_moment,
-    standing_at,
+    Context, Coverage, Kill, ScoreUpdate, Scoreboard, SessionMap, TeamScoreUpdate, WeaponSwitch,
+    final_moment, standing_at,
 };
 use events::recorded_events;
 use highlights::{ActionWindow, action_windows, link_kills};
 use weapons::{Action, ActivityInterval, PROFILE, Weapon, WeaponOccurrence, derive};
 
-pub const ANALYSIS_SCHEMA: u32 = 11;
+pub const ANALYSIS_SCHEMA: u32 = 12;
 
 /// Length of an action window in seconds, and how many are reported
 pub const ACTION_WINDOW: f32 = 60.;
@@ -86,6 +86,8 @@ pub struct AnalysisReport {
     /// The recorder's active weapon over time
     pub weapon_switches: Vec<WeaponSwitch>,
     pub coverage: Coverage,
+    /// Each session's map, in decode order
+    pub maps: Vec<SessionMap>,
     /// The final score of the session played longest
     pub scoreboard: Scoreboard,
     /// Every score and team change, for the scores at any moment
@@ -286,6 +288,7 @@ pub fn analyze_demo_with(
         action_windows,
         weapon_switches: context.switches,
         coverage,
+        maps: std::mem::take(&mut context.maps),
         scoreboard,
         score_updates,
         team_score_updates,

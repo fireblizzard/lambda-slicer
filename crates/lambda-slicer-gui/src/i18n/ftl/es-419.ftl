@@ -506,6 +506,7 @@ settings-clear-library-text = { $count ->
 }
 viewer-zoom = Hacer zoom
 viewer-see-through = Ver tras paredes
+viewer-map-change = El server está cambiando el mapa a { $map }
 settings-export-beside = Junto a cada demo
 settings-export-hint = Dentro de la carpeta de tu mod, la que tiene liblist.gam como Half-Life\ag, los clips se reproducen con un solo comando playdemo.
 settings-file-names-hint = Un clip exportado se nombra con su demo y sus tiempos de inicio y fin, salvo que uses el nombre del clip. El juego solo puede abrir archivos con nombres hechos de letras del alfabeto inglés, números, - y ., así que todo lo demás se cambia por _. Si el nombre de un clip no tiene ninguno de estos caracteres, el archivo se nombra por sus tiempos.

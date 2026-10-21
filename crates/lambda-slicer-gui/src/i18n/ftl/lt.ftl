@@ -510,6 +510,7 @@ settings-clear-library-text = { $count ->
 }
 viewer-zoom = Priartinti vaizdą
 viewer-see-through = Matyti pro sienas
+viewer-map-change = Serveris keičia žemėlapį į { $map }
 settings-export-beside = Šalia kiekvieno įrašo
 settings-export-hint = Modo aplanke, kuriame yra liblist.gam, pvz., Half-Life\ag, klipai paleidžiami viena playdemo komanda.
 settings-file-names-hint = Eksportuotas klipas pavadinamas pagal jo įrašą ir pradžios bei pabaigos laikus, nebent naudojate klipo pavadinimą. Žaidimas gali atverti tik failus, kurių pavadinimai sudaryti iš anglų abėcėlės raidžių, skaičių, - ir ., todėl visa kita pakeičiama į _. Jei klipo pavadinime nėra nė vieno iš šių ženklų, failas pavadinamas pagal laikus.

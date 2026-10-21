@@ -10,7 +10,7 @@
 use lambda_slicer_core::analysis::AnalysisReport;
 use lambda_slicer_core::analysis::accuracy::ShotOutcome;
 use lambda_slicer_core::analysis::context::{
-    Coverage, Kill, KillCause, ScoreUpdate, TeamScoreUpdate,
+    Coverage, Kill, KillCause, ScoreUpdate, SessionMap, TeamScoreUpdate,
 };
 use lambda_slicer_core::analysis::motion::{MotionEvidence, MotionState};
 use lambda_slicer_core::analysis::weapons::{Action, Actor, IntervalEnd, Weapon};
@@ -258,6 +258,8 @@ pub struct Model {
     /// Sessions whose scoreboard names teams, where a player's team is a
     /// side rather than a model name
     pub team_segments: Vec<u32>,
+    /// Each session's map and when it began
+    pub maps: Vec<SessionMap>,
 }
 
 impl Model {
@@ -532,6 +534,7 @@ impl Model {
             recorder: r.recorder.as_ref().map(|p| (p.slot, p.incarnation)),
             groups: r.groups.clone(),
             team_segments,
+            maps: r.maps.clone(),
         }
     }
 }
@@ -767,6 +770,7 @@ mod tests {
                 spectator_fraction: 0.,
                 notes: Vec::new(),
             },
+            maps: Vec::new(),
             scoreboard: Default::default(),
             score_updates: Vec::new(),
             team_score_updates: Vec::new(),

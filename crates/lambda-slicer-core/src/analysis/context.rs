@@ -516,13 +516,53 @@ pub fn standing_at(
     }
 }
 
+/// The map a session was played on, when it began, and when the server's
+/// intermission began, the match over and the next map to come
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct SessionMap {
+    pub segment: u32,
+    pub time: f32,
+    /// As players name it, such as `crossfire`
+    pub name: String,
+    pub intermission: Option<f32>,
+}
+
+/// A map as players name it, without the `maps/` folder and `.bsp`
+pub fn short_map_name(path: &str) -> String {
+    let name = path.strip_prefix("maps/").unwrap_or(path);
+    name.strip_suffix(".bsp").unwrap_or(name).to_owned()
+}
+
+/// Every map in `maps` played on, in a session of `played` where someone
+/// was killed, once, in the order they were first played, as the library
+/// lists them, such as `ag_hidden_lab, elixir`. A demo may end shortly after
+/// the next map loads, with nothing played there. With no kill anywhere,
+/// the first map
+pub fn map_list(maps: &[SessionMap], played: &[u32]) -> String {
+    let mut names: Vec<&str> = Vec::new();
+    for map in maps {
+        let played = played.contains(&map.segment);
+        if played && !names.contains(&map.name.as_str()) {
+            names.push(&map.name);
+        }
+    }
+
+    if names.is_empty()
+        && let Some(first) = maps.first()
+    {
+        names.push(&first.name);
+    }
+    names.join(", ")
+}
+
 /// Follows kills and the recorder's weapon through the decode
 #[derive(Default)]
 pub struct Context {
     pub kills: Vec<Kill>,
     pub switches: Vec<WeaponSwitch>,
-    /// The session's map
+    /// The session's map, and every session's in decode order
     map: Option<MapName>,
+    pub maps: Vec<SessionMap>,
     /// The weapon the LOADING entry left in hand, per session, which
     /// playback starts with rather than switches to
     loading_weapon: Option<(u32, i8)>,
@@ -648,13 +688,26 @@ impl Context {
             });
         }
         if let Message::ServerInfo(info) = &m.message {
+            let path = String::from_utf8_lossy(&info.map_name).into_owned();
+            self.maps.push(SessionMap {
+                segment: d.segment,
+                time: loc.playback_time(),
+                name: short_map_name(&path),
+                intermission: None,
+            });
             self.map = Some(MapName {
                 game_dir: String::from_utf8_lossy(&info.game_dir).into_owned(),
-                path: String::from_utf8_lossy(&info.map_name).into_owned(),
+                path,
             });
             self.pending_deaths.clear();
             self.teams.clear();
             self.scores.clear();
+        }
+
+        if let Message::Intermission = &m.message
+            && let Some(session) = self.maps.last_mut()
+        {
+            session.intermission = Some(loc.playback_time());
         }
 
         let Message::User { id, body } = &m.message else {
@@ -872,6 +925,33 @@ impl Context {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_map_list_names_each_map_once_in_the_order_played() {
+        let map = |segment: u32, path: &str| SessionMap {
+            segment,
+            time: 0.,
+            name: short_map_name(path),
+            intermission: None,
+        };
+        let maps = [
+            map(1, "maps/ag_hidden_lab.bsp"),
+            map(2, "maps/elixir.bsp"),
+            map(3, "maps/ag_hidden_lab.bsp"),
+            map(4, "maps/endcamp.bsp"),
+        ];
+        assert_eq!(
+            map_list(&maps, &[1, 2, 3, 4]),
+            "ag_hidden_lab, elixir, endcamp"
+        );
+
+        // A map nobody was killed on is left out, unless no map had a kill
+        assert_eq!(map_list(&maps, &[1, 2, 3]), "ag_hidden_lab, elixir");
+        assert_eq!(map_list(&maps, &[2]), "elixir");
+        assert_eq!(map_list(&maps, &[]), "ag_hidden_lab");
+        assert_eq!(map_list(&[], &[]), "");
+        assert_eq!(short_map_name("crossfire"), "crossfire");
+    }
 
     #[test]
     fn coverage_follows_the_recording_kind() {

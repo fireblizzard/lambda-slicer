@@ -471,6 +471,7 @@ settings-clear-library-text = { $count ->
 }
 viewer-zoom = 放大画面
 viewer-see-through = 透视墙壁
+viewer-map-change = 服务器正在切换地图至 { $map }
 settings-export-beside = 每个录像旁边
 settings-export-hint = 在包含 liblist.gam 的 mod 文件夹中（例如 Half-Life\ag），片段只需一条 playdemo 命令即可播放。
 settings-file-names-hint = 导出的片段以其录像和起止时间命名，除非你使用片段名称。游戏只能打开名称由英文字母、数字、- 和 . 组成的文件，所以其他字符都会变成 _。片段名称中如果没有这些字符，就改用时间命名。

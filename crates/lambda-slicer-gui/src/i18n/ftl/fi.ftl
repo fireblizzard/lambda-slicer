@@ -491,6 +491,7 @@ settings-clear-library-text = { $count ->
 }
 viewer-zoom = Zoomaa lähemmäs
 viewer-see-through = Näe seinien läpi
+viewer-map-change = Serveri vaihtaa kartaksi { $map }
 settings-export-beside = Kunkin demon viereen
 settings-export-hint = Modin kansiossa, jossa on liblist.gam, kuten Half-Life\ag, klipit toistuvat yhdellä playdemo-komennolla.
 settings-file-names-hint = Viety klippi nimetään demonsa sekä alku- ja loppuaikansa mukaan, ellet käytä klipin nimeä. Peli avaa vain tiedostoja, joiden nimessä on englannin aakkosten kirjaimia, numeroita, - ja ., joten kaikki muu muuttuu merkiksi _. Jos klipin nimessä ei ole yhtään näistä merkeistä, tiedosto nimetään sen sijaan aikojen mukaan.

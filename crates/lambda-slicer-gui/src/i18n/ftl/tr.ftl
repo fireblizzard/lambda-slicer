@@ -479,6 +479,7 @@ settings-clear-library-text = { $count ->
 }
 viewer-zoom = Görüntüyü yakınlaştır
 viewer-see-through = Duvar arkasını gör
+viewer-map-change = Sunucu haritayı { $map } olarak değiştiriyor
 settings-export-beside = Her demonun yanında
 settings-export-hint = liblist.gam bulunan mod klasörünüzde, örneğin Half-Life\ag, klipler tek bir playdemo komutuyla oynatılır.
 settings-file-names-hint = Klibin adını kullanmadığınız sürece, dışa aktarılan bir klip demosuna ve başlangıç ile bitiş zamanlarına göre adlandırılır. Oyun yalnızca adı İngilizce harf, rakam, - ve . karakterlerinden oluşan dosyaları açabilir, bu yüzden diğer her şey _ olur. Klip adında bunlardan hiçbiri yoksa dosya bunun yerine zamanlarına göre adlandırılır.

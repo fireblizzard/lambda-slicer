@@ -15,7 +15,7 @@ use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};
 use serde::Serialize;
 
 use super::date::recorded;
-use crate::analysis::context::Scoreboard;
+use crate::analysis::context::{Scoreboard, map_list, short_map_name};
 use crate::analysis::weapons::{Actor, PROFILE};
 use crate::analysis::{ANALYSIS_SCHEMA, AnalysisReport};
 use crate::message::Message;
@@ -666,6 +666,18 @@ impl Cache {
                 .count() as i64
         });
         let recorded = recorded(e.path, e.mtime_ns);
+
+        // Every map played in the demo, those of the sessions with a kill, or
+        // the header's first one when the analysis found none
+        let played: Vec<u32> =
+            r.map_or(Vec::new(), |r| r.kills.iter().map(|k| k.segment).collect());
+        let maps = match r
+            .map(|r| map_list(&r.maps, &played))
+            .filter(|m| !m.is_empty())
+        {
+            Some(maps) => Some(maps),
+            None => h.map(|h| short_map_name(&h.map)),
+        };
         let scanned_at = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |d| d.as_secs() as i64);
@@ -695,7 +707,7 @@ impl Cache {
                 error.as_ref().map(|m| m.text.clone()),
                 error.as_ref().map(|m| m.code),
                 error_args,
-                h.map(|h| h.map.clone()),
+                maps,
                 h.map(|h| h.game_dir.clone()),
                 h.map(|h| h.demo_protocol),
                 h.map(|h| h.network_protocol),

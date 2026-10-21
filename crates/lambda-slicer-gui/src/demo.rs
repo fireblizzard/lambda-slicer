@@ -1006,6 +1006,14 @@ impl DemoView {
         }
         self.walls.poll();
 
+        // The viewer names the map an intermission changes to from the
+        // sessions the analysis found
+        if let (Some(model), Some(viewer)) = (&self.model, &mut self.viewer)
+            && viewer.sessions != model.maps
+        {
+            viewer.sessions = model.maps.clone();
+        }
+
         // The event the command line asked for, once there are rows
         if self.model.is_some()
             && let Some(row) = self.open_event.take()

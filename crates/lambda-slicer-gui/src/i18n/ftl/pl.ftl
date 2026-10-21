@@ -510,6 +510,7 @@ settings-clear-library-text = { $count ->
 }
 viewer-zoom = Przybliż widok
 viewer-see-through = Widź przez ściany
+viewer-map-change = Serwer zmienia mapę na { $map }
 settings-export-beside = Obok każdego dema
 settings-export-hint = W folderze moda, tym z liblist.gam, na przykład Half-Life\ag, klipy odtwarza jedno polecenie playdemo.
 settings-file-names-hint = Wyeksportowany klip dostaje nazwę od swojego dema oraz czasu początku i końca, chyba że używasz nazwy klipu. Gra otwiera tylko pliki, których nazwy składają się z liter alfabetu angielskiego, cyfr, - i ., więc wszystko inne zmienia się w _. Jeśli nazwa klipu nie ma żadnego z tych znaków, plik dostaje nazwę od czasów.
