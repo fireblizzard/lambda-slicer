@@ -549,6 +549,7 @@ fn run() -> Result<ExitCode> {
                 full_hash: !no_full_hash,
                 limits: Limits::default(),
                 floors: None,
+                forget_missing: false,
             };
             return scan_cmd(&options, verbose, json.as_deref());
         }

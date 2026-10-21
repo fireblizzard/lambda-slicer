@@ -72,9 +72,53 @@ pub struct DirectoryEntry {
     pub length: i32,
 }
 
+/// What starts the mark of a clip Lambda Slicer exported, which follows the
+/// end of its playback entry's description and names the demo it came from
+pub const CLIP_MARK: &[u8] = b"LS#";
+
+/// Ends a source name cut short to fit the mark
+const CUT: &[u8] = b"..";
+
 impl DirectoryEntry {
     pub fn description(&self) -> String {
         c_string_lossy(&self.description_raw)
+    }
+
+    /// The name of the demo this entry's file is a clip of, from the mark
+    /// after the end of its description, none for a demo with no mark
+    pub fn clip_of(&self) -> Option<String> {
+        let raw = &self.description_raw;
+        let end = raw.iter().position(|&b| b == 0)?;
+        let after = raw.get(end + 1..)?.strip_prefix(CLIP_MARK)?;
+        let name = c_string_lossy(after);
+        (!name.is_empty()).then_some(name)
+    }
+
+    /// Mark this entry's file as a clip of the demo named `source`, after
+    /// the end of its description, which the game reads alone. A name too
+    /// long for the room left is cut between whole letters and ends in `..`,
+    /// and the last byte stays empty to end the mark
+    pub fn mark_clip(&mut self, source: &str) {
+        let raw = &mut self.description_raw;
+        let end = raw.iter().position(|&b| b == 0).unwrap_or(raw.len() - 1);
+        let room = raw.len().saturating_sub(end + 2 + CLIP_MARK.len());
+        if room <= CUT.len() {
+            return;
+        }
+
+        let mut name = source.as_bytes().to_vec();
+        if name.len() > room {
+            let mut keep = room - CUT.len();
+            while !source.is_char_boundary(keep) {
+                keep -= 1;
+            }
+            name.truncate(keep);
+            name.extend_from_slice(CUT);
+        }
+
+        let mark = [CLIP_MARK, &name].concat();
+        raw[end + 1..].fill(0);
+        raw[end + 1..end + 1 + mark.len()].copy_from_slice(&mark);
     }
 
     pub fn track_time(&self) -> f32 {
@@ -258,5 +302,61 @@ impl Coded for ContainerError {
                 args
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A playback entry with nothing else set
+    fn playback() -> DirectoryEntry {
+        let mut description_raw = [0u8; 64];
+        description_raw[..8].copy_from_slice(b"Playback");
+        DirectoryEntry {
+            entry_type: 1,
+            description_raw,
+            flags: 0,
+            cd_track: 0,
+            track_time_bits: 0,
+            frame_count: 0,
+            offset: 0,
+            length: 0,
+        }
+    }
+
+    #[test]
+    fn a_clip_names_its_demo_after_the_description() {
+        let mut entry = playback();
+        assert_eq!(entry.clip_of(), None);
+
+        // The game still reads only the description
+        entry.mark_clip("20210424_012456_crossfire");
+        assert_eq!(entry.description(), "Playback");
+        assert_eq!(
+            entry.clip_of().as_deref(),
+            Some("20210424_012456_crossfire")
+        );
+        assert_eq!(&entry.description_raw[9..12], b"LS#");
+    }
+
+    #[test]
+    fn a_long_name_is_cut_between_letters_and_the_mark_ends() {
+        // 51 bytes fit, so 52 are cut to 49 and `..`
+        let mut entry = playback();
+        entry.mark_clip(&"a".repeat(52));
+        let kept = entry.clip_of().unwrap();
+        assert_eq!(kept, format!("{}..", "a".repeat(49)));
+        assert_eq!(entry.description_raw[63], 0);
+
+        // Two-byte letters are never split
+        let mut entry = playback();
+        entry.mark_clip(&"ж".repeat(30));
+        assert_eq!(entry.clip_of().unwrap(), format!("{}..", "ж".repeat(24)));
+
+        // Exactly what fits stays whole
+        let mut entry = playback();
+        entry.mark_clip(&"b".repeat(51));
+        assert_eq!(entry.clip_of().unwrap(), "b".repeat(51));
     }
 }

@@ -586,7 +586,15 @@ struct Written {
     stats: EncodeStats,
 }
 
-fn write(path: &Path, out: &mut File, p: &Plan, limits: Limits) -> Result<Written, ExportError> {
+/// Write the clip `p` plans of the demo at `path`, marked as a clip of the
+/// demo named `origin`
+fn write(
+    path: &Path,
+    out: &mut File,
+    p: &Plan,
+    origin: &str,
+    limits: Limits,
+) -> Result<Written, ExportError> {
     let mut reader = open(path, limits)?;
     let mut d = Decoder::new();
     match &p.setup {
@@ -775,6 +783,7 @@ fn write(path: &Path, out: &mut File, p: &Plan, limits: Limits) -> Result<Writte
     put(&mut w, &terminal)?;
 
     let d1 = &mut directory[1];
+    d1.mark_clip(origin);
     d1.offset = to_i32(start, "entry offset")?;
     d1.length = to_i32(w.pos - start, "entry length")?;
     d1.frame_count = to_i32(network_records, "network record count")?;
@@ -1063,8 +1072,13 @@ pub fn run_restart(
     end: Option<DemoTime>,
     limits: Limits,
 ) -> Result<RestartReport, ExportError> {
-    // Every pass reads the hashed snapshot, never the source path again
+    // Every pass reads the hashed snapshot, never the source path again, so
+    // the name the clip is marked with is taken now
     let planned: RefCell<Option<(PathBuf, Plan, Written)>> = RefCell::new(None);
+    let origin = source
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_default();
     let mut validation = None;
 
     let published = publish_new(
@@ -1077,7 +1091,7 @@ pub fn run_restart(
             }
 
             let p = plan(snapshot, start, end, limits)?;
-            let written = write(snapshot, out, &p, limits)?;
+            let written = write(snapshot, out, &p, &origin, limits)?;
             *planned.borrow_mut() = Some((snapshot.to_path_buf(), p, written));
             Ok(())
         },

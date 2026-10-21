@@ -6,9 +6,10 @@
 //! focus is outlined in the accent
 
 use std::f32::consts::TAU;
+use std::sync::Arc;
 
 use eframe::egui::{
-    self, Color32, CornerRadius, Popup, Pos2, Rect, Response, Role, Sense, Shape, Stroke,
+    self, Color32, CornerRadius, Galley, Popup, Pos2, Rect, Response, Role, Sense, Shape, Stroke,
     StrokeKind, TextStyle, TextWrapMode, Ui, Vec2, Widget, WidgetInfo, WidgetText,
 };
 
@@ -610,6 +611,40 @@ pub fn badge(ui: &mut Ui, count: usize) -> Response {
         .inner_margin(egui::Margin::symmetric(4, 0));
 
     frame.show(ui, |ui| ui.label(text)).response
+}
+
+/// The room around a tag's text, as around the badges of events
+const TAG_PADDING: Vec2 = Vec2::new(4., 1.);
+
+/// A tag's text in its small style
+pub fn tag_galley(ui: &Ui, text: &str) -> Arc<Galley> {
+    let text = WidgetText::from(egui::RichText::new(text));
+    text.into_galley(
+        ui,
+        Some(egui::TextWrapMode::Extend),
+        f32::INFINITY,
+        TextStyle::Small,
+    )
+}
+
+/// The room a tag takes, its text and the chip around it
+pub fn tag_size(galley: &Galley) -> Vec2 {
+    galley.size() + TAG_PADDING * 2.
+}
+
+/// A quiet tag at `place`, muted text on a raised chip
+pub fn paint_tag(painter: &egui::Painter, place: Rect, galley: Arc<Galley>) {
+    painter.rect_filled(place, theme::RADIUS_SMALL, theme::RAISED);
+    let at = place.center() - galley.size() / 2.;
+    painter.galley(at, galley, theme::MUTED);
+}
+
+/// A quiet tag in a row, such as the one marking a clip
+pub fn tag(ui: &mut Ui, text: &str) -> Response {
+    let galley = tag_galley(ui, text);
+    let (place, response) = ui.allocate_exact_size(tag_size(&galley), Sense::hover());
+    paint_tag(ui.painter(), place, galley);
+    response
 }
 
 /// The icon of a button with text, and the gap between it and the text

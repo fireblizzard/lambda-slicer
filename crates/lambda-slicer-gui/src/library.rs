@@ -541,6 +541,18 @@ impl LibraryView {
         }
     }
 
+    /// Forget the demos under a library folder that was removed, unless one
+    /// of the `kept` folders still holds them
+    pub fn forget_folder(&mut self, folder: &Path, kept: &[PathBuf]) {
+        self.cache();
+        if let Some(cache) = &mut self.cache
+            && let Err(e) = cache.forget_folder(folder, kept)
+        {
+            self.error = Some(e.message());
+        }
+        self.mark_stale();
+    }
+
     /// Stored files may have changed what the list shows
     pub fn mark_stale(&mut self) {
         self.stale = true;
@@ -1147,6 +1159,10 @@ impl LibraryView {
 
         layout::row(ui, rtl, |ui| {
             widgets::status_symbol(ui, state, &status);
+            if let Some(origin) = &file.clip_of {
+                widgets::tag(ui, &catalog.text("badge-clip"))
+                    .on_hover_text(clip_of(origin, catalog));
+            }
             text_cell(ui, &name, text::starts_rtl(&name), Look::Plain).on_hover_text(&file.path);
         });
     }
@@ -1401,7 +1417,17 @@ impl LibraryView {
         let symbol_x = lead(0., theme::ICON_SIZE) + theme::ICON_SIZE / 2.;
         widgets::paint_status(painter, Pos2::new(symbol_x, first_line), state);
 
-        let name_room = inner.width() - theme::ICON_SIZE - theme::GAP_S;
+        // A clip's tag after the status, before the name it shortens
+        let mut name_offset = theme::ICON_SIZE + theme::GAP_S;
+        if file.clip_of.is_some() {
+            let galley = widgets::tag_galley(ui, &catalog.text("badge-clip"));
+            let size = widgets::tag_size(&galley);
+            let tag_at = Pos2::new(lead(name_offset, size.x), first_line - size.y / 2.);
+            widgets::paint_tag(ui.painter(), Rect::from_min_size(tag_at, size), galley);
+            name_offset += size.x + theme::GAP_S;
+        }
+
+        let name_room = inner.width() - name_offset;
         let look = if selected {
             Look::Color(theme::ACCENT)
         } else {
@@ -1410,7 +1436,7 @@ impl LibraryView {
         let name_text = text::widget_text(ui.ctx(), &name, text::starts_rtl(&name), None, look);
         let name_galley =
             name_text.into_galley(ui, Some(TextWrapMode::Truncate), name_room, TextStyle::Body);
-        let name_x = lead(theme::ICON_SIZE + theme::GAP_S, name_galley.size().x);
+        let name_x = lead(name_offset, name_galley.size().x);
         let name_at = Pos2::new(name_x, first_line - name_galley.size().y / 2.);
         ui.painter().galley(name_at, name_galley, theme::FOREGROUND);
 
@@ -1473,6 +1499,9 @@ impl LibraryView {
     /// What a narrow row leaves out, for its tooltip
     fn row_details(&self, ui: &mut Ui, file: &FileRow, catalog: &Catalog, rtl: bool) {
         let mut lines = Vec::new();
+        if let Some(origin) = &file.clip_of {
+            lines.push(clip_of(origin, catalog));
+        }
         if let Some(day) = file.recorded_at.as_deref().and_then(Ymd::parse) {
             lines.push(catalog.date(day));
         }
@@ -1498,13 +1527,18 @@ impl LibraryView {
     }
 }
 
+/// What a clip was exported from, by the name its mark gives
+pub fn clip_of(origin: &str, catalog: &Catalog) -> String {
+    let name = FluentValue::from(origin.to_owned());
+    catalog.text_with("clip-of", &[("name", name)])
+}
+
 /// Text that is cut short with an ellipsis rather than wrapped
 fn text_cell(ui: &mut Ui, text: &str, rtl: bool, look: Look) -> Response {
     let text = text::widget_text(ui.ctx(), text, rtl, None, look);
     ui.add(egui::Label::new(text).selectable(false).truncate())
 }
 
-/// A figure in monospace, or a faint dash saying it is not known
 /// The day the file was last modified, with the time on hover
 fn file_date_cell(ui: &mut Ui, file: &FileRow, catalog: &Catalog, rtl: bool) {
     let modified = file.modified_at.as_deref();
@@ -1519,6 +1553,7 @@ fn file_date_cell(ui: &mut Ui, file: &FileRow, catalog: &Catalog, rtl: bool) {
     number_cell(ui, Some(catalog.date(day)), catalog, rtl).on_hover_text(tip);
 }
 
+/// A figure in monospace, or a faint dash saying it is not known
 fn number_cell(ui: &mut Ui, value: Option<String>, catalog: &Catalog, rtl: bool) -> Response {
     match value {
         Some(value) => {
@@ -1595,6 +1630,7 @@ mod tests {
             recorded_at: None,
             date_source: None,
             modified_at: None,
+            clip_of: None,
             score: None,
             scoreboard: None,
             spectator_fraction: None,

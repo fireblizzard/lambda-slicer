@@ -8,7 +8,7 @@
 //! nothing for files cut short. A file that fails, even by panicking, gets
 //! its own result and the scan goes on
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs::File;
 use std::io::BufReader;
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -49,6 +49,9 @@ pub struct ScanOptions {
     /// The maps to tell how high above the floor players are, none
     /// without the game's files
     pub floors: Option<ScanFloors>,
+    /// Forget the files a finished scan shows are gone, for a scan of the
+    /// whole library ([`forget_missing`])
+    pub forget_missing: bool,
 }
 
 /// The maps a scan reads for the floor under players, and which game files
@@ -178,6 +181,8 @@ pub struct ScanProgress {
     pub cache_failures: u64,
     pub directory_errors: u64,
     pub skipped_links: u64,
+    /// Files no longer there, forgotten once the scan finished
+    pub forgotten: u64,
     /// Bytes read by hashing and analysis
     pub bytes_read: u64,
     /// Files being analysed now
@@ -247,6 +252,7 @@ fn header_info(path: &Path, limits: Limits) -> Option<HeaderInfo> {
         demo_protocol: r.header.demo_protocol,
         network_protocol: r.header.network_protocol,
         duration: r.directory.iter().map(|e| e.track_time()).sum(),
+        clip_of: r.directory.iter().find_map(|e| e.clip_of()),
     })
 }
 
@@ -411,6 +417,39 @@ impl Worker<'_> {
     }
 }
 
+/// Forget the stored files a finished scan of `roots` shows are gone, those
+/// under a root it walked but did not find, and those under no root whose
+/// file is no longer there, such as a demo once opened on its own. Nothing
+/// under a place it could not read is forgotten, so a drive that is not
+/// plugged in keeps its demos. Returns how many were forgotten
+fn forget_missing(
+    cache: &mut Cache,
+    roots: &[PathBuf],
+    found: &HashSet<PathBuf>,
+    unreadable: &[PathBuf],
+) -> Result<u64, CacheError> {
+    let mut gone = Vec::new();
+    for (id, path) in cache.stored_paths()? {
+        if unreadable.iter().any(|u| path.starts_with(u)) {
+            continue;
+        }
+
+        let walked = roots.iter().any(|r| path.starts_with(r));
+        let missing = if walked {
+            !found.contains(&path)
+        } else {
+            let there = std::fs::symlink_metadata(&path);
+            there.is_err_and(|e| e.kind() == std::io::ErrorKind::NotFound)
+        };
+        if missing {
+            gone.push(id);
+        }
+    }
+
+    cache.forget(&gone)?;
+    Ok(gone.len() as u64)
+}
+
 /// Run a scan to the end or until cancelled, calling `on_event` from this
 /// thread for every file, discovery error, and at most every 100 ms with
 /// progress. Errors only when the cache cannot be opened
@@ -432,18 +471,26 @@ pub fn scan(
     let mut current: Vec<Option<PathBuf>> = vec![None; readers.len()];
     let mut last_progress = Instant::now() - PROGRESS_INTERVAL;
 
+    // What was walked, every demo found and every place that could not be
+    // read, for telling which stored files are gone
+    let (roots, root_errors) = discover::roots(&options.roots);
+    let mut found = HashSet::new();
+    let mut unreadable = Vec::new();
+
     std::thread::scope(|s| {
         let (tx, rx) = mpsc::channel::<Update>();
 
         let discovery_tx = tx.clone();
-        s.spawn(move || {
-            let (roots, errors) = discover::roots(&options.roots);
-            for e in errors {
+        let roots = &roots;
+        let discovery = s.spawn(move || {
+            for e in root_errors {
                 let _ = discovery_tx.send(Update::Found(e));
             }
-            discover::walk(&roots, |f| match f {
+            let mut found = HashSet::new();
+            discover::walk(roots, |f| match f {
                 Found::Demo(p) => {
                     let _ = discovery_tx.send(Update::Discovered);
+                    found.insert(p.clone());
                     control.push(p)
                 }
                 other => {
@@ -452,6 +499,7 @@ pub fn scan(
                 }
             });
             control.finish_discovery();
+            found
         });
 
         for (id, cache) in readers.into_iter().enumerate() {
@@ -478,6 +526,7 @@ pub fn scan(
                         path: &path,
                         error: &error,
                     });
+                    unreadable.push(path);
                 }
                 Ok(Update::Found(Found::Skipped(_))) => progress.skipped_links += 1,
                 Ok(Update::Found(Found::Demo(_))) => {}
@@ -549,7 +598,16 @@ pub fn scan(
                 on_event(ScanEvent::Progress(&progress));
             }
         }
+
+        found = discovery.join().unwrap_or_default();
     });
+
+    // Only a scan that ran to its end knows what is gone, and a failure to
+    // forget leaves the files listed, as before
+    if options.forget_missing && !control.is_cancelled() {
+        let forgotten = forget_missing(&mut writer, &roots, &found, &unreadable);
+        progress.forgotten = forgotten.unwrap_or(0);
+    }
 
     progress.current.clear();
     progress.elapsed_seconds = started.elapsed().as_secs_f64();

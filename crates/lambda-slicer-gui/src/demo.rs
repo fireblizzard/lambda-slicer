@@ -1348,6 +1348,9 @@ impl DemoView {
         };
 
         let mut facts = Vec::new();
+        if let Some(origin) = &f.clip_of {
+            facts.push(crate::library::clip_of(origin, catalog));
+        }
         if let Some(r) = &f.recorder {
             let name = FluentValue::from(text::player_name(r));
             facts.push(catalog.text_with("details-recorder", &[("name", name)]));

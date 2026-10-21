@@ -22,7 +22,7 @@ use crate::message::Message;
 use crate::state::{DECODE_REPORT_SCHEMA, DecodeStatus};
 
 /// Layout of the tables below. A different value rebuilds the cache
-pub const CACHE_SCHEMA: i64 = 6;
+pub const CACHE_SCHEMA: i64 = 7;
 
 #[derive(Debug, thiserror::Error)]
 pub enum CacheError {
@@ -130,6 +130,7 @@ CREATE TABLE files(
     error_args TEXT,
     map TEXT,
     game_dir TEXT,
+    clip_of TEXT,
     demo_protocol INTEGER,
     network_protocol INTEGER,
     duration REAL,
@@ -230,6 +231,8 @@ pub struct HeaderInfo {
     pub network_protocol: i32,
     /// Sum of the directory's track times, in seconds
     pub duration: f32,
+    /// The demo a clip Lambda Slicer exported came from, by its marked name
+    pub clip_of: Option<String>,
 }
 
 /// One file's result to store
@@ -449,6 +452,8 @@ pub struct FileRow {
     pub date_source: Option<String>,
     /// When the file was last modified, `YYYY-MM-DD HH:MM:SS` local time
     pub modified_at: Option<String>,
+    /// The demo this file is a clip of, by the name its mark gives
+    pub clip_of: Option<String>,
     /// The final score, such as `88 – 74`
     pub score: Option<String>,
     /// The final scoreboard the score was made from, none when the cache
@@ -579,6 +584,42 @@ impl Cache {
             .optional()?)
     }
 
+    /// Every stored file's id and path, exactly as the scan found it
+    pub fn stored_paths(&self) -> Result<Vec<(i64, PathBuf)>, CacheError> {
+        let mut stmt = self.conn.prepare("SELECT id, path, path_blob FROM files")?;
+        let rows = stmt.query_map([], |r| {
+            let path: String = r.get(1)?;
+            let native: Vec<u8> = r.get(2)?;
+            let path = path_from_native(&native).unwrap_or_else(|| PathBuf::from(path));
+            Ok((r.get(0)?, path))
+        })?;
+        Ok(rows.collect::<Result<_, _>>()?)
+    }
+
+    /// Forget these files and everything stored about them, in one
+    /// transaction
+    pub fn forget(&mut self, ids: &[i64]) -> Result<(), CacheError> {
+        let tx = self.conn.transaction()?;
+        for id in ids {
+            tx.execute("DELETE FROM files WHERE id = ?1", [id])?;
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Forget the files under `folder`, unless they are also under one of
+    /// `kept`, as when a library folder is removed
+    pub fn forget_folder(&mut self, folder: &Path, kept: &[PathBuf]) -> Result<(), CacheError> {
+        let mut gone = Vec::new();
+        for (id, path) in self.stored_paths()? {
+            let still_kept = kept.iter().any(|k| path.starts_with(k));
+            if path.starts_with(folder) && !still_kept {
+                gone.push(id);
+            }
+        }
+        self.forget(&gone)
+    }
+
     /// Replace the path's entry in one transaction. A cancelled analysis is
     /// refused, so it never replaces an earlier result
     pub fn store(&mut self, e: &Entry) -> Result<i64, CacheError> {
@@ -618,10 +659,10 @@ impl Cache {
                 demo_protocol, network_protocol, duration, recording_kind, max_clients, recorder,
                 playback, spectator_fraction, shots, unknown_shots, kills, best_window,
                 coverage_json, recorded_at, date_source, score, score_json, headshots, accuracy,
-                scanned_at, floors)
+                scanned_at, floors, clip_of)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16,
                 ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30, ?31,
-                ?32, ?33, ?34, ?35)",
+                ?32, ?33, ?34, ?35, ?36)",
             params![
                 display,
                 native_bytes(e.path),
@@ -658,6 +699,7 @@ impl Cache {
                 r.and_then(|r| r.recorder_accuracy),
                 scanned_at,
                 e.floors,
+                h.and_then(|h| h.clip_of.clone()),
             ],
         )?;
         let id = tx.last_insert_rowid();
@@ -913,7 +955,7 @@ impl Cache {
                 (SELECT w.shots FROM weapons w WHERE w.file_id = f.id AND w.weapon = 'gauss')
                     AS gauss,
                 f.recorded_at, f.date_source, f.score, f.headshots, f.accuracy, f.path_blob,
-                f.score_json, f.mtime_ns
+                f.score_json, f.mtime_ns, f.clip_of
              FROM files f WHERE {conditions}
              ORDER BY {} {direction} NULLS LAST, f.path
              LIMIT ?{limit} OFFSET ?{offset}",
@@ -933,6 +975,7 @@ impl Cache {
                 recorded_at: r.get(15)?,
                 date_source: r.get(16)?,
                 modified_at: r.get::<_, Option<i64>>(22)?.and_then(super::date::local),
+                clip_of: r.get(23)?,
                 score: r.get(17)?,
                 scoreboard: r
                     .get::<_, Option<String>>(21)?

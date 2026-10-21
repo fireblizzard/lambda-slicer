@@ -274,6 +274,20 @@ fn a_restart_bootstraps_the_referenced_frame_and_keeps_the_rest() {
 }
 
 #[test]
+fn a_clip_is_marked_with_the_demo_it_came_from() {
+    let rec = Recording::steady(60, 1);
+    let (out, _dir, _) = slice(&rec, 30, Some(50)).unwrap();
+
+    // The game reads the playback entry's description alone, and the mark
+    // after it names the source without its extension
+    let reader = DemoReader::new(std::fs::File::open(&out).unwrap(), Limits::default()).unwrap();
+    let playback = &reader.directory[1];
+    assert_eq!(playback.description(), "Playback");
+    assert_eq!(playback.clip_of().as_deref(), Some("src"));
+    assert_eq!(reader.directory[0].clip_of(), None);
+}
+
+#[test]
 fn lagging_references_bootstrap_every_frame_still_used() {
     let rec = Recording::steady(60, 3);
     let (_out, _dir, r) = slice(&rec, 30, None).unwrap();

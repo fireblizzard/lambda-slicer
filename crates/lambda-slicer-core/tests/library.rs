@@ -19,6 +19,7 @@ fn options(roots: Vec<PathBuf>, cache: &Path) -> ScanOptions {
         full_hash: true,
         limits: Limits::default(),
         floors: None,
+        forget_missing: false,
     }
 }
 
@@ -119,6 +120,94 @@ fn other_game_files_analyse_every_file_again() {
     assert_eq!(outcomes(&o), [("a.dem".into(), failed())]);
 }
 
+/// The names of the files the cache holds, in order
+fn stored(cache: &Path) -> Vec<String> {
+    let mut names: Vec<String> = Cache::open(cache)
+        .unwrap()
+        .stored_paths()
+        .unwrap()
+        .into_iter()
+        .map(|(_, p)| p.file_name().unwrap().to_string_lossy().into_owned())
+        .collect();
+    names.sort();
+    names
+}
+
+#[test]
+fn a_scan_of_the_library_forgets_files_that_are_gone() {
+    let dir = tempfile::tempdir().unwrap();
+    let demos = dir.path().join("demos");
+    std::fs::create_dir(&demos).unwrap();
+    std::fs::write(demos.join("a.dem"), b"x").unwrap();
+    std::fs::write(demos.join("b.dem"), b"y").unwrap();
+    let cache = dir.path().join("cache.sqlite");
+    let mut o = options(vec![demos.clone()], &cache);
+    o.forget_missing = true;
+    outcomes(&o);
+    assert_eq!(stored(&cache), ["a.dem", "b.dem"]);
+
+    // Deleted from the folder, forgotten by the next scan
+    std::fs::remove_file(demos.join("b.dem")).unwrap();
+    outcomes(&o);
+    assert_eq!(stored(&cache), ["a.dem"]);
+
+    // A folder that cannot be read, like a drive not plugged in, keeps its
+    // demos
+    let away = dir.path().join("away");
+    std::fs::rename(&demos, &away).unwrap();
+    outcomes(&o);
+    assert_eq!(stored(&cache), ["a.dem"]);
+
+    // A file under no folder scanned stays while it is there, as a demo
+    // opened on its own does, and goes once it is not
+    std::fs::rename(&away, &demos).unwrap();
+    let elsewhere = dir.path().join("elsewhere");
+    std::fs::create_dir(&elsewhere).unwrap();
+    o.roots = vec![elsewhere];
+    outcomes(&o);
+    assert_eq!(stored(&cache), ["a.dem"]);
+    std::fs::remove_file(demos.join("a.dem")).unwrap();
+    outcomes(&o);
+    assert!(stored(&cache).is_empty());
+}
+
+#[test]
+fn a_scan_of_only_some_files_forgets_nothing() {
+    let dir = tempfile::tempdir().unwrap();
+    let demos = dir.path().join("demos");
+    std::fs::create_dir(&demos).unwrap();
+    std::fs::write(demos.join("a.dem"), b"x").unwrap();
+    std::fs::write(demos.join("b.dem"), b"y").unwrap();
+    let cache = dir.path().join("cache.sqlite");
+    outcomes(&options(vec![demos.clone()], &cache));
+
+    // One file scanned on its own, as after an export, leaves the other
+    std::fs::remove_file(demos.join("b.dem")).unwrap();
+    outcomes(&options(vec![demos.join("a.dem")], &cache));
+    assert_eq!(stored(&cache), ["a.dem", "b.dem"]);
+}
+
+#[test]
+fn a_removed_folder_takes_its_demos_unless_another_holds_them() {
+    let dir = tempfile::tempdir().unwrap();
+    let outer = dir.path().join("outer");
+    let inner = outer.join("inner");
+    let other = dir.path().join("other");
+    std::fs::create_dir_all(&inner).unwrap();
+    std::fs::create_dir(&other).unwrap();
+    std::fs::write(outer.join("a.dem"), b"x").unwrap();
+    std::fs::write(inner.join("b.dem"), b"y").unwrap();
+    std::fs::write(other.join("c.dem"), b"z").unwrap();
+    let cache = dir.path().join("cache.sqlite");
+    outcomes(&options(vec![outer.clone(), other.clone()], &cache));
+    assert_eq!(stored(&cache), ["a.dem", "b.dem", "c.dem"]);
+
+    // The inner folder is a library folder of its own too
+    let mut c = Cache::open(&cache).unwrap();
+    c.forget_folder(&outer, &[inner, other]).unwrap();
+    assert_eq!(stored(&cache), ["b.dem", "c.dem"]);
+}
+
 #[test]
 fn hard_links_are_one_file() {
     let dir = tempfile::tempdir().unwrap();
@@ -217,6 +306,7 @@ fn header(map: &str, duration: f32) -> lambda_slicer_core::library::cache::Heade
         demo_protocol: 5,
         network_protocol: 48,
         duration,
+        clip_of: None,
     }
 }
 

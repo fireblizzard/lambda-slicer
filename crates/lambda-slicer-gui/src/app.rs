@@ -816,6 +816,7 @@ impl App {
             full_hash: true,
             limits: Limits::default(),
             floors: self.floor_reader(),
+            forget_missing: true,
         };
         self.scan = Some(ScanJob::start(options, ctx.clone()));
     }
@@ -838,6 +839,7 @@ impl App {
             full_hash: true,
             limits: Limits::default(),
             floors: self.floor_reader(),
+            forget_missing: false,
         };
         self.scan = Some(ScanJob::start(options, ctx.clone()));
     }
