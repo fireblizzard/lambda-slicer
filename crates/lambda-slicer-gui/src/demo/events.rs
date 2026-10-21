@@ -889,7 +889,13 @@ impl DemoView {
             _ if unreachable => Some(catalog.text("event-unreachable")),
             _ => None,
         };
+        // Clip it takes the highlight chosen after the event, whatever is
+        // selected
         let clip_blocked = match &blocked {
+            _ if self.clips_highlight() => self
+                .clip_it_range()
+                .is_none()
+                .then(|| catalog.text("clips-other-session")),
             Some(why) => Some(why.clone()),
             None if self.proposal().is_none() => Some(catalog.text("clips-other-session")),
             None => None,

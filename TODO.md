@@ -12,7 +12,7 @@
 - [x] Default pre-clip duration to 4s and post-clip to 1s
 - [x] Fix rescan. The new clips I made were exported to a folder that is in the library, and after I hit rescan and it finished scanning, I sorted by date and I couldn't see the new clips. After restarting Lambda Slicer and sorting by date I could see them finally, but shouldn't need a restart for them to appear in the table
 - [x] Add right clicking on the demo (in the table or on the list at the left after the demo player shows up) with a context menu to Open location, which opens the file explorer with the demo file selected
-- [ ] When selecting a highlight like the Golden minute, "Clip it" should set the start/end time to the highlight's instead of the selected event, plus the configured pre-clip and post-clip duration
+- [x] When selecting a highlight like the Golden minute, "Clip it" should set the start/end time to the highlight's instead of the selected event, plus the configured pre-clip and post-clip duration
 - [ ] Add crosshair to the demo player, and a setting to disable it
 - [ ] Buttons that are bottom left under the demo player should be centered
 - [ ] Try to reduce lag when watching a demo while it's scanning folders, prioritize the demo player
@@ -21,9 +21,11 @@
 - [ ] Fix ladder shadow shown at 0:01:12.609 on `20240120_190919_boot_camp`
 - [ ] Fix water rendering shown at 0:01:13.803 on `20240120_190919_boot_camp`. I think it should only render the faces of the water volume that are not hidden by others
 - [ ] Fix wrong score on some demos. For example on `somecrossgame`, most of the demo is on the map `crossfire` which ends 93-79, and then there's a little bit of `datacore` that ends 1-0, and the library and the scoreboard (initially, when no events selected) to the right of the demo player are saying 1-0, when it should be 93-79 as that's the significant part of the demo
-
-# Ideas
 - [ ] Add a filter for player name in the event list of a demo
+- [ ] Add a small button to the event list that stops the player from panning to the playhead so that you can freely scroll without it scrolling back automatically. It should show enabled by default (so autopan to playhead) and get disabled as you start scrolling manually, then clicking on it pans back to where the playhead is
+- [ ] Add 8 pixels of margin to the right of the kill feed
+
+# Ideas for later
 - [ ] Add a Favourites tab and a Add to favourites or Remove from favourites option to the context menu of a demo
 - [ ] Add a crosshair editor in settings that it's then used for the demo viewer
 - [ ] Add a demo viewer setting to customize the sky in the rendered demo. If none is set then just use the one found in the demo

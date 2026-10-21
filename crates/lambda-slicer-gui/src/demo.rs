@@ -463,6 +463,9 @@ pub struct DemoView {
     /// The action window shaded on the timeline, and one to jump to once
     /// the analysis is in
     window: Option<usize>,
+    /// The highlight was chosen after the selected event, so Clip it clips
+    /// the highlight
+    highlight_last: bool,
     pub open_window: Option<usize>,
     /// A shown event to select once the analysis is in, by its place in the
     /// list, for checking the view from the command line
@@ -541,6 +544,7 @@ impl DemoView {
             drag: None,
             playhead_in_view: true,
             window: None,
+            highlight_last: false,
             open_window: None,
             open_event: None,
             lanes_open: false,
@@ -672,6 +676,7 @@ impl DemoView {
                     let pad = ((w.1.end - w.1.start) * 0.1).max(3.);
                     self.view = track::clamp_view((w.1.start - pad, w.1.end + pad), extent);
                     self.window = Some(w.0);
+                    self.highlight_last = true;
                     self.scroll_to_window = 3;
                 }
                 self.model = Some(m);
@@ -764,6 +769,7 @@ impl DemoView {
         };
 
         self.selected = Some(event);
+        self.highlight_last = false;
         self.scroll_table = !from_list;
 
         if self.reachable(event)
@@ -786,6 +792,20 @@ impl DemoView {
         let e = m.events.get(self.selected?)?;
         let range = self.clamped(e.time - self.padding.0, e.time + self.padding.1);
         self.starts_in(range.0, e.segment).then_some(range)
+    }
+
+    /// What Clip it clips, the highlight when it was chosen after the event
+    /// and otherwise the event, none when that cannot start where it should
+    pub(super) fn clip_it_range(&self) -> Option<(f32, f32)> {
+        if self.highlight_last && self.window.is_some() {
+            return self.highlight_range();
+        }
+        self.proposal()
+    }
+
+    /// Whether Clip it clips the chosen highlight rather than an event
+    pub(super) fn clips_highlight(&self) -> bool {
+        self.highlight_last && self.window.is_some()
     }
 
     /// The range clipping the chosen highlight would take, padded as an
@@ -1101,6 +1121,7 @@ impl DemoView {
                 let pad = ((end - start) * 0.1).max(3.);
                 self.view = track::clamp_view((start - pad, end + pad), self.extent());
                 self.window = Some(i);
+                self.highlight_last = true;
                 self.scroll_to_window = 3;
 
                 // To its start, unless an earlier session has the same time
@@ -1124,7 +1145,7 @@ impl DemoView {
                 self.wanted_tab = Some(InspectorTab::Clips);
             }
             DemoAction::ClipEvent => {
-                if let Some(range) = self.proposal() {
+                if let Some(range) = self.clip_it_range() {
                     self.add_clip(catalog, range);
                     self.wanted_tab = Some(InspectorTab::Clips);
                 }
@@ -1643,7 +1664,7 @@ mod tests {
 
     use super::*;
     use crate::kill_filters::MidairMode;
-    use crate::timeline::{KillFeatures, KillKey, KillMotion, SampledAt};
+    use crate::timeline::{KillFeatures, KillKey, KillMotion, SampledAt, Window};
 
     /// A demo view of a file that is not there, with one clip from 1 to 2
     /// seconds whose start is being typed as `typed`
@@ -1801,6 +1822,40 @@ mod tests {
         view.refresh_rows();
         assert_eq!(view.rows, [0]);
         assert_eq!(view.shown.kill_filters.midair, MidairMode::Either);
+    }
+
+    #[test]
+    fn clip_it_clips_whichever_was_chosen_last() {
+        let group = |time: f32| GroupStart {
+            time,
+            segment: 0,
+            demo_start: false,
+        };
+        let groups = GroupIndex {
+            groups: vec![group(0.), group(50.)],
+            ..Default::default()
+        };
+        let mut view = view_of(vec![kill(0, 30., None)], groups);
+        Arc::get_mut(view.model.as_mut().unwrap())
+            .unwrap()
+            .windows
+            .push(Window {
+                segment: 0,
+                start: 40.,
+                end: 70.,
+                score: 1.,
+                sides: Vec::new(),
+            });
+        view.padding = (4., 1.);
+        let catalog = Catalog::new(crate::i18n::Locale::En);
+
+        // The event, then the highlight chosen after it, then the event again
+        view.select(0, true);
+        assert_eq!(view.clip_it_range(), Some((26., 31.)));
+        view.apply(DemoAction::ChooseHighlight(0), &catalog);
+        assert_eq!(view.clip_it_range(), Some((36., 71.)));
+        view.select(0, true);
+        assert_eq!(view.clip_it_range(), Some((26., 31.)));
     }
 
     #[test]
