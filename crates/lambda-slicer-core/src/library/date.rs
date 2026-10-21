@@ -70,12 +70,15 @@ pub fn recorded(path: &Path, modified_ns: Option<i64>) -> Option<(String, DateSo
     {
         return Some((format(t), DateSource::FileName));
     }
-    let ns = modified_ns?;
+    Some((local(modified_ns?)?, DateSource::Modified))
+}
+
+/// A file time in nanoseconds since 1970 as `YYYY-MM-DD HH:MM:SS` in this
+/// machine's local time
+pub fn local(ns: i64) -> Option<String> {
     let utc = DateTime::from_timestamp(ns.div_euclid(1_000_000_000), 0)?;
-    Some((
-        format(utc.with_timezone(&Local).naive_local()),
-        DateSource::Modified,
-    ))
+    let local = utc.with_timezone(&Local).naive_local();
+    Some(local.format("%Y-%m-%d %H:%M:%S").to_string())
 }
 
 #[cfg(test)]

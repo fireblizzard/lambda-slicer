@@ -277,6 +277,8 @@ fn row_menu(response: &Response, file: &FileRow, catalog: &Catalog, rtl: bool) -
 enum Col {
     Name,
     Date,
+    /// When the file was last modified, newest first for new clips
+    FileDate,
     Map,
     Duration,
     Score,
@@ -289,9 +291,10 @@ enum Col {
 }
 
 impl Col {
-    const ALL: [Col; 11] = [
+    const ALL: [Col; 12] = [
         Col::Name,
         Col::Date,
+        Col::FileDate,
         Col::Map,
         Col::Duration,
         Col::Score,
@@ -309,6 +312,7 @@ impl Col {
         match self {
             Col::Name => "name",
             Col::Date => "date",
+            Col::FileDate => "modified",
             Col::Map => "map",
             Col::Duration => "duration",
             Col::Score => "score",
@@ -325,6 +329,7 @@ impl Col {
         match self {
             Col::Name => "column-name",
             Col::Date => "column-date",
+            Col::FileDate => "column-file-date",
             Col::Map => "column-map",
             Col::Duration => "column-duration",
             Col::Score => "column-score",
@@ -340,6 +345,8 @@ impl Col {
     /// What the column's figure means, for its heading's tooltip
     fn help(self) -> Option<&'static str> {
         match self {
+            Col::Date => Some("help-date-column"),
+            Col::FileDate => Some("help-file-date"),
             Col::Headshots => Some("help-headshots-column"),
             Col::Accuracy => Some("help-accuracy"),
             _ => None,
@@ -350,6 +357,7 @@ impl Col {
         match self {
             Col::Name => Sort::Path,
             Col::Date => Sort::Date,
+            Col::FileDate => Sort::Modified,
             Col::Map => Sort::Map,
             Col::Duration => Sort::Duration,
             Col::Score => Sort::Score,
@@ -367,7 +375,7 @@ impl Col {
     fn column(self) -> Column {
         let (width, least) = match self {
             Col::Name => (280., 180.),
-            Col::Date => (112., 80.),
+            Col::Date | Col::FileDate => (112., 80.),
             Col::Map => (128., 60.),
             Col::Duration => (80., 64.),
             Col::Score => (128., 64.),
@@ -379,6 +387,12 @@ impl Col {
         };
         Column::initial(width).at_least(least).clip(true)
     }
+}
+
+/// Every column the library can be sorted by, as the key kept in settings
+/// and its title's message
+pub fn sort_columns() -> impl Iterator<Item = (&'static str, &'static str)> {
+    Col::ALL.into_iter().map(|c| (c.key(), c.title()))
 }
 
 /// What the narrow list's header asked for
@@ -483,8 +497,8 @@ impl LibraryView {
             cache: None,
             filters: Filters::default(),
             applied: None,
-            // The most intense demos first, as finding footage starts there
-            sort: Sort::Action,
+            // The newest files first, so clips just exported are on top
+            sort: Sort::Modified,
             descending: true,
             total: 0,
             stats: LibraryStats::default(),
@@ -514,6 +528,16 @@ impl LibraryView {
         };
         if let Some(Ok(rows)) = self.cache().map(|c| c.query(&query)) {
             self.selected = rows.into_iter().find(|r| r.path == wanted);
+        }
+    }
+
+    /// Sort by the column kept in settings as `key`, highest or newest
+    /// first when `descending`. A key this version does not know keeps the
+    /// order there was
+    pub fn sort_by_key(&mut self, key: &str, descending: bool) {
+        if let Some(col) = Col::ALL.into_iter().find(|c| c.key() == key) {
+            self.sort = col.sort();
+            self.descending = descending;
         }
     }
 
@@ -1078,6 +1102,7 @@ impl LibraryView {
         match col {
             Col::Name => self.name_cell(ui, file, selected, catalog, rtl),
             Col::Date => self.date_cell(ui, file, catalog, rtl),
+            Col::FileDate => file_date_cell(ui, file, catalog, rtl),
             Col::Map => {
                 let map = file.map.as_deref().unwrap_or("");
                 text_cell(ui, map, text::starts_rtl(map), Look::Plain);
@@ -1480,6 +1505,20 @@ fn text_cell(ui: &mut Ui, text: &str, rtl: bool, look: Look) -> Response {
 }
 
 /// A figure in monospace, or a faint dash saying it is not known
+/// The day the file was last modified, with the time on hover
+fn file_date_cell(ui: &mut Ui, file: &FileRow, catalog: &Catalog, rtl: bool) {
+    let modified = file.modified_at.as_deref();
+    let Some(day) = modified.and_then(Ymd::parse) else {
+        number_cell(ui, None, catalog, rtl);
+        return;
+    };
+
+    let time = modified.and_then(|t| t.get(11..)).unwrap_or("");
+    let tip = format!("{} {time}", catalog.date(day));
+    let tip = text::widget_text(ui.ctx(), &tip, rtl, None, Look::Plain);
+    number_cell(ui, Some(catalog.date(day)), catalog, rtl).on_hover_text(tip);
+}
+
 fn number_cell(ui: &mut Ui, value: Option<String>, catalog: &Catalog, rtl: bool) -> Response {
     match value {
         Some(value) => {
@@ -1555,6 +1594,7 @@ mod tests {
             recorder: None,
             recorded_at: None,
             date_source: None,
+            modified_at: None,
             score: None,
             scoreboard: None,
             spectator_fraction: None,
@@ -1567,6 +1607,19 @@ mod tests {
             matching_kills: Vec::new(),
             native: Vec::new(),
         }
+    }
+
+    #[test]
+    fn the_starting_order_is_set_by_its_key() {
+        let mut view = LibraryView::new(PathBuf::from("not-there.sqlite"), Vec::new());
+        assert_eq!((view.sort, view.descending), (Sort::Modified, true));
+
+        view.sort_by_key("kills", false);
+        assert_eq!((view.sort, view.descending), (Sort::Kills, false));
+
+        // A column this version does not know changes nothing
+        view.sort_by_key("bananas", true);
+        assert_eq!((view.sort, view.descending), (Sort::Kills, false));
     }
 
     #[test]

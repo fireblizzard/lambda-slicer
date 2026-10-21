@@ -122,6 +122,9 @@ pub struct App {
     export_on_open: bool,
     /// A scan to start once the stopping one has stopped
     rescan: bool,
+    /// Clips exported into the library folders, scanned on their own once
+    /// no scan runs, so they show without a rescan
+    exported: Vec<PathBuf>,
     /// The game folder the last scan read maps from, none for a scan
     /// without the game's files, and nothing before the first scan
     scanned_with: Option<Option<PathBuf>>,
@@ -204,10 +207,11 @@ impl App {
             l.select_path(d);
         }
 
-        // The filters as they were left
+        // The filters as they were left, and the order chosen to start with
         if let Some(l) = &mut library {
             l.filters_open = settings.layout.filters_open;
             l.list_filters_open = settings.layout.list_filters_open;
+            l.sort_by_key(&settings.sort_column, settings.sort_descending);
         }
 
         if let Some(l) = &mut library
@@ -279,6 +283,7 @@ impl App {
             open_refine: Some(launch.refine),
             export_on_open: launch.export,
             rescan: false,
+            exported: Vec::new(),
             scanned_with: None,
             floors: None,
             direct: launch.open.iter().find(|p| p.is_file()).cloned(),
@@ -629,6 +634,12 @@ impl App {
                 }
                 Request::ShowList => self.workspace.list_hidden = false,
                 Request::Notice(notice) => self.path_notice = Some(notice),
+                Request::Exported(path) => {
+                    let in_library = self.settings.folders.iter().any(|f| path.starts_with(f));
+                    if in_library {
+                        self.exported.push(path);
+                    }
+                }
             }
         }
 
@@ -795,9 +806,32 @@ impl App {
             return;
         }
         self.scan = None;
+        self.exported.clear();
         self.scanned_with = Some(self.install_root());
         let options = ScanOptions {
             roots,
+            cache,
+            workers: usize::from(self.settings.workers),
+            force: false,
+            full_hash: true,
+            limits: Limits::default(),
+            floors: self.floor_reader(),
+        };
+        self.scan = Some(ScanJob::start(options, ctx.clone()));
+    }
+
+    /// Scan the clips exported into the library on their own, once no other
+    /// scan runs. A scan of the whole library still to come finds them anyway
+    fn scan_exported(&mut self, ctx: &egui::Context) {
+        if self.exported.is_empty() || self.scanning() || self.rescan {
+            return;
+        }
+        let Some(cache) = self.cache_path.clone() else {
+            return;
+        };
+
+        let options = ScanOptions {
+            roots: std::mem::take(&mut self.exported),
             cache,
             workers: usize::from(self.settings.workers),
             force: false,
@@ -1160,6 +1194,7 @@ impl eframe::App for App {
             self.start_scan(&ctx);
         }
         self.rescan_for_game(&ctx);
+        self.scan_exported(&ctx);
 
         // The toolbar's controls sit in the middle of its height
         let margin_y = (theme::TOOLBAR_HEIGHT - theme::CONTROL_HEIGHT) / 2.;

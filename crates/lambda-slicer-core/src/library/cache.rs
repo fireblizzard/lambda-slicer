@@ -349,6 +349,9 @@ pub enum Sort {
     Accuracy,
     /// The frags of the final scoreboard's first side, the highest
     Score,
+    /// When the file was last modified, which for an exported clip is
+    /// when it was exported
+    Modified,
 }
 
 impl Sort {
@@ -365,6 +368,7 @@ impl Sort {
             Sort::Date => "f.recorded_at",
             Sort::Headshots => "f.headshots",
             Sort::Accuracy => "f.accuracy",
+            Sort::Modified => "f.mtime_ns",
             // Nothing for a stored score that is not valid JSON, so it sorts
             // with the files that have no score
             Sort::Score => {
@@ -443,6 +447,8 @@ pub struct FileRow {
     /// its source
     pub recorded_at: Option<String>,
     pub date_source: Option<String>,
+    /// When the file was last modified, `YYYY-MM-DD HH:MM:SS` local time
+    pub modified_at: Option<String>,
     /// The final score, such as `88 – 74`
     pub score: Option<String>,
     /// The final scoreboard the score was made from, none when the cache
@@ -907,7 +913,7 @@ impl Cache {
                 (SELECT w.shots FROM weapons w WHERE w.file_id = f.id AND w.weapon = 'gauss')
                     AS gauss,
                 f.recorded_at, f.date_source, f.score, f.headshots, f.accuracy, f.path_blob,
-                f.score_json
+                f.score_json, f.mtime_ns
              FROM files f WHERE {conditions}
              ORDER BY {} {direction} NULLS LAST, f.path
              LIMIT ?{limit} OFFSET ?{offset}",
@@ -926,6 +932,7 @@ impl Cache {
                 recorder: r.get(12)?,
                 recorded_at: r.get(15)?,
                 date_source: r.get(16)?,
+                modified_at: r.get::<_, Option<i64>>(22)?.and_then(super::date::local),
                 score: r.get(17)?,
                 scoreboard: r
                     .get::<_, Option<String>>(21)?
@@ -1059,6 +1066,42 @@ mod tests {
 
     fn side(frags: i32) -> String {
         format!(r#"{{"name":"s{frags}","frags":{frags},"deaths":0}}"#)
+    }
+
+    #[test]
+    fn newest_files_sort_first_by_when_they_were_modified() {
+        let mut c = Cache::in_memory().unwrap();
+        for (name, mtime_ns) in [
+            ("old.dem", Some(1)),
+            ("new.dem", Some(3)),
+            ("none.dem", None),
+        ] {
+            c.store(&Entry {
+                path: Path::new(name),
+                size: 1,
+                mtime_ns,
+                file_identity: None,
+                quick_hash: None,
+                full_hash: None,
+                header: None,
+                report: None,
+                error: None,
+                floors: None,
+            })
+            .unwrap();
+        }
+
+        // A file without a time goes last either way
+        let q = FileQuery {
+            sort: Sort::Modified,
+            descending: true,
+            limit: 10,
+            ..FileQuery::default()
+        };
+        let rows = c.query(&q).unwrap();
+        let names: Vec<&str> = rows.iter().map(|f| f.path.as_str()).collect();
+        assert_eq!(names, ["new.dem", "old.dem", "none.dem"]);
+        assert!(rows[0].modified_at.is_some() && rows[2].modified_at.is_none());
     }
 
     #[test]

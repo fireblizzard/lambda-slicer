@@ -22,6 +22,8 @@ settings-unreviewed = Šis vertimas yra juodraštis, kurio dar neperžiūrėjo g
 settings-workers = Kiek įrašų analizuoti vienu metu
 settings-workers-hint = Analizuojant daugiau vienu metu, baigiama greičiau, bet kompiuteris labiau apkraunamas.
 settings-cache = Kur laikoma biblioteka
+settings-sort = Tvarka paleidus
+settings-sort-hint = Kaip įrašai rikiuojami kaskart paleidus Lambda Slicer. Spustelėjus stulpelio antraštę, vis tiek rikiuojama pagal jį, kol uždarysite Lambda Slicer.
 settings-folders = Bibliotekos aplankai
 settings-folders-empty = Aplankų dar nepridėta.
 settings-remove = Pašalinti
@@ -226,6 +228,7 @@ demo-events = { $count ->
 }
 
 column-date = Data
+column-file-date = Failo data
 column-score = Rezultatas
 filter-from = Nuo
 filter-to = Iki
@@ -371,6 +374,8 @@ scores-accuracy = Taikl.
 
 help-headshots = Nužudymai pataikius į galvą, atpažinti iš aukos mirties animacijos. Sprogimai neskaičiuojami. Rodomi tik įrašančiojo nužudymai, nes kiti žaidėjai dažnai žudo už įrašo matomumo ribų. Dvikovoje rodomi ir priešininko, nes visi jo nužudymai yra įrašančiojo.
 help-headshots-column = Įrašančiojo nužudymai pataikius į galvą, atpažinti iš aukos mirties animacijos. Sprogimai neskaičiuojami. Kitų žaidėjų nužudymai neskaičiuojami, nes dažnai įvyksta už įrašo matomumo ribų.
+help-date-column = Kada buvo įrašytos rungtynės. Data imama iš failo pavadinimo, kai jame yra data, pvz., 20230910_214553, kaip žaidimo automatiškai daromuose įrašuose. Kitaip tai failo data, kurią kopijavimas ar atsisiuntimas gali pakeisti.
+help-file-date = Kada failas buvo išsaugotas. Eksportuoto klipo atveju tai yra eksportavimo laikas.
 help-accuracy = Pataikiusių šūvių dalis, nustatyta pagal kraują, kurį pataikymas palieka taikymo linijoje, atėmus atsitiktinius sutapimus. Įtraukiami glock, python, MP5 kulkos, šautuvas, arbaletas su taikikliu ir tiesioginiai gauso spindulio pataikymai. Sprogimai ir gauso atšokimai kraujo nepalieka ir neskaičiuojami. Rodoma tik įrašančiajam ir tik po bent 50 šūvių.
 help-headshot-filter = Įrašai, kuriuose yra bent vienas įraše matomas nužudymas į galvą, bet kurio žaidėjo.
 help-midair-filter = Įrašai, kuriuose yra bent vienas nužudymas, kai žudikas arba auka buvo ore, bent 50 vienetų virš žemės. Nepasirinkus Half-Life aplanko, skaičiuojamas ir paprastas šuolis.

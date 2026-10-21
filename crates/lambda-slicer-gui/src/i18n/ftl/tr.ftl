@@ -22,6 +22,8 @@ settings-unreviewed = Bu çeviri, henüz anadili Türkçe olan biri tarafından 
 settings-workers = Aynı anda analiz edilen demolar
 settings-workers-hint = Aynı anda daha çok demo analiz etmek daha çabuk biter ama bilgisayarı daha çok yorar.
 settings-cache = Kütüphanenin saklandığı yer
+settings-sort = Açılıştaki sıra
+settings-sort-hint = Lambda Slicer her açıldığında demoların nasıl sıralanacağı. Bir sütunun başlığına tıklamak, Lambda Slicer'ı kapatana kadar yine o sütuna göre sıralar.
 settings-folders = Kütüphane klasörleri
 settings-folders-empty = Henüz klasör eklenmedi.
 settings-remove = Kaldır
@@ -201,6 +203,7 @@ demo-events = { $count ->
 }
 
 column-date = Tarih
+column-file-date = Dosya tarihi
 column-score = Skor
 filter-from = Başlangıç
 filter-to = Bitiş
@@ -342,6 +345,8 @@ scores-accuracy = İsabet
 
 help-headshots = Kafaya isabetle yapılan öldürmeler; kurbanın ölüm animasyonundan anlaşılır. Patlamalar sayılmaz. Yalnızca kaydedenin öldürmeleri gösterilir, çünkü diğer oyuncular çoğu zaman kaydın göremediği yerlerde öldürür. Düelloda rakibinkiler de gösterilir, çünkü rakibin tüm öldürmeleri kaydedene karşıdır.
 help-headshots-column = Kaydedenin kafaya isabetle yaptığı öldürmeler; kurbanın ölüm animasyonundan anlaşılır. Patlamalar sayılmaz. Diğer oyuncuların öldürmeleri sayılmaz, çünkü çoğu zaman kaydın göremediği yerlerde olur.
+help-date-column = Maçın kaydedildiği zaman. Dosya adında 20230910_214553 gibi bir tarih varsa, oyunun kendiliğinden yaptığı kayıtlarda olduğu gibi, tarih dosya adından alınır. Yoksa dosya tarihidir; kopyalama ya da indirme bunu değiştirebilir.
+help-file-date = Dosyanın kaydedildiği zaman. Dışa aktarılan bir klipte bu, dışa aktarıldığı zamandır.
 help-accuracy = İsabet eden atışların oranı; bir isabetin nişan hattında bıraktığı kana göre, rastlantısal eşleşmeler çıkarılarak hesaplanır. Glock, python, MP5 mermileri, pompalı, dürbünlü arbalet ve gauss ışınının doğrudan isabetleri sayılır. Patlamalar ve gauss sekmeleri kan bırakmaz, sayılmaz. Yalnızca kaydeden için, en az 50 atıştan sonra gösterilir.
 help-headshot-filter = Herhangi bir oyuncunun, kayıtta görülen en az bir kafadan öldürmesi olan demolar.
 help-midair-filter = Öldürenin ya da kurbanın havada, yerden en az 50 birim yukarıda olduğu en az bir öldürme bulunan demolar. Half-Life klasörü seçilmemişse sıradan bir zıplama da sayılır.

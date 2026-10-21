@@ -23,6 +23,8 @@ settings-unreviewed = This translation is a draft that no native speaker has rev
 settings-workers = Demos analysed at once
 settings-workers-hint = Analysing more at once finishes sooner but makes the computer work harder.
 settings-cache = Where the library is kept
+settings-sort = Order at start
+settings-sort-hint = How the demos are sorted each time the app starts. Clicking a column's heading still sorts by it until you close the app.
 settings-folders = Library folders
 settings-folders-empty = No folders added yet.
 settings-remove = Remove
@@ -115,7 +117,10 @@ details-action = Highest intensity { NUMBER($score, minimumFractionDigits: 2) }
 scan-progress = Found { $found }, done { $done } ({ $cached } already known, { $analysed } analysed), { $megabytes } MB read
 scan-cancelling = Stopping…
 scan-cancelled = Stopped with { $left } left to scan.
-scan-finished = Done: { $done } demos, { $analysed } analysed, in { $seconds } s.
+scan-finished = Done: { $done ->
+    [one] { $done } demo
+   *[other] { $done } demos
+}, { $analysed } analysed, in { $seconds } s.
 scan-problems = { $count ->
     [one] { $count } problem
    *[other] { $count } problems
@@ -211,6 +216,7 @@ demo-events = { $count ->
 }
 
 column-date = Date
+column-file-date = File date
 column-score = Score
 filter-from = From
 filter-to = To
@@ -352,6 +358,8 @@ scores-accuracy = Acc.
 
 help-headshots = Kills by a hit to the head, read from the death animation the victim plays. Explosions don’t count. Only the recording player’s are shown, because other players often kill out of the recording’s view. In a duel the opponent’s are shown too, since all their kills are of the recording player.
 help-headshots-column = The recording player’s kills by a hit to the head, read from the death animation the victim plays. Explosions don’t count. Other players’ kills aren’t counted, because they often happen out of the recording’s view.
+help-date-column = When the match was recorded. It's read from the file name when the name has a date like 20230910_214553, as automatic recordings do. Otherwise it's the file date, which copying or downloading can change.
+help-file-date = When the file was saved. For an exported clip, that's when it was exported.
 help-accuracy = The share of shots that hit, from the blood a hit leaves along the aim, minus matches that happen by chance. It covers the glock, python, MP5 bullets, shotgun, zoomed crossbow and the gauss beam’s direct hits. Explosions and gauss reflections leave no blood and aren’t counted. Shown for the recording player only, after at least 50 shots.
 help-headshot-filter = Demos with at least one kill by a hit to the head that the recording saw, by any player.
 help-midair-filter = Demos with at least one kill where the killer or the victim was in the air, at least 50 units above the floor. Without the game folder set, a plain jump counts too.

@@ -22,6 +22,8 @@ settings-unreviewed = Esta tradução é um rascunho que nenhum falante nativo r
 settings-workers = Demos analisadas ao mesmo tempo
 settings-workers-hint = Analisar mais ao mesmo tempo termina antes, mas faz o computador trabalhar mais.
 settings-cache = Onde a biblioteca fica guardada
+settings-sort = Ordem ao abrir
+settings-sort-hint = Como as demos são ordenadas cada vez que o Lambda Slicer abre. Clicar no título de uma coluna ainda ordena por ela, até você fechar o Lambda Slicer.
 settings-folders = Pastas da biblioteca
 settings-folders-empty = Nenhuma pasta adicionada ainda.
 settings-remove = Remover
@@ -120,7 +122,14 @@ details-action = Maior intensidade { NUMBER($score, minimumFractionDigits: 2) }
 scan-progress = Encontradas { $found }, prontas { $done } ({ $cached } já conhecidas, { $analysed } analisadas), { $megabytes } MB lidos
 scan-cancelling = Parando…
 scan-cancelled = Parado com { $left } por escanear.
-scan-finished = Pronto: { $done } demos, { $analysed } analisadas, em { $seconds } s.
+scan-finished = Pronto: { $done ->
+    [one] { $done } demo
+    [many] { $done } de demos
+   *[other] { $done } demos
+}, { $analysed ->
+    [one] { $analysed } analisada
+   *[other] { $analysed } analisadas
+}, em { $seconds } s.
 scan-problems = { $count ->
     [one] { $count } problema
     [many] { $count } de problemas
@@ -218,6 +227,7 @@ demo-events = { $count ->
 }
 
 column-date = Data
+column-file-date = Data do arquivo
 column-score = Placar
 filter-from = De
 filter-to = Até
@@ -361,6 +371,8 @@ scores-accuracy = Prec.
 
 help-headshots = Abates por headshot, lidos da animação de morte da vítima. Explosões não contam. Só aparecem os headshots de quem gravou, porque os outros jogadores costumam matar fora da visão da gravação. Num duelo aparecem também os do adversário, já que todos os abates dele são em quem gravou.
 help-headshots-column = Headshots de quem gravou, lidos da animação de morte da vítima. Explosões não contam. Os dos outros jogadores não contam, porque costumam acontecer fora da visão da gravação.
+help-date-column = Quando a partida foi gravada. Vem do nome do arquivo quando o nome tem uma data como 20230910_214553, como nas gravações automáticas do jogo. Senão, é a data do arquivo, que copiar ou baixar pode alterar.
+help-file-date = Quando o arquivo foi salvo. Num clipe exportado, é quando ele foi exportado.
 help-accuracy = A parte dos disparos que acertaram, pelo sangue que um acerto deixa na linha de mira, descontando coincidências ao acaso. Vale para a glock, a python, as balas da MP5, a escopeta, a besta com zoom e os acertos diretos do raio gauss. Explosões e reflexos do gauss não deixam sangue e não contam. Aparece só para quem gravou, depois de pelo menos 50 disparos.
 help-headshot-filter = Demos com pelo menos um headshot que a gravação viu, de qualquer jogador.
 help-midair-filter = Demos com pelo menos um abate em que o matador ou a vítima estava no ar, a 50 unidades ou mais acima do chão. Sem a pasta do Half-Life escolhida, um simples pulo também conta.

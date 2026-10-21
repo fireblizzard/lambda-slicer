@@ -22,6 +22,8 @@ settings-unreviewed = 此翻译为草稿，尚未经母语人士审校。
 settings-workers = 同时分析的录像数
 settings-workers-hint = 同时分析得越多，完成得越快，但电脑会更吃力。
 settings-cache = 库的存放位置
+settings-sort = 启动时的顺序
+settings-sort-hint = 每次启动 Lambda Slicer 时录像的排序方式。点击列标题仍会按该列排序，直到你关闭 Lambda Slicer。
 settings-folders = 库文件夹
 settings-folders-empty = 尚未添加文件夹。
 settings-remove = 移除
@@ -196,6 +198,7 @@ demo-events = { $count ->
 }
 
 column-date = 日期
+column-file-date = 文件日期
 column-score = 比分
 filter-from = 从
 filter-to = 到
@@ -335,6 +338,8 @@ scores-accuracy = 命中率
 
 help-headshots = 爆头击杀，根据受害者的死亡动作判断。爆炸不计入。只显示录制者的爆头，因为其他玩家常在录像视野之外击杀。在一对一中也显示对手的爆头，因为对手的击杀都是针对录制者。
 help-headshots-column = 录制者的爆头击杀，根据受害者的死亡动作判断。爆炸不计入。其他玩家的击杀不计入，因为它们常发生在录像视野之外。
+help-date-column = 比赛录制的时间。如果文件名里有像 20230910_214553 这样的日期（游戏自动录制的录像就是这样），就从文件名读取。否则就是文件日期，复制或下载可能会改变它。
+help-file-date = 文件保存的时间。对于导出的片段，就是导出的时间。
 help-accuracy = 命中射击所占比例，根据命中在瞄准线上留下的血迹判断，并扣除偶然重合。包括格洛克、蟒蛇、MP5 子弹、霰弹枪、开镜十字弩和高斯光束的直接命中。爆炸和高斯反射不留血迹，不计入。只显示录制者的命中率，且至少 50 次射击后才显示。
 help-headshot-filter = 至少有一次录像中可见的爆头击杀的录像，任何玩家均可。
 help-midair-filter = 至少有一次击杀时击杀者或受害者在空中、离地面至少 50 单位的录像。未选择 Half-Life 文件夹时，普通跳跃也算。

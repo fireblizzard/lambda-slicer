@@ -119,6 +119,8 @@ pub enum Request {
     ShowList,
     /// A problem to show until dismissed
     Notice(String),
+    /// A clip finished exporting to this file
+    Exported(PathBuf),
 }
 
 /// The inspector's tabs beside the view
@@ -615,7 +617,11 @@ impl DemoView {
 
     fn poll_export(&mut self) {
         let exports = &mut self.exports;
+        let mut written = Vec::new();
         let update = |id: u64, state: ExportState| {
+            if let ExportState::Done(done) = &state {
+                written.push(done.path.clone());
+            }
             if let Some(export) = exports.get_mut(&id) {
                 export.1 = state;
             }
@@ -624,6 +630,11 @@ impl DemoView {
             && job.poll(update)
         {
             self.export = None;
+        }
+
+        // The app adds the new files to the library
+        for path in written {
+            self.requests.push(Request::Exported(path));
         }
     }
 

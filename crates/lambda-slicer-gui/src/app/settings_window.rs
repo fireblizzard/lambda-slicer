@@ -13,11 +13,11 @@ use super::App;
 use crate::game_setup;
 use crate::i18n::{Catalog, Locale};
 use crate::layout;
-use crate::library::parse_number;
+use crate::library::{self, parse_number};
 use crate::settings::{FOV, MAX_PADDING, ViewerSettings};
 use crate::text::{self, Look};
 use crate::theme;
-use crate::widgets::{self, Icon, Variant};
+use crate::widgets::{self, Icon, IconButton, Variant};
 
 /// The window's first size, the width of its list of sections, and the
 /// least room a control takes beside its label before going under it
@@ -388,9 +388,64 @@ impl App {
             self.add_folders(&ctx, folders);
         }
 
+        self.starting_order(ui, rtl);
+
         heading(ui, &self.catalog, "settings-cache", None, rtl, false);
         let cache = self.cache_path.as_ref().map(|p| p.display().to_string());
         path(ui, &cache.unwrap_or_default(), rtl);
+    }
+
+    /// The column the library is sorted by when the app starts, and which
+    /// way round. A change shows at once
+    fn starting_order(&mut self, ui: &mut egui::Ui, rtl: bool) {
+        let ctx = ui.ctx().clone();
+        heading(
+            ui,
+            &self.catalog,
+            "settings-sort",
+            Some("settings-sort-hint"),
+            rtl,
+            false,
+        );
+
+        let catalog = &self.catalog;
+        let mut column = self.settings.sort_column.clone();
+        let mut descending = self.settings.sort_descending;
+        layout::row(ui, rtl, |ui| {
+            let title =
+                |id: &str| text::widget_text(&ctx, &catalog.text(id), rtl, None, Look::Plain);
+            let current = library::sort_columns()
+                .find(|(key, _)| *key == column)
+                .map_or_else(|| title("column-file-date"), |(_, id)| title(id));
+            egui::ComboBox::from_id_salt("starting order")
+                .selected_text(current)
+                .show_ui(ui, |ui| {
+                    for (key, id) in library::sort_columns() {
+                        ui.selectable_value(&mut column, key.to_string(), title(id));
+                    }
+                });
+
+            let (icon, id) = if descending {
+                (Icon::SortDown, "sort-descending")
+            } else {
+                (Icon::SortUp, "sort-ascending")
+            };
+            if ui.add(IconButton::new(icon, &catalog.text(id))).clicked() {
+                descending = !descending;
+            }
+        });
+
+        let unchanged =
+            (&column, descending) == (&self.settings.sort_column, self.settings.sort_descending);
+        if unchanged {
+            return;
+        }
+        if let Some(l) = &mut self.library {
+            l.sort_by_key(&column, descending);
+        }
+        self.settings.sort_column = column;
+        self.settings.sort_descending = descending;
+        self.settings_unsaved = true;
     }
 
     /// Every setting that changes only how the viewer shows and plays a

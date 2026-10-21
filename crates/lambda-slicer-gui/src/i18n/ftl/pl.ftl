@@ -22,6 +22,8 @@ settings-unreviewed = To tłumaczenie jest wersją roboczą, której nie sprawdz
 settings-workers = Ile dem analizować naraz
 settings-workers-hint = Analizowanie większej liczby naraz kończy się szybciej, ale bardziej obciąża komputer.
 settings-cache = Gdzie jest przechowywana biblioteka
+settings-sort = Kolejność przy uruchomieniu
+settings-sort-hint = Jak dema są sortowane przy każdym uruchomieniu Lambda Slicer. Kliknięcie nagłówka kolumny nadal sortuje według niej, dopóki nie zamkniesz Lambda Slicer.
 settings-folders = Foldery biblioteki
 settings-folders-empty = Nie dodano jeszcze folderów.
 settings-remove = Usuń
@@ -226,6 +228,7 @@ demo-events = { $count ->
 }
 
 column-date = Data
+column-file-date = Data pliku
 column-score = Wynik
 filter-from = Od
 filter-to = Do
@@ -371,6 +374,8 @@ scores-accuracy = Cel.
 
 help-headshots = Zabójstwa trafieniem w głowę, rozpoznane po animacji śmierci ofiary. Wybuchy się nie liczą. Pokazywane są tylko zabójstwa nagrywającego, bo inni gracze często zabijają poza jego polem widzenia. W pojedynku pokazywane są też zabójstwa przeciwnika, bo wszystkie dotyczą nagrywającego.
 help-headshots-column = Zabójstwa nagrywającego trafieniem w głowę, rozpoznane po animacji śmierci ofiary. Wybuchy się nie liczą. Zabójstwa innych graczy nie są liczone, bo często dzieją się poza polem widzenia nagrania.
+help-date-column = Kiedy mecz został nagrany. Data jest brana z nazwy pliku, jeśli nazwa zawiera datę taką jak 20230910_214553, tak jak w automatycznych nagraniach gry. W przeciwnym razie to data pliku, którą kopiowanie lub pobieranie może zmienić.
+help-file-date = Kiedy plik został zapisany. W przypadku wyeksportowanego klipu to moment eksportu.
 help-accuracy = Odsetek strzałów, które trafiły, ustalony na podstawie krwi, jaką trafienie zostawia na linii celowania, po odjęciu przypadkowych dopasowań. Obejmuje glocka, pythona, pociski MP5, strzelbę, kuszę z lunetą i bezpośrednie trafienia wiązki gaussa. Wybuchy i odbicia gaussa nie zostawiają krwi i nie są liczone. Pokazywany tylko dla nagrywającego, po co najmniej 50 strzałach.
 help-headshot-filter = Dema z co najmniej jednym zabójstwem w głowę widocznym w nagraniu, przez dowolnego gracza.
 help-midair-filter = Dema z co najmniej jednym zabójstwem, przy którym zabójca lub ofiara byli w powietrzu, co najmniej 50 jednostek nad podłożem. Bez wybranego folderu Half-Life liczy się też zwykły skok.

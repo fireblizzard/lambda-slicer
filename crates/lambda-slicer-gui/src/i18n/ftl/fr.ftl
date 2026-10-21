@@ -22,6 +22,8 @@ settings-unreviewed = Cette traduction est un brouillon qu’aucun locuteur nati
 settings-workers = Démos analysées en même temps
 settings-workers-hint = En analyser plus en même temps finit plus vite, mais fait davantage travailler l’ordinateur.
 settings-cache = Où la bibliothèque est gardée
+settings-sort = Ordre au lancement
+settings-sort-hint = Comment les démos sont triées à chaque lancement de Lambda Slicer. Cliquer sur l’en-tête d’une colonne trie quand même par celle-ci, jusqu’à ce que tu fermes Lambda Slicer.
 settings-folders = Dossiers de la bibliothèque
 settings-folders-empty = Aucun dossier ajouté pour l’instant.
 settings-remove = Retirer
@@ -120,7 +122,14 @@ details-action = Intensité maximale { NUMBER($score, minimumFractionDigits: 2) 
 scan-progress = { $found } trouvées, { $done } traitées ({ $cached } déjà connues, { $analysed } analysées), { $megabytes } Mo lus
 scan-cancelling = Arrêt…
 scan-cancelled = Arrêté, { $left } restant à analyser.
-scan-finished = Terminé : { $done } démos, { $analysed } analysées, en { $seconds } s.
+scan-finished = Terminé : { $done ->
+    [one] { $done } démo
+    [many] { $done } de démos
+   *[other] { $done } démos
+}, { $analysed ->
+    [one] { $analysed } analysée
+   *[other] { $analysed } analysées
+}, en { $seconds } s.
 scan-problems = { $count ->
     [one] { $count } problème
     [many] { $count } de problèmes
@@ -218,6 +227,7 @@ demo-events = { $count ->
 }
 
 column-date = Date
+column-file-date = Date du fichier
 column-score = Score
 filter-from = Du
 filter-to = Au
@@ -361,6 +371,8 @@ scores-accuracy = Préc.
 
 help-headshots = Éliminations par un tir à la tête, reconnues à l’animation de mort de la victime. Les explosions ne comptent pas. Seules celles de la personne qui enregistre sont affichées, car les autres joueurs éliminent souvent hors de sa vue. En duel, celles de l’adversaire aussi, puisque toutes visent la personne qui enregistre.
 help-headshots-column = Éliminations de la personne qui enregistre par un tir à la tête, reconnues à l’animation de mort de la victime. Les explosions ne comptent pas. Celles des autres joueurs ne comptent pas, car elles ont souvent lieu hors de la vue de l’enregistrement.
+help-date-column = Quand la partie a été enregistrée. La date est tirée du nom du fichier s’il contient une date comme 20230910_214553, comme c’est le cas des enregistrements automatiques du jeu. Sinon, c’est la date du fichier, qu’une copie ou un téléchargement peut changer.
+help-file-date = Quand le fichier a été enregistré. Pour un clip exporté, c’est le moment de l’export.
 help-accuracy = La part des tirs qui ont touché, d’après le sang qu’un impact laisse sur la ligne de visée, moins les correspondances dues au hasard. Elle couvre le glock, le python, les balles du MP5, le fusil à pompe, l’arbalète avec zoom et les impacts directs du rayon gauss. Les explosions et les rebonds du gauss ne laissent pas de sang et ne comptent pas. Affichée pour la personne qui enregistre seulement, après au moins 50 tirs.
 help-headshot-filter = Démos avec au moins une élimination d’un tir à la tête visible dans l’enregistrement, par n’importe quel joueur.
 help-midair-filter = Démos avec au moins une élimination où le tueur ou la victime était en l’air, à 50 unités ou plus au-dessus du sol. Si le dossier de Half-Life n’a pas été choisi, un simple saut compte aussi.

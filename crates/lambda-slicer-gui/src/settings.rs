@@ -22,6 +22,10 @@ pub struct Settings {
     pub cache: Option<PathBuf>,
     /// Library columns left out, gauss shots by default
     pub hidden_columns: Vec<String>,
+    /// The library's order when the app starts, by a column's key, newest
+    /// or highest first when `sort_descending`
+    pub sort_column: String,
+    pub sort_descending: bool,
     /// Whether a demo opens with its player lanes under the timeline. Files
     /// from before the timeline was always shown name it `show_timeline`
     #[serde(alias = "show_timeline")]
@@ -206,6 +210,8 @@ impl Default for Settings {
             folders: Vec::new(),
             cache: None,
             hidden_columns: vec!["gauss".into()],
+            sort_column: "modified".into(),
+            sort_descending: true,
             player_lanes: false,
             preroll: 4.,
             postroll: 1.,
@@ -293,6 +299,8 @@ mod tests {
             folders: vec![PathBuf::from("F:/demos")],
             cache: None,
             hidden_columns: Vec::new(),
+            sort_column: "kills".into(),
+            sort_descending: false,
             player_lanes: true,
             preroll: 2.5,
             postroll: 0.,
@@ -396,6 +404,18 @@ mod tests {
         let loaded = Settings::load_from(&path);
         assert!(!loaded.clip_name_files);
         assert!(loaded.demo_name_first);
+    }
+
+    #[test]
+    fn the_library_starts_with_the_newest_files_until_asked() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+
+        // A file from before the choice was there
+        std::fs::write(&path, br#"{"workers": 2}"#).unwrap();
+        let loaded = Settings::load_from(&path);
+        assert_eq!(loaded.sort_column, "modified");
+        assert!(loaded.sort_descending);
     }
 
     #[test]

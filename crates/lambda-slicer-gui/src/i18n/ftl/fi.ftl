@@ -22,6 +22,8 @@ settings-unreviewed = Tämä käännös on luonnos, jota kukaan äidinkielinen p
 settings-workers = Yhtä aikaa analysoitavat demot
 settings-workers-hint = Useamman demon analysointi yhtä aikaa valmistuu nopeammin mutta kuormittaa tietokonetta enemmän.
 settings-cache = Kirjaston tallennuspaikka
+settings-sort = Järjestys käynnistettäessä
+settings-sort-hint = Miten demot lajitellaan aina, kun Lambda Slicer käynnistyy. Sarakkeen otsikon napsauttaminen lajittelee silti sen mukaan, kunnes suljet Lambda Slicerin.
 settings-folders = Kirjaston kansiot
 settings-folders-empty = Kansioita ei ole vielä lisätty.
 settings-remove = Poista
@@ -114,7 +116,10 @@ details-action = Suurin kiivaus { NUMBER($score, minimumFractionDigits: 2) }
 scan-progress = Löydetty { $found }, valmiina { $done } (jo tuttuja { $cached }, analysoitu { $analysed }), luettu { $megabytes } Mt
 scan-cancelling = Pysäytetään…
 scan-cancelled = Pysäytetty, skannaamatta { $left }.
-scan-finished = Valmis: { $done } demoa, analysoitu { $analysed }, aikaa { $seconds } s.
+scan-finished = Valmis: { $done ->
+    [one] { $done } demo
+   *[other] { $done } demoa
+}, analysoitu { $analysed }, aikaa { $seconds } s.
 scan-problems = { $count ->
     [one] { $count } ongelma
    *[other] { $count } ongelmaa
@@ -210,6 +215,7 @@ demo-events = { $count ->
 }
 
 column-date = Päiväys
+column-file-date = Tiedoston päiväys
 column-score = Tulos
 filter-from = Alkaen
 filter-to = Asti
@@ -351,6 +357,8 @@ scores-accuracy = Tark.
 
 help-headshots = Tapot osumalla päähän, tunnistettu uhrin kuolinanimaatiosta. Räjähdykset eivät lasketa. Vain tallentajan tapot näytetään, koska muut pelaajat tappavat usein tallennuksen näkymän ulkopuolella. Kaksintaistelussa näytetään myös vastustajan tapot, koska ne kaikki kohdistuvat tallentajaan.
 help-headshots-column = Tallentajan tapot osumalla päähän, tunnistettu uhrin kuolinanimaatiosta. Räjähdykset eivät lasketa. Muiden pelaajien tappoja ei lasketa, koska ne tapahtuvat usein tallennuksen näkymän ulkopuolella.
+help-date-column = Milloin ottelu tallennettiin. Päiväys luetaan tiedoston nimestä, kun nimessä on päiväys kuten 20230910_214553, niin kuin pelin itse tekemissä tallenteissa. Muuten se on tiedoston päiväys, jonka kopiointi tai lataus voi muuttaa.
+help-file-date = Milloin tiedosto tallennettiin. Viedyn klipin kohdalla se on hetki, jolloin klippi vietiin.
 help-accuracy = Osuneiden laukausten osuus, päätelty verestä, jonka osuma jättää tähtäyslinjalle, vähennettynä sattumanvaraisilla osumilla. Mukana ovat glock, python, MP5:n luodit, haulikko, tähtäimellä ammuttu varsijousi ja gauss-säteen suorat osumat. Räjähdykset ja gaussin heijastukset eivät jätä verta eivätkä lasketa. Näytetään vain tallentajalle ja vasta vähintään 50 laukauksen jälkeen.
 help-headshot-filter = Demot, joissa on vähintään yksi tallennuksessa näkyvä päälaukaustappo, kenen tahansa.
 help-midair-filter = Demot, joissa on vähintään yksi tappo, jonka hetkellä tappaja tai uhri oli ilmassa vähintään 50 yksikön korkeudella maasta. Ilman valittua Half-Life-kansiota myös pelkkä hyppy lasketaan.
