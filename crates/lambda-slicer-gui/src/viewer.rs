@@ -1382,7 +1382,9 @@ impl Viewer {
         self.poll();
         self.request_assets();
         if let Some(frame) = &self.frame {
-            self.decals.update(&frame.decals, frame.decal_revision);
+            let most = self.settings.decals;
+            self.decals
+                .update(&frame.decals, frame.decal_revision, most);
         }
 
         // A viewer opened again plays on once its demo has a frame

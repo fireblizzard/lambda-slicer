@@ -25,7 +25,7 @@
 - [x] Add a small button to the event list that stops the player from panning to the playhead so that you can freely scroll without it scrolling back automatically. It should show enabled by default (so autopan to playhead) and get disabled as you start scrolling manually, then clicking on it pans back to where the playhead is
 - [x] Add 8 pixels of margin to the right of the kill feed
 - [ ] Add a button in Settings to restore all settings to default, with a confirmation dialog mentioning all the custom settings/values that will revert to default
-- [ ] Remove older decals, keep the 100 most recent ones by default, add a setting for that number
+- [x] Remove older decals, keep the 100 most recent ones by default, add a setting for that number
 
 # Ideas for later
 - [ ] Add a Favourites tab and a Add to favourites or Remove from favourites option to the context menu of a demo

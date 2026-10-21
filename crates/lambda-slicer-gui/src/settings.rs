@@ -4,6 +4,7 @@
 
 use std::path::PathBuf;
 
+use lambda_slicer_playback::decals::MAX_DECALS;
 use serde::{Deserialize, Serialize};
 
 use crate::i18n::Locale;
@@ -140,6 +141,9 @@ pub struct ViewerSettings {
     /// models too, projectiles and items among them
     pub see_through: bool,
     pub see_through_items: bool,
+    /// The most decals left in play that are shown, the newest. The map's
+    /// own are always shown
+    pub decals: usize,
 }
 
 impl Default for ViewerSettings {
@@ -159,6 +163,7 @@ impl Default for ViewerSettings {
             volume: 0.1,
             see_through: false,
             see_through_items: false,
+            decals: 100,
         }
     }
 }
@@ -191,6 +196,7 @@ impl ViewerSettings {
                 .map(|f| f.clamp(FOV.0, FOV.1)),
             zoom_fov: within(self.zoom_fov, default.zoom_fov, FOV.0, FOV.1),
             volume: within(self.volume, default.volume, 0., 1.),
+            decals: self.decals.min(MAX_DECALS),
             ..self
         }
     }
@@ -351,6 +357,10 @@ mod tests {
         assert_eq!((viewer.fov, viewer.volume), (Some(FOV.1), 1.));
         assert_eq!(viewer.zoom_fov, FOV.0);
         assert!(viewer.viewmodel);
+
+        // No more decals than playback keeps
+        std::fs::write(&path, b"{\"viewer\": {\"decals\": 99999}}").unwrap();
+        assert_eq!(Settings::load_from(&path).viewer.decals, MAX_DECALS);
 
         std::fs::write(&path, b"not json").unwrap();
         assert_eq!(Settings::load_from(&path), Settings::default());

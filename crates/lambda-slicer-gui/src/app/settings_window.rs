@@ -8,6 +8,7 @@
 
 use eframe::egui::{self, Align, Layout, Pos2, Vec2};
 use fluent_bundle::FluentValue;
+use lambda_slicer_playback::decals::MAX_DECALS;
 
 use super::App;
 use crate::game_setup;
@@ -557,6 +558,25 @@ impl App {
                 t("settings-see-through-items"),
             );
             ui.add_enabled(viewer.see_through, items);
+        });
+
+        // Bullet holes and other marks, the newest kept
+        heading(
+            ui,
+            catalog,
+            "settings-section-decals",
+            Some("settings-decals-hint"),
+            rtl,
+            false,
+        );
+        let width = label_width(ui, catalog, &["settings-decals"], rtl);
+        field(ui, catalog, "settings-decals", width, rtl, |ui| {
+            ui.add(
+                egui::DragValue::new(&mut viewer.decals)
+                    .range(0..=MAX_DECALS)
+                    .custom_formatter(|v, _| catalog.number(v, 0))
+                    .custom_parser(parse_number),
+            );
         });
 
         heading(ui, catalog, "settings-section-sound", None, rtl, false);

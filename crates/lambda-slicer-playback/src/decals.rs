@@ -12,6 +12,10 @@
 //! is dropped, as the engine puts decals only on brushes. The engine keeps
 //! the newest 4096 (`MAX_DECALS`) and a new session clears them.
 //!
+//! The map's own decals, its `infodecal` entities, come as `TE_BSPDECAL`
+//! (`CDecal` in HLSDK `dlls/effects.cpp`), so they can be told apart from
+//! the marks left in play.
+//!
 //! Playback keeps where each decal is. Where its texture lands on the
 //! surfaces is the renderer's to work out
 
@@ -45,6 +49,8 @@ pub struct Decal {
     pub entity: u16,
     /// Where it was aimed, in the brush's own space
     pub origin: [f32; 3],
+    /// Placed by the map itself rather than left in play
+    pub map: bool,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -109,17 +115,20 @@ impl Decals {
         };
 
         let entity = u16::try_from(entity).unwrap_or(0);
-        self.shoot(texture, entity, origin, named, scene);
+        let map = kind == kind::BSP_DECAL;
+        self.shoot(texture, entity, origin, named, map, scene);
     }
 
     /// A decal of texture `texture` aimed at `origin` on entity `entity`,
-    /// the world when 0, its brush named by `named` or by the entity
+    /// the world when 0, its brush named by `named` or by the entity. `map`
+    /// says the map placed it
     pub(crate) fn shoot(
         &mut self,
         texture: u16,
         entity: u16,
         origin: [f32; 3],
         named: Option<Arc<str>>,
+        map: bool,
         scene: &Scene,
     ) {
         let (model, origin) = if entity == 0 {
@@ -148,6 +157,7 @@ impl Decals {
             model,
             entity,
             origin,
+            map,
         });
         self.next_id += 1;
         self.revision += 1;
@@ -203,6 +213,29 @@ mod tests {
         // One aimed at an entity the scene does not hold is dropped
         decals.message(kind::DECAL, &body([0; 3], &[1, 9, 0]), &scene, &none, &same);
         assert_eq!(decals.list().len(), 3);
+    }
+
+    #[test]
+    fn only_bsp_decals_are_the_maps() {
+        let mut decals = Decals::default();
+        let scene = Scene::default();
+        decals.message(
+            kind::BSP_DECAL,
+            &body([0; 3], &[5, 0, 0, 0]),
+            &scene,
+            &|_| None,
+            &Some,
+        );
+        decals.message(
+            kind::WORLD_DECAL,
+            &body([0; 3], &[6]),
+            &scene,
+            &|_| None,
+            &Some,
+        );
+
+        let made: Vec<(u16, bool)> = decals.list().iter().map(|d| (d.texture, d.map)).collect();
+        assert_eq!(made, [(5, true), (6, false)]);
     }
 
     #[test]

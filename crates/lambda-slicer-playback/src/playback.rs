@@ -831,7 +831,7 @@ fn dispatch(event: &ClientEvent, decoder: &Decoder, scene: &mut Scene, effects: 
                 }
                 for (name, entity, at) in impacts.decals {
                     if let Some(texture) = decal_index(name) {
-                        decals.shoot(texture, entity, at, None, scene);
+                        decals.shoot(texture, entity, at, None, false, scene);
                     }
                 }
                 for (start, end, seed) in impacts.tracers {
@@ -846,7 +846,7 @@ fn dispatch(event: &ClientEvent, decoder: &Decoder, scene: &mut Scene, effects: 
                 }
                 for (name, entity, at) in out.impacts.decals {
                     if let Some(texture) = decal_index(name) {
-                        decals.shoot(texture, entity, at, None, scene);
+                        decals.shoot(texture, entity, at, None, false, scene);
                     }
                 }
                 for b in out.beams {
