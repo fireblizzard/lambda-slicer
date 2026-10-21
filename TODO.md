@@ -4,10 +4,10 @@
 - [ ] Fix gauss shots or aiming being off in `aghldmtv_law_vs_cas_cross.dem`, it seems the player is looking at one place but the shot going much higher at times
 - [ ] Add a bar at the bottom of the demo player so that you can go to any point of the demo by clicking on it, and it has to be synced with the other playhead.  don't remove the existing playhead below the demo player, it's useful but people are more used to the web browser style of video players, and dragging the current playhead which is not visually touching the demo player feels a bit weird
 - [x] Add another two for rewinding/advancing 10 seconds beside the previous/next frame buttons
-- [ ] Add the rest of HUD elements from AG, like the mini scoreboard at the top left, votes, and everything else that comes from AG events/usermessages
+- [ ] Add the rest of HUD elements from AG, like the mini scoreboard at the top left, votes, chat, and everything else that comes from AG events/usermessages
 - [ ] Add a way to toggle free camera mode, where you get detached from the recorder's camera and can fly around like with noclip by using WASD, Ctrl (down) and Space (up)
 - [ ] On the event list on the right there should be an indicator of where you're at, so if the demo is playing, it should keep advancing/panning the event list as events happen, and the last one that happened should be either selected (i'm not completely sure)
-- [ ] Add a toggle to zoom in (like default_fov 30) and back to normal under the demo player
+- [x] Add a toggle to zoom in (like default_fov 30) and back to normal under the demo player
 - [ ] Railings on crossfire have a very subtle blue colored border, as if the transparency isn't being applied correctly and leaves a small residue of blue when it's touching other colors (like red in this case, from the railing part of the texture)
 - [x] Default pre-clip duration to 4s and post-clip to 1s
 - [ ] Fix rescan. The new clips I made were exported to a folder that is in the library, and after I hit rescan and it finished scanning, I sorted by date and I couldn't see the new clips. After restarting Lambda Slicer and sorting by date I could see them finally, but shouldn't need a restart for them to appear in the table

@@ -327,6 +327,8 @@ pub struct Viewer {
     resume: Option<Command>,
     /// The volume before muting, for unmuting to, kept for the session
     unmuted_volume: Option<f32>,
+    /// Zoomed in to the settings' zoomed field of view, for the session
+    zoomed: bool,
     render_state: RenderState,
     controller: Controller,
     worker: Worker,
@@ -506,6 +508,7 @@ impl Viewer {
             assets,
             resume,
             unmuted_volume: None,
+            zoomed: false,
             render_state,
             controller,
             worker,
@@ -1452,7 +1455,12 @@ impl Viewer {
                     drawn = draw.instances.len() + draw.sprites.len() + draw.viewmodel.len();
                     let callback = Frame {
                         pixels,
-                        view: view(frame, pixels[0] as f32 / pixels[1] as f32, &self.settings),
+                        view: view(
+                            frame,
+                            pixels[0] as f32 / pixels[1] as f32,
+                            self.fov(),
+                            &self.settings,
+                        ),
                         draw,
                     };
                     ui.painter()
@@ -1742,7 +1750,24 @@ impl Viewer {
             self.settings.see_through = !self.settings.see_through;
         }
 
+        // A closer look, for this session only
+        let shortcut = catalog.text_with("viewer-shortcut", &[("key", FluentValue::from("Z"))]);
+        let label = format!("{}\n{shortcut}", catalog.text("viewer-zoom"));
+        let zoom = IconButton::new(Icon::ZoomIn, &label).selected(self.zoomed);
+        if ui.add(zoom).clicked() {
+            self.zoomed = !self.zoomed;
+        }
+
         picture
+    }
+
+    /// The field of view to draw with, zoomed in, chosen in Settings or
+    /// none for the recorded one
+    fn fov(&self) -> Option<f32> {
+        if self.zoomed {
+            return Some(self.settings.zoom_fov);
+        }
+        self.settings.fov
     }
 
     /// Mute, keeping the volume for unmuting to, or unmute to the volume
@@ -1845,6 +1870,10 @@ impl Viewer {
         let shifted =
             |key: egui::Key| ctx.input_mut(|i| i.consume_key(egui::Modifiers::SHIFT, key));
         let now = self.controller.time(self.wall()).0;
+        if pressed(egui::Key::Z) {
+            self.zoomed = !self.zoomed;
+            ctx.request_repaint();
+        }
         let command = if self.controller.scrubbing() && pressed(egui::Key::Escape) {
             // Back to where the drag began
             self.scrub_cancelled = true;
@@ -2333,7 +2362,7 @@ const MISSING_LIST_HEIGHT: f32 = 240.;
 
 /// The narrowest the transport fits on one row, the rate menu's width and
 /// the volume slider's
-const TRANSPORT_ONE_ROW: f32 = 670.;
+const TRANSPORT_ONE_ROW: f32 = 706.;
 const RATE_MENU_WIDTH: f32 = 64.;
 const VOLUME_SLIDER_WIDTH: f32 = 64.;
 
@@ -2461,10 +2490,11 @@ fn brushes(frame: &PresentedFrame) -> Vec<Brush> {
 }
 
 /// What the frame is seen from and when, with every light style's
-/// brightness at the client's time
-fn view(frame: &PresentedFrame, aspect: f32, settings: &ViewerSettings) -> View {
+/// brightness at the client's time, across `fov` or the recorded field of
+/// view when none
+fn view(frame: &PresentedFrame, aspect: f32, fov: Option<f32>, settings: &ViewerSettings) -> View {
     View {
-        view_projection: view_projection(frame, aspect, settings.fov),
+        view_projection: view_projection(frame, aspect, fov),
         eye: frame.recorder.origin,
         angles: frame.recorder.angles,
         time: frame.client_time as f32,

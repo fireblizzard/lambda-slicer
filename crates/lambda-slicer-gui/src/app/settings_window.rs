@@ -458,9 +458,10 @@ impl App {
                 viewer.fov = (!recorded).then_some(FIRST_FOV);
             }
         });
-        if let Some(fov) = &mut viewer.fov {
-            let width = label_width(ui, catalog, &["settings-fov"], rtl);
-            field(ui, catalog, "settings-fov", width, rtl, |ui| {
+        // Both fields of view line up, and take the same steps
+        let width = label_width(ui, catalog, &["settings-fov", "settings-zoom-fov"], rtl);
+        let fov_field = |ui: &mut egui::Ui, id: &str, fov: &mut f32| {
+            field(ui, catalog, id, width, rtl, |ui| {
                 ui.add(
                     egui::DragValue::new(fov)
                         .range(FOV.0..=FOV.1)
@@ -469,7 +470,11 @@ impl App {
                         .custom_parser(parse_number),
                 );
             });
+        };
+        if let Some(fov) = &mut viewer.fov {
+            fov_field(ui, "settings-fov", fov);
         }
+        fov_field(ui, "settings-zoom-fov", &mut viewer.zoom_fov);
         layout::row(ui, rtl, |ui| {
             ui.checkbox(&mut viewer.viewmodel, t("settings-viewmodel"));
         });

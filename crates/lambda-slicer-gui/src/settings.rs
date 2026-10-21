@@ -125,6 +125,9 @@ pub struct ViewerSettings {
     pub overbright: bool,
     /// Degrees across the view's width, none for the recorded one
     pub fov: Option<f32>,
+    /// Degrees across the view's width while zoomed in, as `default_fov`
+    /// would set them in the game
+    pub zoom_fov: f32,
     /// Whether the weapon in view is drawn
     pub viewmodel: bool,
     /// The sound's master volume, 0 to 1
@@ -147,6 +150,7 @@ impl Default for ViewerSettings {
             lightgamma: g.lightgamma,
             overbright: g.overbright,
             fov: None,
+            zoom_fov: 30.,
             viewmodel: true,
             volume: 0.1,
             see_through: false,
@@ -181,6 +185,7 @@ impl ViewerSettings {
                 .fov
                 .filter(|f| f.is_finite())
                 .map(|f| f.clamp(FOV.0, FOV.1)),
+            zoom_fov: within(self.zoom_fov, default.zoom_fov, FOV.0, FOV.1),
             volume: within(self.volume, default.volume, 0., 1.),
             ..self
         }
@@ -302,6 +307,7 @@ mod tests {
                 lightgamma: 2.,
                 overbright: true,
                 fov: Some(110.),
+                zoom_fov: 45.,
                 viewmodel: false,
                 volume: 0.25,
                 ..ViewerSettings::default()
@@ -329,12 +335,13 @@ mod tests {
         // The viewer's settings stay in the game's ranges
         std::fs::write(
             &path,
-            b"{\"viewer\": {\"gamma\": 9, \"brightness\": -1, \"fov\": 500, \"volume\": 2}}",
+            b"{\"viewer\": {\"gamma\": 9, \"brightness\": -1, \"fov\": 500, \"zoom_fov\": 1, \"volume\": 2}}",
         )
         .unwrap();
         let viewer = Settings::load_from(&path).viewer;
         assert_eq!((viewer.gamma, viewer.brightness), (3., 0.));
         assert_eq!((viewer.fov, viewer.volume), (Some(FOV.1), 1.));
+        assert_eq!(viewer.zoom_fov, FOV.0);
         assert!(viewer.viewmodel);
 
         std::fs::write(&path, b"not json").unwrap();
