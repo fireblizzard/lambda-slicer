@@ -1,4 +1,5 @@
-//! The parts of AG's HUD playback shows, its countdown before a match
+//! The parts of AG's HUD playback shows, its countdown before a match and
+//! the kill feed
 //!
 //! AG's client counts down when the server sends `Countdown`, a signed byte
 //! of seconds left, a byte saying whether to speak it, and the names of the
@@ -8,6 +9,14 @@
 //! for five seconds from the last one spoken. Fifty seconds left means the
 //! match waits for its players, shown until the next message, and less
 //! than nought hides it
+//!
+//! The kill feed is the client's death notices (OpenAG's `CHudDeathNotice`).
+//! Each `DeathMsg` adds a line for six seconds, four at most, the oldest
+//! dropped for a fifth. A killer of nought or the victim itself is a death
+//! with no killer named, and a weapon of `teammate` a team kill. Each name
+//! keeps the team `TeamInfo` last gave its player, for its colour
+
+use std::collections::{BTreeMap, VecDeque};
 
 use lambda_slicer_core::protocol::messages::{Message, ParsedMessage};
 use lambda_slicer_core::state::Decoder;
@@ -16,6 +25,10 @@ use crate::time::SourceTime;
 
 /// The user message AG's server counts down with
 const MESSAGE: &str = "Countdown";
+
+/// How many death notices show at once, and for how long in seconds
+const NOTICES: usize = 4;
+const NOTICE_SHOWN: f64 = 6.;
 
 /// The seconds that mean the match waits for its players
 pub const WAITING: i8 = 50;
@@ -49,12 +62,38 @@ pub struct Countdown {
     pub names: [String; 2],
 }
 
+/// A player as a death notice names them
+#[derive(Clone, Debug, PartialEq)]
+pub struct NoticeName {
+    /// Colour codes such as `^1` left in
+    pub name: String,
+    /// The team `TeamInfo` gave them, empty without one
+    pub team: String,
+}
+
+/// One line of the kill feed
+#[derive(Clone, Debug, PartialEq)]
+pub struct DeathNotice {
+    /// None for a suicide or a death no player caused
+    pub killer: Option<NoticeName>,
+    pub victim: NoticeName,
+    /// The death message's weapon, such as `9mmAR`, whose icon is `d_` and
+    /// the weapon in `sprites/hud.txt`
+    pub weapon: String,
+    pub teamkill: bool,
+    pub time: SourceTime,
+}
+
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Hud {
     countdown: Option<Countdown>,
     /// When the countdown stops showing, five seconds after the last
     /// spoken number
     until: Option<SourceTime>,
+    /// Each player's team by entity, as `TeamInfo` gave it
+    teams: BTreeMap<u8, String>,
+    /// The kill feed, oldest first
+    notices: VecDeque<DeathNotice>,
 }
 
 /// A string ending at its first nought, and what follows it
@@ -83,8 +122,18 @@ impl Hud {
             _ => return None,
         };
         let name = decoder.user_message(id)?.name_lossy();
-        if name != MESSAGE {
-            return None;
+        match name.as_str() {
+            MESSAGE => {}
+            "TeamInfo" => {
+                let (&player, rest) = body.split_first()?;
+                self.teams.insert(player, c_string(rest).0);
+                return None;
+            }
+            "DeathMsg" => {
+                self.death(decoder, body, time);
+                return None;
+            }
+            _ => return None,
         }
 
         let (&seconds, &spoken) = (body.first()?, body.get(1)?);
@@ -108,10 +157,107 @@ impl Hud {
         Some(sample)
     }
 
+    /// A `DeathMsg`, the killer's and the victim's entities and the weapon
+    fn death(&mut self, decoder: &Decoder, body: &[u8], time: SourceTime) {
+        let (Some(&killer), Some(&victim)) = (body.first(), body.get(1)) else {
+            return;
+        };
+        let weapon = c_string(body.get(2..).unwrap_or_default()).0;
+        let named = |entity: u8| NoticeName {
+            name: decoder
+                .player_for_entity(i64::from(entity))
+                .map(|p| p.name)
+                .unwrap_or_default(),
+            team: self.teams.get(&entity).cloned().unwrap_or_default(),
+        };
+
+        let suicide = killer == 0 || killer == victim;
+        self.notices.push_back(DeathNotice {
+            killer: (!suicide).then(|| named(killer)),
+            victim: named(victim),
+            teamkill: weapon == "teammate",
+            weapon,
+            time,
+        });
+        while self.notices.len() > NOTICES {
+            self.notices.pop_front();
+        }
+    }
+
+    /// The kill feed's lines at `at`, oldest first
+    pub fn death_notices(&self, at: SourceTime) -> Vec<DeathNotice> {
+        self.notices
+            .iter()
+            .filter(|n| n.time <= at && at.0 < n.time.0 + NOTICE_SHOWN)
+            .cloned()
+            .collect()
+    }
+
     /// The countdown showing at `at`, none when there is none
     pub fn countdown(&self, at: SourceTime) -> Option<&Countdown> {
         let countdown = self.countdown.as_ref()?;
         let shown = countdown.seconds == WAITING || self.until.is_some_and(|until| at < until);
         shown.then_some(countdown)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A `DeathMsg` body for `killer`, `victim` and `weapon`
+    fn death(killer: u8, victim: u8, weapon: &str) -> Vec<u8> {
+        let mut body = vec![killer, victim];
+        body.extend(weapon.as_bytes());
+        body.push(0);
+        body
+    }
+
+    #[test]
+    fn the_feed_keeps_four_lines_for_six_seconds() {
+        let decoder = Decoder::new();
+        let mut hud = Hud::default();
+        hud.teams.insert(1, "red".into());
+        for (k, weapon) in ["gauss", "crossbow", "357", "rpg_rocket", "egon"]
+            .iter()
+            .enumerate()
+        {
+            hud.death(&decoder, &death(1, 2, weapon), SourceTime(k as f64));
+        }
+
+        // The first dropped for the fifth, each gone six seconds after it came
+        let weapons = |at: f64| -> Vec<String> {
+            hud.death_notices(SourceTime(at))
+                .into_iter()
+                .map(|n| n.weapon)
+                .collect()
+        };
+        assert_eq!(weapons(4.), ["crossbow", "357", "rpg_rocket", "egon"]);
+        assert_eq!(weapons(8.5), ["rpg_rocket", "egon"]);
+        assert!(weapons(10.).is_empty());
+        assert_eq!(
+            hud.death_notices(SourceTime(4.))[0]
+                .killer
+                .as_ref()
+                .unwrap()
+                .team,
+            "red"
+        );
+    }
+
+    #[test]
+    fn a_suicide_names_no_killer_and_a_teammate_is_a_team_kill() {
+        let decoder = Decoder::new();
+        let mut hud = Hud::default();
+        hud.death(&decoder, &death(3, 3, "rpg_rocket"), SourceTime(1.));
+        hud.death(&decoder, &death(0, 3, "world"), SourceTime(1.));
+        hud.death(&decoder, &death(1, 3, "teammate"), SourceTime(1.));
+
+        let notices = hud.death_notices(SourceTime(1.));
+        let killed: Vec<(bool, bool)> = notices
+            .iter()
+            .map(|n| (n.killer.is_some(), n.teamkill))
+            .collect();
+        assert_eq!(killed, [(false, false), (false, false), (true, true)]);
     }
 }

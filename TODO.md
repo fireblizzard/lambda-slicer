@@ -1,4 +1,4 @@
-- [ ] Add a HUD for the kill feed like they show ingame at the top right (X killed Y, and the weapon, and with colored names depending on the team or their custom colors (^1 to ^8, and ^0 to stop coloring)
+- [x] Add a HUD for the kill feed like they show ingame at the top right (X killed Y, and the weapon, and with colored names depending on the team or their custom colors (^1 to ^8, and ^0 to stop coloring)
 - [x] Add the name of the player that we're watching, at the bottom
 - [x] Fix gauss charging sound being cut in `aghldmtv_law_vs_cas_cross.dem`.  i can only hear it starting to charge and releasing, but no sound in between
 - [x] Fix gauss shots or aiming being off in `aghldmtv_law_vs_cas_cross.dem`, it seems the player is looking at one place but the shot going much higher at times
@@ -17,7 +17,10 @@
 - [ ] Buttons that are bottom left under the demo player should be centered
 - [ ] Try to reduce lag when watching a demo while it's scanning folders, prioritize the demo player
 - [ ] Fix library only showing one map on demos with multiple maps, like on `20240120_192554_ag_hidden_lab`, that has `ag_hidden_lab` and `elixir`. it should probably just add a comma, space and the next map name (e.g. `ag_hidden_lab, elixir`) and when filtering by map it should still work when typing part of any of the map names
-- On `20240120_192554_ag_hidden_lab` there's an intermission (map change) at 0:15:10. we should probably render some text saying that the server is changing to X map
+- [ ] On `20240120_192554_ag_hidden_lab` there's an intermission (map change) at 0:15:10. we should probably render some text saying that the server is changing to X map
+- [ ] Fix ladder shadow shown at 0:01:12.609 on `20240120_190919_boot_camp`
+- [ ] Fix water rendering shown at 0:01:13.803 on `20240120_190919_boot_camp`. I think it should only render the faces of the water volume that are not hidden by others
+- [ ] Fix wrong score on some demos. For example on `somecrossgame`, most of the demo is on the map `crossfire` which ends 93-79, and then there's a little bit of `datacore` that ends 1-0, and the library and the scoreboard (initially, when no events selected) to the right of the demo player are saying 1-0, when it should be 93-79 as that's the significant part of the demo
 
 # Ideas
 - [ ] Add a filter for player name in the event list of a demo

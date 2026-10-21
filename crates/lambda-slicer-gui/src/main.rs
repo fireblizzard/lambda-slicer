@@ -52,6 +52,7 @@ mod game_setup;
 mod i18n;
 mod jobs;
 mod kill_analysis;
+mod kill_feed;
 mod kill_filters;
 mod layout;
 mod library;

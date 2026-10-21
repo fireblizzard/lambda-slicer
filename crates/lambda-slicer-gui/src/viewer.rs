@@ -58,6 +58,7 @@ use fluent_bundle::types::{FluentNumber, FluentNumberOptions};
 
 use crate::decals::DecalCache;
 use crate::i18n::Catalog;
+use crate::kill_feed::KillFeed;
 use crate::layout;
 use crate::settings::ViewerSettings;
 use crate::text::{self, Look};
@@ -379,8 +380,11 @@ pub struct Viewer {
     /// The game's palette, for blood's colours
     palette: Vec<[u8; 3]>,
     decals: DecalCache,
-    /// The game's files, for the map's hull that hides glows
+    /// The game's files, for the map's hull that hides glows and the kill
+    /// feed's icons
     library: Option<Arc<Library>>,
+    /// The kill feed's icons, read from the game's files as needed
+    kill_feed: KillFeed,
     /// Maps, models, sprites and skies that could not be read, and why
     missing: std::collections::BTreeMap<String, String>,
 }
@@ -558,6 +562,7 @@ impl Viewer {
             palette,
             decals: DecalCache::new(decal_wad),
             library: glow_library,
+            kill_feed: KillFeed::default(),
         }
     }
 
@@ -1472,6 +1477,9 @@ impl Viewer {
                         .add(egui_wgpu::Callback::new_paint_callback(rect, callback));
                     if let Some(countdown) = &frame.countdown {
                         draw_countdown(ui.painter(), rect, countdown);
+                    }
+                    if let Some(library) = &self.library {
+                        self.kill_feed.draw(ui, rect, &frame.death_notices, library);
                     }
                     let players = &frame.players;
                     if let Some(player) = watched(&frame.recorder, frame.local_entity, players) {
