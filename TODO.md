@@ -8,10 +8,11 @@
 - [ ] Add a way to toggle free camera mode, where you get detached from the recorder's camera and can fly around like with noclip by using WASD, Ctrl (down) and Space (up)
 - [ ] On the event list on the right there should be an indicator of where you're at, so if the demo is playing, it should keep advancing/panning the event list as events happen, and the last one that happened should be either selected (i'm not completely sure)
 - [x] Add a toggle to zoom in (like default_fov 30) and back to normal under the demo player
-- [ ] Railings on crossfire have a very subtle blue colored border, as if the transparency isn't being applied correctly and leaves a small residue of blue when it's touching other colors (like red in this case, from the railing part of the texture)
+- [x] Railings on crossfire have a very subtle blue colored border, as if the transparency isn't being applied correctly and leaves a small residue of blue when it's touching other colors (like red in this case, from the railing part of the texture)
 - [x] Default pre-clip duration to 4s and post-clip to 1s
 - [x] Fix rescan. The new clips I made were exported to a folder that is in the library, and after I hit rescan and it finished scanning, I sorted by date and I couldn't see the new clips. After restarting Lambda Slicer and sorting by date I could see them finally, but shouldn't need a restart for them to appear in the table
 - [ ] Add right clicking on the demo (in the table or on the list at the left after the demo player shows up) with a context menu to Open location, which opens the file explorer with the demo file selected
+- [ ] When selecting a highlight like the Golden minute, "Clip it" should set the start/end time to the highlight's instead of the selected event, plus the configured pre-clip and post-clip duration
 
 # Ideas
 - [ ] Add a filter for player name in the event list of a demo
