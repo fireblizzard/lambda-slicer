@@ -6,7 +6,9 @@
 
 use std::sync::Arc;
 
-use eframe::egui::{self, Color32, Galley, Pos2, Rect, Response, Sense, Ui, Vec2, WidgetText};
+use eframe::egui::{
+    self, Color32, Galley, Pos2, Rect, Response, Sense, Stroke, Ui, Vec2, WidgetText,
+};
 use fluent_bundle::FluentValue;
 use lambda_slicer_core::analysis::context::KillCause;
 use lambda_slicer_core::analysis::motion::MotionEvidence;
@@ -39,6 +41,11 @@ const DETAILS_ROOM: f32 = 360.;
 /// An event row's height and the room between its parts
 const ROW_HEIGHT: f32 = 28.;
 const PART_GAP: f32 = 6.;
+
+/// How far down the list the playhead is kept while playing, and how thick
+/// its line is
+const FOLLOW_AT: f32 = 2. / 3.;
+const PLAYHEAD_WIDTH: f32 = 2.;
 
 /// A badge's room around its text, and the least room badges leave for the
 /// players' names
@@ -499,6 +506,15 @@ impl DemoView {
         let selected_row = self
             .selected
             .and_then(|s| self.rows.iter().position(|&r| r == s));
+        // The playhead falls after the events it has passed, which playing
+        // keeps in view, two thirds of the way down
+        let playhead = self.viewer.as_ref().map(|v| v.time());
+        let passed =
+            playhead.map(|now| self.rows.partition_point(|&r| model.events[r].time <= now));
+        let playing = self.viewer.as_ref().is_some_and(|v| v.is_playing());
+        let follow = playing && passed.is_some() && passed != self.followed;
+        self.followed = if playing { passed } else { None };
+
         if self.scroll_table {
             if let Some(row) = selected_row {
                 let offset = row as f32 * ROW_HEIGHT - (height - ROW_HEIGHT) / 2.;
@@ -511,6 +527,9 @@ impl DemoView {
             let first = self.rows.partition_point(|&r| model.events[r].time < start);
             list = list.vertical_scroll_offset(first as f32 * ROW_HEIGHT);
             self.scroll_to_window -= 1;
+        } else if follow && let Some(passed) = passed {
+            let offset = passed as f32 * ROW_HEIGHT - height * FOLLOW_AT;
+            list = list.vertical_scroll_offset(offset.max(0.));
         }
 
         // Rows touch, so the rows the scroll area works out are the rows it
@@ -518,7 +537,7 @@ impl DemoView {
         let mut clicked = None;
         let mut played = None;
         ui.spacing_mut().item_spacing.y = 0.;
-        list.show_rows(ui, ROW_HEIGHT, self.rows.len(), |ui, rows| {
+        let shown = list.show_rows(ui, ROW_HEIGHT, self.rows.len(), |ui, rows| {
             for row in rows {
                 let event = self.rows[row];
                 let response = self.event_row(ui, catalog, rtl, model, event, window);
@@ -529,6 +548,18 @@ impl DemoView {
                 }
             }
         });
+
+        // The playhead as a line between the events passed and those to come
+        if let Some(passed) = passed {
+            let list = shown.inner_rect;
+            let y = list.top() + passed as f32 * ROW_HEIGHT - shown.state.clamped_offset().y;
+            if (list.top()..=list.bottom()).contains(&y) {
+                let line = Stroke::new(PLAYHEAD_WIDTH, theme::ACCENT);
+                ui.painter()
+                    .with_clip_rect(list)
+                    .hline(list.x_range(), y, line);
+            }
+        }
 
         if let Some(event) = clicked {
             self.actions.push(DemoAction::Select {

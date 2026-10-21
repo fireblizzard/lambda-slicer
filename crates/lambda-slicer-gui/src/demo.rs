@@ -445,6 +445,9 @@ pub struct DemoView {
     markers: Option<MarkerCache>,
     selected: Option<usize>,
     scroll_table: bool,
+    /// How many shown events the playhead had passed when the list last
+    /// followed it, none while paused
+    followed: Option<usize>,
     /// Frames left to scroll the list to the chosen window's first event.
     /// A list seen for the first time has no size yet, so it gets a few
     scroll_to_window: u8,
@@ -531,6 +534,7 @@ impl DemoView {
             markers: None,
             selected: None,
             scroll_table: false,
+            followed: None,
             scroll_to_window: 0,
             wanted_tab: None,
             chooser: None,
