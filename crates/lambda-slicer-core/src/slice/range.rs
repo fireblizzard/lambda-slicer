@@ -133,6 +133,28 @@ impl GroupIndex {
             .find(|g| time(g.time) >= start && !g.demo_start)
             .map(|g| g.segment)
     }
+
+    /// The session played longest, by the time its frame groups last, each
+    /// group until the next one or the end. A tie goes to the later session
+    pub fn longest_segment(&self) -> Option<u32> {
+        let mut lengths: BTreeMap<u32, f32> = BTreeMap::new();
+        for (k, group) in self.groups.iter().enumerate() {
+            let until = match self.groups.get(k + 1) {
+                Some(next) => Some(next.time),
+                None => self.end,
+            };
+            let length = until.map_or(0., |t| (t - group.time).max(0.));
+            *lengths.entry(group.segment).or_default() += length;
+        }
+
+        let mut longest = None;
+        for (&segment, &length) in &lengths {
+            if longest.is_none_or(|(_, most)| length >= most) {
+                longest = Some((segment, length));
+            }
+        }
+        longest.map(|(segment, _)| segment)
+    }
 }
 
 #[cfg(test)]
@@ -226,5 +248,25 @@ mod tests {
             i.snap(at("0.3"), None),
             Err(ExportError::Unsupported(_))
         ));
+    }
+
+    #[test]
+    fn the_longest_session_is_the_one_whose_groups_last_longest() {
+        assert_eq!(index().longest_segment(), Some(1));
+        assert_eq!(GroupIndex::default().longest_segment(), None);
+
+        // A short later session, from 0.8 to the end at 1.1
+        let mut i = index();
+        for g in &mut i.groups[9..] {
+            g.segment = 2;
+        }
+        assert_eq!(i.longest_segment(), Some(1));
+
+        // A long later session, from 0.2 to the end
+        let mut i = index();
+        for g in &mut i.groups[3..] {
+            g.segment = 2;
+        }
+        assert_eq!(i.longest_segment(), Some(2));
     }
 }

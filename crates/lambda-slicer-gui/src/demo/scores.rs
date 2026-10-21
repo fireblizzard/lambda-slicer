@@ -86,20 +86,23 @@ impl DemoView {
         };
 
         let selected = self.selected.and_then(|i| model.events.get(i));
-        let last_kill = model
-            .events
-            .iter()
-            .rev()
-            .find(|e| matches!(e.kind, EventKind::Kill { .. }));
+
+        // The final scores are of the map played longest, since a demo may
+        // end with a few moments of the next one
+        let longest = model.groups.longest_segment();
+        let last_kill = model.events.iter().rev().find(|e| {
+            let kill = matches!(e.kind, EventKind::Kill { .. });
+            kill && longest.is_none_or(|s| e.segment == s)
+        });
 
         // The selected event's moment, or the last kill for the final scores,
         // since players often leave once a game is over
         let (segment, at) = match (selected, last_kill) {
             (Some(e), _) | (None, Some(e)) => (e.segment, e.time),
-            (None, None) => (
-                model.score_updates.last().map_or(0, |u| u.segment),
-                f32::INFINITY,
-            ),
+            (None, None) => {
+                let last = model.score_updates.last().map_or(0, |u| u.segment);
+                (longest.unwrap_or(last), f32::INFINITY)
+            }
         };
         let heading = match (selected, last_kill) {
             (Some(e), _) => {

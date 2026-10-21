@@ -22,6 +22,7 @@ use super::highlights::KillContext;
 use super::motion::{MapName, Motion, MotionState, Sample, gravity, state_at};
 use super::weapons::Weapon;
 use crate::protocol::messages::{Message, ParsedMessage};
+use crate::slice::range::GroupIndex;
 use crate::state::{Decoder, FrameLocation, PlayerIdentity};
 
 /// What a kill came from
@@ -332,12 +333,20 @@ impl From<&Standing> for Scoreboard {
     }
 }
 
-/// When the result was decided, the session and time of the last kill, or
-/// the end of the last session with scores when nobody was killed
-pub fn final_moment(kills: &[Kill], updates: &[ScoreUpdate]) -> (u32, f32) {
-    match kills.last() {
-        Some(k) => (k.segment, k.time),
-        None => (updates.last().map_or(0, |u| u.segment), f32::INFINITY),
+/// When the result was decided, in the session played longest, since a
+/// demo may end with a few moments of the next map. The time is that
+/// session's last kill, or its end when nobody was killed there. Without
+/// frame groups the session is the last one with a kill or scores
+pub fn final_moment(kills: &[Kill], updates: &[ScoreUpdate], groups: &GroupIndex) -> (u32, f32) {
+    let segment = match (groups.longest_segment(), kills.last()) {
+        (Some(segment), _) => segment,
+        (None, Some(k)) => k.segment,
+        (None, None) => updates.last().map_or(0, |u| u.segment),
+    };
+
+    match kills.iter().rev().find(|k| k.segment == segment) {
+        Some(k) => (segment, k.time),
+        None => (segment, f32::INFINITY),
     }
 }
 

@@ -30,7 +30,7 @@ use events::recorded_events;
 use highlights::{ActionWindow, action_windows, link_kills};
 use weapons::{Action, ActivityInterval, PROFILE, Weapon, WeaponOccurrence, derive};
 
-pub const ANALYSIS_SCHEMA: u32 = 10;
+pub const ANALYSIS_SCHEMA: u32 = 11;
 
 /// Length of an action window in seconds, and how many are reported
 pub const ACTION_WINDOW: f32 = 60.;
@@ -86,7 +86,7 @@ pub struct AnalysisReport {
     /// The recorder's active weapon over time
     pub weapon_switches: Vec<WeaponSwitch>,
     pub coverage: Coverage,
-    /// The final score of the last session
+    /// The final score of the session played longest
     pub scoreboard: Scoreboard,
     /// Every score and team change, for the scores at any moment
     pub score_updates: Vec<ScoreUpdate>,
@@ -252,7 +252,7 @@ pub fn analyze_demo_with(
             .count() as u32
     });
     let team_score_updates = std::mem::take(&mut context.team_score_updates);
-    let (segment, time) = final_moment(&kills, &score_updates);
+    let (segment, time) = final_moment(&kills, &score_updates, &report.groups);
     let scoreboard = Scoreboard::from(&standing_at(
         &score_updates,
         &team_score_updates,
