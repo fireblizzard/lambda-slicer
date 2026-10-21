@@ -721,6 +721,15 @@ impl Scene {
         self.server_time + (at.0 - self.snapshot_at.0)
     }
 
+    /// The entities of the snapshot before the latest, and how much server
+    /// time before it it was
+    pub fn previous_snapshot(&self) -> Option<(f64, &[Entity])> {
+        let latest = self.recent.back()?.0;
+        let at = self.recent.len().checked_sub(2)?;
+        let (time, entities) = &self.recent[at];
+        Some((latest - time, entities.as_slice()))
+    }
+
     fn is_player(&self, number: u16) -> bool {
         number >= 1 && number <= u16::from(self.max_clients)
     }

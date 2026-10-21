@@ -71,6 +71,10 @@ pub const POSITION_SLOP: f32 = 32.;
 /// A shot's frame is the first group at or after its time, so close
 const TIME_EPSILON: f64 = 1e-4;
 
+/// How much server time before the shot's snapshot the one before may be
+/// and still place a victim the shot's own snapshot left out
+const PREVIOUS_SNAPSHOT: f64 = 0.1;
+
 /// How long before its death message a Gauss kill's shot can be, as the
 /// analysis links shots to kills
 const SHOT_WINDOW: f32 = 0.3;
@@ -628,18 +632,26 @@ fn victim_origin(victim: u16, entities: &[Entity], camera: &Camera) -> Option<[f
     seen.map(|e| e.origin)
 }
 
-/// What one shot comes to in the snapshot of its frame
+/// What one shot comes to in the snapshot of its frame, or in the snapshot
+/// `before` it for a victim gone from its own
 fn find(
     shot: &FiredShot,
     victim: u16,
     entities: &[Entity],
+    before: &[Entity],
     camera: &Camera,
     world: Option<&Hull>,
 ) -> ShotFinding {
     let Some(world) = world else {
         return ShotFinding::Doubt(Doubt::NoMap);
     };
-    let Some(victim) = victim_origin(victim, entities, camera) else {
+
+    // A victim the shot killed outright, gibbed, can be gone from the
+    // snapshot of its frame, while the one before still has them where
+    // the server traced them
+    let seen =
+        victim_origin(victim, entities, camera).or_else(|| victim_origin(victim, before, camera));
+    let Some(victim) = seen else {
         return ShotFinding::Doubt(Doubt::VictimUnseen);
     };
 
@@ -721,10 +733,15 @@ pub fn classify(
             let world = playback.map_world();
             let scene = playback.scene();
             let victim = kills[index].victim;
+            let before = match scene.previous_snapshot() {
+                Some((gap, entities)) if (0. ..=PREVIOUS_SNAPSHOT).contains(&gap) => entities,
+                _ => &[],
+            };
             find(
                 shot,
                 victim,
                 &scene.entities,
+                before,
                 &scene.camera,
                 world.as_deref(),
             )
@@ -748,6 +765,7 @@ pub fn classify(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::scene::EntityId;
     use crate::trace::{Child, SOLID};
 
     /// Open space with a wall `thickness` thick from x = 100, and a floor
@@ -917,16 +935,38 @@ mod tests {
 
         let entities: Vec<Entity> = Vec::new();
         let camera = Camera::default();
-        let finding = find(&shot(200., false), 2, &entities, &camera, None);
+        let finding = find(&shot(200., false), 2, &entities, &[], &camera, None);
         assert_eq!(finding, ShotFinding::Doubt(Doubt::NoMap));
 
         let world = wall(16.);
-        let finding = find(&shot(200., false), 2, &entities, &camera, Some(&world));
+        let finding = find(&shot(200., false), 2, &entities, &[], &camera, Some(&world));
         assert_eq!(finding, ShotFinding::Doubt(Doubt::VictimUnseen));
         assert_eq!(
             decide(&[(1., finding)]),
             WallGauss::Unknown(Doubt::VictimUnseen)
         );
+    }
+
+    #[test]
+    fn a_victim_gone_from_the_shots_snapshot_is_placed_by_the_one_before() {
+        let world = wall(16.);
+        let camera = Camera::default();
+        let behind = Entity {
+            id: EntityId {
+                number: 2,
+                ..EntityId::default()
+            },
+            origin: [300., 0., 0.],
+            ..Entity::default()
+        };
+
+        // Killed outright, so only the snapshot before has them
+        let shot = shot(200., false);
+        let finding = find(&shot, 2, &[], &[behind], &camera, Some(&world));
+        let ShotFinding::Reached { reach, .. } = finding else {
+            panic!("{finding:?}");
+        };
+        assert!(reach.wall_sure);
     }
 
     #[test]

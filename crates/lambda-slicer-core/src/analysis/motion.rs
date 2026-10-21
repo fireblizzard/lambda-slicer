@@ -31,6 +31,9 @@ const MIN_SAMPLES: usize = 4;
 const SPEED_SPAN: f32 = 0.1;
 /// Snapshots further apart than this break the trajectory
 const MAX_GAP: f32 = 0.1;
+/// The game's fastest speed along each axis. A step faster than this on
+/// all three at once is a respawn or a teleport, which breaks the trajectory
+const MAX_VELOCITY: f32 = 2000.;
 /// Vertical acceleration within this share of gravity counts as falling,
 /// and below this share as level
 const FALLING: f32 = 0.25;
@@ -100,6 +103,14 @@ fn speeds(v: [f32; 3]) -> (f32, f32) {
     let horizontal = (v[0] * v[0] + v[1] * v[1]).sqrt();
 
     ((horizontal * horizontal + v[2] * v[2]).sqrt(), horizontal)
+}
+
+/// Whether a player got from `a` to `b` faster than anyone can move, so
+/// was put there by a respawn or a teleport
+fn moved_away(a: &Sample, b: &Sample) -> bool {
+    let reach = MAX_VELOCITY * (b.time - a.time).abs();
+    let squared: f32 = (0..3).map(|i| (b.origin[i] - a.origin[i]).powi(2)).sum();
+    squared > 3. * reach * reach
 }
 
 /// Least-squares fit of `y = a t² + b t + c`, returning (a, b, c, RMS
@@ -176,11 +187,12 @@ pub fn state_at(samples: &[Sample], t: f32, gravity: f32) -> MotionState {
         };
     }
 
-    // The unbroken run of samples inside the window
+    // The unbroken run of samples inside the window, which a gap in the
+    // snapshots or a respawn breaks
     let mut window: Vec<&Sample> = Vec::new();
     for s in upto.iter().rev() {
-        let next = window.last().map_or(last.time, |n| n.time);
-        if last.time - s.time > WINDOW || next - s.time > MAX_GAP {
+        let next = window.last().copied().unwrap_or(last);
+        if last.time - s.time > WINDOW || next.time - s.time > MAX_GAP || moved_away(s, next) {
             break;
         }
         window.push(s);
@@ -419,6 +431,32 @@ mod tests {
         assert_eq!(
             state_at(&old, 1.3, 800.).evidence,
             MotionEvidence::NotVisible
+        );
+    }
+
+    #[test]
+    fn a_respawn_is_not_movement() {
+        // Standing where they died, then standing at a spawn point 900 units
+        // away from 0.45 s
+        let times = frames(0., 0.5);
+        let samples: Vec<Sample> = times
+            .iter()
+            .map(|&t| Sample {
+                time: t,
+                origin: if t < 0.45 {
+                    [0., 0., 0.]
+                } else {
+                    [900., 0., 0.]
+                },
+                exact: None,
+            })
+            .collect();
+
+        // Too little since the spawn to tell, rather than a speed of 9000
+        let s = state_at(&samples, 0.5, 800.);
+        assert_eq!(
+            (s.evidence, s.horizontal_speed),
+            (MotionEvidence::Unclear, None)
         );
     }
 

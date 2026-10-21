@@ -5,3 +5,4 @@
 - Add another two for rewinding/advancing 10 seconds beside the previous/next frame buttons
 - Add the rest of HUD elements from AG, like the mini scoreboard at the top left, votes, and everything else that comes from AG events/usermessages
 - Add a way to toggle free camera mode, where you get detached from the recorder's camera and can fly around like with noclip by using WASD, Ctrl (down) and Space (up)
+- On the event list on the right there should be an indicator of where you're at, so if the demo is playing, it should keep advancing/panning the event list as events happen, and the last one that happened should be either selected (i'm not completely sure)
