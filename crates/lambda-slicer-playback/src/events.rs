@@ -50,9 +50,14 @@ pub struct ClientEvent {
     pub max_clients: u8,
 }
 
+/// The server fills a player's event with the angles of the player's model,
+/// whose pitch is the view's times this. Only the recording player's own
+/// events, which its game wrote into the demo, carry the view's
+const MODEL_PITCH: f32 = -1. / 3.;
+
 impl ClientEvent {
     /// `event` as it arrived at `time`, with its actor resolved as the
-    /// client resolves it
+    /// client resolves it, and a player's aim as the player looked
     pub fn new(event: &RecordedEvent, time: SourceTime, max_clients: u8) -> Option<Self> {
         let script = event.resource.as_deref()?;
         let entity = match event.actor {
@@ -69,11 +74,20 @@ impl ClientEvent {
             mix(mix(event.ordinal, u64::from(event.index)), source),
             u64::from(event.message_ordinal.unwrap_or(u32::MAX)),
         );
+
+        // The view's pitch back from the model's, for a player's event the
+        // server sent
+        let mut args = event.args.clone();
+        let player = (1..=i32::from(max_clients)).contains(&entity);
+        if player && event.source != EventSource::Demo {
+            args.angles[0] /= MODEL_PITCH;
+        }
+
         Some(Self {
             time: SourceTime(time.0 + f64::from(event.delay.unwrap_or(0.).max(0.))),
             script: Arc::from(script),
             entity: u16::try_from(entity).unwrap_or(0),
-            args: event.args.clone(),
+            args,
             seed,
             max_clients,
         })
@@ -638,6 +652,44 @@ fn train(idx: u16, args: &EventArgs) -> Vec<Action> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A gauss shot by player 2, written by `source`, aiming at `angles`
+    fn recorded(source: EventSource, angles: [f32; 3]) -> RecordedEvent {
+        RecordedEvent {
+            id: 0,
+            segment: 1,
+            entry: 1,
+            ordinal: 0,
+            time: 1.,
+            server_time: 1.,
+            source,
+            message_ordinal: None,
+            index: 0,
+            resource: Some("events/gauss.sc".into()),
+            dispatch_flags: Some(0),
+            args: EventArgs {
+                entindex: 2,
+                angles,
+                ..Default::default()
+            },
+            delay: Some(0.),
+            actor: ActorResolution::Explicit { entity: 2 },
+            player: None,
+        }
+    }
+
+    #[test]
+    fn a_shot_the_server_sent_aims_as_its_player_looked() {
+        // The server sends the model's pitch, a third of the view's turned
+        // round, and the recorder's own game the view's itself
+        let sent = recorded(EventSource::Svc, [7.75, 7., 0.]);
+        let sent = ClientEvent::new(&sent, SourceTime(1.), 32).unwrap();
+        assert_eq!(sent.args.angles, [-23.25, 7., 0.]);
+
+        let own = recorded(EventSource::Demo, [7.75, 7., 0.]);
+        let own = ClientEvent::new(&own, SourceTime(1.), 32).unwrap();
+        assert_eq!(own.args.angles, [7.75, 7., 0.]);
+    }
 
     fn event(script: &str, seed: u64) -> ClientEvent {
         ClientEvent {

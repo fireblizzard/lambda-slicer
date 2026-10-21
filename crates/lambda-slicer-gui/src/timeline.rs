@@ -386,9 +386,6 @@ impl Model {
             });
         }
 
-        // The recording player's events aim as they looked, other players'
-        // as their model pitched
-        let recorder = r.recorder.as_ref().map(|p| u16::from(p.slot) + 1);
         for (ordinal, k) in r.kills.iter().enumerate() {
             let killer = k.killer.as_ref();
             let lane = match killer {
@@ -396,7 +393,7 @@ impl Model {
                 None => b.lane(LaneKey::Unknown, None),
             };
             let victim = k.victim.as_ref().map(|p| p.name.clone());
-            let gauss_kill = GaussKill::of(k, &r.occurrences, r.max_clients, recorder);
+            let gauss_kill = GaussKill::of(k, &r.occurrences, r.max_clients);
             let event = Event {
                 segment: k.segment,
                 time: k.time,

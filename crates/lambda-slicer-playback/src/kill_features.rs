@@ -86,10 +86,6 @@ const SOLID_BSP: i64 = 4;
 /// (`DEFAULT_VIEWHEIGHT`)
 const EYE_HEIGHT: f32 = 28.;
 
-/// Other players' events carry the model's pitch, which is the view pitch
-/// times this
-const MODEL_PITCH: f32 = -1. / 3.;
-
 /// One Gauss shot the server fired, as its event gives it
 #[derive(Clone, Debug, PartialEq)]
 pub struct FiredShot {
@@ -106,14 +102,9 @@ pub struct FiredShot {
 }
 
 impl FiredShot {
-    /// The shot an event fired, none for an event that is not one. The
-    /// recording player's own events, by entity `recorder`, aim as they
-    /// looked, and other players' as their model pitched
-    pub fn from_event(
-        event: &RecordedEvent,
-        max_clients: u8,
-        recorder: Option<u16>,
-    ) -> Option<Self> {
+    /// The shot an event fired, none for an event that is not one, aimed as
+    /// its shooter looked
+    pub fn from_event(event: &RecordedEvent, max_clients: u8) -> Option<Self> {
         let time = SourceTime(f64::from(event.time));
         let client = ClientEvent::new(event, time, max_clients)?;
 
@@ -123,18 +114,12 @@ impl FiredShot {
             return None;
         }
 
-        // The view pitch back from the model's
-        let mut angles = args.angles;
-        if Some(client.entity) != recorder {
-            angles[0] /= MODEL_PITCH;
-        }
-
         Some(Self {
             segment: event.segment,
             time: f64::from(event.time),
             shooter: client.entity,
             source: eye(&client),
-            forward: angle_vectors(angles)[0],
+            forward: angle_vectors(args.angles)[0],
             damage: args.fparam1,
             primary: args.bparam1 != 0,
         })
@@ -151,14 +136,8 @@ pub struct GaussKill {
 
 impl GaussKill {
     /// `kill` with the killer's Gauss shots that could have made it, none
-    /// for a kill that is not a player's with the Gauss. `recorder` is the
-    /// recording player's entity
-    pub fn of(
-        kill: &Kill,
-        occurrences: &[WeaponOccurrence],
-        max_clients: u8,
-        recorder: Option<u16>,
-    ) -> Option<Self> {
+    /// for a kill that is not a player's with the Gauss
+    pub fn of(kill: &Kill, occurrences: &[WeaponOccurrence], max_clients: u8) -> Option<Self> {
         let killer = kill.killer.as_ref()?;
         if kill.weapon != Some(Weapon::Gauss) {
             return None;
@@ -178,7 +157,7 @@ impl GaussKill {
                 && (0. ..=SHOT_WINDOW).contains(&before);
             if same
                 && fits
-                && let Some(shot) = FiredShot::from_event(&o.event, max_clients, recorder)
+                && let Some(shot) = FiredShot::from_event(&o.event, max_clients)
             {
                 shots.push(shot);
             }

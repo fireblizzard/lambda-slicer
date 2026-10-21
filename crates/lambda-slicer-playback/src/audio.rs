@@ -126,18 +126,19 @@ impl Channel {
 
     /// Seconds of the sample played by `at`, at the sample's own rate. Each
     /// stretch counts at its own pitch, so a change does not rescale what
-    /// was already played
+    /// was already played. Changes that arrive together, as several in one
+    /// packet do, leave stretches of no length, which play nothing
     pub fn cursor(&self, at: SourceTime) -> f64 {
         let mut played = 0.;
         for (i, (from, pitch)) in self.pitches.iter().enumerate() {
+            if from.0 >= at.0 {
+                break;
+            }
             let until = self
                 .pitches
                 .get(i + 1)
                 .map_or(at.0, |(next, _)| next.0.min(at.0));
-            if until <= from.0 {
-                break;
-            }
-            played += (until - from.0) * f64::from(*pitch) / 100.;
+            played += (until - from.0).max(0.) * f64::from(*pitch) / 100.;
         }
         played
     }
@@ -472,6 +473,31 @@ mod tests {
                 other => (c.entity, c.channel, format!("{other:?}")),
             })
             .collect()
+    }
+
+    #[test]
+    fn changes_arriving_together_keep_the_sound_moving() {
+        // Started at pitch 100, then 150 and 160 in one packet at 1 s
+        let channel = Channel {
+            id: 0,
+            source: SoundSource::Client,
+            entity: 1,
+            channel: 1,
+            sound: SoundName::File(Arc::from("ambience/pulsemachine.wav")),
+            volume: 1.,
+            attenuation: 0.8,
+            origin: [0.; 3],
+            started: SourceTime(0.),
+            pitches: vec![
+                (SourceTime(0.), 100),
+                (SourceTime(1.), 150),
+                (SourceTime(1.), 160),
+            ],
+        };
+
+        // A second at 100, then half a second at 160
+        assert!((channel.cursor(SourceTime(1.5)) - 1.8).abs() < 1e-9);
+        assert_eq!(channel.cursor(SourceTime(0.)), 0.);
     }
 
     #[test]
