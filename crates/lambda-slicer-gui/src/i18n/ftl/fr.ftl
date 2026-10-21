@@ -326,6 +326,7 @@ events-unknown = { $count ->
    *[other] { $count } éliminations manquent de données pour trancher
 }
 help-unknown = Un mouvement que l’enregistrement n’a pas pu voir compte comme inconnu, jamais comme au sol ou à l’arrêt, donc ces éliminations sont exclues.
+events-follow = Garder la liste sur le moment actuel pendant la lecture de la démo. Faire défiler la liste désactive cette option.
 clip-it = Clipper
 badge-headshot = TT
 badge-air = AIR

@@ -313,6 +313,7 @@ events-unknown = { $count ->
    *[other] { $count } kills lack the data to tell
 }
 help-unknown = Movement the recording couldn't see counts as unknown, never as on the ground or standing still, so these kills are left out.
+events-follow = Keep the list on the current moment while the demo plays. Scrolling the list turns this off.
 clip-it = Clip it
 badge-headshot = HS
 badge-air = AIR

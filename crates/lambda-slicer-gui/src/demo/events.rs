@@ -47,6 +47,10 @@ const PART_GAP: f32 = 6.;
 const FOLLOW_AT: f32 = 2. / 3.;
 const PLAYHEAD_WIDTH: f32 = 2.;
 
+/// How far the list must move without being told to before it counts as
+/// scrolled by hand
+const SCROLLED_BY_HAND: f32 = 0.5;
+
 /// A badge's room around its text, and the least room badges leave for the
 /// players' names
 const BADGE_PADDING: Vec2 = Vec2::new(4., 1.);
@@ -457,34 +461,45 @@ impl DemoView {
         });
     }
 
-    /// How many events are shown, and how many kills a refinement could not
-    /// tell about
-    fn events_count(&self, ui: &mut Ui, catalog: &Catalog, rtl: bool) {
-        layout::wrapping_row(ui, rtl, |ui| {
-            let count = FluentValue::from(self.rows.len() as i64);
-            let count = catalog.text_with("demo-events", &[("count", count)]);
-            let look = Look::Color(theme::MUTED);
-            ui.label(text::styled_text(
-                ui.ctx(),
-                &count,
-                rtl,
-                look,
-                &theme::secondary(),
-            ));
+    /// How many events are shown, how many kills a refinement could not
+    /// tell about, and the button that keeps the list on the playhead
+    fn events_count(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool) {
+        // The button at the trailing end first, so the counts wrap before it.
+        // Turned back on, the list goes straight back to the playhead
+        layout::trailing(ui, rtl, |ui| {
+            let label = catalog.text("events-follow");
+            let button = IconButton::new(Icon::Crosshair, &label).selected(self.follow_playhead);
+            if ui.add_enabled(self.viewer.is_some(), button).clicked() {
+                self.follow_playhead = !self.follow_playhead;
+                self.pan_to_playhead = self.follow_playhead;
+            }
 
-            if self.unknown_kills > 0 {
-                let unknown = FluentValue::from(self.unknown_kills as i64);
-                let unknown = catalog.text_with("events-unknown", &[("count", unknown)]);
-                let look = Look::Color(theme::WARNING);
+            layout::wrapping_row(ui, rtl, |ui| {
+                let count = FluentValue::from(self.rows.len() as i64);
+                let count = catalog.text_with("demo-events", &[("count", count)]);
+                let look = Look::Color(theme::MUTED);
                 ui.label(text::styled_text(
                     ui.ctx(),
-                    &unknown,
+                    &count,
                     rtl,
                     look,
                     &theme::secondary(),
                 ));
-                widgets::help(ui, &catalog.text("help-unknown"), rtl);
-            }
+
+                if self.unknown_kills > 0 {
+                    let unknown = FluentValue::from(self.unknown_kills as i64);
+                    let unknown = catalog.text_with("events-unknown", &[("count", unknown)]);
+                    let look = Look::Color(theme::WARNING);
+                    ui.label(text::styled_text(
+                        ui.ctx(),
+                        &unknown,
+                        rtl,
+                        look,
+                        &theme::secondary(),
+                    ));
+                    widgets::help(ui, &catalog.text("help-unknown"), rtl);
+                }
+            });
         });
     }
 
@@ -507,14 +522,18 @@ impl DemoView {
             .selected
             .and_then(|s| self.rows.iter().position(|&r| r == s));
         // The playhead falls after the events it has passed, which playing
-        // keeps in view, two thirds of the way down
+        // keeps in view, two thirds of the way down, while the list follows
+        // it. The follow button brings it back at once, even while paused
         let playhead = self.viewer.as_ref().map(|v| v.time());
         let passed =
             playhead.map(|now| self.rows.partition_point(|&r| model.events[r].time <= now));
         let playing = self.viewer.as_ref().is_some_and(|v| v.is_playing());
-        let follow = playing && passed.is_some() && passed != self.followed;
+        let moved_on = playing && passed != self.followed;
+        let follow = self.follow_playhead && (moved_on || self.pan_to_playhead);
         self.followed = if playing { passed } else { None };
+        self.pan_to_playhead = false;
 
+        let mut placed = true;
         if self.scroll_table {
             if let Some(row) = selected_row {
                 let offset = row as f32 * ROW_HEIGHT - (height - ROW_HEIGHT) / 2.;
@@ -530,7 +549,10 @@ impl DemoView {
         } else if follow && let Some(passed) = passed {
             let offset = passed as f32 * ROW_HEIGHT - height * FOLLOW_AT;
             list = list.vertical_scroll_offset(offset.max(0.));
+        } else {
+            placed = false;
         }
+        let area = ui.available_rect_before_wrap();
 
         // Rows touch, so the rows the scroll area works out are the rows it
         // draws, at the same places
@@ -560,6 +582,20 @@ impl DemoView {
                     .hline(list.x_range(), y, line);
             }
         }
+
+        // A list that moved on its own while the pointer was on it, or
+        // dragging from it, was scrolled by hand, and stops following
+        let offset = shown.state.clamped_offset().y;
+        let moved = (offset - self.list_offset).abs() > SCROLLED_BY_HAND;
+        let held_from_list = ui.input(|i| {
+            let origin = i.pointer.press_origin();
+            i.pointer.primary_down() && origin.is_some_and(|p| area.contains(p))
+        });
+        let by_hand = ui.rect_contains_pointer(area) || held_from_list;
+        if moved && !placed && by_hand {
+            self.follow_playhead = false;
+        }
+        self.list_offset = offset;
 
         if let Some(event) = clicked {
             self.actions.push(DemoAction::Select {
@@ -1222,5 +1258,81 @@ fn paint_badge(ui: &Ui, line: &mut RowLine, row: &Response, badge: &Badge, k: us
     if let Some(tip) = &badge.tip {
         let hover = ui.interact(place, row.id.with(("badge", k)), Sense::hover());
         hover.on_hover_text(tip);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use lambda_slicer_core::analysis::weapons::Action;
+
+    use super::*;
+
+    /// A demo view whose list shows `count` shots a second apart
+    fn view_of_shots(ctx: &egui::Context, count: usize) -> DemoView {
+        let shot = |time: f32| Event {
+            segment: 0,
+            time,
+            lane: 0,
+            actor: None,
+            weapon: Some(Weapon::Gauss),
+            kind: EventKind::Action {
+                action: Action::Fire,
+                mode: None,
+            },
+        };
+        let events = (0..count).map(|i| shot(i as f32)).collect();
+
+        let mut view = DemoView::open(PathBuf::from("not-there.dem"), 100., None, ctx);
+        view.loader = None;
+        view.model = Some(Arc::new(Model {
+            events,
+            end: 100.,
+            ..Default::default()
+        }));
+        view.rows = (0..count).collect();
+        view
+    }
+
+    /// One frame of `view`'s list on a small screen, after `events`
+    fn draw_list(ctx: &egui::Context, view: &mut DemoView, events: Vec<egui::Event>) {
+        let catalog = Catalog::new(crate::i18n::Locale::En);
+        let model = view.model.clone().expect("the test gives a model");
+        let input = egui::RawInput {
+            screen_rect: Some(Rect::from_min_size(Pos2::ZERO, egui::vec2(400., 300.))),
+            events,
+            ..Default::default()
+        };
+        let mut output = ctx.run_ui(input, |ui| view.events_list(ui, &catalog, false, &model));
+        output.textures_delta.clear();
+    }
+
+    #[test]
+    fn scrolling_the_list_by_hand_stops_it_following_the_playhead() {
+        let ctx = egui::Context::default();
+        crate::theme::install(&ctx);
+        let mut view = view_of_shots(&ctx, 100);
+
+        // Left alone, or with the pointer resting on it, it keeps following
+        draw_list(&ctx, &mut view, Vec::new());
+        let over_list = egui::Event::PointerMoved(Pos2::new(200., 150.));
+        draw_list(&ctx, &mut view, vec![over_list.clone()]);
+        assert!(view.follow_playhead);
+
+        // A turn of the wheel over it
+        let wheel = egui::Event::MouseWheel {
+            unit: egui::MouseWheelUnit::Point,
+            delta: egui::vec2(0., -200.),
+            phase: egui::TouchPhase::Move,
+            source: egui::MouseWheelSource::Wheel,
+            modifiers: egui::Modifiers::NONE,
+        };
+        draw_list(&ctx, &mut view, vec![over_list, wheel]);
+        for _ in 0..30 {
+            draw_list(&ctx, &mut view, Vec::new());
+        }
+        assert!(view.list_offset > 0.);
+        assert!(!view.follow_playhead);
     }
 }

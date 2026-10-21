@@ -326,6 +326,7 @@ events-unknown = { $count ->
    *[other] A { $count } bajas les faltan datos para saberlo
 }
 help-unknown = El movimiento que la grabación no pudo ver cuenta como desconocido, nunca como en el suelo o quieto, así que estas bajas quedan fuera.
+events-follow = Mantener la lista en el momento actual mientras se reproduce la demo. Si haces scroll en la lista, se desactiva.
 clip-it = Clipear
 badge-headshot = HS
 badge-air = AIR

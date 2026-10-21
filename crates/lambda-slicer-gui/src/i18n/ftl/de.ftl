@@ -312,6 +312,7 @@ events-unknown = { $count ->
    *[other] { $count } Abschüssen fehlen die Daten zur Beurteilung
 }
 help-unknown = Bewegung, die die Aufnahme nicht sehen konnte, zählt als unbekannt, nie als am Boden oder stillstehend, daher werden diese Abschüsse ausgelassen.
+events-follow = Die Liste beim aktuellen Moment halten, während die Demo läuft. Scrollen in der Liste schaltet das aus.
 clip-it = Clippen
 badge-headshot = KS
 badge-air = AIR

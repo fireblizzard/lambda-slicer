@@ -448,6 +448,13 @@ pub struct DemoView {
     /// How many shown events the playhead had passed when the list last
     /// followed it, none while paused
     followed: Option<usize>,
+    /// Whether the list follows the playhead, until scrolled by hand, and
+    /// whether it goes back to it on the next frame even while paused
+    follow_playhead: bool,
+    pan_to_playhead: bool,
+    /// How far the list was scrolled when last drawn, for telling a scroll
+    /// by hand
+    list_offset: f32,
     /// Frames left to scroll the list to the chosen window's first event.
     /// A list seen for the first time has no size yet, so it gets a few
     scroll_to_window: u8,
@@ -538,6 +545,9 @@ impl DemoView {
             selected: None,
             scroll_table: false,
             followed: None,
+            follow_playhead: true,
+            pan_to_playhead: false,
+            list_offset: 0.,
             scroll_to_window: 0,
             wanted_tab: None,
             chooser: None,

@@ -293,6 +293,7 @@ events-unknown = { $count ->
    *[other] { $count } 次击杀缺少判断所需的数据
 }
 help-unknown = 录像无法看到的移动计为未知，绝不计为在地面或静止，因此这些击杀被排除。
+events-follow = 播放录像时让列表停在当前时刻。滚动列表会关闭此功能。
 clip-it = 剪辑
 badge-headshot = 爆头
 badge-air = 空中

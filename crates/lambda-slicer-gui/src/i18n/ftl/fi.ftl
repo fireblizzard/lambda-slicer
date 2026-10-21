@@ -312,6 +312,7 @@ events-unknown = { $count ->
    *[other] { $count } tapon tiedot eivät riitä ratkaisuun
 }
 help-unknown = Liike, jota tallenne ei nähnyt, lasketaan tuntemattomaksi, ei koskaan maassa olemiseksi tai paikallaan seisomiseksi, joten nämä tapot jätetään pois.
+events-follow = Pidä luettelo nykyisessä hetkessä, kun demo toistuu. Luettelon vierittäminen poistaa tämän käytöstä.
 clip-it = Klippaa
 badge-headshot = PL
 badge-air = AIR

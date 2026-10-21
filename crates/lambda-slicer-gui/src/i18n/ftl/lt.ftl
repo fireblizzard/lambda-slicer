@@ -329,6 +329,7 @@ events-unknown = { $count ->
    *[other] { $count } nužudymų neturi duomenų tam nustatyti
 }
 help-unknown = Judėjimas, kurio įrašas negalėjo matyti, laikomas nežinomu, o ne buvimu ant žemės ar stovėjimu vietoje, todėl šie nužudymai neįtraukiami.
+events-follow = Laikyti sąrašą ties dabartine akimirka, kol leidžiamas įrašas. Slenkant sąrašą tai išjungiama.
 clip-it = Į klipą
 badge-headshot = ŠG
 badge-air = AIR

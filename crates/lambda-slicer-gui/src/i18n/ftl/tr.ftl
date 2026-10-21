@@ -300,6 +300,7 @@ events-unknown = { $count ->
    *[other] { $count } öldürmede karar vermek için veri yok
 }
 help-unknown = Kaydın göremediği hareket asla yerde ya da duruyor sayılmaz, bilinmiyor sayılır; bu yüzden bu öldürmeler dışarıda bırakılır.
+events-follow = Demo oynatılırken listeyi şu anki anda tut. Listeyi kaydırmak bunu kapatır.
 clip-it = Klip yap
 badge-headshot = KV
 badge-air = AIR

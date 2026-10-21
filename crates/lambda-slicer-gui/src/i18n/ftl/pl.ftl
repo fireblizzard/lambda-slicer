@@ -329,6 +329,7 @@ events-unknown = { $count ->
    *[other] Dla { $count } zabójstwa brakuje danych, by to ustalić
 }
 help-unknown = Ruch, którego nagranie nie mogło zobaczyć, liczy się jako nieznany, nigdy jako stanie na ziemi czy bezruch, więc te zabójstwa są pomijane.
+events-follow = Trzymaj listę na bieżącym momencie podczas odtwarzania dema. Przewinięcie listy to wyłącza.
 clip-it = Zrób klip
 badge-headshot = SG
 badge-air = AIR

@@ -81,7 +81,8 @@ pub enum Icon {
     Repeat,
     /// A bin, for removing
     Trash,
-    /// A circle with a cross through it, for taking the playhead's time
+    /// A circle with a cross through it, for taking the playhead's time or
+    /// keeping to it
     Crosshair,
 }
 

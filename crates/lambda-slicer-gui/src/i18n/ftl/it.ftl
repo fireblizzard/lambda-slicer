@@ -322,6 +322,7 @@ events-unknown = { $count ->
    *[other] A { $count } uccisioni mancano i dati per stabilirlo
 }
 help-unknown = Il movimento che la registrazione non ha potuto vedere conta come sconosciuto, mai come a terra o fermo, quindi queste uccisioni restano escluse.
+events-follow = Tieni l’elenco sul momento attuale mentre la demo è in riproduzione. Scorrere l’elenco lo disattiva.
 clip-it = Clippa
 badge-headshot = CT
 badge-air = AIR

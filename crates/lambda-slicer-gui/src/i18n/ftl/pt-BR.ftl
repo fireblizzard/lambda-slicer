@@ -326,6 +326,7 @@ events-unknown = { $count ->
    *[other] { $count } abates não têm dados para dizer
 }
 help-unknown = O movimento que a gravação não conseguiu ver conta como desconhecido, nunca como no chão ou parado, então esses abates ficam de fora.
+events-follow = Manter a lista no momento atual enquanto a demo é reproduzida. Rolar a lista desativa isso.
 clip-it = Clipar
 badge-headshot = HS
 badge-air = AIR

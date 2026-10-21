@@ -22,7 +22,7 @@
 - [ ] Fix water rendering shown at 0:01:13.803 on `20240120_190919_boot_camp`. I think it should only render the faces of the water volume that are not hidden by others
 - [ ] Fix wrong score on some demos. For example on `somecrossgame`, most of the demo is on the map `crossfire` which ends 93-79, and then there's a little bit of `datacore` that ends 1-0, and the library and the scoreboard (initially, when no events selected) to the right of the demo player are saying 1-0, when it should be 93-79 as that's the significant part of the demo
 - [ ] Add a filter for player name in the event list of a demo
-- [ ] Add a small button to the event list that stops the player from panning to the playhead so that you can freely scroll without it scrolling back automatically. It should show enabled by default (so autopan to playhead) and get disabled as you start scrolling manually, then clicking on it pans back to where the playhead is
+- [x] Add a small button to the event list that stops the player from panning to the playhead so that you can freely scroll without it scrolling back automatically. It should show enabled by default (so autopan to playhead) and get disabled as you start scrolling manually, then clicking on it pans back to where the playhead is
 - [x] Add 8 pixels of margin to the right of the kill feed
 - [ ] Add a button in Settings to restore all settings to default, with a confirmation dialog mentioning all the custom settings/values that will revert to default
 - [ ] Remove older decals, keep the 100 most recent ones by default, add a setting for that number
