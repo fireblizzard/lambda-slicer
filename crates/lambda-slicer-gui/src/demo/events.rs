@@ -56,8 +56,10 @@ const SCROLLED_BY_HAND: f32 = 0.5;
 const BADGE_PADDING: Vec2 = Vec2::new(4., 1.);
 const NAMES_LEAST: f32 = 120.;
 
-/// The weapon menu's width and the highlight menu's
+/// The weapon menu's width, the player's name field's and the highlight
+/// menu's
 const WEAPON_WIDTH: f32 = 120.;
+const PLAYER_WIDTH: f32 = 140.;
 const HIGHLIGHT_WIDTH: f32 = 220.;
 
 /// How many ups dragging the least speed moves it for a point
@@ -177,8 +179,9 @@ impl DemoView {
         self.events_list(ui, catalog, rtl, &model);
     }
 
-    /// Why events stop early, the kinds shown, the weapon and highlight
-    /// menus, and the kill refinements while kills are shown
+    /// Why events stop early, the kinds shown, the weapon menu, the player's
+    /// name, the highlight menu, and the kill refinements while kills are
+    /// shown
     fn event_filters(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool, model: &Model) {
         // Why events stop early is never hidden away
         if let Some(e) = &model.decode_error {
@@ -215,6 +218,7 @@ impl DemoView {
 
         layout::wrapping_row(ui, rtl, |ui| {
             self.weapon_menu(ui, catalog, rtl);
+            self.player_field(ui, catalog, rtl);
             self.highlight_menu(ui, catalog, rtl, model);
         });
 
@@ -247,6 +251,17 @@ impl DemoView {
                     ui.selectable_value(&mut self.shown.weapon, Some(w), w.name());
                 }
             });
+    }
+
+    /// Text a player's name in each shown event must have
+    fn player_field(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool) {
+        let hint = catalog.text("filter-player");
+        let hint = text::widget_text(ui.ctx(), &hint, rtl, None, Look::Plain);
+        let field = egui::TextEdit::singleline(&mut self.player)
+            .id_salt(("event player", self.generation))
+            .hint_text(hint)
+            .desired_width(PLAYER_WIDTH);
+        ui.add(field);
     }
 
     /// The most intense moments to jump to, the best first, and the way to

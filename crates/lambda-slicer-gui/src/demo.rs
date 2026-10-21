@@ -375,6 +375,26 @@ impl Shown {
     }
 }
 
+/// Whether the actor of `event`, or a kill's victim, has `player` in their
+/// name, ignoring colour codes. `player` is in lowercase, and empty matches
+/// every event
+fn has_player(event: &Event, player: &str) -> bool {
+    if player.is_empty() {
+        return true;
+    }
+
+    let mut names = vec![event.actor.as_deref()];
+    if let EventKind::Kill { victim, .. } = &event.kind {
+        names.push(victim.as_deref());
+    }
+    for name in names.into_iter().flatten() {
+        if text::player_name(name).to_lowercase().contains(player) {
+            return true;
+        }
+    }
+    false
+}
+
 /// How an event is marked on the timeline. A kill's death mark in its
 /// victim's lane is the same event
 fn mark_kind(event: &Event) -> MarkKind {
@@ -425,15 +445,17 @@ pub struct DemoView {
     /// The stretch of the recording the timeline shows
     view: (f32, f32),
     shown: Shown,
+    /// Text in the name of a player in each shown event, ignoring case
+    player: String,
     /// The shown events as indices into the model's events, in time order,
     /// and what the timeline draws of each
     rows: Vec<usize>,
     marks: Vec<RowMark>,
     /// Whether each of the model's events is shown, for the player lanes
     shown_events: Vec<bool>,
-    /// What the rows were worked out for, and the revision of the kills
-    /// through a wall then
-    rows_for: Option<(Shown, u64)>,
+    /// What the rows were worked out for, with the player's name, and the
+    /// revision of the kills through a wall then
+    rows_for: Option<(Shown, String, u64)>,
     /// Counts each time the rows change, for what is worked out from them
     rows_version: u64,
     /// Kills a refinement could not tell about, so not shown
@@ -534,6 +556,7 @@ impl DemoView {
             failed: None,
             view: track::clamp_view((0., duration), (0., duration)),
             shown: Shown::default(),
+            player: String::new(),
             rows: Vec::new(),
             marks: Vec::new(),
             shown_events: Vec::new(),
@@ -666,6 +689,12 @@ impl DemoView {
         self.shown.kill_filters = filters;
     }
 
+    /// Show only events of players with `player` in their name, for
+    /// checking it from the command line
+    pub fn filter_player(&mut self, player: String) {
+        self.player = player;
+    }
+
     /// Still analysing or exporting
     pub fn busy(&self) -> bool {
         self.loading() || self.export.is_some() || self.export_on_load
@@ -706,8 +735,8 @@ impl DemoView {
         let Some(m) = self.model.clone() else {
             return;
         };
-        let wanted = (self.shown, self.walls.revision());
-        if self.rows_for == Some(wanted) {
+        let wanted = (self.shown, self.player.clone(), self.walls.revision());
+        if self.rows_for.as_ref() == Some(&wanted) {
             return;
         }
 
@@ -716,7 +745,12 @@ impl DemoView {
         self.shown_events = vec![false; m.events.len()];
         self.unknown_kills = 0;
 
+        let player = self.player.trim().to_lowercase();
         for (index, event) in m.events.iter().enumerate() {
+            if !has_player(event, &player) {
+                continue;
+            }
+
             match self.shown.judge(event, &self.walls) {
                 Verdict::Match => {}
                 Verdict::Unknown => {
@@ -1832,6 +1866,38 @@ mod tests {
         view.refresh_rows();
         assert_eq!(view.rows, [0]);
         assert_eq!(view.shown.kill_filters.midair, MidairMode::Either);
+    }
+
+    #[test]
+    fn the_player_filter_matches_the_killer_or_the_victim() {
+        let named = |actor: &str, victim: Option<&str>| {
+            let mut event = kill(0, 1., Some(false));
+            event.actor = Some(actor.into());
+            if let EventKind::Kill { victim: v, .. } = &mut event.kind {
+                *v = victim.map(String::from);
+            }
+            event
+        };
+        let events = vec![
+            named("^1Naz", Some("bob")),
+            named("alice", Some("^4nAz^0!")),
+            named("alice", None),
+        ];
+        let mut view = view_of(events, GroupIndex::default());
+
+        // Colour codes and case make no difference, nor do spaces around
+        view.player = " NAZ ".into();
+        view.refresh_rows();
+        assert_eq!(view.rows, [0, 1]);
+
+        view.player = "alice".into();
+        view.refresh_rows();
+        assert_eq!(view.rows, [1, 2]);
+
+        // An empty field shows every event
+        view.player.clear();
+        view.refresh_rows();
+        assert_eq!(view.rows, [0, 1, 2]);
     }
 
     #[test]

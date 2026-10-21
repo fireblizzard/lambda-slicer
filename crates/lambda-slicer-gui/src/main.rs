@@ -2,7 +2,8 @@
 //!
 //! `lambda-slicer-gui [PATH...] [--locale TAG] [--settings [--section NAME]] [--timeline]
 //! [--dates] [--pseudo] [--size WxH] [--cache FILE] [--clips FILE]
-//! [--demo FILE [--window N] [--event N] [--refine LIST] [--tab TAB] [--export DIR]]
+//! [--demo FILE [--window N] [--event N] [--refine LIST] [--player TEXT] [--tab TAB]
+//! [--export DIR]]
 //! [--screenshot OUT.png [--frames N]]
 //! [--game DIR [--viewer-at SECONDS] [--viewer-bench SECONDS OUT.txt]
 //! [--viewer-capture TIMES FOLDER] [--viewer-size WxH] [--viewer-play SECONDS]
@@ -15,7 +16,8 @@
 //! its `N`th golden minute candidate with `--window`, with its `N`th shown
 //! event selected with `--event`, and with the kill refinements in the
 //! comma-separated `LIST` on with `--refine`, from `midair`, `both`, `one`,
-//! `speed`, `killer`, `victim` and `wallgauss`. `--tab` shows the inspector's
+//! `speed`, `killer`, `victim` and `wallgauss`, and only events of players
+//! with `TEXT` in their name with `--player`. `--tab` shows the inspector's
 //! `events`, `clips` or `scoreboard` tab, and `--export` exports its clips
 //! into `DIR`. `--settings` opens the settings window, on its `general`,
 //! `library`, `viewer` or `clips` section with `--section`, `--timeline` opens
@@ -108,6 +110,7 @@ fn main() -> eframe::Result {
     let mut window = None;
     let mut event = None;
     let mut refine = KillFilters::default();
+    let mut player = String::new();
     let mut tab = InspectorTab::default();
     let mut section = SettingsTab::default();
     let mut size = [1280., 800.];
@@ -149,6 +152,7 @@ fn main() -> eframe::Result {
                     refine = refinements(&list);
                 }
             }
+            "--player" => player = args.next().unwrap_or_default(),
             "--section" => {
                 section = match args.next().as_deref() {
                     Some("library") => SettingsTab::Library,
@@ -291,6 +295,7 @@ fn main() -> eframe::Result {
                     window,
                     event,
                     refine,
+                    player,
                     dates,
                     export: export.is_some(),
                     pseudo,
