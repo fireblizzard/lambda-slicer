@@ -1760,6 +1760,12 @@ impl Viewer {
         play.rect.center().x
     }
 
+    /// Learn the demo's length in seconds from its analysis, for a demo the
+    /// library gave none, such as one opened from the file explorer
+    pub fn learn_length(&mut self, seconds: f64) {
+        self.duration = self.duration.max(seconds);
+    }
+
     /// The demo's length as known so far, the library's figure or how far
     /// the worker has read, and never short of the playhead
     fn length(&self, now: f64) -> f64 {

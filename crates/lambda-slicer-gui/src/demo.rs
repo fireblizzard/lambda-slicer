@@ -872,6 +872,15 @@ impl DemoView {
                     self.highlight_last = true;
                     self.scroll_to_window = 3;
                 }
+
+                // A demo the library gave no length, such as one opened from
+                // the file explorer, takes the analysis's
+                if self.duration <= 0. {
+                    self.duration = m.end;
+                    if let Some(viewer) = &mut self.viewer {
+                        viewer.learn_length(f64::from(m.end));
+                    }
+                }
                 self.model = Some(m);
                 self.loader = None;
             }
@@ -2379,6 +2388,25 @@ mod tests {
 
         // Nothing comes before the first
         assert!(press_with_ctrl(&mut view, egui::Key::ArrowLeft).is_empty());
+    }
+
+    #[test]
+    fn a_demo_opened_without_a_length_takes_the_analysiss() {
+        let ctx = egui::Context::default();
+        let mut view = DemoView::open(PathBuf::from("not-there.dem"), 0., None, &ctx);
+        let (tx, rx) = mpsc::channel();
+        view.loader = Some(Loader {
+            cancel: Arc::new(AtomicBool::new(false)),
+            rx,
+            thread: None,
+        });
+        let model = Model {
+            end: 1442.,
+            ..Default::default()
+        };
+        tx.send(Loaded::Model(Arc::new(model))).unwrap();
+        view.poll();
+        assert_eq!(view.duration, 1442.);
     }
 
     #[test]
