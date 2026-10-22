@@ -34,6 +34,7 @@ use crate::events::{ATTN_NORM, Action, ClientEvent, Events, PITCH_NORM, SoundCal
 use crate::gauss;
 use crate::hud::{ChatLine, Countdown, DeathNotice, Hud};
 use crate::scene::{self, Camera, Entity, PlayerView, Scene, Viewmodel};
+use crate::scores::ScoreRow;
 use crate::source::{Cursor, Group, Source};
 use crate::status;
 use crate::tempents::{Lookup, TempEntities, TempEntity};
@@ -101,6 +102,8 @@ pub struct PresentedFrame {
     pub announced: Announced,
     /// The recording player's health, armour and ammo
     pub status: status::Shown,
+    /// The small scoreboard's rows, highest first
+    pub scores: Vec<ScoreRow>,
 }
 
 type Lengths = Box<dyn Fn(&SoundName) -> SoundLength + Send>;
@@ -707,6 +710,7 @@ impl Playback {
             chat: state.hud.chat(at),
             announced: state.hud.announced(at),
             status: state.hud.status(),
+            scores: state.hud.scores(&state.decoder),
             temp_entities: state
                 .tempents
                 .entities()

@@ -15,7 +15,7 @@ use crate::game_setup;
 use crate::i18n::{Catalog, Locale};
 use crate::layout;
 use crate::library::{self, parse_number};
-use crate::settings::{FOV, MAX_PADDING, Settings, VITALS_SIZE, ViewerSettings};
+use crate::settings::{FOV, MAX_PADDING, MAX_SCORE_ROWS, Settings, VITALS_SIZE, ViewerSettings};
 use crate::text::{self, Look};
 use crate::theme;
 use crate::widgets::{self, Icon, IconButton, Variant};
@@ -649,6 +649,17 @@ impl App {
                 ui.label(egui::RichText::new(percent).monospace().color(theme::MUTED));
             });
         });
+        layout::row(ui, rtl, |ui| {
+            ui.checkbox(&mut viewer.scores, t("settings-scores"));
+        });
+        let width = label_width(ui, catalog, &["settings-score-rows"], rtl);
+        field(ui, catalog, "settings-score-rows", width, rtl, |ui| {
+            let rows = egui::DragValue::new(&mut viewer.score_rows)
+                .range(1..=MAX_SCORE_ROWS)
+                .custom_formatter(|v, _| catalog.number(v, 0))
+                .custom_parser(parse_number);
+            ui.add_enabled(viewer.scores, rows);
+        });
 
         // Projectiles and items show through walls only with the players,
         // and keep their choice while the players do not
@@ -967,6 +978,8 @@ fn changed_settings(current: &Settings, restored: &Settings) -> Vec<&'static str
             view.vitals_size != first.vitals_size,
             "settings-vitals-size",
         ),
+        (view.scores != first.scores, "settings-scores"),
+        (view.score_rows != first.score_rows, "settings-score-rows"),
         (
             view.see_through != first.see_through,
             "settings-see-through",

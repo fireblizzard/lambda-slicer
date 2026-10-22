@@ -27,6 +27,7 @@ pub mod hud;
 pub mod kill_features;
 pub mod playback;
 pub mod scene;
+pub mod scores;
 pub mod source;
 pub mod status;
 pub mod tempents;

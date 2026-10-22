@@ -1536,6 +1536,10 @@ impl Viewer {
                             crate::vitals::draw(ui, vitals, library, rect, size, status, at);
                         }
                         self.kill_feed.draw(ui, rect, &frame.death_notices, library);
+                        if self.settings.scores {
+                            let most = self.settings.score_rows;
+                            crate::mini_scores::draw(ui, rect, &frame.scores, most);
+                        }
                         if self.settings.chat {
                             let map = frame.map.as_deref();
                             self.chat.draw(ui, rect, &frame.chat, map, library);

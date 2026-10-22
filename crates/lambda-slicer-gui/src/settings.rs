@@ -146,6 +146,10 @@ pub struct ViewerSettings {
     /// against the game's
     pub vitals: bool,
     pub vitals_size: f32,
+    /// Whether the small scoreboard shows at the top left, and its most
+    /// rows
+    pub scores: bool,
+    pub score_rows: usize,
     /// The sound's master volume, 0 to 1
     pub volume: f32,
     /// Players shown through walls, and with `see_through_items` the other
@@ -175,6 +179,8 @@ impl Default for ViewerSettings {
             chat: true,
             vitals: true,
             vitals_size: 0.6,
+            scores: true,
+            score_rows: 4,
             volume: 0.1,
             see_through: false,
             see_through_items: false,
@@ -218,6 +224,7 @@ impl ViewerSettings {
                 VITALS_SIZE.1,
             ),
             decals: self.decals.min(MAX_DECALS),
+            score_rows: self.score_rows.min(MAX_SCORE_ROWS),
             ..self
         }
     }
@@ -225,6 +232,9 @@ impl ViewerSettings {
 
 /// The fields of view the viewer takes, in degrees
 pub const FOV: (f32, f32) = (10., 150.);
+
+/// The most rows the small scoreboard takes, the game's most players
+pub const MAX_SCORE_ROWS: usize = 32;
 
 /// The sizes health, armour and ammo take against the game's
 pub const VITALS_SIZE: (f32, f32) = (0.3, 1.5);

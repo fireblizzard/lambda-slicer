@@ -67,6 +67,7 @@ mod kill_feed;
 mod kill_filters;
 mod layout;
 mod library;
+mod mini_scores;
 mod platform;
 mod settings;
 mod text;

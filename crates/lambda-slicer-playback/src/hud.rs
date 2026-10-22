@@ -1,6 +1,7 @@
 //! The parts of the HUD playback shows, AG's countdown before a match, the
-//! kill feed, the chat, the messages [`crate::announcements`] keeps, and the
-//! health, armour and ammo [`crate::status`] keeps
+//! kill feed, the chat, the messages [`crate::announcements`] keeps, the
+//! health, armour and ammo [`crate::status`] keeps, and the scores
+//! [`crate::scores`] keeps
 //!
 //! AG's client counts down when the server sends `Countdown`, a signed byte
 //! of seconds left, a byte saying whether to speak it, and the names of the
@@ -31,6 +32,7 @@ use lambda_slicer_core::protocol::messages::{Message, ParsedMessage};
 use lambda_slicer_core::state::Decoder;
 
 use crate::announcements::{Announced, Announcements};
+use crate::scores::{ScoreRow, Scores};
 use crate::status::{self, Status};
 use crate::time::SourceTime;
 
@@ -131,6 +133,8 @@ pub struct Hud {
     announcements: Announcements,
     /// The recording player's health, armour and ammo
     status: Status,
+    /// Every player's and team's frags, for the small scoreboard
+    scores: Scores,
 }
 
 /// A string ending at its first nought, and what follows it
@@ -163,9 +167,13 @@ impl Hud {
             _ => return None,
         };
         // The time left, sudden death, the next map, timeouts and votes are
-        // kept on their own, and so are health, armour and ammo
+        // kept on their own, and so are health, armour and ammo, and the
+        // scores
         let name = decoder.user_message(id)?.name_lossy();
-        if self.announcements.message(&name, body, time) || self.status.message(&name, body, time) {
+        if self.announcements.message(&name, body, time)
+            || self.status.message(&name, body, time)
+            || self.scores.message(&name, body)
+        {
             return None;
         }
 
@@ -290,6 +298,12 @@ impl Hud {
     /// The recording player's health, armour and ammo as the HUD shows them
     pub fn status(&self) -> status::Shown {
         self.status.shown()
+    }
+
+    /// The small scoreboard's rows, highest first, with the players
+    /// `decoder` knows
+    pub fn scores(&self, decoder: &Decoder) -> Vec<ScoreRow> {
+        self.scores.rows(decoder, &self.teams)
     }
 
     /// AG's messages on how the match goes at `at`
