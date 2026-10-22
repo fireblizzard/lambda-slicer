@@ -150,6 +150,9 @@ pub struct ViewerSettings {
     /// rows
     pub scores: bool,
     pub score_rows: usize,
+    /// Whether the server's settings show at the top right when it sends
+    /// them
+    pub server_settings: bool,
     /// The sound's master volume, 0 to 1
     pub volume: f32,
     /// Players shown through walls, and with `see_through_items` the other
@@ -181,6 +184,7 @@ impl Default for ViewerSettings {
             vitals_size: 0.6,
             scores: true,
             score_rows: 4,
+            server_settings: true,
             volume: 0.1,
             see_through: false,
             see_through_items: false,

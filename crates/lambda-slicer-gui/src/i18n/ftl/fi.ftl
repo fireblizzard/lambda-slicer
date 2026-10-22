@@ -510,6 +510,7 @@ settings-vitals = Näytä elämä, panssari ja ammukset
 settings-vitals-size = Elämän, panssarin ja ammusten koko
 settings-scores = Näytä pisteet vasemmassa yläkulmassa
 settings-score-rows = Pisterivejä enintään
+settings-server-settings = Näytä serverin asetukset oikeassa yläkulmassa
 settings-see-through = Näe pelaajat seinien läpi
 settings-see-through-items = Myös muut mallit, kuten ammukset ja esineet
 settings-see-through-hint = Seinien takana olevat pelaajat näkyvät siluetteina yläosan värissään, jonka joukkuepelit asettavat joukkueen mukaan. Näkyä voi vain se, mitä demo sisältää. Palvelin lähettää tallentajan lähellä olevat pelaajat, eivätkä palvelimet, jotka piilottavat pelaajat, joita tallentaja ei näe, jätä mitään näytettävää.

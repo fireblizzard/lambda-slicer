@@ -1,7 +1,7 @@
 //! AG's messages over the view that tell how the match goes, the time
-//! left, sudden death, the next map, a timeout or a pause, and a vote
-//! (OpenAG's `CHudTimer`, `CHudSuddenDeath`, `CHudNextmap`, `CHudTimeout`
-//! and `CHudVote`)
+//! left, sudden death, the next map, a timeout or a pause, a vote and the
+//! server's settings (OpenAG's `CHudTimer`, `CHudSuddenDeath`,
+//! `CHudNextmap`, `CHudTimeout`, `CHudVote` and `CHudSettings`)
 //!
 //! `Timer` is two longs, the match's seconds and the seconds passed, each
 //! message showing the time for five seconds, the time left or without a
@@ -10,8 +10,11 @@
 //! `Timeout` is a status and seconds left, its stopping and its starting
 //! counted down while they last. `Vote` is a status, the votes for, against
 //! and not yet given, what is voted on as two strings and who called it,
-//! each message showing it for four seconds. The engine's `svc_setpause`
-//! says whether the game is paused
+//! each message showing it for four seconds. `Settings` is whether a match
+//! is on, the game mode, the time and frag limits, friendly fire and weapon
+//! stay, AG's version, then the wallgauss, headshot and blast radius
+//! multipliers, each shown only when not the game's own, all for ten
+//! seconds. The engine's `svc_setpause` says whether the game is paused
 
 use lambda_slicer_core::analysis::match_events::{
     TIMEOUT_CALLED, TIMEOUT_UNDER_WAY, VOTE_ACCEPTED, VOTE_DENIED, VOTE_OPEN, vote_message,
@@ -24,6 +27,13 @@ use crate::time::SourceTime;
 const TIMER_SHOWN: f64 = 5.;
 const NEXT_MAP_SHOWN: f64 = 10.;
 const VOTE_SHOWN: f64 = 4.;
+const SETTINGS_SHOWN: f64 = 10.;
+
+/// The game's own wallgauss, headshot and blast radius multipliers, which
+/// the settings leave out
+const USUAL_WALLGAUSS: &str = "1";
+const USUAL_HEADSHOT: &str = "3";
+const USUAL_BLAST_RADIUS: &str = "1";
 
 /// A timeout's countdown
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -56,6 +66,23 @@ pub struct Vote {
     pub called_by: String,
 }
 
+/// The server's settings, as `Settings` gave them
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ServerSettings {
+    pub match_on: bool,
+    pub mode: String,
+    /// In minutes
+    pub time_limit: i8,
+    pub frag_limit: i8,
+    pub friendly_fire: bool,
+    pub weapon_stay: bool,
+    pub version: String,
+    /// Each multiplier as written, none when it is the game's own
+    pub wallgauss: Option<String>,
+    pub headshot: Option<String>,
+    pub blast_radius: Option<String>,
+}
+
 /// What shows at a moment
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Announced {
@@ -66,6 +93,7 @@ pub struct Announced {
     pub timeout: Option<Timeout>,
     pub paused: bool,
     pub vote: Option<Vote>,
+    pub settings: Option<ServerSettings>,
 }
 
 /// What the messages last said, and until when each shows
@@ -77,6 +105,7 @@ pub struct Announcements {
     timeout: Option<Timeout>,
     paused: bool,
     vote: Option<(Vote, SourceTime)>,
+    settings: Option<(ServerSettings, SourceTime)>,
 }
 
 /// A string ending at its first nought, and what follows it
@@ -90,6 +119,12 @@ fn c_string(bytes: &[u8]) -> (String, &[u8]) {
 fn while_shown<T: Clone>(entry: &Option<(T, SourceTime)>, at: SourceTime) -> Option<T> {
     let (value, until) = entry.as_ref()?;
     (at < *until).then(|| value.clone())
+}
+
+/// `multiplier` unless it is empty or `usual`
+fn unusual(multiplier: String, usual: &str) -> Option<String> {
+    let unusual = !multiplier.is_empty() && multiplier != usual;
+    unusual.then_some(multiplier)
 }
 
 /// The little-endian long at `at` in `body`
@@ -123,6 +158,7 @@ impl Announcements {
                 };
             }
             "Vote" => self.vote(body, time),
+            "Settings" => self.settings(body, time),
             _ => return false,
         }
         true
@@ -159,6 +195,37 @@ impl Announcements {
         self.vote = Some((vote, SourceTime(time.0 + VOTE_SHOWN)));
     }
 
+    /// A `Settings`, shown for ten seconds
+    fn settings(&mut self, body: &[u8], time: SourceTime) {
+        let Some((&match_on, rest)) = body.split_first() else {
+            return;
+        };
+        let (mode, rest) = c_string(rest);
+        let [time_limit, frag_limit, friendly_fire, weapon_stay] =
+            rest.get(..4).unwrap_or_default()
+        else {
+            return;
+        };
+        let (version, rest) = c_string(&rest[4..]);
+        let (wallgauss, rest) = c_string(rest);
+        let (headshot, rest) = c_string(rest);
+        let (blast_radius, _) = c_string(rest);
+
+        let settings = ServerSettings {
+            match_on: match_on != 0,
+            mode,
+            time_limit: *time_limit as i8,
+            frag_limit: *frag_limit as i8,
+            friendly_fire: *friendly_fire != 0,
+            weapon_stay: *weapon_stay != 0,
+            version,
+            wallgauss: unusual(wallgauss, USUAL_WALLGAUSS),
+            headshot: unusual(headshot, USUAL_HEADSHOT),
+            blast_radius: unusual(blast_radius, USUAL_BLAST_RADIUS),
+        };
+        self.settings = Some((settings, SourceTime(time.0 + SETTINGS_SHOWN)));
+    }
+
     /// Whether the game is paused, as `svc_setpause` says
     pub(crate) fn pause(&mut self, paused: bool) {
         self.paused = paused;
@@ -173,6 +240,7 @@ impl Announcements {
             timeout: self.timeout,
             paused: self.paused,
             vote: while_shown(&self.vote, at),
+            settings: while_shown(&self.settings, at),
         }
     }
 }
@@ -238,5 +306,23 @@ mod tests {
 
         a.message("SuddenDeath", &[0], SourceTime(11.));
         assert!(!a.at(SourceTime(11.)).sudden_death);
+    }
+
+    #[test]
+    fn the_settings_show_for_ten_seconds_leaving_out_the_usual_multipliers() {
+        let mut a = Announcements::default();
+        let body = b"\x01Arena\x00\x0a\x00\x00\x01 6.6\x002\x003\x00\x00";
+        assert!(a.message("Settings", body, SourceTime(0.)));
+        let settings = a.at(SourceTime(9.)).settings.unwrap();
+        assert!(settings.match_on);
+        assert_eq!(
+            (settings.mode.as_str(), settings.version.as_str()),
+            ("Arena", " 6.6")
+        );
+        assert_eq!((settings.time_limit, settings.frag_limit), (10, 0));
+        assert!(!settings.friendly_fire && settings.weapon_stay);
+        assert_eq!(settings.wallgauss.as_deref(), Some("2"));
+        assert_eq!((settings.headshot, settings.blast_radius), (None, None));
+        assert_eq!(a.at(SourceTime(10.)).settings, None);
     }
 }

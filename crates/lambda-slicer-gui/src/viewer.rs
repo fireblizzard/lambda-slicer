@@ -1512,7 +1512,8 @@ impl Viewer {
                     if let Some(countdown) = &frame.countdown {
                         draw_countdown(ui.painter(), rect, countdown);
                     }
-                    announcements::draw(ui.painter(), rect, catalog, &frame.announced);
+                    let (announced, settings) = (&frame.announced, self.settings.server_settings);
+                    announcements::draw(ui.painter(), rect, catalog, announced, settings);
                     if let Some(next) = changing_to(&self.sessions, frame.at.0) {
                         let map = FluentValue::from(next.name.clone());
                         let line = catalog.text_with("viewer-map-change", &[("map", map)]);

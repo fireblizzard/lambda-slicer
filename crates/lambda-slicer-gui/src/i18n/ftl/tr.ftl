@@ -498,6 +498,7 @@ settings-vitals = Can, zırh ve mermiyi göster
 settings-vitals-size = Can, zırh ve mermi boyutu
 settings-scores = Skorları sol üstte göster
 settings-score-rows = En fazla skor satırı
+settings-server-settings = Sunucu ayarlarını sağ üstte göster
 settings-see-through = Oyuncuları duvarların ardından gör
 settings-see-through-items = Mermiler ve eşyalar gibi diğer modeller de
 settings-see-through-hint = Duvarların arkasındaki oyuncular, takım oyunlarının takıma göre belirlediği üst renklerinde siluet olarak görünür. Yalnızca demonun içerdiği görünebilir. Sunucu kaydedenin yakınındaki oyuncuları gönderir; kaydedenin göremediği oyuncuları gizleyen sunucular gösterecek bir şey bırakmaz.

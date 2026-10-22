@@ -1,17 +1,20 @@
 //! AG's messages over the view on how the match goes, where its client
 //! draws them and in its words (OpenAG's `CHudTimer`, `CHudSuddenDeath`,
-//! `CHudNextmap`, `CHudTimeout` and `CHudVote`)
+//! `CHudNextmap`, `CHudTimeout`, `CHudVote` and `CHudSettings`)
 //!
 //! The time stands in the middle, one of the game's text lines from the
 //! top, with sudden death two lines down, the next map five and a timeout
 //! six. A vote stands a twentieth of the width from the left and an eighth
-//! of the height from the top. Everything is in the HUD's colour, sized as on a
-//! 640 by 480 screen, where a line is a 32nd of the height, as the
-//! countdown is. The text is AG's own, in English as it writes it, but for
-//! a pause without a timeout, which AG does not word
+//! of the height from the top. The server's settings stand a fifth of the
+//! width from the right, from one line down, AG's version, the game mode,
+//! then after half a line more the limits and rules, and while a match is
+//! on that says so in the middle two lines down. Everything is in the HUD's
+//! colour, sized as on a 640 by 480 screen, where a line is a 32nd of the
+//! height, as the countdown is. The text is AG's own, in English as it
+//! writes it, but for a pause without a timeout, which AG does not word
 
 use eframe::egui::{self, Align2, Rect};
-use lambda_slicer_playback::announcements::{Announced, Timeout, Vote, VoteStatus};
+use lambda_slicer_playback::announcements::{Announced, ServerSettings, Timeout, Vote, VoteStatus};
 
 use crate::i18n::Catalog;
 use crate::kill_feed::add_tagged;
@@ -22,6 +25,12 @@ const TIMER_LINE: f32 = 1.;
 const SUDDEN_DEATH_LINE: f32 = 2.;
 const NEXT_MAP_LINE: f32 = 5.;
 const TIMEOUT_LINE: f32 = 6.;
+const MATCH_ON_LINE: f32 = 2.;
+
+/// The share of the view's width the settings stand from the right, and
+/// the room above their limits, in lines
+const SETTINGS_RIGHT: f32 = 1. / 5.;
+const SETTINGS_GAP: f32 = 1.5;
 
 /// The share of the view's width and height a vote stands from its top
 /// left, and the room after who called it, in lines
@@ -79,8 +88,50 @@ fn vote_lines(vote: &Vote) -> Vec<String> {
     }
 }
 
-/// `announced` over the view at `rect`
-pub fn draw(painter: &egui::Painter, rect: Rect, catalog: &Catalog, announced: &Announced) {
+/// The server's settings as AG writes them, each with the line it stands
+/// on
+fn settings_lines(settings: &ServerSettings) -> Vec<(f32, String)> {
+    let on = |value: bool| if value { "On" } else { "Off" };
+    let mut lines = vec![
+        (1., format!("AG version {}", settings.version)),
+        (2., settings.mode.clone()),
+    ];
+
+    // The limits and rules after a little more room, then the multipliers
+    // that are not the game's own
+    let mut rest = vec![
+        format!("Time limit: {}", settings.time_limit),
+        format!("Frag limit: {}", settings.frag_limit),
+        format!("Friendly fire: {}", on(settings.friendly_fire)),
+        format!("Weaponstay: {}", on(settings.weapon_stay)),
+    ];
+    if let Some(wallgauss) = &settings.wallgauss {
+        rest.push(format!("Wallgauss: {wallgauss}x (1)"));
+    }
+    if let Some(headshot) = &settings.headshot {
+        rest.push(format!("Headshot: {headshot}x (3)"));
+    }
+    if let Some(blast_radius) = &settings.blast_radius {
+        rest.push(format!("Blast radius: {blast_radius}x (1)"));
+    }
+
+    let mut row = 2. + SETTINGS_GAP;
+    for text in rest {
+        lines.push((row, text));
+        row += 1.;
+    }
+    lines
+}
+
+/// `announced` over the view at `rect`, with the server's settings when
+/// `settings` is set
+pub fn draw(
+    painter: &egui::Painter,
+    rect: Rect,
+    catalog: &Catalog,
+    announced: &Announced,
+    settings: bool,
+) {
     let line = rect.height() / LINES;
     let font = egui::FontId::proportional(line);
     let centred = |row: f32, text: String| {
@@ -103,6 +154,17 @@ pub fn draw(painter: &egui::Painter, rect: Rect, catalog: &Catalog, announced: &
 
     if let Some(vote) = &announced.vote {
         draw_vote(painter, rect, line, &font, vote);
+    }
+
+    if settings && let Some(server) = &announced.settings {
+        let left = rect.right() - rect.width() * SETTINGS_RIGHT;
+        for (row, text) in settings_lines(server) {
+            let at = egui::pos2(left, rect.top() + row * line);
+            painter.text(at, Align2::LEFT_TOP, text, font.clone(), HUD_COLOR);
+        }
+        if server.match_on {
+            centred(MATCH_ON_LINE, "A match is on!".to_owned());
+        }
     }
 }
 
@@ -171,5 +233,33 @@ mod tests {
             ..open
         };
         assert_eq!(vote_lines(&denied), ["Denied!"]);
+    }
+
+    #[test]
+    fn the_settings_read_as_ag_writes_them() {
+        let settings = ServerSettings {
+            match_on: false,
+            mode: "Arena".into(),
+            time_limit: 10,
+            frag_limit: 0,
+            friendly_fire: false,
+            weapon_stay: true,
+            version: "6.6".into(),
+            wallgauss: Some("2".into()),
+            headshot: None,
+            blast_radius: None,
+        };
+        assert_eq!(
+            settings_lines(&settings),
+            [
+                (1., "AG version 6.6".to_owned()),
+                (2., "Arena".to_owned()),
+                (3.5, "Time limit: 10".to_owned()),
+                (4.5, "Frag limit: 0".to_owned()),
+                (5.5, "Friendly fire: Off".to_owned()),
+                (6.5, "Weaponstay: On".to_owned()),
+                (7.5, "Wallgauss: 2x (1)".to_owned()),
+            ]
+        );
     }
 }

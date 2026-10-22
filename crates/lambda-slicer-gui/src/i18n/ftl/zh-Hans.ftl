@@ -487,6 +487,7 @@ settings-vitals = 显示生命值、护甲和弹药
 settings-vitals-size = 生命值、护甲和弹药的大小
 settings-scores = 在左上角显示比分
 settings-score-rows = 比分最多显示几行
+settings-server-settings = 在右上角显示服务器设置
 settings-see-through = 透过墙壁看到玩家
 settings-see-through-items = 也包括其他模型，如投射物和物品
 settings-see-through-hint = 墙后的玩家以其上衣颜色的剪影显示，团队游戏会按队伍设置该颜色。只能显示录像中包含的内容。服务器只发送录制者附近的玩家，隐藏录制者看不到的玩家的服务器不会留下任何可显示的内容。

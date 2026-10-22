@@ -660,6 +660,9 @@ impl App {
                 .custom_parser(parse_number);
             ui.add_enabled(viewer.scores, rows);
         });
+        layout::row(ui, rtl, |ui| {
+            ui.checkbox(&mut viewer.server_settings, t("settings-server-settings"));
+        });
 
         // Projectiles and items show through walls only with the players,
         // and keep their choice while the players do not
@@ -980,6 +983,10 @@ fn changed_settings(current: &Settings, restored: &Settings) -> Vec<&'static str
         ),
         (view.scores != first.scores, "settings-scores"),
         (view.score_rows != first.score_rows, "settings-score-rows"),
+        (
+            view.server_settings != first.server_settings,
+            "settings-server-settings",
+        ),
         (
             view.see_through != first.see_through,
             "settings-see-through",

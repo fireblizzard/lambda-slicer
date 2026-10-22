@@ -535,6 +535,7 @@ settings-vitals = Rodyti gyvybes, šarvus ir šovinius
 settings-vitals-size = Gyvybių, šarvų ir šovinių dydis
 settings-scores = Rodyti rezultatus viršuje kairėje
 settings-score-rows = Daugiausia rezultatų eilučių
+settings-server-settings = Rodyti serverio nustatymus viršuje dešinėje
 settings-see-through = Matyti žaidėjus pro sienas
 settings-see-through-items = Taip pat kitus modelius, pvz., sviedinius ir daiktus
 settings-see-through-hint = Žaidėjai už sienų rodomi kaip siluetai jų viršutine spalva, kurią komandiniai žaidimai nustato pagal komandą. Gali būti rodoma tik tai, ką turi įrašas. Serveris siunčia įrašančiajam artimus žaidėjus, o serveriai, slepiantys žaidėjus, kurių įrašantysis nemato, nepalieka ko rodyti.
