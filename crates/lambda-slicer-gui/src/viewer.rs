@@ -56,6 +56,7 @@ use lambda_slicer_render::world::{self, WorldMesh};
 use fluent_bundle::FluentValue;
 use fluent_bundle::types::{FluentNumber, FluentNumberOptions};
 
+use crate::announcements;
 use crate::chat::Chat;
 use crate::crosshair::Crosshairs;
 use crate::decals::DecalCache;
@@ -1507,6 +1508,7 @@ impl Viewer {
                     if let Some(countdown) = &frame.countdown {
                         draw_countdown(ui.painter(), rect, countdown);
                     }
+                    announcements::draw(ui.painter(), rect, catalog, &frame.announced);
                     if let Some(next) = changing_to(&self.sessions, frame.at.0) {
                         let map = FluentValue::from(next.name.clone());
                         let line = catalog.text_with("viewer-map-change", &[("map", map)]);
@@ -2747,7 +2749,7 @@ impl CallbackTrait for Frame {
 }
 
 /// HL's default HUD colour, which AG's countdown is drawn in
-const HUD_COLOR: egui::Color32 = egui::Color32::from_rgb(255, 160, 0);
+pub(crate) const HUD_COLOR: egui::Color32 = egui::Color32::from_rgb(255, 160, 0);
 
 /// How many of the game's text lines above the view's bottom the watched
 /// player's name stands, and the band behind it

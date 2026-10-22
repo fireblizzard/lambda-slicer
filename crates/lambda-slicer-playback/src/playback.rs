@@ -22,6 +22,7 @@ use lambda_slicer_core::state::Decoder;
 
 use crate::GameFiles;
 use crate::animation::{Animations, Fired, Flash, IN_EYE, Sequence};
+use crate::announcements::Announced;
 use crate::audio::{Audio, CHAN_AUTO, Channel, SoundLength, SoundName, UNKNOWN_LIMIT, view_entity};
 use crate::beams::{Beams, Trail};
 use crate::bullets;
@@ -95,6 +96,8 @@ pub struct PresentedFrame {
     pub death_notices: Vec<DeathNotice>,
     /// The chat's lines, oldest first
     pub chat: Vec<ChatLine>,
+    /// AG's messages on how the match goes
+    pub announced: Announced,
 }
 
 type Lengths = Box<dyn Fn(&SoundName) -> SoundLength + Send>;
@@ -699,6 +702,7 @@ impl Playback {
             countdown: state.hud.countdown(at).cloned(),
             death_notices: state.hud.death_notices(at),
             chat: state.hud.chat(at),
+            announced: state.hud.announced(at),
             temp_entities: state
                 .tempents
                 .entities()

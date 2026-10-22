@@ -1108,6 +1108,14 @@ impl Decoder {
         self.players.get(&slot).map(|p| self.identity(p))
     }
 
+    /// The player now in a slot under exactly `name`, colour codes and all
+    pub fn player_named(&self, name: &str) -> Option<PlayerIdentity> {
+        self.players
+            .values()
+            .find(|p| p.name == name)
+            .map(|p| self.identity(p))
+    }
+
     fn record_event(&mut self, mut ev: DecodedEvent) {
         let entity = match ev.actor {
             ActorResolution::PacketEntity { entity, .. } => Some(i64::from(entity)),

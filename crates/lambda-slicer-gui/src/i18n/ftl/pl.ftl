@@ -201,10 +201,47 @@ show-actions = Inne działania
 show-kills = Zabójstwa
 show-switches = Zmiany broni
 show-chat = Czat
+show-match = Mecz
 lane-unknown = Nieznany gracz
 lane-recorder = { $name } (nagrywający)
 event-kill = Zabił { $victim }
 event-switch = Zmiana broni
+event-vote-called = Rozpoczęto głosowanie nad { $subject }
+event-vote-cast = Głosowanie nad { $subject }: { $change } ({ $tally })
+event-vote-more-yes = { $count ->
+    [one] jeden głos „tak” więcej
+    [few] { $count } głosy „tak” więcej
+    [many] { $count } głosów „tak” więcej
+   *[other] { $count } głosu „tak” więcej
+}
+event-vote-fewer-yes = { $count ->
+    [one] jeden głos „tak” mniej
+    [few] { $count } głosy „tak” mniej
+    [many] { $count } głosów „tak” mniej
+   *[other] { $count } głosu „tak” mniej
+}
+event-vote-more-no = { $count ->
+    [one] jeden głos „nie” więcej
+    [few] { $count } głosy „nie” więcej
+    [many] { $count } głosów „nie” więcej
+   *[other] { $count } głosu „nie” więcej
+}
+event-vote-fewer-no = { $count ->
+    [one] jeden głos „nie” mniej
+    [few] { $count } głosy „nie” mniej
+    [many] { $count } głosów „nie” mniej
+   *[other] { $count } głosu „nie” mniej
+}
+event-vote-tally = { $yes } tak, { $no } nie, { $undecided } niezdecydowanych
+event-vote-accepted = Głosowanie nad { $subject } przyjęte
+event-vote-denied = Głosowanie nad { $subject } odrzucone
+event-timeout-called = Poproszono o timeout
+event-timeout-under-way = Timeout rozpoczęty
+event-timeout-over = Koniec timeoutu
+event-paused = Gra wstrzymana
+event-resumed = Gra wznowiona
+event-sudden-death = Nagła śmierć rozpoczęta
+event-sudden-death-over = Koniec nagłej śmierci
 action-swing = Uderzenie
 action-fire = Strzał
 action-launch = Wystrzelenie
@@ -516,6 +553,7 @@ settings-clear-library-text = { $count ->
 }
 viewer-zoom = Przybliż widok
 viewer-see-through = Widź przez ściany
+viewer-paused = Pauza
 viewer-map-change = Serwer zmienia mapę na { $map }
 settings-export-beside = Obok każdego dema
 settings-export-hint = W folderze moda, tym z liblist.gam, na przykład Half-Life\ag, klipy odtwarza jedno polecenie playdemo.

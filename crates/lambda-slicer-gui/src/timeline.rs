@@ -12,6 +12,7 @@ use lambda_slicer_core::analysis::accuracy::ShotOutcome;
 use lambda_slicer_core::analysis::context::{
     Coverage, Kill, KillCause, ScoreUpdate, SessionMap, TeamScoreUpdate,
 };
+use lambda_slicer_core::analysis::match_events::MatchChange;
 use lambda_slicer_core::analysis::motion::{MotionEvidence, MotionState};
 use lambda_slicer_core::analysis::weapons::{Action, Actor, IntervalEnd, Weapon};
 use lambda_slicer_core::message::Message;
@@ -62,6 +63,8 @@ pub enum MarkKind {
     Switch,
     /// A line of chat
     Chat,
+    /// A vote, a timeout, a pause or sudden death
+    Match,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -115,6 +118,7 @@ pub enum EventKind {
         /// Where the sender was when they sent it
         place: Option<[f32; 3]>,
     },
+    Match(MatchChange),
 }
 
 /// A kill's place among the analysis's kills, the same however the events
@@ -480,6 +484,29 @@ impl Model {
             );
         }
 
+        // Votes and timeouts in the lane of who called them, and the rest
+        // in the unknown one
+        for m in &r.match_events {
+            let lane = match &m.player {
+                Some(p) => b.lane(key_of(p), Some(&p.name)),
+                None => b.lane(LaneKey::Unknown, None),
+            };
+            b.mark(
+                lane,
+                m.time,
+                MarkKind::Match,
+                None,
+                Event {
+                    segment: m.segment,
+                    time: m.time,
+                    lane,
+                    actor: m.player.as_ref().map(|p| p.name.clone()),
+                    weapon: None,
+                    kind: EventKind::Match(m.change.clone()),
+                },
+            );
+        }
+
         // Events in time order, with marks pointing at their new places
         let mut order: Vec<usize> = (0..b.events.len()).collect();
         order.sort_by(|x, y| b.events[*x].time.total_cmp(&b.events[*y].time));
@@ -806,6 +833,7 @@ mod tests {
             },
             maps: Vec::new(),
             chat: Vec::new(),
+            match_events: Vec::new(),
             scoreboard: Default::default(),
             score_updates: Vec::new(),
             team_score_updates: Vec::new(),

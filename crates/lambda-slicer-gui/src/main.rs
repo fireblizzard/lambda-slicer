@@ -16,8 +16,8 @@
 //! the clips file for this run. `--demo` shows a cached demo at start, on
 //! its `N`th golden minute candidate with `--window`, with its `N`th shown
 //! event selected with `--event`, the kinds of event in the comma-separated
-//! `LIST` shown with `--show`, from `kills`, `shots`, `switches`, `actions`
-//! and `chat`, and with the kill refinements in the
+//! `LIST` shown with `--show`, from `kills`, `shots`, `switches`, `actions`,
+//! `chat` and `match`, and with the kill refinements in the
 //! comma-separated `LIST` on with `--refine`, from `midair`, `both`, `one`,
 //! `speed`, `killer`, `victim` and `wallgauss`, and only events of players
 //! with `TEXT` in their name with `--player`. `--tab` shows the inspector's
@@ -49,6 +49,7 @@
 // A release build opens no console window beside the app
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod announcements;
 mod app;
 mod chat;
 mod clips;

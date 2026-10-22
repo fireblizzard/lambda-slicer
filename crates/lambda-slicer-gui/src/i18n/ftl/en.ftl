@@ -191,10 +191,39 @@ show-actions = Other actions
 show-kills = Kills
 show-switches = Weapon switches
 show-chat = Chat
+show-match = Match
 lane-unknown = Unknown player
 lane-recorder = { $name } (recorder)
 event-kill = Killed { $victim }
 event-switch = Weapon switch
+event-vote-called = Vote called on { $subject }
+event-vote-cast = Vote on { $subject }: { $change } ({ $tally })
+event-vote-more-yes = { $count ->
+    [one] one more yes
+   *[other] { $count } more yes
+}
+event-vote-fewer-yes = { $count ->
+    [one] one less yes
+   *[other] { $count } fewer yes
+}
+event-vote-more-no = { $count ->
+    [one] one more no
+   *[other] { $count } more no
+}
+event-vote-fewer-no = { $count ->
+    [one] one less no
+   *[other] { $count } fewer no
+}
+event-vote-tally = { $yes } yes, { $no } no, { $undecided } undecided
+event-vote-accepted = Vote on { $subject } accepted
+event-vote-denied = Vote on { $subject } denied
+event-timeout-called = Timeout called
+event-timeout-under-way = Timeout started
+event-timeout-over = Timeout over
+event-paused = Game paused
+event-resumed = Game resumed
+event-sudden-death = Sudden death started
+event-sudden-death-over = Sudden death over
 action-swing = Swing
 action-fire = Fire
 action-launch = Launch
@@ -498,6 +527,7 @@ settings-clear-library-text = { $count ->
 }
 viewer-zoom = Zoom in
 viewer-see-through = See through walls
+viewer-paused = Paused
 viewer-map-change = The server is changing the map to { $map }
 settings-export-beside = Beside each demo
 settings-export-hint = Inside your mod folder, the one with liblist.gam such as Half-Life\ag, clips play with a single playdemo command.

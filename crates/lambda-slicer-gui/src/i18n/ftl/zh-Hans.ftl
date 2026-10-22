@@ -174,10 +174,35 @@ show-actions = 其他动作
 show-kills = 击杀
 show-switches = 切换武器
 show-chat = 聊天
+show-match = 比赛
 lane-unknown = 未知玩家
 lane-recorder = { $name }（录制者）
 event-kill = 击杀了 { $victim }
 event-switch = 切换武器
+event-vote-called = 发起投票：{ $subject }
+event-vote-cast = 投票 { $subject }：{ $change }（{ $tally }）
+event-vote-more-yes = { $count ->
+   *[other] 多 { $count } 票赞成
+}
+event-vote-fewer-yes = { $count ->
+   *[other] 少 { $count } 票赞成
+}
+event-vote-more-no = { $count ->
+   *[other] 多 { $count } 票反对
+}
+event-vote-fewer-no = { $count ->
+   *[other] 少 { $count } 票反对
+}
+event-vote-tally = { $yes } 票赞成，{ $no } 票反对，{ $undecided } 人未投票
+event-vote-accepted = 投票 { $subject } 已通过
+event-vote-denied = 投票 { $subject } 被否决
+event-timeout-called = 申请暂停
+event-timeout-under-way = 暂停开始
+event-timeout-over = 暂停结束
+event-paused = 游戏已暂停
+event-resumed = 游戏已继续
+event-sudden-death = 骤死赛开始
+event-sudden-death-over = 骤死赛结束
 action-swing = 挥击
 action-fire = 开火
 action-launch = 发射
@@ -477,6 +502,7 @@ settings-clear-library-text = { $count ->
 }
 viewer-zoom = 放大画面
 viewer-see-through = 透视墙壁
+viewer-paused = 已暂停
 viewer-map-change = 服务器正在切换地图至 { $map }
 settings-export-beside = 每个录像旁边
 settings-export-hint = 在包含 liblist.gam 的 mod 文件夹中（例如 Half-Life\ag），片段只需一条 playdemo 命令即可播放。

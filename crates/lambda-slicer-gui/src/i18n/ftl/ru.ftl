@@ -201,10 +201,47 @@ show-actions = Другие действия
 show-kills = Убийства
 show-switches = Смена оружия
 show-chat = Чат
+show-match = Матч
 lane-unknown = Неизвестный игрок
 lane-recorder = { $name } (записывал)
 event-kill = Убил { $victim }
 event-switch = Смена оружия
+event-vote-called = Запущено голосование «{ $subject }»
+event-vote-cast = Голосование «{ $subject }»: { $change } ({ $tally })
+event-vote-more-yes = { $count ->
+    [one] на { $count } голос «за» больше
+    [few] на { $count } голоса «за» больше
+    [many] на { $count } голосов «за» больше
+   *[other] на { $count } голоса «за» больше
+}
+event-vote-fewer-yes = { $count ->
+    [one] на { $count } голос «за» меньше
+    [few] на { $count } голоса «за» меньше
+    [many] на { $count } голосов «за» меньше
+   *[other] на { $count } голоса «за» меньше
+}
+event-vote-more-no = { $count ->
+    [one] на { $count } голос «против» больше
+    [few] на { $count } голоса «против» больше
+    [many] на { $count } голосов «против» больше
+   *[other] на { $count } голоса «против» больше
+}
+event-vote-fewer-no = { $count ->
+    [one] на { $count } голос «против» меньше
+    [few] на { $count } голоса «против» меньше
+    [many] на { $count } голосов «против» меньше
+   *[other] на { $count } голоса «против» меньше
+}
+event-vote-tally = { $yes } за, { $no } против, { $undecided } не голосовали
+event-vote-accepted = Голосование «{ $subject }» принято
+event-vote-denied = Голосование «{ $subject }» отклонено
+event-timeout-called = Запрошен таймаут
+event-timeout-under-way = Таймаут начался
+event-timeout-over = Таймаут окончен
+event-paused = Игра на паузе
+event-resumed = Игра продолжена
+event-sudden-death = Началась внезапная смерть
+event-sudden-death-over = Внезапная смерть окончена
 action-swing = Удар
 action-fire = Выстрел
 action-launch = Запуск
@@ -516,6 +553,7 @@ settings-clear-library-text = { $count ->
 }
 viewer-zoom = Приблизить вид
 viewer-see-through = Видеть сквозь стены
+viewer-paused = Пауза
 viewer-map-change = Сервер меняет карту на { $map }
 settings-export-beside = Рядом с каждым демо
 settings-export-hint = В папке мода, где лежит liblist.gam, например Half-Life\ag, клипы запускаются одной командой playdemo.

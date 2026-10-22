@@ -8,6 +8,7 @@ pub mod accuracy;
 pub mod context;
 pub mod events;
 pub mod highlights;
+pub mod match_events;
 pub mod motion;
 pub mod weapons;
 
@@ -90,6 +91,8 @@ pub struct AnalysisReport {
     pub maps: Vec<SessionMap>,
     /// The chat, in decode order
     pub chat: Vec<ChatMessage>,
+    /// Votes, timeouts, pauses and sudden death, each change once
+    pub match_events: Vec<match_events::MatchEvent>,
     /// The final score of the session played longest
     pub scoreboard: Scoreboard,
     /// Every score and team change, for the scores at any moment
@@ -292,6 +295,7 @@ pub fn analyze_demo_with(
         coverage,
         maps: std::mem::take(&mut context.maps),
         chat: std::mem::take(&mut context.chat),
+        match_events: std::mem::take(&mut context.match_events.events),
         scoreboard,
         score_updates,
         team_score_updates,

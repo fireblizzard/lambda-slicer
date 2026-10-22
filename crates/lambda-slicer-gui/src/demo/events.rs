@@ -200,6 +200,7 @@ impl DemoView {
                 (&mut shown.switches, "show-switches"),
                 (&mut shown.actions, "show-actions"),
                 (&mut shown.chat, "show-chat"),
+                (&mut shown.matches, "show-match"),
             ];
             for (on, id) in kinds {
                 if selectable(ui, *on, &catalog.text(id), rtl).clicked() {
@@ -724,11 +725,12 @@ impl DemoView {
             let team = team.filter(|_| teams);
             side_colour(track::side_of(team))
         };
-        // A line of chat with no sender is the server's, and names nobody
-        let chat = matches!(event.kind, EventKind::Chat { .. });
+        // A line of chat or a change in the match with no player behind it
+        // is the server's, and names nobody
+        let server = matches!(event.kind, EventKind::Chat { .. } | EventKind::Match(_));
         let actor = match event.actor.as_deref() {
             Some(name) => text::player_name(name),
-            None if chat => String::new(),
+            None if server => String::new(),
             None => catalog.text("lane-unknown"),
         };
 

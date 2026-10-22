@@ -190,10 +190,39 @@ show-actions = Muut toiminnot
 show-kills = Tapot
 show-switches = Aseen vaihdot
 show-chat = Chatti
+show-match = Ottelu
 lane-unknown = Tuntematon pelaaja
 lane-recorder = { $name } (tallentaja)
 event-kill = Tappoi pelaajan { $victim }
 event-switch = Aseen vaihto
+event-vote-called = Äänestys aloitettu: { $subject }
+event-vote-cast = Äänestys { $subject }: { $change } ({ $tally })
+event-vote-more-yes = { $count ->
+    [one] yksi kyllä lisää
+   *[other] { $count } kyllä lisää
+}
+event-vote-fewer-yes = { $count ->
+    [one] yksi kyllä vähemmän
+   *[other] { $count } kyllä vähemmän
+}
+event-vote-more-no = { $count ->
+    [one] yksi ei lisää
+   *[other] { $count } ei lisää
+}
+event-vote-fewer-no = { $count ->
+    [one] yksi ei vähemmän
+   *[other] { $count } ei vähemmän
+}
+event-vote-tally = { $yes } kyllä, { $no } ei, { $undecided } äänestämättä
+event-vote-accepted = Äänestys { $subject } hyväksytty
+event-vote-denied = Äänestys { $subject } hylätty
+event-timeout-called = Aikalisä pyydetty
+event-timeout-under-way = Aikalisä alkoi
+event-timeout-over = Aikalisä päättyi
+event-paused = Peli tauolla
+event-resumed = Peli jatkuu
+event-sudden-death = Sudden death alkoi
+event-sudden-death-over = Sudden death päättyi
 action-swing = Lyönti
 action-fire = Laukaus
 action-launch = Laukaisu
@@ -497,6 +526,7 @@ settings-clear-library-text = { $count ->
 }
 viewer-zoom = Zoomaa lähemmäs
 viewer-see-through = Näe seinien läpi
+viewer-paused = Tauko
 viewer-map-change = Serveri vaihtaa kartaksi { $map }
 settings-export-beside = Kunkin demon viereen
 settings-export-hint = Modin kansiossa, jossa on liblist.gam, kuten Half-Life\ag, klipit toistuvat yhdellä playdemo-komennolla.

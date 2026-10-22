@@ -14,6 +14,7 @@
 //! or the installed game
 
 pub mod animation;
+pub mod announcements;
 pub mod audio;
 pub mod beams;
 pub mod bullets;

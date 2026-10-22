@@ -19,6 +19,7 @@ use crate::message::Message as Note;
 use serde::{Deserialize, Serialize};
 
 use super::highlights::KillContext;
+use super::match_events::MatchEvents;
 use super::motion::{MapName, Motion, MotionState, Sample, gravity, state_at};
 use super::weapons::Weapon;
 use crate::protocol::messages::{Message, ParsedMessage};
@@ -630,6 +631,8 @@ pub struct Context {
     /// last gave it
     pub chat: Vec<ChatMessage>,
     places: std::collections::BTreeMap<u8, [f32; 3]>,
+    /// Votes, timeouts, pauses and sudden death, each change once
+    pub match_events: MatchEvents,
 }
 
 impl Context {
@@ -750,6 +753,7 @@ impl Context {
             self.pending_deaths.clear();
             self.teams.clear();
             self.places.clear();
+            self.match_events.new_session();
             self.scores.clear();
         }
 
@@ -759,6 +763,11 @@ impl Context {
             session.intermission = Some(loc.playback_time());
         }
 
+        if let Message::SetPause(paused) = &m.message {
+            let paused = *paused != 0;
+            self.match_events.pause(d, loc.playback_time(), paused);
+        }
+
         let Message::User { id, body } = &m.message else {
             return;
         };
@@ -766,7 +775,12 @@ impl Context {
             return;
         };
 
-        match def.name_lossy().as_str() {
+        // Votes, timeouts and sudden death are followed on their own
+        let name = def.name_lossy();
+        self.match_events
+            .message(d, loc.playback_time(), &name, body);
+
+        match name.as_str() {
             "DeathMsg" => {
                 let (Some(&killer), Some(&victim)) = (body.first(), body.get(1)) else {
                     return;

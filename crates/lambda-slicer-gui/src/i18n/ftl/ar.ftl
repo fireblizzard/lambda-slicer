@@ -222,10 +222,55 @@ show-actions = أفعال أخرى
 show-kills = القتلات
 show-switches = تبديل الأسلحة
 show-chat = الدردشة
+show-match = المباراة
 lane-unknown = لاعب غير معروف
 lane-recorder = { $name } (المسجِّل)
 event-kill = قتل { $victim }
 event-switch = تبديل السلاح
+event-vote-called = بدأ تصويت على { $subject }
+event-vote-cast = تصويت على { $subject }: { $change } ({ $tally })
+event-vote-more-yes = { $count ->
+    [zero] لا أصوات إضافية بنعم
+    [one] صوت إضافي بنعم
+    [two] صوتان إضافيان بنعم
+    [few] { $count } أصوات إضافية بنعم
+    [many] { $count } صوتًا إضافيًا بنعم
+   *[other] { $count } صوت إضافي بنعم
+}
+event-vote-fewer-yes = { $count ->
+    [zero] لا أصوات أقل بنعم
+    [one] صوت أقل بنعم
+    [two] صوتان أقل بنعم
+    [few] { $count } أصوات أقل بنعم
+    [many] { $count } صوتًا أقل بنعم
+   *[other] { $count } صوت أقل بنعم
+}
+event-vote-more-no = { $count ->
+    [zero] لا أصوات إضافية بلا
+    [one] صوت إضافي بلا
+    [two] صوتان إضافيان بلا
+    [few] { $count } أصوات إضافية بلا
+    [many] { $count } صوتًا إضافيًا بلا
+   *[other] { $count } صوت إضافي بلا
+}
+event-vote-fewer-no = { $count ->
+    [zero] لا أصوات أقل بلا
+    [one] صوت أقل بلا
+    [two] صوتان أقل بلا
+    [few] { $count } أصوات أقل بلا
+    [many] { $count } صوتًا أقل بلا
+   *[other] { $count } صوت أقل بلا
+}
+event-vote-tally = { $yes } نعم، { $no } لا، { $undecided } لم يصوّتوا
+event-vote-accepted = قُبل التصويت على { $subject }
+event-vote-denied = رُفض التصويت على { $subject }
+event-timeout-called = طُلب وقت مستقطع
+event-timeout-under-way = بدأ الوقت المستقطع
+event-timeout-over = انتهى الوقت المستقطع
+event-paused = توقفت اللعبة مؤقتًا
+event-resumed = استؤنفت اللعبة
+event-sudden-death = بدأ الموت المفاجئ
+event-sudden-death-over = انتهى الموت المفاجئ
 action-swing = ضربة
 action-fire = إطلاق
 action-launch = قذف
@@ -545,6 +590,7 @@ settings-clear-library-text = { $count ->
 }
 viewer-zoom = تقريب الصورة
 viewer-see-through = الرؤية خلف الجدران
+viewer-paused = متوقف مؤقتًا
 viewer-map-change = السيرفر يغيّر الخريطة إلى { $map }
 settings-export-beside = بجانب كل تسجيل
 settings-export-hint = داخل مجلد التعديل الذي فيه liblist.gam مثل Half-Life\ag، تُشغَّل المقاطع بأمر playdemo واحد.

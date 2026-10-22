@@ -190,10 +190,39 @@ show-actions = Andere Aktionen
 show-kills = Abschüsse
 show-switches = Waffenwechsel
 show-chat = Chat
+show-match = Match
 lane-unknown = Unbekannter Spieler
 lane-recorder = { $name } (Aufnahme)
 event-kill = Hat { $victim } abgeschossen
 event-switch = Waffenwechsel
+event-vote-called = Abstimmung über { $subject } gestartet
+event-vote-cast = Abstimmung über { $subject }: { $change } ({ $tally })
+event-vote-more-yes = { $count ->
+    [one] eine Ja-Stimme mehr
+   *[other] { $count } Ja-Stimmen mehr
+}
+event-vote-fewer-yes = { $count ->
+    [one] eine Ja-Stimme weniger
+   *[other] { $count } Ja-Stimmen weniger
+}
+event-vote-more-no = { $count ->
+    [one] eine Nein-Stimme mehr
+   *[other] { $count } Nein-Stimmen mehr
+}
+event-vote-fewer-no = { $count ->
+    [one] eine Nein-Stimme weniger
+   *[other] { $count } Nein-Stimmen weniger
+}
+event-vote-tally = { $yes } Ja, { $no } Nein, { $undecided } unentschlossen
+event-vote-accepted = Abstimmung über { $subject } angenommen
+event-vote-denied = Abstimmung über { $subject } abgelehnt
+event-timeout-called = Timeout angefordert
+event-timeout-under-way = Timeout gestartet
+event-timeout-over = Timeout vorbei
+event-paused = Spiel pausiert
+event-resumed = Spiel fortgesetzt
+event-sudden-death = Sudden Death gestartet
+event-sudden-death-over = Sudden Death vorbei
 action-swing = Schlag
 action-fire = Schuss
 action-launch = Abschuss
@@ -497,6 +526,7 @@ settings-clear-library-text = { $count ->
 }
 viewer-zoom = Heranzoomen
 viewer-see-through = Durch Wände sehen
+viewer-paused = Pausiert
 viewer-map-change = Der Server wechselt die Map zu { $map }
 settings-export-beside = Neben jeder Demo
 settings-export-hint = Im Mod-Ordner, dem mit liblist.gam wie Half-Life\ag, spielen Clips mit einem einzigen playdemo-Befehl.

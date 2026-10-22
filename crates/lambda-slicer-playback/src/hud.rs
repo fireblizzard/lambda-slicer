@@ -1,5 +1,5 @@
 //! The parts of AG's HUD playback shows, its countdown before a match, the
-//! kill feed and the chat
+//! kill feed, the chat, and the messages [`crate::announcements`] keeps
 //!
 //! AG's client counts down when the server sends `Countdown`, a signed byte
 //! of seconds left, a byte saying whether to speak it, and the names of the
@@ -29,6 +29,7 @@ use lambda_slicer_core::analysis::context::{location, say_text};
 use lambda_slicer_core::protocol::messages::{Message, ParsedMessage};
 use lambda_slicer_core::state::Decoder;
 
+use crate::announcements::{Announced, Announcements};
 use crate::time::SourceTime;
 
 /// The user message AG's server counts down with
@@ -124,6 +125,8 @@ pub struct Hud {
     scroll_at: SourceTime,
     /// Each player's place by entity, as `Location` gave it
     places: BTreeMap<u8, [f32; 3]>,
+    /// The time left, sudden death, the next map, timeouts, pauses and votes
+    announcements: Announcements,
 }
 
 /// A string ending at its first nought, and what follows it
@@ -148,10 +151,20 @@ impl Hud {
                 *self = Self::default();
                 return None;
             }
+            Message::SetPause(paused) => {
+                self.announcements.pause(*paused != 0);
+                return None;
+            }
             Message::User { id, body } => (*id, body),
             _ => return None,
         };
+        // The time left, sudden death, the next map, timeouts and votes are
+        // kept on their own
         let name = decoder.user_message(id)?.name_lossy();
+        if self.announcements.message(&name, body, time) {
+            return None;
+        }
+
         match name.as_str() {
             MESSAGE => {}
             "TeamInfo" => {
@@ -268,6 +281,11 @@ impl Hud {
         let mut shown = self.clone();
         shown.scroll(at);
         shown.chat.into()
+    }
+
+    /// AG's messages on how the match goes at `at`
+    pub fn announced(&self, at: SourceTime) -> Announced {
+        self.announcements.at(at)
     }
 
     /// The kill feed's lines at `at`, oldest first

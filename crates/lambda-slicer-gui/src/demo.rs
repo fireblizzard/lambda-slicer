@@ -21,6 +21,7 @@ use std::thread::JoinHandle;
 use eframe::egui::{self, Color32, Pos2, Rect, Sense, Ui, Vec2};
 use fluent_bundle::FluentValue;
 use lambda_slicer_core::analysis::analyze_demo_with;
+use lambda_slicer_core::analysis::match_events::MatchChange;
 use lambda_slicer_core::analysis::motion::Floors;
 use lambda_slicer_core::analysis::weapons::{Action, Weapon};
 use lambda_slicer_core::container::Limits;
@@ -329,6 +330,8 @@ pub struct Shown {
     pub kills: bool,
     pub switches: bool,
     pub chat: bool,
+    /// Votes, timeouts, pauses and sudden death
+    pub matches: bool,
     pub weapon: Option<Weapon>,
     /// Refinements of the kills, kept while kills are hidden
     pub kill_filters: KillFilters,
@@ -343,6 +346,7 @@ impl Default for Shown {
             kills: true,
             switches: false,
             chat: false,
+            matches: false,
             weapon: None,
             kill_filters: KillFilters::default(),
         }
@@ -357,6 +361,7 @@ impl Shown {
             MarkKind::Kill | MarkKind::Death => self.kills,
             MarkKind::Switch => self.switches,
             MarkKind::Chat => self.chat,
+            MarkKind::Match => self.matches,
         }
     }
 
@@ -403,6 +408,69 @@ fn has_player(event: &Event, player: &str) -> bool {
     false
 }
 
+/// A vote, a timeout, a pause or sudden death, in words
+fn describe_match(catalog: &Catalog, change: &MatchChange) -> String {
+    let named = |s: &str| FluentValue::from(text::without_colours(s));
+    match change {
+        MatchChange::VoteCalled { subject, .. } => {
+            catalog.text_with("event-vote-called", &[("subject", named(subject))])
+        }
+        MatchChange::VoteCast {
+            subject,
+            yes,
+            no,
+            tally,
+        } => {
+            let change = vote_change(catalog, *yes, *no);
+            let tally = catalog.text_with(
+                "event-vote-tally",
+                &[
+                    ("yes", FluentValue::from(i64::from(tally.yes))),
+                    ("no", FluentValue::from(i64::from(tally.no))),
+                    ("undecided", FluentValue::from(i64::from(tally.undecided))),
+                ],
+            );
+            let args = [
+                ("subject", named(subject)),
+                ("change", FluentValue::from(change)),
+                ("tally", FluentValue::from(tally)),
+            ];
+            catalog.text_with("event-vote-cast", &args)
+        }
+        MatchChange::VoteAccepted { subject } => {
+            catalog.text_with("event-vote-accepted", &[("subject", named(subject))])
+        }
+        MatchChange::VoteDenied { subject } => {
+            catalog.text_with("event-vote-denied", &[("subject", named(subject))])
+        }
+        MatchChange::TimeoutCalled => catalog.text("event-timeout-called"),
+        MatchChange::TimeoutUnderWay => catalog.text("event-timeout-under-way"),
+        MatchChange::TimeoutOver => catalog.text("event-timeout-over"),
+        MatchChange::Paused => catalog.text("event-paused"),
+        MatchChange::Resumed => catalog.text("event-resumed"),
+        MatchChange::SuddenDeath => catalog.text("event-sudden-death"),
+        MatchChange::SuddenDeathOver => catalog.text("event-sudden-death-over"),
+    }
+}
+
+/// How a vote's count changed, such as two more yes and one more no
+fn vote_change(catalog: &Catalog, yes: i16, no: i16) -> String {
+    let counts = [
+        (yes, "event-vote-more-yes", "event-vote-fewer-yes"),
+        (no, "event-vote-more-no", "event-vote-fewer-no"),
+    ];
+    let mut changes = Vec::new();
+    for (count, more, fewer) in counts {
+        if count == 0 {
+            continue;
+        }
+        let id = if count > 0 { more } else { fewer };
+        let count = FluentValue::from(i64::from(count.abs()));
+        changes.push(catalog.text_with(id, &[("count", count)]));
+    }
+    changes.join(", ")
+}
+
 /// What a line of chat says, without its sender's name and the colon
 /// after it, as the event names its sender already. A tag before the name,
 /// such as AG's `(T)` for team chat, stays
@@ -430,6 +498,7 @@ fn mark_kind(event: &Event) -> MarkKind {
         EventKind::Kill { .. } => MarkKind::Kill,
         EventKind::Switch => MarkKind::Switch,
         EventKind::Chat { .. } => MarkKind::Chat,
+        EventKind::Match(_) => MarkKind::Match,
     }
 }
 
@@ -721,8 +790,8 @@ impl DemoView {
     }
 
     /// Show the kinds of event named in the comma-separated `list`, from
-    /// `kills`, `shots`, `switches`, `actions` and `chat`, and no others, for
-    /// checking them from the command line
+    /// `kills`, `shots`, `switches`, `actions`, `chat` and `match`, and no
+    /// others, for checking them from the command line
     pub fn show_kinds(&mut self, list: &str) {
         let names: Vec<&str> = list.split(',').map(str::trim).collect();
         let shown = &mut self.shown;
@@ -731,6 +800,7 @@ impl DemoView {
         shown.switches = names.contains(&"switches");
         shown.actions = names.contains(&"actions");
         shown.chat = names.contains(&"chat");
+        shown.matches = names.contains(&"match");
     }
 
     /// Show only events of players with `player` in their name, for
@@ -1013,6 +1083,7 @@ impl DemoView {
             }
             EventKind::Switch => catalog.text("event-switch"),
             EventKind::Chat { text, .. } => text::without_colours(text),
+            EventKind::Match(change) => describe_match(catalog, change),
         }
     }
 
@@ -1803,6 +1874,7 @@ fn warning_mark(ui: &mut Ui) {
 #[cfg(test)]
 mod tests {
     use lambda_slicer_core::analysis::context::KillCause;
+    use lambda_slicer_core::analysis::match_events::Tally;
     use lambda_slicer_core::analysis::motion::MotionEvidence;
     use lambda_slicer_core::slice::range::{GroupIndex, GroupStart};
     use lambda_slicer_playback::kill_features::{OtherRoute, WallDetails, WallGauss, WallRoute};
@@ -1967,6 +2039,34 @@ mod tests {
         view.refresh_rows();
         assert_eq!(view.rows, [0]);
         assert_eq!(view.shown.kill_filters.midair, MidairMode::Either);
+    }
+
+    #[test]
+    fn a_votes_change_reads_as_more_or_fewer_of_each() {
+        let catalog = Catalog::new(crate::i18n::Locale::En);
+
+        // Fluent marks where each value it places starts and ends
+        let words = |s: String| s.replace(['\u{2068}', '\u{2069}'], "");
+        assert_eq!(
+            words(vote_change(&catalog, 2, 1)),
+            "2 more yes, one more no"
+        );
+        assert_eq!(words(vote_change(&catalog, 0, -1)), "one less no");
+
+        let cast = MatchChange::VoteCast {
+            subject: "agstart".into(),
+            yes: 1,
+            no: 0,
+            tally: Tally {
+                yes: 2,
+                no: 0,
+                undecided: 6,
+            },
+        };
+        assert_eq!(
+            words(describe_match(&catalog, &cast)),
+            "Vote on agstart: one more yes (2 yes, 0 no, 6 undecided)"
+        );
     }
 
     #[test]

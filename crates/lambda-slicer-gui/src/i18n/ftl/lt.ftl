@@ -201,10 +201,47 @@ show-actions = Kiti veiksmai
 show-kills = Nužudymai
 show-switches = Ginklų keitimai
 show-chat = Čatas
+show-match = Rungtynės
 lane-unknown = Nežinomas žaidėjas
 lane-recorder = { $name } (įrašė)
 event-kill = Nužudė { $victim }
 event-switch = Ginklo keitimas
+event-vote-called = Pradėtas balsavimas dėl { $subject }
+event-vote-cast = Balsavimas dėl { $subject }: { $change } ({ $tally })
+event-vote-more-yes = { $count ->
+    [one] { $count } balsu „už“ daugiau
+    [few] { $count } balsais „už“ daugiau
+    [many] { $count } balso „už“ daugiau
+   *[other] { $count } balsų „už“ daugiau
+}
+event-vote-fewer-yes = { $count ->
+    [one] { $count } balsu „už“ mažiau
+    [few] { $count } balsais „už“ mažiau
+    [many] { $count } balso „už“ mažiau
+   *[other] { $count } balsų „už“ mažiau
+}
+event-vote-more-no = { $count ->
+    [one] { $count } balsu „prieš“ daugiau
+    [few] { $count } balsais „prieš“ daugiau
+    [many] { $count } balso „prieš“ daugiau
+   *[other] { $count } balsų „prieš“ daugiau
+}
+event-vote-fewer-no = { $count ->
+    [one] { $count } balsu „prieš“ mažiau
+    [few] { $count } balsais „prieš“ mažiau
+    [many] { $count } balso „prieš“ mažiau
+   *[other] { $count } balsų „prieš“ mažiau
+}
+event-vote-tally = { $yes } už, { $no } prieš, { $undecided } nebalsavo
+event-vote-accepted = Balsavimas dėl { $subject } priimtas
+event-vote-denied = Balsavimas dėl { $subject } atmestas
+event-timeout-called = Paprašyta pertraukos
+event-timeout-under-way = Pertrauka prasidėjo
+event-timeout-over = Pertrauka baigėsi
+event-paused = Žaidimas pristabdytas
+event-resumed = Žaidimas tęsiamas
+event-sudden-death = Prasidėjo sudden death
+event-sudden-death-over = Sudden death baigėsi
 action-swing = Smūgis
 action-fire = Šūvis
 action-launch = Paleidimas
@@ -516,6 +553,7 @@ settings-clear-library-text = { $count ->
 }
 viewer-zoom = Priartinti vaizdą
 viewer-see-through = Matyti pro sienas
+viewer-paused = Pristabdyta
 viewer-map-change = Serveris keičia žemėlapį į { $map }
 settings-export-beside = Šalia kiekvieno įrašo
 settings-export-hint = Modo aplanke, kuriame yra liblist.gam, pvz., Half-Life\ag, klipai paleidžiami viena playdemo komanda.

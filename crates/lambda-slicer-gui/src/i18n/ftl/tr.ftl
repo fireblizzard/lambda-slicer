@@ -178,10 +178,39 @@ show-actions = Diğer eylemler
 show-kills = Öldürmeler
 show-switches = Silah değişimleri
 show-chat = Sohbet
+show-match = Maç
 lane-unknown = Bilinmeyen oyuncu
 lane-recorder = { $name } (kaydeden)
 event-kill = { $victim } öldürüldü
 event-switch = Silah değişimi
+event-vote-called = { $subject } için oylama başlatıldı
+event-vote-cast = { $subject } oylaması: { $change } ({ $tally })
+event-vote-more-yes = { $count ->
+    [one] bir evet daha
+   *[other] { $count } evet daha
+}
+event-vote-fewer-yes = { $count ->
+    [one] bir evet eksik
+   *[other] { $count } evet eksik
+}
+event-vote-more-no = { $count ->
+    [one] bir hayır daha
+   *[other] { $count } hayır daha
+}
+event-vote-fewer-no = { $count ->
+    [one] bir hayır eksik
+   *[other] { $count } hayır eksik
+}
+event-vote-tally = { $yes } evet, { $no } hayır, { $undecided } kararsız
+event-vote-accepted = { $subject } oylaması kabul edildi
+event-vote-denied = { $subject } oylaması reddedildi
+event-timeout-called = Mola istendi
+event-timeout-under-way = Mola başladı
+event-timeout-over = Mola bitti
+event-paused = Oyun duraklatıldı
+event-resumed = Oyun devam etti
+event-sudden-death = Ani ölüm başladı
+event-sudden-death-over = Ani ölüm bitti
 action-swing = Vuruş
 action-fire = Atış
 action-launch = Fırlatma
@@ -485,6 +514,7 @@ settings-clear-library-text = { $count ->
 }
 viewer-zoom = Görüntüyü yakınlaştır
 viewer-see-through = Duvar arkasını gör
+viewer-paused = Duraklatıldı
 viewer-map-change = Sunucu haritayı { $map } olarak değiştiriyor
 settings-export-beside = Her demonun yanında
 settings-export-hint = liblist.gam bulunan mod klasörünüzde, örneğin Half-Life\ag, klipler tek bir playdemo komutuyla oynatılır.
