@@ -26,6 +26,7 @@ settings-sort = Порядок при запуске
 settings-sort-hint = Как сортируются демозаписи при каждом запуске Lambda Slicer. Щелчок по заголовку столбца всё равно сортирует по нему, пока вы не закроете Lambda Slicer.
 settings-start-filters = Фильтры при запуске
 settings-start-filters-hint = При каждом запуске Lambda Slicer в библиотеке включены эти фильтры, чтобы короткие демозаписи, которые вы не хотите видеть, не мешали. Фильтры всё равно можно менять, пока вы не закроете Lambda Slicer.
+settings-hide-unplayed-maps = В демозаписях с несколькими картами скрывать карты без убийств, записанные меньше 5 минут
 settings-folders = Папки библиотеки
 settings-folders-empty = Папки ещё не добавлены.
 settings-remove = Удалить

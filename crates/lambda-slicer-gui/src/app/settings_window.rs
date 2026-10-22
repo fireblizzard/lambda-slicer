@@ -419,6 +419,18 @@ impl App {
 
         self.starting_order(ui, rtl);
         self.starting_filters(ui, rtl);
+        layout::row(ui, rtl, |ui| {
+            let label = self.catalog.text("settings-hide-unplayed-maps");
+            if ui
+                .checkbox(&mut self.settings.hide_unplayed_maps, label)
+                .changed()
+            {
+                if let Some(l) = &mut self.library {
+                    l.set_every_map(!self.settings.hide_unplayed_maps);
+                }
+                self.settings_unsaved = true;
+            }
+        });
 
         heading(ui, &self.catalog, "settings-cache", None, rtl, false);
         let cache = self.cache_path.as_ref().map(|p| p.display().to_string());
@@ -879,6 +891,7 @@ impl App {
             l.filters_open = restored.layout.filters_open;
             l.list_filters_open = restored.layout.list_filters_open;
             l.sort_by_key(&restored.sort_column, restored.sort_descending);
+            l.set_every_map(!restored.hide_unplayed_maps);
         }
         if let Some(d) = &mut self.demo {
             d.lanes_open = restored.player_lanes;
@@ -967,6 +980,10 @@ fn changed_settings(current: &Settings, restored: &Settings) -> Vec<&'static str
         (now.workers != then.workers, "settings-workers"),
         (order(now) != order(then), "settings-sort"),
         (starting(now) != starting(then), "settings-start-filters"),
+        (
+            now.hide_unplayed_maps != then.hide_unplayed_maps,
+            "settings-hide-unplayed-maps",
+        ),
         (view.gamma != first.gamma, "settings-gamma"),
         (view.brightness != first.brightness, "settings-brightness"),
         (view.texgamma != first.texgamma, "settings-texgamma"),

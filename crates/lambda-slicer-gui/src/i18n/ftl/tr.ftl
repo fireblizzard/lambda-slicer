@@ -26,6 +26,7 @@ settings-sort = Açılıştaki sıra
 settings-sort-hint = Lambda Slicer her açıldığında demoların nasıl sıralanacağı. Bir sütunun başlığına tıklamak, Lambda Slicer'ı kapatana kadar yine o sütuna göre sıralar.
 settings-start-filters = Açılıştaki filtreler
 settings-start-filters-hint = Lambda Slicer her açıldığında kütüphane bu filtrelerle başlar, böylece hiç görmek istemediğiniz kısa demolar karşınıza çıkmaz. Lambda Slicer'ı kapatana kadar filtreleri yine de değiştirebilirsiniz.
+settings-hide-unplayed-maps = Birden çok haritalı demolarda, öldürme olmayan ve 5 dakikadan kısa kaydedilmiş haritaları gizle
 settings-folders = Kütüphane klasörleri
 settings-folders-empty = Henüz klasör eklenmedi.
 settings-remove = Kaldır

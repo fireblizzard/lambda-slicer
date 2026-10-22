@@ -134,9 +134,9 @@ impl GroupIndex {
             .map(|g| g.segment)
     }
 
-    /// The session played longest, by the time its frame groups last, each
-    /// group until the next one or the end. A tie goes to the later session
-    pub fn longest_segment(&self) -> Option<u32> {
+    /// How long each session was recorded for, in seconds, by the time its
+    /// frame groups last, each group until the next one or the end
+    pub fn segment_lengths(&self) -> BTreeMap<u32, f32> {
         let mut lengths: BTreeMap<u32, f32> = BTreeMap::new();
         for (k, group) in self.groups.iter().enumerate() {
             let until = match self.groups.get(k + 1) {
@@ -146,9 +146,14 @@ impl GroupIndex {
             let length = until.map_or(0., |t| (t - group.time).max(0.));
             *lengths.entry(group.segment).or_default() += length;
         }
+        lengths
+    }
 
+    /// The session played longest, by [`Self::segment_lengths`]. A tie goes
+    /// to the later session
+    pub fn longest_segment(&self) -> Option<u32> {
         let mut longest = None;
-        for (&segment, &length) in &lengths {
+        for (&segment, &length) in &self.segment_lengths() {
             if longest.is_none_or(|(_, most)| length >= most) {
                 longest = Some((segment, length));
             }

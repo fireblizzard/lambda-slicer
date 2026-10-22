@@ -32,6 +32,10 @@ pub struct Settings {
     /// filters ask of a demo when the app starts, 0 for any
     pub start_min_minutes: f32,
     pub start_min_kills: u32,
+    /// Whether the library leaves out the maps of a demo of several maps
+    /// that nobody was killed on and that were recorded for less than five
+    /// minutes, rather than naming every map
+    pub hide_unplayed_maps: bool,
     /// Whether a demo opens with its player lanes under the timeline. Files
     /// from before the timeline was always shown name it `show_timeline`
     #[serde(alias = "show_timeline")]
@@ -262,6 +266,7 @@ impl Default for Settings {
             sort_descending: true,
             start_min_minutes: 0.,
             start_min_kills: 0,
+            hide_unplayed_maps: true,
             player_lanes: false,
             preroll: 4.,
             postroll: 1.,
@@ -374,6 +379,7 @@ mod tests {
             sort_descending: false,
             start_min_minutes: 5.,
             start_min_kills: 25,
+            hide_unplayed_maps: false,
             player_lanes: true,
             preroll: 2.5,
             postroll: 0.,

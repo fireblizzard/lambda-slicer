@@ -26,6 +26,7 @@ settings-sort = Orden al abrir
 settings-sort-hint = Cómo se ordenan las demos cada vez que se abre Lambda Slicer. Si haces clic en el encabezado de una columna, se ordena por ella hasta que cierres Lambda Slicer.
 settings-start-filters = Filtros al abrir
 settings-start-filters-hint = La biblioteca arranca con estos filtros cada vez que se abre Lambda Slicer, así las demos cortas que nunca quieres ver no te estorban. Igual puedes cambiar los filtros hasta que cierres Lambda Slicer.
+settings-hide-unplayed-maps = En demos de varios mapas, ocultar los mapas sin bajas que se grabaron menos de 5 minutos
 settings-folders = Carpetas de la biblioteca
 settings-folders-empty = Todavía no agregaste carpetas.
 settings-remove = Quitar

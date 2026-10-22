@@ -31,7 +31,7 @@ use events::recorded_events;
 use highlights::{ActionWindow, action_windows, link_kills};
 use weapons::{Action, ActivityInterval, PROFILE, Weapon, WeaponOccurrence, derive};
 
-pub const ANALYSIS_SCHEMA: u32 = 12;
+pub const ANALYSIS_SCHEMA: u32 = 13;
 
 /// Length of an action window in seconds, and how many are reported
 pub const ACTION_WINDOW: f32 = 60.;

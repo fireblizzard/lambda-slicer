@@ -64,3 +64,4 @@
 - [ ] Support Blue Shift demos
 - [ ] Find demos of players by name or SteamID
 - [ ] Find chat messages across the whole library, like words or parts of a message, with filters like sender and map
+- [ ] Improve the match highlights (top moments), accounting for things that require skill like complicated kills, headshots, stunts, trickshots, etc.

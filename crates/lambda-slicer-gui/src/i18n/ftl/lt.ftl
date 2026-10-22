@@ -26,6 +26,7 @@ settings-sort = Tvarka paleidus
 settings-sort-hint = Kaip įrašai rikiuojami kaskart paleidus Lambda Slicer. Spustelėjus stulpelio antraštę, vis tiek rikiuojama pagal jį, kol uždarysite Lambda Slicer.
 settings-start-filters = Filtrai paleidus
 settings-start-filters-hint = Kaskart paleidus Lambda Slicer, bibliotekoje įjungiami šie filtrai, kad trumpi įrašai, kurių niekada nenorite matyti, netrukdytų. Filtrus vis tiek galite keisti, kol uždarysite Lambda Slicer.
+settings-hide-unplayed-maps = Kelių žemėlapių įrašuose nerodyti žemėlapių be nužudymų, įrašytų trumpiau nei 5 minutes
 settings-folders = Bibliotekos aplankai
 settings-folders-empty = Aplankų dar nepridėta.
 settings-remove = Pašalinti

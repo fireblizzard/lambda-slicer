@@ -14,6 +14,8 @@
 //! gun is the killer, with the gun's name. Singleplayer sends no death
 //! messages at all
 
+use std::collections::BTreeMap;
+
 use super::accuracy::{Blood, Pose, TE_BLOODSPRITE, blood_origin};
 use crate::message::Message as Note;
 use serde::{Deserialize, Serialize};
@@ -534,26 +536,62 @@ pub fn short_map_name(path: &str) -> String {
     name.strip_suffix(".bsp").unwrap_or(name).to_owned()
 }
 
-/// Every map in `maps` played on, in a session of `played` where someone
-/// was killed, once, in the order they were first played, as the library
-/// lists them, such as `ag_hidden_lab, elixir`. A demo may end shortly after
-/// the next map loads, with nothing played there. With no kill anywhere,
-/// the first map
-pub fn map_list(maps: &[SessionMap], played: &[u32]) -> String {
-    let mut names: Vec<&str> = Vec::new();
-    for map in maps {
-        let played = played.contains(&map.segment);
-        if played && !names.contains(&map.name.as_str()) {
-            names.push(&map.name);
+/// How long a map must be recorded for, in seconds, to be listed with
+/// nobody killed on it
+const LEAST_PLAYED: f32 = 5. * 60.;
+
+/// Every map in `maps` once, in the order they were first played, as the
+/// library lists them, such as `ag_hidden_lab, elixir`. A demo of several
+/// maps may end shortly after the next one loads, with nothing played
+/// there, so it leaves out a map nobody was killed on and recorded for less
+/// than five minutes. `played` gives the sessions someone was killed in and
+/// `lengths` how long each session was recorded for. With no map left, the
+/// first
+pub fn map_list(maps: &[SessionMap], played: &[u32], lengths: &BTreeMap<u32, f32>) -> String {
+    let names = map_names(maps);
+    if names.len() < 2 {
+        return names.join(", ");
+    }
+
+    // A map counts as played with a kill in any of its sessions, or with
+    // five minutes recorded over them
+    let mut kept: Vec<&str> = Vec::new();
+    for name in names {
+        let mut killed_on = false;
+        let mut recorded = 0.;
+        for map in maps.iter().filter(|m| m.name == name) {
+            killed_on |= played.contains(&map.segment);
+            recorded += lengths.get(&map.segment).copied().unwrap_or(0.);
+        }
+        if killed_on || recorded >= LEAST_PLAYED {
+            kept.push(name);
         }
     }
 
-    if names.is_empty()
+    if kept.is_empty()
         && let Some(first) = maps.first()
     {
-        names.push(&first.name);
+        kept.push(&first.name);
     }
-    names.join(", ")
+    kept.join(", ")
+}
+
+/// Every map in `maps` once, in the order they were first played, whether
+/// anything was played on them or not
+pub fn every_map(maps: &[SessionMap]) -> String {
+    map_names(maps).join(", ")
+}
+
+/// The names of the maps in `maps`, each once, in the order they were first
+/// played
+fn map_names(maps: &[SessionMap]) -> Vec<&str> {
+    let mut names: Vec<&str> = Vec::new();
+    for map in maps {
+        if !names.contains(&map.name.as_str()) {
+            names.push(&map.name);
+        }
+    }
+    names
 }
 
 /// A line of chat, as `SayText` sent it
@@ -1024,15 +1062,29 @@ mod tests {
             map(4, "maps/endcamp.bsp"),
         ];
         assert_eq!(
-            map_list(&maps, &[1, 2, 3, 4]),
+            map_list(&maps, &[1, 2, 3, 4], &BTreeMap::new()),
             "ag_hidden_lab, elixir, endcamp"
         );
 
-        // A map nobody was killed on is left out, unless no map had a kill
-        assert_eq!(map_list(&maps, &[1, 2, 3]), "ag_hidden_lab, elixir");
-        assert_eq!(map_list(&maps, &[2]), "elixir");
-        assert_eq!(map_list(&maps, &[]), "ag_hidden_lab");
-        assert_eq!(map_list(&[], &[]), "");
+        // A map nobody was killed on and recorded for less than five
+        // minutes is left out, unless no map is left
+        let short = BTreeMap::from([(1, 600.), (2, 600.), (3, 30.), (4, 30.)]);
+        assert_eq!(map_list(&maps, &[1, 2, 3], &short), "ag_hidden_lab, elixir");
+        assert_eq!(map_list(&maps, &[2], &short), "ag_hidden_lab, elixir");
+        assert_eq!(map_list(&maps, &[], &BTreeMap::new()), "ag_hidden_lab");
+        assert_eq!(map_list(&[], &[], &BTreeMap::new()), "");
+
+        // Five minutes or more counts as played, kills or not, over all of a
+        // map's sessions
+        let long = BTreeMap::from([(1, 200.), (2, 10.), (3, 100.), (4, 300.)]);
+        assert_eq!(map_list(&maps, &[], &long), "ag_hidden_lab, endcamp");
+
+        // A demo of one map always names it
+        let one = [map(1, "maps/endcamp.bsp"), map(2, "maps/endcamp.bsp")];
+        assert_eq!(map_list(&one, &[], &BTreeMap::new()), "endcamp");
+
+        // Every map, played or not
+        assert_eq!(every_map(&maps), "ag_hidden_lab, elixir, endcamp");
         assert_eq!(short_map_name("crossfire"), "crossfire");
     }
 

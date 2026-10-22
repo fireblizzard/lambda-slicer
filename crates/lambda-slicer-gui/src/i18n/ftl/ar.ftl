@@ -26,6 +26,7 @@ settings-sort = الترتيب عند التشغيل
 settings-sort-hint = كيف تُرتَّب التسجيلات في كل مرة يُشغَّل فيها Lambda Slicer. النقر على عنوان عمود يظل يرتّب حسبه حتى تُغلق Lambda Slicer.
 settings-start-filters = المرشحات عند التشغيل
 settings-start-filters-hint = تبدأ المكتبة بهذه المرشحات في كل مرة يُشغَّل فيها Lambda Slicer، فتبقى التسجيلات القصيرة التي لا تريد رؤيتها بعيدًا عن طريقك. يظل بإمكانك تغيير المرشحات حتى تُغلق Lambda Slicer.
+settings-hide-unplayed-maps = في التسجيلات ذات الخرائط المتعددة، إخفاء الخرائط التي لا قتلات فيها وسُجِّلت أقل من 5 دقائق
 settings-folders = مجلدات المكتبة
 settings-folders-empty = لم تُضف أي مجلدات بعد.
 settings-remove = إزالة

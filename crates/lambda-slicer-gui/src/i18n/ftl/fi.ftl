@@ -26,6 +26,7 @@ settings-sort = Järjestys käynnistettäessä
 settings-sort-hint = Miten demot lajitellaan aina, kun Lambda Slicer käynnistyy. Sarakkeen otsikon napsauttaminen lajittelee silti sen mukaan, kunnes suljet Lambda Slicerin.
 settings-start-filters = Suodattimet käynnistettäessä
 settings-start-filters-hint = Kirjasto käyttää näitä suodattimia aina, kun Lambda Slicer käynnistyy, joten lyhyet demot, joita et koskaan halua nähdä, pysyvät poissa tieltä. Voit silti muuttaa suodattimia, kunnes suljet Lambda Slicerin.
+settings-hide-unplayed-maps = Jätä usean kartan demoista pois kartat, joilla ei ole tappoja ja joita nauhoitettiin alle 5 minuuttia
 settings-folders = Kirjaston kansiot
 settings-folders-empty = Kansioita ei ole vielä lisätty.
 settings-remove = Poista

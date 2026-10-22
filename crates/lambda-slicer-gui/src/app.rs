@@ -232,6 +232,7 @@ impl App {
         if let Some(l) = &mut library {
             l.filters.min_minutes = settings.start_min_minutes;
             l.filters.min_kills = settings.start_min_kills;
+            l.set_every_map(!settings.hide_unplayed_maps);
         }
 
         // The filters as they were left, and the order chosen to start with

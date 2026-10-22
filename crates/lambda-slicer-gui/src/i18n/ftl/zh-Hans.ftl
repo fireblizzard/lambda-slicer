@@ -26,6 +26,7 @@ settings-sort = 启动时的顺序
 settings-sort-hint = 每次启动 Lambda Slicer 时录像的排序方式。点击列标题仍会按该列排序，直到你关闭 Lambda Slicer。
 settings-start-filters = 启动时的筛选
 settings-start-filters-hint = 每次启动 Lambda Slicer 时，库都会启用这些筛选，这样你不想看的短录像就不会碍事。你仍然可以更改筛选，直到关闭 Lambda Slicer。
+settings-hide-unplayed-maps = 在包含多张地图的录像中，隐藏没有击杀且录制不到 5 分钟的地图
 settings-folders = 库文件夹
 settings-folders-empty = 尚未添加文件夹。
 settings-remove = 移除

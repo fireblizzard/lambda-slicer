@@ -487,6 +487,9 @@ pub struct LibraryView {
     pub filters_open: bool,
     /// The narrow list shows its filters in place of its rows
     pub list_filters_open: bool,
+    /// Name every map a demo recorded, rather than leaving out those of a
+    /// demo of several maps that were barely played
+    every_map: bool,
     /// The table row the arrow keys have reached, and that it should be
     /// scrolled into view
     cursor: Option<usize>,
@@ -523,6 +526,7 @@ impl LibraryView {
             error: None,
             filters_open: true,
             list_filters_open: false,
+            every_map: false,
             cursor: None,
             path_notice: None,
             scroll_to_cursor: false,
@@ -589,7 +593,19 @@ impl LibraryView {
     }
 
     fn query(&self) -> FileQuery {
-        self.filters.query(self.sort, self.descending)
+        FileQuery {
+            every_map: self.every_map,
+            ..self.filters.query(self.sort, self.descending)
+        }
+    }
+
+    /// Name every map a demo recorded, or leave out those of a demo of
+    /// several maps that were barely played
+    pub fn set_every_map(&mut self, every_map: bool) {
+        if self.every_map != every_map {
+            self.every_map = every_map;
+            self.mark_stale();
+        }
     }
 
     fn cache(&mut self) -> Option<&Cache> {

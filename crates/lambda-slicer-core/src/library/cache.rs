@@ -15,14 +15,14 @@ use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};
 use serde::Serialize;
 
 use super::date::recorded;
-use crate::analysis::context::{Scoreboard, map_list, short_map_name};
+use crate::analysis::context::{Scoreboard, every_map, map_list, short_map_name};
 use crate::analysis::weapons::{Actor, PROFILE};
 use crate::analysis::{ANALYSIS_SCHEMA, AnalysisReport};
 use crate::message::Message;
 use crate::state::{DECODE_REPORT_SCHEMA, DecodeStatus};
 
 /// Layout of the tables below. A different value rebuilds the cache
-pub const CACHE_SCHEMA: i64 = 7;
+pub const CACHE_SCHEMA: i64 = 8;
 
 #[derive(Debug, thiserror::Error)]
 pub enum CacheError {
@@ -138,6 +138,7 @@ CREATE TABLE files(
     error_code TEXT,
     error_args TEXT,
     map TEXT,
+    all_maps TEXT,
     game_dir TEXT,
     clip_of TEXT,
     demo_protocol INTEGER,
@@ -397,6 +398,9 @@ pub struct FileQuery {
     pub text: Option<String>,
     /// Text in the map name, ignoring case
     pub map: Option<String>,
+    /// Name every map a demo recorded, rather than leaving out those of a
+    /// demo of several maps that were barely played
+    pub every_map: bool,
     /// Text in any player's name, ignoring case
     pub player: Option<String>,
     /// Shortest duration in seconds, and fewest kills
@@ -668,16 +672,20 @@ impl Cache {
         });
         let recorded = recorded(e.path, e.mtime_ns);
 
-        // Every map played in the demo, those of the sessions with a kill, or
+        // Every map played in the demo, by its sessions' kills and lengths, or
         // the header's first one when the analysis found none
         let played: Vec<u32> =
             r.map_or(Vec::new(), |r| r.kills.iter().map(|k| k.segment).collect());
         let maps = match r
-            .map(|r| map_list(&r.maps, &played))
+            .map(|r| map_list(&r.maps, &played, &r.groups.segment_lengths()))
             .filter(|m| !m.is_empty())
         {
             Some(maps) => Some(maps),
             None => h.map(|h| short_map_name(&h.map)),
+        };
+        let all_maps = match r.map(|r| every_map(&r.maps)).filter(|m| !m.is_empty()) {
+            Some(all) => Some(all),
+            None => maps.clone(),
         };
         let scanned_at = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -691,10 +699,10 @@ impl Cache {
                 demo_protocol, network_protocol, duration, recording_kind, max_clients, recorder,
                 playback, spectator_fraction, shots, unknown_shots, kills, best_window,
                 coverage_json, recorded_at, date_source, score, score_json, headshots, accuracy,
-                scanned_at, floors, clip_of)
+                scanned_at, floors, clip_of, all_maps)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16,
                 ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30, ?31,
-                ?32, ?33, ?34, ?35, ?36)",
+                ?32, ?33, ?34, ?35, ?36, ?37)",
             params![
                 display,
                 native_bytes(e.path),
@@ -732,6 +740,7 @@ impl Cache {
                 scanned_at,
                 e.floors,
                 h.and_then(|h| h.clip_of.clone()),
+                all_maps,
             ],
         )?;
         let id = tx.last_insert_rowid();
@@ -895,6 +904,11 @@ impl Cache {
         c.join(" AND ")
     }
 
+    /// The column of `files` aliased `f` that names `q`'s maps
+    fn map_column(q: &FileQuery) -> &'static str {
+        if q.every_map { "f.all_maps" } else { "f.map" }
+    }
+
     /// The WHERE clause for `q` over `files` aliased `f`, with its arguments
     fn conditions(q: &FileQuery) -> (String, Vec<Box<dyn ToSql>>) {
         let mut args: Vec<Box<dyn ToSql>> = vec![Box::new(analysis_version())];
@@ -905,7 +919,8 @@ impl Cache {
         }
         if let Some(m) = q.map.as_deref().filter(|m| !m.is_empty()) {
             args.push(Box::new(fold(m)));
-            c.push(format!("instr(fold(f.map), ?{}) > 0", args.len()));
+            let column = Self::map_column(q);
+            c.push(format!("instr(fold({column}), ?{}) > 0", args.len()));
         }
         if let Some(p) = q.player.as_deref().filter(|p| !p.is_empty()) {
             args.push(Box::new(fold(p)));
@@ -983,9 +998,14 @@ impl Cache {
         args.push(Box::new(q.offset as i64));
         let offset = args.len();
         let direction = if q.descending { "DESC" } else { "ASC" };
+        let map = Self::map_column(q);
+        let order = match q.sort {
+            Sort::Map => map,
+            other => other.column(),
+        };
 
         let sql = format!(
-            "SELECT f.id, f.path, f.status, f.map, f.duration, f.recording_kind,
+            "SELECT f.id, f.path, f.status, {map}, f.duration, f.recording_kind,
                 f.spectator_fraction, f.kills, f.best_window, f.error_code, f.error_args, f.error,
                 f.recorder, f.shots,
                 (SELECT w.shots FROM weapons w WHERE w.file_id = f.id AND w.weapon = 'gauss')
@@ -993,9 +1013,8 @@ impl Cache {
                 f.recorded_at, f.date_source, f.score, f.headshots, f.accuracy, f.path_blob,
                 f.score_json, f.mtime_ns, f.clip_of
              FROM files f WHERE {conditions}
-             ORDER BY {} {direction} NULLS LAST, f.path
-             LIMIT ?{limit} OFFSET ?{offset}",
-            q.sort.column()
+             ORDER BY {order} {direction} NULLS LAST, f.path
+             LIMIT ?{limit} OFFSET ?{offset}"
         );
         let mut stmt = self.conn.prepare(&sql)?;
         let refs: Vec<&dyn ToSql> = args.iter().map(|a| a.as_ref()).collect();
@@ -1287,6 +1306,49 @@ mod tests {
 
         assert_eq!(rows[1].scoreboard, None);
         assert_eq!(rows[2].scoreboard, None);
+    }
+
+    #[test]
+    fn every_map_names_and_finds_the_maps_left_out() {
+        let mut c = Cache::in_memory().unwrap();
+        c.store(&Entry {
+            path: Path::new("two.dem"),
+            size: 1,
+            mtime_ns: None,
+            file_identity: None,
+            quick_hash: None,
+            full_hash: None,
+            header: None,
+            report: None,
+            error: None,
+            floors: None,
+        })
+        .unwrap();
+
+        // Stored as an analysis of a demo ending on an empty map would have
+        c.conn
+            .execute(
+                "UPDATE files SET map = 'boot_camp', all_maps = 'boot_camp, endcamp'",
+                [],
+            )
+            .unwrap();
+
+        let maps = |every_map: bool, map: &str| -> Vec<Option<String>> {
+            let q = FileQuery {
+                every_map,
+                map: Some(map.into()),
+                sort: Sort::Map,
+                limit: 10,
+                ..FileQuery::default()
+            };
+            c.query(&q).unwrap().into_iter().map(|f| f.map).collect()
+        };
+        assert_eq!(maps(false, "boot"), [Some("boot_camp".to_owned())]);
+        assert!(maps(false, "endcamp").is_empty());
+        assert_eq!(
+            maps(true, "endcamp"),
+            [Some("boot_camp, endcamp".to_owned())]
+        );
     }
 
     #[test]

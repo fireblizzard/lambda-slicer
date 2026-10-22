@@ -27,6 +27,7 @@ settings-sort = Order at start
 settings-sort-hint = How the demos are sorted each time the app starts. Clicking a column's heading still sorts by it until you close the app.
 settings-start-filters = Filters at start
 settings-start-filters-hint = The library starts with these filters on each time the app opens, so short demos you never want to see stay out of the way. You can still change the filters until you close the app.
+settings-hide-unplayed-maps = In demos of several maps, leave out maps with no kills recorded for less than 5 minutes
 settings-folders = Library folders
 settings-folders-empty = No folders added yet.
 settings-remove = Remove

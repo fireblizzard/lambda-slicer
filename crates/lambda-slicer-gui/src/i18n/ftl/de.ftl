@@ -26,6 +26,7 @@ settings-sort = Reihenfolge beim Start
 settings-sort-hint = Wie die Demos bei jedem Start von Lambda Slicer sortiert werden. Ein Klick auf die Überschrift einer Spalte sortiert trotzdem danach, bis du Lambda Slicer schließt.
 settings-start-filters = Filter beim Start
 settings-start-filters-hint = Bei jedem Start von Lambda Slicer sind diese Filter in der Bibliothek eingeschaltet, damit kurze Demos, die du nie sehen willst, nicht im Weg sind. Du kannst die Filter trotzdem ändern, bis du Lambda Slicer schließt.
+settings-hide-unplayed-maps = Bei Demos mit mehreren Maps die Maps weglassen, auf denen es keine Abschüsse gab und die weniger als 5 Minuten aufgenommen wurden
 settings-folders = Bibliotheksordner
 settings-folders-empty = Noch keine Ordner hinzugefügt.
 settings-remove = Entfernen
