@@ -1,6 +1,7 @@
-//! The recording player's health, armour and ammo over the view, where the
-//! game's client draws them and with its sprites (HLSDK's `CHudHealth`,
-//! `CHudBattery`, `CHudAmmo` and `DrawHudNumber`)
+//! The recording player's health, armour and ammo over the view, and what
+//! they picked up, where the game's client draws them and with its sprites
+//! (HLSDK's `CHudHealth`, `CHudBattery`, `CHudAmmo`, `DrawHudNumber` and
+//! `HistoryResource`)
 //!
 //! All three stand on one row, a digit and a half above the bottom. The
 //! health has the cross, three digits and a thin bar after them at the left,
@@ -9,6 +10,15 @@
 //! magazine, a bar and the ammo carried, then the ammo's icon from the
 //! weapon's own sprite list. A second kind of ammo stands a row higher.
 //! Numbers have three digits' room, leading zeros left blank.
+//!
+//! What was picked up stands at the right, each in its place 50 rows above
+//! the one below, a weapon's height and a little more. The game puts the lowest 72 rows above the bottom, where
+//! it can cover the ammo, so here it stands a tenth of the height under the
+//! middle instead, the rest climbing from there. Ammo is its icon 24
+//! from the right with how much before it, a weapon its sprite against the
+//! right edge, red when it has no ammo to fire, and an item its icon 10
+//! from the right. Each is at full brightness until less than a little
+//! over three seconds are left, then fades out.
 //!
 //! Everything is added to the picture in the HUD's colour, brighter for a
 //! while after it changes. Health and armour start at 228 of 255 and fade
@@ -21,7 +31,7 @@
 
 use eframe::egui::{self, Color32, Pos2, Rect, TextureHandle, Vec2};
 use lambda_slicer_audio::library::Library;
-use lambda_slicer_playback::status::{Reading, Shown, WeaponStatus};
+use lambda_slicer_playback::status::{Pickup, PickupShown, Reading, Shown, WeaponStatus};
 use lambda_slicer_playback::time::SourceTime;
 
 use crate::hud_sprites::{HUD_LIST, HudSprites};
@@ -53,6 +63,22 @@ const ARMOUR_ACROSS: f32 = 1. / 5.;
 const DIGITS: u32 = 3;
 const AMMO_ROOM: f32 = 8.;
 const RESERVE_ROOM: f32 = 4.;
+
+/// Where the lowest pickup stands, as a share of the height down from the
+/// top, how far apart pickups stand, the tallest weapon's 45 rows and 5
+/// more, where ammo's icon and an item's stand from the right, and the room
+/// before ammo's icon (`AMMO_PICKUP_GAP`, `iHistoryGap`)
+const PICKUP_LOWEST: f32 = 0.6;
+const PICKUP_STEP: f32 = 50.;
+const PICKUP_AMMO_RIGHT: f32 = 24.;
+const PICKUP_ITEM_RIGHT: f32 = 10.;
+const PICKUP_COUNT_GAP: f32 = 10.;
+
+/// How much brighter a pickup is for each second it has left, the text's
+/// size, and the colour of a weapon without ammo (`RGB_REDISH`)
+const PICKUP_FADE: f32 = 80.;
+const PICKUP_TEXT_SIZE: f32 = 13.;
+const NO_AMMO_COLOUR: Color32 = Color32::from_rgb(255, 16, 16);
 
 /// The brightness of a reading at `at`, `start` more than the least at its
 /// change, fading by `FADE_PER_SECOND`
@@ -99,7 +125,30 @@ struct Painter<'a> {
     scale: f32,
 }
 
-impl Painter<'_> {
+impl<'a> Painter<'a> {
+    /// A painter over the view at `rect`, `size` times the game's size
+    fn new(
+        ui: &'a egui::Ui,
+        sprites: &'a mut HudSprites,
+        library: &'a Library,
+        rect: Rect,
+        size: f32,
+    ) -> Self {
+        Painter {
+            painter: ui.painter_at(rect),
+            ctx: ui.ctx(),
+            library,
+            sprites,
+            rect,
+            scale: rect.height() / SCREEN_HEIGHT * size,
+        }
+    }
+
+    /// The game's screen as wide and as high as the view makes it
+    fn screen(&self) -> Vec2 {
+        self.rect.size() / self.scale
+    }
+
     /// The point `x`, `y` of the game's screen
     fn at(&self, x: f32, y: f32) -> Pos2 {
         Pos2::new(
@@ -130,6 +179,13 @@ impl Painter<'_> {
     fn bar(&self, x: f32, y: f32, width: f32, height: f32, tint: Color32) {
         let place = Rect::from_min_size(self.at(x, y), Vec2::new(width, height) * self.scale);
         self.painter.rect_filled(place, 0., tint);
+    }
+
+    /// `text` added with its right end at `x` and its top at `y`
+    fn text_before(&self, x: f32, y: f32, text: String, tint: Color32) {
+        let font = egui::FontId::proportional(PICKUP_TEXT_SIZE * self.scale);
+        let align = egui::Align2::RIGHT_TOP;
+        self.painter.text(self.at(x, y), align, text, font, tint);
     }
 
     /// `value` in digits at `x`, `y` with three digits' room, returning where
@@ -163,22 +219,17 @@ pub fn draw(
     shown: &Shown,
     at: SourceTime,
 ) {
-    let scale = rect.height() / SCREEN_HEIGHT * size;
-    let mut p = Painter {
-        painter: ui.painter_at(rect),
-        ctx: ui.ctx(),
-        library,
-        sprites,
-        rect,
-        scale,
-    };
+    let mut p = Painter::new(ui, sprites, library, rect, size);
 
     // A digit's size sets the row and the room numbers take (`m_iFontHeight`)
     let Some(digit) = p.icon(HUD_LIST, "number_0") else {
         return;
     };
     let digit = digit.size_vec2();
-    let (width, height) = (rect.width() / scale, rect.height() / scale);
+    let Vec2 {
+        x: width,
+        y: height,
+    } = p.screen();
     let row = height - digit.y - digit.y / 2.;
 
     if let Some(health) = &shown.health {
@@ -189,6 +240,60 @@ pub fn draw(
     }
     if let Some(weapon) = &shown.weapon {
         draw_ammo(&mut p, weapon, digit, row, width, at);
+    }
+}
+
+/// What the recording player picked up in `pickups` over the view at `rect`
+/// at `at`, `size` times the game's size, their sprites from `library`
+pub fn draw_pickups(
+    ui: &egui::Ui,
+    sprites: &mut HudSprites,
+    library: &Library,
+    rect: Rect,
+    size: f32,
+    pickups: &[Pickup],
+    at: SourceTime,
+) {
+    let mut p = Painter::new(ui, sprites, library, rect, size);
+    let Vec2 {
+        x: width,
+        y: height,
+    } = p.screen();
+
+    for pickup in pickups {
+        let left = (pickup.until.0 - at.0).max(0.) as f32;
+        let brightness = (left * PICKUP_FADE).min(255.);
+        let y = height * PICKUP_LOWEST - PICKUP_STEP * pickup.place as f32;
+
+        match &pickup.shown {
+            PickupShown::Ammo {
+                weapon,
+                icon,
+                count,
+            } => {
+                let tint = scaled(HUD_COLOR, brightness);
+                let x = width - PICKUP_AMMO_RIGHT;
+                let list = format!("sprites/{weapon}.txt");
+                if let Some(icon) = p.icon(&list, icon) {
+                    p.draw(&icon, x, y, tint, 0.);
+                }
+                p.text_before(x - PICKUP_COUNT_GAP, y, count.to_string(), tint);
+            }
+            PickupShown::Weapon { name, empty } => {
+                let colour = if *empty { NO_AMMO_COLOUR } else { HUD_COLOR };
+                let list = format!("sprites/{name}.txt");
+                if let Some(icon) = p.icon(&list, "weapon") {
+                    let x = width - icon.size_vec2().x;
+                    p.draw(&icon, x, y, scaled(colour, brightness), 0.);
+                }
+            }
+            PickupShown::Item(name) => {
+                if let Some(icon) = p.icon(HUD_LIST, name) {
+                    let x = width - icon.size_vec2().x - PICKUP_ITEM_RIGHT;
+                    p.draw(&icon, x, y, scaled(HUD_COLOR, brightness), 0.);
+                }
+            }
+        }
     }
 }
 

@@ -102,6 +102,8 @@ pub struct PresentedFrame {
     pub announced: Announced,
     /// The recording player's health, armour and ammo
     pub status: status::Shown,
+    /// What the recording player picked up, while it shows
+    pub pickups: Vec<status::Pickup>,
     /// The small scoreboard's rows, highest first
     pub scores: Vec<ScoreRow>,
 }
@@ -710,6 +712,7 @@ impl Playback {
             chat: state.hud.chat(at),
             announced: state.hud.announced(at),
             status: state.hud.status(),
+            pickups: state.hud.pickups(at),
             scores: state.hud.scores(&state.decoder),
             temp_entities: state
                 .tempents

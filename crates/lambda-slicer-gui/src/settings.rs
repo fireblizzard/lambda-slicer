@@ -142,8 +142,8 @@ pub struct ViewerSettings {
     pub viewmodel: bool,
     pub crosshair: bool,
     pub chat: bool,
-    /// Whether the recorder's health, armour and ammo show, and their size
-    /// against the game's
+    /// Whether the recorder's health, armour, ammo and pickups show, and
+    /// their size against the game's
     pub vitals: bool,
     pub vitals_size: f32,
     /// Whether the small scoreboard shows at the top left, and its most

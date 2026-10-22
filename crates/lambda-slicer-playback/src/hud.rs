@@ -300,6 +300,11 @@ impl Hud {
         self.status.shown()
     }
 
+    /// What the recording player picked up and still shows at `at`
+    pub fn pickups(&self, at: SourceTime) -> Vec<status::Pickup> {
+        self.status.pickups(at)
+    }
+
     /// The small scoreboard's rows, highest first, with the players
     /// `decoder` knows
     pub fn scores(&self, decoder: &Decoder) -> Vec<ScoreRow> {
