@@ -14,14 +14,11 @@
 //! colour (`GetClientColor`), and AG's `^1` to `^8` colour what follows
 //! them until `^0` or `^9` (OpenAG's colour tags)
 
-use std::collections::HashMap;
-use std::sync::Arc;
-
-use eframe::egui::{self, Color32, Pos2, Rect, TextureHandle, Vec2};
-use lambda_slicer_assets::Limits as AssetLimits;
-use lambda_slicer_assets::sprite::{self, Sprite};
+use eframe::egui::{self, Color32, Pos2, Rect, Vec2};
 use lambda_slicer_audio::library::Library;
 use lambda_slicer_playback::hud::{DeathNotice, NoticeName};
+
+use crate::hud_sprites::{HUD_LIST, HudSprites};
 
 /// The game's screen height the HUD is laid out on
 const SCREEN_HEIGHT: f32 = 480.;
@@ -44,9 +41,6 @@ const TEAMKILL_ICON: Color32 = Color32::from_rgb(10, 240, 10);
 /// The icon a weapon without one of its own takes
 const FALLBACK_ICON: &str = "d_skull";
 
-/// The screen width whose sprites `hud.txt` names for the HUD
-pub(crate) const HUD_RESOLUTION: &str = "640";
-
 /// The colours `^1` to `^8` give a name
 pub(crate) const TAG_COLOURS: [Color32; 8] = [
     Color32::from_rgb(255, 0, 0),
@@ -66,59 +60,11 @@ const TEAM_RED: Color32 = Color32::from_rgb(255, 64, 64);
 const NO_TEAM: Color32 = Color32::from_rgb(255, 179, 0);
 const OTHER_TEAM: Color32 = Color32::from_rgb(204, 204, 204);
 
-/// Where an icon lies in its sheet, as `hud.txt` gives it
-#[derive(Clone, Debug, PartialEq)]
-pub(crate) struct Place {
-    pub sheet: String,
-    pub x: u32,
-    pub y: u32,
-    pub width: u32,
-    pub height: u32,
-}
-
 /// The kill feed's icons, read from the game's files as they are first
 /// needed
 #[derive(Default)]
 pub struct KillFeed {
-    /// `hud.txt`'s icons by name, none until read
-    places: Option<HashMap<String, Place>>,
-    sheets: HashMap<String, Option<Arc<Sprite>>>,
-    icons: HashMap<String, Option<TextureHandle>>,
-}
-
-/// The icons `hud.txt` places for the HUD's screen width. Each line is a
-/// name, a screen width, a sheet in `sprites/` and the icon's place in it.
-/// A weapon's own file, such as `sprites/weapon_crossbow.txt`, is laid out
-/// the same
-pub(crate) fn places(text: &str) -> HashMap<String, Place> {
-    let mut out = HashMap::new();
-    for line in text.lines() {
-        let words: Vec<&str> = line.split_whitespace().collect();
-        let [name, resolution, sheet, x, y, width, height] = words[..] else {
-            continue;
-        };
-        if resolution != HUD_RESOLUTION {
-            continue;
-        }
-
-        let number = |s: &str| s.parse::<u32>().ok();
-        if let (Some(x), Some(y), Some(width), Some(height)) =
-            (number(x), number(y), number(width), number(height))
-        {
-            let sheet = sheet.to_owned();
-            out.insert(
-                name.to_owned(),
-                Place {
-                    sheet,
-                    x,
-                    y,
-                    width,
-                    height,
-                },
-            );
-        }
-    }
-    out
+    sprites: HudSprites,
 }
 
 /// A team's colour for a name
@@ -172,40 +118,6 @@ pub(crate) fn add_tagged(
 }
 
 impl KillFeed {
-    /// The icon named `name`, read from `library` the first time it is
-    /// asked for
-    fn icon(
-        &mut self,
-        ctx: &egui::Context,
-        library: &Library,
-        name: &str,
-    ) -> Option<TextureHandle> {
-        if let Some(icon) = self.icons.get(name) {
-            return icon.clone();
-        }
-
-        let places = self.places.get_or_insert_with(|| {
-            let text = library.read("sprites/hud.txt").unwrap_or_default();
-            places(&String::from_utf8_lossy(&text))
-        });
-        let place = places.get(name).cloned();
-        let icon = place.and_then(|place| {
-            let sheet = self
-                .sheets
-                .entry(place.sheet.clone())
-                .or_insert_with(|| {
-                    let bytes = library.read(&format!("sprites/{}.spr", place.sheet))?;
-                    sprite::parse(&bytes, AssetLimits::default())
-                        .ok()
-                        .map(Arc::new)
-                })
-                .clone()?;
-            Some(ctx.load_texture(name, cut(&sheet, &place)?, egui::TextureOptions::LINEAR))
-        });
-        self.icons.insert(name.to_owned(), icon.clone());
-        icon
-    }
-
     /// The kill feed's `notices` over the view at `rect`, its icons from
     /// `library`
     pub fn draw(&mut self, ui: &egui::Ui, rect: Rect, notices: &[DeathNotice], library: &Library) {
@@ -216,9 +128,8 @@ impl KillFeed {
         for (i, notice) in notices.iter().enumerate() {
             let top = rect.top() + (FIRST_LINE + LINE_STEP * i as f32) * scale;
             let name = format!("d_{}", notice.weapon);
-            let icon = self
-                .icon(ui.ctx(), library, &name)
-                .or_else(|| self.icon(ui.ctx(), library, FALLBACK_ICON));
+            let mut icon = |name: &str| self.sprites.icon(ui.ctx(), library, HUD_LIST, name);
+            let icon = icon(&name).or_else(|| icon(FALLBACK_ICON));
             let icon_size = icon.as_ref().map_or(Vec2::ZERO, |i| i.size_vec2() * scale);
 
             // From the right edge, the victim, the icon and then the killer
@@ -243,51 +154,9 @@ impl KillFeed {
     }
 }
 
-/// The icon at `place` in `sheet`'s first frame, its colours added to what
-/// is under it as the game adds a HUD sprite, so it carries no opacity
-fn cut(sheet: &Sprite, place: &Place) -> Option<egui::ColorImage> {
-    let frame = sheet.frames.first()?;
-    let (width, height) = (place.width as usize, place.height as usize);
-    let mut pixels = Vec::with_capacity(width * height);
-    for row in 0..height {
-        for column in 0..width {
-            let (x, y) = (place.x as usize + column, place.y as usize + row);
-            if x >= frame.width as usize || y >= frame.height as usize {
-                pixels.push(Color32::TRANSPARENT);
-                continue;
-            }
-            let index = frame.indices[y * frame.width as usize + x];
-            let [r, g, b] = sheet
-                .palette
-                .get(usize::from(index))
-                .copied()
-                .unwrap_or([0; 3]);
-            pixels.push(Color32::from_rgba_premultiplied(r, g, b, 0));
-        }
-    }
-    Some(egui::ColorImage::new([width, height], pixels))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn hud_txt_places_the_hud_widths_icons() {
-        let text = "137\nd_9mmAR\t\t320\t320hud1\t96\t48\t24\t8\nd_9mmAR\t\t\t640\t640hud1\t192\t48\t48\t16\nbroken 640 x\n";
-        let found = places(text);
-        assert_eq!(found.len(), 1);
-        assert_eq!(
-            found["d_9mmAR"],
-            Place {
-                sheet: "640hud1".into(),
-                x: 192,
-                y: 48,
-                width: 48,
-                height: 16,
-            }
-        );
-    }
 
     #[test]
     fn colour_codes_colour_what_follows_until_reset() {

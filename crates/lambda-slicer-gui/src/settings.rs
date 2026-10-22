@@ -142,6 +142,10 @@ pub struct ViewerSettings {
     pub viewmodel: bool,
     pub crosshair: bool,
     pub chat: bool,
+    /// Whether the recorder's health, armour and ammo show, and their size
+    /// against the game's
+    pub vitals: bool,
+    pub vitals_size: f32,
     /// The sound's master volume, 0 to 1
     pub volume: f32,
     /// Players shown through walls, and with `see_through_items` the other
@@ -169,6 +173,8 @@ impl Default for ViewerSettings {
             viewmodel: true,
             crosshair: true,
             chat: true,
+            vitals: true,
+            vitals_size: 0.6,
             volume: 0.1,
             see_through: false,
             see_through_items: false,
@@ -205,6 +211,12 @@ impl ViewerSettings {
                 .map(|f| f.clamp(FOV.0, FOV.1)),
             zoom_fov: within(self.zoom_fov, default.zoom_fov, FOV.0, FOV.1),
             volume: within(self.volume, default.volume, 0., 1.),
+            vitals_size: within(
+                self.vitals_size,
+                default.vitals_size,
+                VITALS_SIZE.0,
+                VITALS_SIZE.1,
+            ),
             decals: self.decals.min(MAX_DECALS),
             ..self
         }
@@ -213,6 +225,9 @@ impl ViewerSettings {
 
 /// The fields of view the viewer takes, in degrees
 pub const FOV: (f32, f32) = (10., 150.);
+
+/// The sizes health, armour and ammo take against the game's
+pub const VITALS_SIZE: (f32, f32) = (0.3, 1.5);
 
 /// The longest padding a clip takes around an event, in seconds
 pub const MAX_PADDING: f32 = 120.;

@@ -15,7 +15,7 @@ use crate::game_setup;
 use crate::i18n::{Catalog, Locale};
 use crate::layout;
 use crate::library::{self, parse_number};
-use crate::settings::{FOV, MAX_PADDING, Settings, ViewerSettings};
+use crate::settings::{FOV, MAX_PADDING, Settings, VITALS_SIZE, ViewerSettings};
 use crate::text::{self, Look};
 use crate::theme;
 use crate::widgets::{self, Icon, IconButton, Variant};
@@ -634,6 +634,21 @@ impl App {
         layout::row(ui, rtl, |ui| {
             ui.checkbox(&mut viewer.chat, t("settings-chat"));
         });
+        layout::row(ui, rtl, |ui| {
+            ui.checkbox(&mut viewer.vitals, t("settings-vitals"));
+        });
+        layout::row(ui, rtl, |ui| {
+            ui.add_enabled_ui(viewer.vitals, |ui| {
+                ui.label(t("settings-vitals-size"));
+                let range = VITALS_SIZE.0..=VITALS_SIZE.1;
+                ui.add(egui::Slider::new(&mut viewer.vitals_size, range).show_value(false));
+
+                let percent = (viewer.vitals_size * 100.).round();
+                let percent = FluentValue::from(f64::from(percent));
+                let percent = catalog.text_with("library-percent", &[("percent", percent)]);
+                ui.label(egui::RichText::new(percent).monospace().color(theme::MUTED));
+            });
+        });
 
         // Projectiles and items show through walls only with the players,
         // and keep their choice while the players do not
@@ -947,6 +962,11 @@ fn changed_settings(current: &Settings, restored: &Settings) -> Vec<&'static str
         (view.viewmodel != first.viewmodel, "settings-viewmodel"),
         (view.crosshair != first.crosshair, "settings-crosshair"),
         (view.chat != first.chat, "settings-chat"),
+        (view.vitals != first.vitals, "settings-vitals"),
+        (
+            view.vitals_size != first.vitals_size,
+            "settings-vitals-size",
+        ),
         (
             view.see_through != first.see_through,
             "settings-see-through",

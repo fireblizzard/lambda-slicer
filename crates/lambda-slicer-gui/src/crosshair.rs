@@ -9,14 +9,12 @@
 //! 480 screen would be, as the kill feed is
 
 use std::collections::HashMap;
-use std::sync::Arc;
 
 use eframe::egui::{self, Color32, Pos2, Rect, TextureHandle};
-use lambda_slicer_assets::Limits as AssetLimits;
-use lambda_slicer_assets::sprite::{self, Sprite};
+use lambda_slicer_assets::sprite::Sprite;
 use lambda_slicer_audio::library::Library;
 
-use crate::kill_feed::{Place, places};
+use crate::hud_sprites::{HudSprites, Place};
 
 /// The game's screen height the HUD is laid out on
 const SCREEN_HEIGHT: f32 = 480.;
@@ -54,9 +52,7 @@ fn weapon_file(viewmodel: &str) -> Option<&'static str> {
 /// The crosshairs, read from the game's files as they are first needed
 #[derive(Default)]
 pub struct Crosshairs {
-    /// Each weapon file's places by name
-    files: HashMap<String, HashMap<String, Place>>,
-    sheets: HashMap<String, Option<Arc<Sprite>>>,
+    sprites: HudSprites,
     /// By weapon file and whether zoomed
     textures: HashMap<(String, bool), Option<TextureHandle>>,
 }
@@ -77,28 +73,14 @@ impl Crosshairs {
             return texture.clone();
         }
 
-        let places = self.files.entry(file.to_owned()).or_insert_with(|| {
-            let text = library
-                .read(&format!("sprites/{file}.txt"))
-                .unwrap_or_default();
-            places(&String::from_utf8_lossy(&text))
-        });
-        let mut place = places.get("crosshair").cloned();
-        if zoomed && let Some(zoom) = places.get("zoom") {
-            place = Some(zoom.clone());
+        let list = format!("sprites/{file}.txt");
+        let mut place = self.sprites.place(library, &list, "crosshair");
+        if zoomed && let Some(zoom) = self.sprites.place(library, &list, "zoom") {
+            place = Some(zoom);
         }
 
         let texture = place.and_then(|place| {
-            let sheet = self
-                .sheets
-                .entry(place.sheet.clone())
-                .or_insert_with(|| {
-                    let bytes = library.read(&format!("sprites/{}.spr", place.sheet))?;
-                    sprite::parse(&bytes, AssetLimits::default())
-                        .ok()
-                        .map(Arc::new)
-                })
-                .clone()?;
+            let sheet = self.sprites.sheet(library, &place.sheet)?;
             let name = format!("crosshair {file} {zoomed}");
             let options = egui::TextureOptions::NEAREST;
             Some(ctx.load_texture(name, cut(&sheet, &place)?, options))
@@ -162,6 +144,7 @@ fn cut(sheet: &Sprite, place: &Place) -> Option<egui::ColorImage> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::hud_sprites::places;
 
     #[test]
     fn each_weapon_in_view_has_its_file() {

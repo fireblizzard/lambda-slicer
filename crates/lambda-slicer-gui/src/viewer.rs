@@ -60,6 +60,7 @@ use crate::announcements;
 use crate::chat::Chat;
 use crate::crosshair::Crosshairs;
 use crate::decals::DecalCache;
+use crate::hud_sprites::HudSprites;
 use crate::i18n::Catalog;
 use crate::kill_feed::KillFeed;
 use crate::layout;
@@ -394,6 +395,8 @@ pub struct Viewer {
     kill_feed: KillFeed,
     crosshairs: Crosshairs,
     chat: Chat,
+    /// The health, armour and ammo's sprites
+    vitals: HudSprites,
     /// How wide the transport's parts were last drawn, for centring the
     /// play button under the picture
     transport_widths: TransportWidths,
@@ -578,6 +581,7 @@ impl Viewer {
             kill_feed: KillFeed::default(),
             crosshairs: Crosshairs::default(),
             chat: Chat::default(),
+            vitals: HudSprites::default(),
             transport_widths: TransportWidths::default(),
         }
     }
@@ -1520,6 +1524,16 @@ impl Viewer {
                         {
                             let fov = frame.recorder.fov;
                             self.crosshairs.draw(ui, rect, weapon, fov, library);
+                        }
+                        // The game shows no health, armour or ammo to a spectator or at
+                        // intermission
+                        let camera = &frame.recorder;
+                        let shown = !camera.spectating && !camera.intermission;
+                        if self.settings.vitals && shown {
+                            let (vitals, status) = (&mut self.vitals, &frame.status);
+                            let size = self.settings.vitals_size;
+                            let at = frame.at;
+                            crate::vitals::draw(ui, vitals, library, rect, size, status, at);
                         }
                         self.kill_feed.draw(ui, rect, &frame.death_notices, library);
                         if self.settings.chat {

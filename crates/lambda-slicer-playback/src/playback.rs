@@ -35,6 +35,7 @@ use crate::gauss;
 use crate::hud::{ChatLine, Countdown, DeathNotice, Hud};
 use crate::scene::{self, Camera, Entity, PlayerView, Scene, Viewmodel};
 use crate::source::{Cursor, Group, Source};
+use crate::status;
 use crate::tempents::{Lookup, TempEntities, TempEntity};
 use crate::time::{Position, ServerTime, SourceTime};
 use crate::trace::Hull;
@@ -98,6 +99,8 @@ pub struct PresentedFrame {
     pub chat: Vec<ChatLine>,
     /// AG's messages on how the match goes
     pub announced: Announced,
+    /// The recording player's health, armour and ammo
+    pub status: status::Shown,
 }
 
 type Lengths = Box<dyn Fn(&SoundName) -> SoundLength + Send>;
@@ -703,6 +706,7 @@ impl Playback {
             death_notices: state.hud.death_notices(at),
             chat: state.hud.chat(at),
             announced: state.hud.announced(at),
+            status: state.hud.status(),
             temp_entities: state
                 .tempents
                 .entities()

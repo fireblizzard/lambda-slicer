@@ -40,6 +40,9 @@
 - [ ] Fix CI making an artifact with a nested zip, so there's a zip inside another zip and then the executable is inside that, 2 levels of zipping instead of 1
 - [ ] Add a release workflow that builds the artifact from the pushed tag so that users can download the app
 - [ ] Add a button to make the demo player fullscreen
+- [ ] Add a speedometer and last jump speed to the demo player, with a setting to make it count only horizontal, only vertical or full 3D (both)
+- [ ] Add flashlight HUD to the demo player
+- [ ] Add a fps counter to the demo player, not at which framerate the demo is being rendered, but what fps the player recording the demo had instead
 
 # Ideas for later
 - [ ] Add a Favourites tab and an Add to favourites or Remove from favourites option to the context menu of a demo. The tab should be right after the Filters button above the table, and for now there will be 2 tabs: All and Favourites. All is the normal table and Favourite will just show the favourited demos. Demo entries in the table should show a yellow star after the name of the demo, in the same column as the name, just at the end of the text

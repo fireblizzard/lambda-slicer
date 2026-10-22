@@ -1,5 +1,6 @@
-//! The parts of AG's HUD playback shows, its countdown before a match, the
-//! kill feed, the chat, and the messages [`crate::announcements`] keeps
+//! The parts of the HUD playback shows, AG's countdown before a match, the
+//! kill feed, the chat, the messages [`crate::announcements`] keeps, and the
+//! health, armour and ammo [`crate::status`] keeps
 //!
 //! AG's client counts down when the server sends `Countdown`, a signed byte
 //! of seconds left, a byte saying whether to speak it, and the names of the
@@ -30,6 +31,7 @@ use lambda_slicer_core::protocol::messages::{Message, ParsedMessage};
 use lambda_slicer_core::state::Decoder;
 
 use crate::announcements::{Announced, Announcements};
+use crate::status::{self, Status};
 use crate::time::SourceTime;
 
 /// The user message AG's server counts down with
@@ -127,6 +129,8 @@ pub struct Hud {
     places: BTreeMap<u8, [f32; 3]>,
     /// The time left, sudden death, the next map, timeouts, pauses and votes
     announcements: Announcements,
+    /// The recording player's health, armour and ammo
+    status: Status,
 }
 
 /// A string ending at its first nought, and what follows it
@@ -159,9 +163,9 @@ impl Hud {
             _ => return None,
         };
         // The time left, sudden death, the next map, timeouts and votes are
-        // kept on their own
+        // kept on their own, and so are health, armour and ammo
         let name = decoder.user_message(id)?.name_lossy();
-        if self.announcements.message(&name, body, time) {
+        if self.announcements.message(&name, body, time) || self.status.message(&name, body, time) {
             return None;
         }
 
@@ -281,6 +285,11 @@ impl Hud {
         let mut shown = self.clone();
         shown.scroll(at);
         shown.chat.into()
+    }
+
+    /// The recording player's health, armour and ammo as the HUD shows them
+    pub fn status(&self) -> status::Shown {
+        self.status.shown()
     }
 
     /// AG's messages on how the match goes at `at`

@@ -59,6 +59,7 @@ mod demo;
 mod export;
 mod floors;
 mod game_setup;
+mod hud_sprites;
 mod i18n;
 mod jobs;
 mod kill_analysis;
@@ -72,6 +73,7 @@ mod text;
 mod theme;
 mod timeline;
 mod viewer;
+mod vitals;
 mod widgets;
 
 use std::path::PathBuf;

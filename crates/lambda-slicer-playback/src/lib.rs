@@ -28,6 +28,7 @@ pub mod kill_features;
 pub mod playback;
 pub mod scene;
 pub mod source;
+pub mod status;
 pub mod tempents;
 pub mod time;
 pub mod trace;
