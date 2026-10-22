@@ -49,6 +49,7 @@
 
 mod app;
 mod clips;
+mod crosshair;
 mod decals;
 mod demo;
 mod export;

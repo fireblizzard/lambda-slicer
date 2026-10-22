@@ -485,6 +485,7 @@ settings-fov-recorded = Campo de visão gravado
 settings-fov = Campo de visão
 settings-zoom-fov = Campo de visão com zoom
 settings-viewmodel = Mostrar a arma na mão
+settings-crosshair = Mostrar a mira
 settings-see-through = Ver jogadores através das paredes
 settings-see-through-items = Também outros modelos, como projéteis e itens
 settings-see-through-hint = Jogadores atrás de paredes aparecem como silhuetas na cor de cima, que os jogos em equipe definem por equipe. Só aparece o que a demo contém. O servidor envia os jogadores perto de quem gravou, e servidores que escondem os jogadores que quem gravou não pode ver não deixam nada para mostrar.

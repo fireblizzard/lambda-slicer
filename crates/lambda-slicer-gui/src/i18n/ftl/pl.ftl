@@ -488,6 +488,7 @@ settings-fov-recorded = Pole widzenia jak w nagraniu
 settings-fov = Pole widzenia
 settings-zoom-fov = Pole widzenia po przybliżeniu
 settings-viewmodel = Pokazuj broń w ręku
+settings-crosshair = Pokazuj celownik
 settings-see-through = Widź graczy przez ściany
 settings-see-through-items = Także inne modele, np. pociski i przedmioty
 settings-see-through-hint = Gracze za ścianami są widoczni jako sylwetki w ich górnym kolorze, który gry drużynowe ustawiają według drużyny. Widać tylko to, co zawiera demo. Serwer wysyła graczy w pobliżu nagrywającego, a serwery ukrywające graczy, których nagrywający nie widzi, nie zostawiają nic do pokazania.

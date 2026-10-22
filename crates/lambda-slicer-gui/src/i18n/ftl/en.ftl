@@ -472,6 +472,7 @@ settings-fov-recorded = Field of view as recorded
 settings-fov = Field of view
 settings-zoom-fov = Zoomed field of view
 settings-viewmodel = Show the weapon in view
+settings-crosshair = Show the crosshair
 settings-see-through = See players through walls
 settings-see-through-items = Also other models, such as projectiles and items
 settings-see-through-hint = Players behind walls show as silhouettes in their top colour, which team games set by team. Only what the demo holds can show. The server sends the players near the recorder, and servers that hide players the recorder cannot see leave nothing to show.

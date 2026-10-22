@@ -56,6 +56,7 @@ use lambda_slicer_render::world::{self, WorldMesh};
 use fluent_bundle::FluentValue;
 use fluent_bundle::types::{FluentNumber, FluentNumberOptions};
 
+use crate::crosshair::Crosshairs;
 use crate::decals::DecalCache;
 use crate::i18n::Catalog;
 use crate::kill_feed::KillFeed;
@@ -383,11 +384,13 @@ pub struct Viewer {
     /// The game's palette, for blood's colours
     palette: Vec<[u8; 3]>,
     decals: DecalCache,
-    /// The game's files, for the map's hull that hides glows and the kill
-    /// feed's icons
+    /// The game's files, for the map's hull that hides glows, the kill
+    /// feed's icons and the crosshairs
     library: Option<Arc<Library>>,
-    /// The kill feed's icons, read from the game's files as needed
+    /// The kill feed's icons and the crosshairs, read from the game's files
+    /// as needed
     kill_feed: KillFeed,
+    crosshairs: Crosshairs,
     /// How wide the transport's parts were last drawn, for centring the
     /// play button under the picture
     transport_widths: TransportWidths,
@@ -570,6 +573,7 @@ impl Viewer {
             decals: DecalCache::new(decal_wad),
             library: glow_library,
             kill_feed: KillFeed::default(),
+            crosshairs: Crosshairs::default(),
             transport_widths: TransportWidths::default(),
         }
     }
@@ -1494,6 +1498,12 @@ impl Viewer {
                         draw_map_change(ui.painter(), rect, &line);
                     }
                     if let Some(library) = &self.library {
+                        if self.settings.crosshair
+                            && let Some(weapon) = weapon_in_view(frame)
+                        {
+                            let fov = frame.recorder.fov;
+                            self.crosshairs.draw(ui, rect, weapon, fov, library);
+                        }
                         self.kill_feed.draw(ui, rect, &frame.death_notices, library);
                     }
                     let players = &frame.players;
@@ -2557,12 +2567,10 @@ fn flash_sprite(sprite: u8) -> ModelRef {
     ModelRef::File(format!("sprites/muzzleflash{}.spr", sprite + 1))
 }
 
-/// The recorder's first-person weapon and its pose, the last weapon
-/// animation played from when it started, at the view's origin and angles,
-/// the pitch turned the other way as the game gives it to a viewmodel. None
-/// while dead, at intermission, or spectating other than through a player's
-/// eyes
-fn viewmodel_pose(frame: &PresentedFrame) -> Option<(String, EntityPose)> {
+/// The model of the recorder's first-person weapon, which its crosshair
+/// goes with. None while dead, at intermission, or spectating other than
+/// through a player's eyes
+fn weapon_in_view(frame: &PresentedFrame) -> Option<&str> {
     let camera = &frame.recorder;
     let path = camera
         .viewmodel
@@ -2572,6 +2580,16 @@ fn viewmodel_pose(frame: &PresentedFrame) -> Option<(String, EntityPose)> {
     if camera.health <= 0 || camera.intermission || observing {
         return None;
     }
+    Some(path)
+}
+
+/// The recorder's first-person weapon and its pose, the last weapon
+/// animation played from when it started, at the view's origin and angles,
+/// the pitch turned the other way as the game gives it to a viewmodel. None
+/// whenever [`weapon_in_view`] is
+fn viewmodel_pose(frame: &PresentedFrame) -> Option<(String, EntityPose)> {
+    let camera = &frame.recorder;
+    let path = weapon_in_view(frame)?;
     let animation = frame.viewmodel?;
     let pose = EntityPose {
         sequence: animation.sequence.max(0) as usize,

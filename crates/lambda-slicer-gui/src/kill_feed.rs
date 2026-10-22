@@ -45,7 +45,7 @@ const TEAMKILL_ICON: Color32 = Color32::from_rgb(10, 240, 10);
 const FALLBACK_ICON: &str = "d_skull";
 
 /// The screen width whose sprites `hud.txt` names for the HUD
-const HUD_RESOLUTION: &str = "640";
+pub(crate) const HUD_RESOLUTION: &str = "640";
 
 /// The colours `^1` to `^8` give a name
 const TAG_COLOURS: [Color32; 8] = [
@@ -68,12 +68,12 @@ const OTHER_TEAM: Color32 = Color32::from_rgb(204, 204, 204);
 
 /// Where an icon lies in its sheet, as `hud.txt` gives it
 #[derive(Clone, Debug, PartialEq)]
-struct Place {
-    sheet: String,
-    x: u32,
-    y: u32,
-    width: u32,
-    height: u32,
+pub(crate) struct Place {
+    pub sheet: String,
+    pub x: u32,
+    pub y: u32,
+    pub width: u32,
+    pub height: u32,
 }
 
 /// The kill feed's icons, read from the game's files as they are first
@@ -87,8 +87,10 @@ pub struct KillFeed {
 }
 
 /// The icons `hud.txt` places for the HUD's screen width. Each line is a
-/// name, a screen width, a sheet in `sprites/` and the icon's place in it
-fn places(text: &str) -> HashMap<String, Place> {
+/// name, a screen width, a sheet in `sprites/` and the icon's place in it.
+/// A weapon's own file, such as `sprites/weapon_crossbow.txt`, is laid out
+/// the same
+pub(crate) fn places(text: &str) -> HashMap<String, Place> {
     let mut out = HashMap::new();
     for line in text.lines() {
         let words: Vec<&str> = line.split_whitespace().collect();

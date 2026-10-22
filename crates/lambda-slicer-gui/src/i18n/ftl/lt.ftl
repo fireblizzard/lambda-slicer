@@ -488,6 +488,7 @@ settings-fov-recorded = Matymo laukas kaip įrašyta
 settings-fov = Matymo laukas
 settings-zoom-fov = Matymo laukas priartinus
 settings-viewmodel = Rodyti ginklą rankoje
+settings-crosshair = Rodyti taikiklį
 settings-see-through = Matyti žaidėjus pro sienas
 settings-see-through-items = Taip pat kitus modelius, pvz., sviedinius ir daiktus
 settings-see-through-hint = Žaidėjai už sienų rodomi kaip siluetai jų viršutine spalva, kurią komandiniai žaidimai nustato pagal komandą. Gali būti rodoma tik tai, ką turi įrašas. Serveris siunčia įrašančiajam artimus žaidėjus, o serveriai, slepiantys žaidėjus, kurių įrašantysis nemato, nepalieka ko rodyti.

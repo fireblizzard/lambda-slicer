@@ -1,3 +1,4 @@
+# Pending features, fixes or improvements
 - [x] Add a HUD for the kill feed like they show ingame at the top right (X killed Y, and the weapon, and with colored names depending on the team or their custom colors (^1 to ^8, and ^0 to stop coloring)
 - [x] Add the name of the player that we're watching, at the bottom
 - [x] Fix gauss charging sound being cut in `aghldmtv_law_vs_cas_cross.dem`.  i can only hear it starting to charge and releasing, but no sound in between
@@ -13,11 +14,11 @@
 - [x] Fix rescan. The new clips I made were exported to a folder that is in the library, and after I hit rescan and it finished scanning, I sorted by date and I couldn't see the new clips. After restarting Lambda Slicer and sorting by date I could see them finally, but shouldn't need a restart for them to appear in the table
 - [x] Add right clicking on the demo (in the table or on the list at the left after the demo player shows up) with a context menu to Open location, which opens the file explorer with the demo file selected
 - [x] When selecting a highlight like the Golden minute, "Clip it" should set the start/end time to the highlight's instead of the selected event, plus the configured pre-clip and post-clip duration
-- [ ] Add crosshair to the demo player, and a setting to disable it
+- [x] Add crosshair to the demo player, and a setting to disable it
 - [x] Buttons that are bottom left under the demo player should be centered
 - [ ] Try to reduce lag when watching a demo while it's scanning folders, prioritize the demo player
-- [ ] Fix library only showing one map on demos with multiple maps, like on `20240120_192554_ag_hidden_lab`, that has `ag_hidden_lab` and `elixir`. it should probably just add a comma, space and the next map name (e.g. `ag_hidden_lab, elixir`) and when filtering by map it should still work when typing part of any of the map names
-- [ ] On `20240120_192554_ag_hidden_lab` there's an intermission (map change) at 0:15:10. we should probably render some text saying that the server is changing to X map
+- [x] Fix library only showing one map on demos with multiple maps, like on `20240120_192554_ag_hidden_lab`, that has `ag_hidden_lab` and `elixir`. it should probably just add a comma, space and the next map name (e.g. `ag_hidden_lab, elixir`) and when filtering by map it should still work when typing part of any of the map names
+- [x] On `20240120_192554_ag_hidden_lab` there's an intermission (map change) at 0:15:10. we should probably render some text saying that the server is changing to X map
 - [ ] Fix ladder shadow shown at 0:01:12.609 on `20240120_190919_boot_camp`
 - [ ] Fix water rendering shown at 0:01:13.803 on `20240120_190919_boot_camp`. I think it should only render the faces of the water volume that are not hidden by others
 - [x] Fix wrong score on some demos. For example on `somecrossgame`, most of the demo is on the map `crossfire` which ends 93-79, and then there's a little bit of `datacore` that ends 1-0, and the library and the scoreboard (initially, when no events selected) to the right of the demo player are saying 1-0, when it should be 93-79 as that's the significant part of the demo
@@ -32,6 +33,13 @@
 - [ ] Add a column for the number of players (not spectators) and then a filter for that. Detect when the match begins (after agstart, after the countdown) and count the players at that time. For multimap demos keep the highest count, so if there are 2 matches with 4 and 6 players, show a 6 for that demo. For demos without a match, just get the highest number of players at any point. And for demos where the match was already started before the recording began... have to see how to detect that case, and then just count the non-spectator players at the beginning of the demo in that case
 - [ ] Add a column for the number of teams, similar approach as for the number of players column, with its own filter too
 - [ ] Add K/D (kills/death ratio) to the scoreboard where we have the kills, death, hs and accuracy%.  if deaths are 0, then do the division with 1
+- [ ] Fix explosion sprite showing up too cartoony
+- [ ] If no folder or demo has been added yet, highlight those buttons, with a pulsating red border perhaps, until the user adds/opens one. Meant for new users
+- [ ] Clean up documents and comments so that they no longer refer to development stages (like "M6" in `vendor/README.md`) or things like that. Also try to simplify jargon in documents, even in the technical ones unless it makes it more confusing or significantly harder to explain
+- [ ] Support WON demos (protocol 5/47)
+- [ ] Fix CI making an artifact with a nested zip, so there's a zip inside another zip and then the executable is inside that, 2 levels of zipping instead of 1
+- [ ] Add a release workflow that builds the artifact from the pushed tag so that users can download the app
+- [ ] Add a button to make the demo player fullscreen
 
 # Ideas for later
 - [ ] Add a Favourites tab and an Add to favourites or Remove from favourites option to the context menu of a demo. The tab should be right after the Filters button above the table, and for now there will be 2 tabs: All and Favourites. All is the normal table and Favourite will just show the favourited demos. Demo entries in the table should show a yellow star after the name of the demo, in the same column as the name, just at the end of the text
@@ -42,3 +50,7 @@
 - [ ] Add an easy way to clip a demo by map, so if a demo has 3 maps in it, make 3 clips from the beginning of each map until the end of it
 - [ ] Add a button to export the demo info to a text file, with the map, date, player names at the top, then the scoreboard and then the filtered event list
 - [ ] For multimap demos, instead of showing them with all that info in a single row in the library, make sub-rows for each map with their own individual info for thir part of the demo, and when clicking on it, it will show the demo player with the playhead already at the point where the map starts
+- [ ] Add support for HLKZ, showing things like run times in a demo, jump/strafing stats and so on
+- [ ] Add ability to make volumetric triggers to time segments for HLKZ
+- [ ] Support Opposing Force demos
+- [ ] Support Blue Shift demos

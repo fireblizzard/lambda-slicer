@@ -459,6 +459,7 @@ settings-fov-recorded = Kayıttaki görüş alanı
 settings-fov = Görüş alanı
 settings-zoom-fov = Yakınlaştırınca görüş alanı
 settings-viewmodel = Silahı elde göster
+settings-crosshair = Nişangahı göster
 settings-see-through = Oyuncuları duvarların ardından gör
 settings-see-through-items = Mermiler ve eşyalar gibi diğer modeller de
 settings-see-through-hint = Duvarların arkasındaki oyuncular, takım oyunlarının takıma göre belirlediği üst renklerinde siluet olarak görünür. Yalnızca demonun içerdiği görünebilir. Sunucu kaydedenin yakınındaki oyuncuları gönderir; kaydedenin göremediği oyuncuları gizleyen sunucular gösterecek bir şey bırakmaz.

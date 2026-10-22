@@ -575,6 +575,9 @@ impl App {
         layout::row(ui, rtl, |ui| {
             ui.checkbox(&mut viewer.viewmodel, t("settings-viewmodel"));
         });
+        layout::row(ui, rtl, |ui| {
+            ui.checkbox(&mut viewer.crosshair, t("settings-crosshair"));
+        });
 
         // Projectiles and items show through walls only with the players,
         // and keep their choice while the players do not
@@ -884,6 +887,7 @@ fn changed_settings(current: &Settings, restored: &Settings) -> Vec<&'static str
         (view.fov != first.fov, "settings-fov"),
         (view.zoom_fov != first.zoom_fov, "settings-zoom-fov"),
         (view.viewmodel != first.viewmodel, "settings-viewmodel"),
+        (view.crosshair != first.crosshair, "settings-crosshair"),
         (
             view.see_through != first.see_through,
             "settings-see-through",

@@ -471,6 +471,7 @@ settings-fov-recorded = Näkökenttä tallennuksen mukaan
 settings-fov = Näkökenttä
 settings-zoom-fov = Näkökenttä zoomatessa
 settings-viewmodel = Näytä ase kädessä
+settings-crosshair = Näytä tähtäin
 settings-see-through = Näe pelaajat seinien läpi
 settings-see-through-items = Myös muut mallit, kuten ammukset ja esineet
 settings-see-through-hint = Seinien takana olevat pelaajat näkyvät siluetteina yläosan värissään, jonka joukkuepelit asettavat joukkueen mukaan. Näkyä voi vain se, mitä demo sisältää. Palvelin lähettää tallentajan lähellä olevat pelaajat, eivätkä palvelimet, jotka piilottavat pelaajat, joita tallentaja ei näe, jätä mitään näytettävää.
