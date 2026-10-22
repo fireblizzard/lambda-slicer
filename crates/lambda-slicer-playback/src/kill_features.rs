@@ -16,11 +16,14 @@
 //! of the shot's frame has them, which can be off from where the server
 //! traced them by lag compensation, so a way counts as possible within
 //! `POSITION_SLOP` of the victim and sure only well inside their box.
-//! Players are traced as boxes, not the hitboxes the server traces, and
-//! the world through its point hull. A beam meeting a brush entity, whose
-//! damage and reflection this cannot tell, leaves the kill unknown, as
-//! does a victim out of view or a map that is not there. Nothing here is a
-//! flag the server recorded
+//! Players are traced as boxes, not the hitboxes the server traces, so a
+//! way is sure only through a core of the box that a player's body fills
+//! standing or crouched. The world is traced through its point hull, and
+//! brush entities such as doors where they stand, turned as they are
+//! turned, and they block a blast or a beam from the victim as the world
+//! does. A beam meeting a brush entity, whose damage and reflection this
+//! cannot tell, leaves the kill unknown, as does a victim out of view or a
+//! map that is not there. Nothing here is a flag the server recorded
 
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -59,10 +62,11 @@ const REFLECT_RADIUS: f32 = 2.5;
 const EXIT_RADIUS: f32 = 1.75;
 const BLAST_LIFT: f32 = 1.;
 
-/// A standing player's box about their origin, and the core of it any
-/// hitbox of theirs surely covers
+/// A standing player's box about their origin, and the core about their
+/// origin their body fills both standing and crouched, a crouched player's
+/// box reaching 18 above and below it
 const PLAYER_HALF: [f32; 3] = [16., 16., 36.];
-const CORE_HALF: [f32; 3] = [8., 8., 24.];
+const CORE_HALF: [f32; 3] = [8., 8., 16.];
 
 /// How far the victim may have been from where the snapshot has them when
 /// the server traced the shot
@@ -81,10 +85,6 @@ const SHOT_WINDOW: f32 = 0.3;
 
 /// `SOLID_BSP`
 const SOLID_BSP: i64 = 4;
-
-/// How far the recorder's eye is above their origin standing
-/// (`DEFAULT_VIEWHEIGHT`)
-const EYE_HEIGHT: f32 = 28.;
 
 /// One Gauss shot the server fired, as its event gives it
 #[derive(Clone, Debug, PartialEq)]
@@ -262,12 +262,13 @@ pub struct ShotPath {
     pub brush_entity: bool,
 }
 
-/// A brush entity's model and where it is, for telling when the beam
-/// meets one
+/// A brush entity's model, where it is and how it is turned, for telling
+/// when the beam meets one
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct BrushEntity {
     pub model: usize,
     pub origin: [f32; 3],
+    pub angles: [f32; 3],
 }
 
 fn add(a: [f32; 3], b: [f32; 3], scale: f32) -> [f32; 3] {
@@ -292,6 +293,19 @@ fn normalise(v: [f32; 3]) -> [f32; 3] {
     v.map(|c| c / length)
 }
 
+/// `point` in the space of a brush entity at `origin` turned by `angles`,
+/// as the engine turns a line into a turned model's space
+/// (`SV_ClipMoveToEntity`)
+fn model_space(point: [f32; 3], origin: [f32; 3], angles: [f32; 3]) -> [f32; 3] {
+    let offset = add(point, origin, -1.);
+    if angles == [0.; 3] {
+        return offset;
+    }
+
+    let [forward, right, up] = angle_vectors(angles);
+    [dot(offset, forward), -dot(offset, right), dot(offset, up)]
+}
+
 /// Whether the line from `start` to `end` meets a brush entity before
 /// `fraction` of the way
 fn meets_brush(
@@ -302,7 +316,7 @@ fn meets_brush(
     fraction: f32,
 ) -> bool {
     for brush in brushes {
-        let local = |p: [f32; 3]| add(p, brush.origin, -1.);
+        let local = |p: [f32; 3]| model_space(p, brush.origin, brush.angles);
         let trace = world.trace_model(brush.model, local(start), local(end));
         if trace.fraction < fraction {
             return true;
@@ -442,9 +456,10 @@ fn about(centre: [f32; 3], half: [f32; 3], slop: f32) -> ([f32; 3], [f32; 3]) {
     (min, max)
 }
 
-/// Whether nothing of the world stands between two points
-fn in_sight(world: &Hull, from: [f32; 3], to: [f32; 3]) -> bool {
-    world.trace(from, to).fraction >= 1.
+/// Whether nothing of the world or its brush entities stands between two
+/// points
+fn in_sight(world: &Hull, brushes: &[BrushEntity], from: [f32; 3], to: [f32; 3]) -> bool {
+    world.trace(from, to).fraction >= 1. && !meets_brush(world, brushes, from, to, 1.)
 }
 
 /// What one shot could have done to a victim at `centre`
@@ -459,8 +474,8 @@ pub struct Reach {
 }
 
 /// What `path` could have done to a victim whose origin the snapshot has
-/// at `centre`
-pub fn reach(path: &ShotPath, world: &Hull, centre: [f32; 3]) -> Reach {
+/// at `centre`, with `brushes` standing where they were
+pub fn reach(path: &ShotPath, world: &Hull, brushes: &[BrushEntity], centre: [f32; 3]) -> Reach {
     let mut out = Reach::default();
     let (near_min, near_max) = about(centre, PLAYER_HALF, POSITION_SLOP);
     let (core_min, core_max) = about(centre, CORE_HALF, 0.);
@@ -473,7 +488,7 @@ pub fn reach(path: &ShotPath, world: &Hull, centre: [f32; 3]) -> Reach {
         // Moving the victim within the slop never takes them through a
         // wall, so a beam beyond one is out of reach
         let nearest = nearest_on(beam.start, beam.end, centre);
-        if !in_sight(world, centre, nearest) {
+        if !in_sight(world, brushes, centre, nearest) {
             continue;
         }
 
@@ -488,7 +503,7 @@ pub fn reach(path: &ShotPath, world: &Hull, centre: [f32; 3]) -> Reach {
     for blast in &path.blasts {
         let at = add(blast.at, [0., 0., 1.], BLAST_LIFT);
         let away = distance(at, centre);
-        if away > blast.radius + POSITION_SLOP || !in_sight(world, at, centre) {
+        if away > blast.radius + POSITION_SLOP || !in_sight(world, brushes, at, centre) {
             continue;
         }
 
@@ -584,6 +599,7 @@ fn brush_entities(entities: &[Entity]) -> Vec<BrushEntity> {
             brushes.push(BrushEntity {
                 model,
                 origin: entity.origin,
+                angles: entity.angles,
             });
         }
     }
@@ -591,12 +607,12 @@ fn brush_entities(entities: &[Entity]) -> Vec<BrushEntity> {
 }
 
 /// Where the victim's origin was in the snapshot of a shot's frame, none
-/// when they were out of view. The recording player is where their own
-/// view puts them, as the snapshot leaves their entity unplaced
+/// when they were out of view. The recording player is where the frame
+/// recorded their own origin, standing or crouched, as the snapshot leaves
+/// their entity unplaced
 fn victim_origin(victim: u16, entities: &[Entity], camera: &Camera) -> Option<[f32; 3]> {
     if camera.view_entity == Some(victim) && !camera.spectating {
-        let eye = camera.origin;
-        return Some([eye[0], eye[1], eye[2] - EYE_HEIGHT]);
+        return Some(camera.player_origin);
     }
 
     // A victim the snapshot left out, or kept from an older one, was out
@@ -634,8 +650,9 @@ fn find(
         return ShotFinding::Doubt(Doubt::VictimUnseen);
     };
 
-    let path = trace_path(shot, world, &brush_entities(entities));
-    let reach = reach(&path, world, victim);
+    let brushes = brush_entities(entities);
+    let path = trace_path(shot, world, &brushes);
+    let reach = reach(&path, world, &brushes, victim);
     ShotFinding::Reached { reach, path }
 }
 
@@ -781,7 +798,7 @@ mod tests {
     }
 
     fn reached(path: ShotPath, world: &Hull, victim: [f32; 3]) -> (f64, ShotFinding) {
-        let reach = reach(&path, world, victim);
+        let reach = reach(&path, world, &[], victim);
         (1., ShotFinding::Reached { reach, path })
     }
 
@@ -955,12 +972,62 @@ mod tests {
         let door = BrushEntity {
             model: 0,
             origin: [-50., 0., 0.],
+            angles: [0.; 3],
         };
         let path = trace_path(&shot(200., false), &world, &[door]);
         assert!(path.brush_entity);
 
         let finding = reached(path, &world, [300., 0., 0.]);
         assert_eq!(decide(&[finding]), WallGauss::Unknown(Doubt::BrushEntity));
+    }
+
+    #[test]
+    fn a_turned_brush_entity_is_met_where_it_is_turned_to() {
+        // The wall's model turned half round about the origin stands from
+        // x = -116 to -100, behind the shot
+        let world = wall(16.);
+        let turned = BrushEntity {
+            model: 0,
+            origin: [0.; 3],
+            angles: [0., 180., 0.],
+        };
+        assert!(!trace_path(&shot(200., false), &world, &[turned]).brush_entity);
+
+        let back = FiredShot {
+            forward: [-1., 0., 0.],
+            ..shot(200., false)
+        };
+        assert!(trace_path(&back, &world, &[turned]).brush_entity);
+    }
+
+    #[test]
+    fn a_brush_entity_between_the_exit_blast_and_the_victim_blocks_it() {
+        let world = wall(16.);
+        let path = trace_path(&shot(200., false), &world, &[]);
+        let victim = [160., 80., 0.];
+        assert!(reach(&path, &world, &[], victim).wall_sure);
+
+        // The wall's model turned a quarter round, standing across from
+        // y = 40 to 56 between the blast and them
+        let door = BrushEntity {
+            model: 0,
+            origin: [0., -60., 0.],
+            angles: [0., 90., 0.],
+        };
+        let blocked = reach(&path, &world, &[door], victim);
+        assert_eq!(blocked.wall, None);
+    }
+
+    #[test]
+    fn the_sure_core_fits_a_crouched_victim() {
+        // A beam beyond the wall passing 20 over a victim's origin could
+        // miss them crouched, so it is possible but not sure. They stand
+        // well out of the exit blast
+        let world = wall(16.);
+        let path = trace_path(&shot(200., false), &world, &[]);
+        let reach = reach(&path, &world, &[], [700., 0., -20.]);
+        assert_eq!(reach.wall, Some(WallRoute::Beyond));
+        assert!(!reach.wall_sure);
     }
 
     #[test]

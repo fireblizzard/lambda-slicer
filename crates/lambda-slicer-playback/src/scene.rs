@@ -190,6 +190,9 @@ pub struct Entity {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Camera {
     pub origin: [f32; 3],
+    /// The recorder's own origin, the middle of their box standing or
+    /// crouched, as the frame recorded it
+    pub player_origin: [f32; 3],
     pub angles: [f32; 3],
     /// From client data records, which some recordings lack
     pub fov: Option<f32>,
@@ -506,6 +509,7 @@ impl Scene {
         }
         let camera = Camera {
             origin: frame.info_vieworg(),
+            player_origin: frame.info_simorg(),
             angles: frame.info_viewangles(),
             fov: self.camera.fov,
             view_entity: decoder.view_entity,
