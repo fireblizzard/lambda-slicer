@@ -33,7 +33,7 @@
 - [ ] Add a column for the number of players (not spectators) and then a filter for that. Detect when the match begins (after agstart, after the countdown) and count the players at that time. For multimap demos keep the highest count, so if there are 2 matches with 4 and 6 players, show a 6 for that demo. For demos without a match, just get the highest number of players at any point. And for demos where the match was already started before the recording began... have to see how to detect that case, and then just count the non-spectator players at the beginning of the demo in that case
 - [ ] Add a column for the number of teams, similar approach as for the number of players column, with its own filter too
 - [ ] Add K/D (kills/death ratio) to the scoreboard where we have the kills, death, hs and accuracy%.  if deaths are 0, then do the division with 1
-- [ ] Fix explosion sprite showing up too cartoony, like in `20220102_225243_pwrcore` at 00:34.609 or at 00:42.365
+- [x] Fix explosion sprite showing up too cartoony, like in `20220102_225243_pwrcore` at 00:34.609 or at 00:42.365
 - [ ] If no folder or demo has been added yet, highlight those buttons, with a pulsating red border perhaps, until the user adds/opens one. Meant for new users
 - [ ] Clean up documents and comments so that they no longer refer to development stages (like "M6" in `vendor/README.md`) or things like that. Also try to simplify jargon in documents, even in the technical ones unless it makes it more confusing or significantly harder to explain
 - [ ] Support WON demos (protocol 5/47)

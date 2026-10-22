@@ -758,9 +758,11 @@ fn sprite_quad(
     // Every mode takes the render colour, black meaning none
     let tint = if s.color == [0.; 3] { [1.; 3] } else { s.color };
     let (pass, color) = match s.mode {
-        RenderMode::Normal | RenderMode::Alpha => {
-            (SpritePass::Cut, [tint[0], tint[1], tint[2], 2.])
-        }
+        RenderMode::Normal => (SpritePass::Cut, [tint[0], tint[1], tint[2], 2.]),
+        // A sprite blends by its texels' own alpha and the render amount,
+        // as smoke's soft edges need, rather than cutting them out as a
+        // brush or model in this mode does
+        RenderMode::Alpha => (SpritePass::Blend, [tint[0], tint[1], tint[2], s.amount]),
         RenderMode::Color => (
             SpritePass::Blend,
             [s.color[0], s.color[1], s.color[2], s.amount],
@@ -2306,6 +2308,28 @@ mod tests {
         // A streak pointing at the eye has no width to draw
         let end_on = streak_quads(&streak, [100., 0., 0.]);
         assert!(end_on.is_empty());
+    }
+
+    #[test]
+    fn a_translucent_sprite_blends_by_its_own_alpha_and_tint() {
+        // Smoke, dark grey and soft at its edges rather than cut out
+        let smoke = SpriteInstance {
+            color: [0.1; 3],
+            amount: 1.,
+            ..sprite(RenderMode::Alpha)
+        };
+        let (quad, pass, _) = sprite_quad(Orientation::Parallel, [-1, 1], [2, 2], &smoke, &view());
+        assert_eq!(pass, SpritePass::Blend);
+        assert_eq!(quad[0].color, [0.1, 0.1, 0.1, 1.]);
+
+        let (_, pass, _) = sprite_quad(
+            Orientation::Parallel,
+            [-1, 1],
+            [2, 2],
+            &sprite(RenderMode::Normal),
+            &view(),
+        );
+        assert_eq!(pass, SpritePass::Cut);
     }
 
     #[test]
