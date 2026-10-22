@@ -6,7 +6,8 @@
 //! a `zoom` one, drawn while the player's field of view is under 90. The
 //! sheet's own format says how it is drawn, the game's `crosshairs.spr`
 //! with index 255 left out. It is sized to the view as the game's 640 by
-//! 480 screen would be, as the kill feed is
+//! 480 screen would be, as the kill feed is, but only by whole numbers of
+//! the screen's pixels so its own pixels stay even
 
 use std::collections::HashMap;
 
@@ -108,15 +109,28 @@ impl Crosshairs {
             return;
         };
 
-        // Whole points, so the sprite's pixels stay sharp
-        let scale = rect.height() / SCREEN_HEIGHT;
-        let size = (texture.size_vec2() * scale).round();
-        let corner = (rect.center() - size / 2.).round();
-        let place = Rect::from_min_size(corner, size);
+        // Each of the sprite's pixels a whole number of the screen's, and on
+        // the screen's pixel grid, so every one stays the same square. A
+        // share of a pixel would draw some rows and columns twice
+        let pixels_per_point = ui.ctx().pixels_per_point();
+        let scale = rect.height() / SCREEN_HEIGHT * pixels_per_point;
+        let pixels = texture.size_vec2() * pixel_scale(scale);
+        let corner = (rect.center().to_vec2() * pixels_per_point - pixels / 2.).round();
+        let place = Rect::from_min_size(
+            (corner / pixels_per_point).to_pos2(),
+            pixels / pixels_per_point,
+        );
         let whole = Rect::from_min_max(Pos2::ZERO, Pos2::new(1., 1.));
         ui.painter_at(rect)
             .image(texture.id(), place, whole, Color32::WHITE);
     }
+}
+
+/// How many of the screen's pixels each of the sprite's takes at `scale`,
+/// the screen's pixels for each of the game's. It is the whole number at
+/// or under it and never under one, as the game draws it one to one
+fn pixel_scale(scale: f32) -> f32 {
+    scale.floor().max(1.)
 }
 
 /// The crosshair at `place` in `sheet`'s first frame, coloured as the
@@ -151,6 +165,14 @@ mod tests {
         assert_eq!(weapon_file("models/v_9mmAR.mdl"), Some("weapon_9mmar"));
         assert_eq!(weapon_file("models/V_SQUEAK.MDL"), Some("weapon_snark"));
         assert_eq!(weapon_file("models/v_unknown.mdl"), None);
+    }
+
+    #[test]
+    fn the_sprites_pixels_take_whole_screen_pixels() {
+        assert_eq!(pixel_scale(0.6), 1.);
+        assert_eq!(pixel_scale(1.13), 1.);
+        assert_eq!(pixel_scale(2.25), 2.);
+        assert_eq!(pixel_scale(3.), 3.);
     }
 
     #[test]
