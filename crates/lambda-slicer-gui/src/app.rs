@@ -6,6 +6,7 @@ use std::sync::Arc;
 
 use eframe::egui::{self, RichText, WidgetText};
 use fluent_bundle::FluentValue;
+use lambda_slicer_core::analysis::motion::Floors;
 use lambda_slicer_core::container::Limits;
 use lambda_slicer_core::library::cache::default_path;
 use lambda_slicer_core::library::scan::{ScanFloors, ScanOptions};
@@ -889,6 +890,31 @@ impl App {
         self.floors.as_ref().map(|(_, floors)| floors.clone())
     }
 
+    /// The game folder the floor under players is read from, with what was
+    /// read, none without the game's files
+    fn game_floors(&mut self) -> Option<(PathBuf, Floors)> {
+        let floors = self.floor_reader()?.floors;
+        Some((self.install_root()?, floors))
+    }
+
+    /// Analyse the open demo again when the game's files change, so its
+    /// midair kills are told with the new maps or without any, as the
+    /// library's are once it is scanned again
+    fn reanalyse_for_game(&mut self, ctx: &egui::Context) {
+        let install = self.install_root();
+        let Some(d) = &self.demo else {
+            return;
+        };
+        if d.floors_from() == install.as_deref() {
+            return;
+        }
+
+        let floors = self.game_floors();
+        if let Some(d) = &mut self.demo {
+            d.reanalyse(floors, ctx);
+        }
+    }
+
     /// Scan again when the game's files change, so midair kills are told
     /// with the new maps or without any
     fn rescan_for_game(&mut self, ctx: &egui::Context) {
@@ -1237,6 +1263,7 @@ impl eframe::App for App {
             self.start_scan(&ctx);
         }
         self.rescan_for_game(&ctx);
+        self.reanalyse_for_game(&ctx);
         self.scan_exported(&ctx);
 
         // The toolbar's controls sit in the middle of its height
@@ -1302,7 +1329,7 @@ impl eframe::App for App {
             (Some((path, duration)), _) => {
                 self.drop_demo();
 
-                let floors = self.floor_reader().map(|f| f.floors);
+                let floors = self.game_floors();
                 let mut d = DemoView::open(path.clone(), *duration, floors, &ctx);
                 d.open_window = self.open_window.take();
                 d.open_event = self.open_event.take();

@@ -536,6 +536,12 @@ pub struct DemoView {
     actions: Vec<DemoAction>,
     requests: Vec<Request>,
     loader: Option<Loader>,
+    /// The game folder whose maps the analysis read the floor under players
+    /// from, none without the game's files
+    floors_from: Option<PathBuf>,
+    /// The analysis again for other game files, whose events take the
+    /// place of those shown once it is in
+    reanalysis: Option<Loader>,
     model: Option<Arc<Model>>,
     failed: Option<String>,
     /// The stretch of the recording the timeline shows
@@ -643,10 +649,19 @@ pub struct DemoView {
 
 impl DemoView {
     /// Open the demo at `path`, analysing it in the background with the
-    /// floor under players read from the maps when `floors` can
-    pub fn open(path: PathBuf, duration: f32, floors: Option<Floors>, ctx: &egui::Context) -> Self {
+    /// floor under players read from the maps of a game folder when
+    /// `floors` gives the folder and its floors
+    pub fn open(
+        path: PathBuf,
+        duration: f32,
+        floors: Option<(PathBuf, Floors)>,
+        ctx: &egui::Context,
+    ) -> Self {
+        let (floors_from, floors) = floors.unzip();
         Self {
             loader: Some(Loader::start(path.clone(), duration, floors, ctx.clone())),
+            floors_from,
+            reanalysis: None,
             path,
             generation: GENERATION.fetch_add(1, Ordering::Relaxed),
             actions: Vec::new(),
@@ -783,6 +798,30 @@ impl DemoView {
         self.loader.is_some()
     }
 
+    /// The game folder whose maps the analysis read the floor under players
+    /// from, none without the game's files
+    pub fn floors_from(&self) -> Option<&Path> {
+        self.floors_from.as_deref()
+    }
+
+    /// Analyse the demo again with `floors`, a game folder and the floor
+    /// under players on its maps, or without any, so midair kills are told
+    /// with them. The events shown stay, with the clips, the selection,
+    /// the filters and the playhead, until the new analysis takes their
+    /// place
+    pub fn reanalyse(&mut self, floors: Option<(PathBuf, Floors)>, ctx: &egui::Context) {
+        let (floors_from, floors) = floors.unzip();
+        self.floors_from = floors_from;
+
+        // A first analysis still running starts over instead
+        let loader = Loader::start(self.path.clone(), self.duration, floors, ctx.clone());
+        if self.loader.is_some() {
+            self.loader = Some(loader);
+        } else {
+            self.reanalysis = Some(loader);
+        }
+    }
+
     /// Turn on these kill refinements, for checking them from the command
     /// line
     pub fn refine(&mut self, filters: KillFilters) {
@@ -815,6 +854,7 @@ impl DemoView {
     }
 
     fn poll(&mut self) {
+        self.poll_reanalysis();
         let Some(loader) = &self.loader else {
             return;
         };
@@ -840,6 +880,30 @@ impl DemoView {
                 self.loader = None;
             }
             Err(_) => {}
+        }
+    }
+
+    /// Take in the analysis made again, its events in place of those shown.
+    /// One that failed leaves the events shown as they are
+    fn poll_reanalysis(&mut self) {
+        let Some(loader) = &self.reanalysis else {
+            return;
+        };
+        let loaded = match loader.rx.try_recv() {
+            Ok(loaded) => loaded,
+            Err(_) => return,
+        };
+        self.reanalysis = None;
+
+        // The same recording gives the same events in the same order, so
+        // the selection still points at the same one
+        if let Loaded::Model(m) = loaded {
+            if self.selected.is_some_and(|i| i >= m.events.len()) {
+                self.selected = None;
+            }
+            self.model = Some(m);
+            self.rows_for = None;
+            self.chat_lines = None;
         }
     }
 
@@ -2315,5 +2379,34 @@ mod tests {
 
         // Nothing comes before the first
         assert!(press_with_ctrl(&mut view, egui::Key::ArrowLeft).is_empty());
+    }
+
+    #[test]
+    fn an_analysis_made_again_replaces_the_events_and_keeps_the_selection() {
+        let mut view = view_of(vec![kill(0, 5., Some(true))], GroupIndex::default());
+        view.selected = Some(0);
+        view.refresh_rows();
+        assert!(view.rows_for.is_some());
+
+        // The game's files told the killer was on the ground after all
+        let (tx, rx) = mpsc::channel();
+        view.reanalysis = Some(Loader {
+            cancel: Arc::new(AtomicBool::new(false)),
+            rx,
+            thread: None,
+        });
+        let again = Model {
+            events: vec![kill(0, 5., Some(false))],
+            end: 100.,
+            ..Default::default()
+        };
+        tx.send(Loaded::Model(Arc::new(again))).unwrap();
+        view.poll();
+
+        assert!(view.reanalysis.is_none());
+        assert_eq!(view.selected, Some(0));
+        assert_eq!(view.rows_for, None);
+        let model = view.model.as_ref().unwrap();
+        assert_eq!(model.events[0], kill(0, 5., Some(false)));
     }
 }
