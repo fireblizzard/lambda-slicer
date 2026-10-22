@@ -162,6 +162,11 @@ pub const MINUTES_STEP: f64 = 0.5;
 /// The most kills a demo can be asked to have at least, and the step that
 /// number takes as it is dragged
 pub const MAX_KILLS: u32 = 1000;
+
+/// The most players and teams the filters take, the game's most players
+/// and more teams than AG has colours for
+pub const MAX_PLAYERS: u32 = 32;
+pub const MAX_TEAMS: u32 = 8;
 pub const KILLS_STEP: f64 = 0.2;
 
 /// Weapons that leave events, so a shot count can show their use
@@ -190,7 +195,7 @@ pub enum Spectating {
     Playing,
 }
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Filters {
     pub text: String,
     pub map: String,
@@ -209,6 +214,52 @@ pub struct Filters {
     pub midair: bool,
     /// Lowest accuracy of the recording player in percent, 0 for any
     pub min_accuracy: f32,
+    /// Fewest and most players and teams, inclusive. The whole range is
+    /// any
+    pub players: (u32, u32),
+    pub teams: (u32, u32),
+}
+
+impl Default for Filters {
+    fn default() -> Self {
+        Self {
+            text: String::new(),
+            map: String::new(),
+            player: String::new(),
+            weapon: None,
+            min_minutes: 0.,
+            min_kills: 0,
+            spectating: Spectating::default(),
+            from: None,
+            to: None,
+            headshot: false,
+            midair: false,
+            min_accuracy: 0.,
+            players: (0, MAX_PLAYERS),
+            teams: (0, MAX_TEAMS),
+        }
+    }
+}
+
+/// A field for a count of `value` within `within`, inclusive
+fn count_field<'a>(
+    value: &'a mut u32,
+    within: (u32, u32),
+    catalog: &'a Catalog,
+) -> egui::DragValue<'a> {
+    egui::DragValue::new(value)
+        .range(within.0..=within.1)
+        .speed(KILLS_STEP)
+        .custom_formatter(|v, _| catalog.number(v, 0))
+        .custom_parser(parse_number)
+}
+
+/// The least and most of `range` to filter by, none for an end that is
+/// also the end of `whole` and so filters nothing
+fn bounds(range: (u32, u32), whole: (u32, u32)) -> (Option<i64>, Option<i64>) {
+    let least = (range.0 > whole.0).then_some(i64::from(range.0));
+    let most = (range.1 < whole.1).then_some(i64::from(range.1));
+    (least, most)
 }
 
 impl Filters {
@@ -230,6 +281,8 @@ impl Filters {
             self.headshot,
             self.midair,
             self.min_accuracy > 0.,
+            self.players != (0, MAX_PLAYERS),
+            self.teams != (0, MAX_TEAMS),
             self.from.is_some(),
             self.to.is_some(),
         ];
@@ -244,7 +297,13 @@ impl Filters {
     /// The cache query for these filters in this order, a page long
     fn query(&self, sort: Sort, descending: bool) -> FileQuery {
         let text = |s: &str| (!s.trim().is_empty()).then(|| s.trim().to_string());
+        let (min_players, max_players) = bounds(self.players, (0, MAX_PLAYERS));
+        let (min_teams, max_teams) = bounds(self.teams, (0, MAX_TEAMS));
         FileQuery {
+            min_players,
+            max_players,
+            min_teams,
+            max_teams,
             text: text(&self.text),
             map: text(&self.map),
             player: text(&self.player),
@@ -302,16 +361,21 @@ enum Col {
     Accuracy,
     Action,
     Spectating,
+    /// How many players and teams the demo's matches had
+    Players,
+    Teams,
 }
 
 impl Col {
-    const ALL: [Col; 12] = [
+    const ALL: [Col; 14] = [
         Col::Name,
         Col::Date,
         Col::FileDate,
         Col::Map,
         Col::Duration,
         Col::Score,
+        Col::Players,
+        Col::Teams,
         Col::Gauss,
         Col::Kills,
         Col::Headshots,
@@ -336,6 +400,8 @@ impl Col {
             Col::Accuracy => "accuracy",
             Col::Action => "action",
             Col::Spectating => "spectating",
+            Col::Players => "players",
+            Col::Teams => "teams",
         }
     }
 
@@ -353,6 +419,8 @@ impl Col {
             Col::Accuracy => "column-accuracy",
             Col::Action => "column-action",
             Col::Spectating => "column-spectating",
+            Col::Players => "column-players",
+            Col::Teams => "column-teams",
         }
     }
 
@@ -363,6 +431,8 @@ impl Col {
             Col::FileDate => Some("help-file-date"),
             Col::Headshots => Some("help-headshots-column"),
             Col::Accuracy => Some("help-accuracy"),
+            Col::Players => Some("help-players-column"),
+            Col::Teams => Some("help-teams-column"),
             _ => None,
         }
     }
@@ -381,6 +451,8 @@ impl Col {
             Col::Accuracy => Sort::Accuracy,
             Col::Action => Sort::Action,
             Col::Spectating => Sort::Spectating,
+            Col::Players => Sort::Players,
+            Col::Teams => Sort::Teams,
         }
     }
 
@@ -398,6 +470,7 @@ impl Col {
             Col::Accuracy => (80., 56.),
             Col::Action => (144., 96.),
             Col::Spectating => (96., 64.),
+            Col::Players | Col::Teams => (64., 48.),
         };
         Column::initial(width).at_least(least).clip(true)
     }
@@ -831,6 +904,24 @@ impl LibraryView {
             });
         });
 
+        // Players and teams from one count to another
+        let ranges = [
+            ("filter-players", &mut self.filters.players, MAX_PLAYERS),
+            ("filter-teams", &mut self.filters.teams, MAX_TEAMS),
+        ];
+        for (id, range, most) in ranges {
+            layout::row(ui, rtl, |ui| {
+                ui.label(t(id));
+                // Placed from the trailing side, so the upper end goes first
+                layout::trailing(ui, rtl, |ui| {
+                    let (from, to) = *range;
+                    ui.add(count_field(&mut range.1, (from, most), catalog));
+                    ui.label("–");
+                    ui.add(count_field(&mut range.0, (0, to), catalog));
+                });
+            });
+        }
+
         let accuracy_help = catalog.text("help-accuracy-filter");
         let min_accuracy = &mut self.filters.min_accuracy;
         layout::row(ui, rtl, |ui| {
@@ -1189,6 +1280,8 @@ impl LibraryView {
                     Col::Kills => file.kills.map(whole),
                     Col::Headshots => file.headshots.map(whole),
                     Col::Accuracy => file.accuracy.map(percent),
+                    Col::Players => file.players.map(whole),
+                    Col::Teams => file.teams.map(whole),
                     _ => file.spectator_fraction.map(percent),
                 };
                 number_cell(ui, value, catalog, rtl);
@@ -1700,6 +1793,8 @@ mod tests {
             kills: None,
             headshots: None,
             accuracy: None,
+            players: None,
+            teams: None,
             best_window: None,
             matching_kills: Vec::new(),
             native: Vec::new(),

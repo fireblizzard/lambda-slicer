@@ -22,7 +22,7 @@ use crate::message::Message;
 use crate::state::{DECODE_REPORT_SCHEMA, DecodeStatus};
 
 /// Layout of the tables below. A different value rebuilds the cache
-pub const CACHE_SCHEMA: i64 = 8;
+pub const CACHE_SCHEMA: i64 = 9;
 
 #[derive(Debug, thiserror::Error)]
 pub enum CacheError {
@@ -153,6 +153,8 @@ CREATE TABLE files(
     unknown_shots INTEGER,
     kills INTEGER,
     headshots INTEGER,
+    players INTEGER,
+    teams INTEGER,
     accuracy REAL,
     best_window REAL,
     coverage_json TEXT,
@@ -365,6 +367,9 @@ pub enum Sort {
     /// When the file was last modified, which for an exported clip is
     /// when it was exported
     Modified,
+    /// How many players and teams the demo's matches had
+    Players,
+    Teams,
 }
 
 impl Sort {
@@ -382,6 +387,8 @@ impl Sort {
             Sort::Headshots => "f.headshots",
             Sort::Accuracy => "f.accuracy",
             Sort::Modified => "f.mtime_ns",
+            Sort::Players => "f.players",
+            Sort::Teams => "f.teams",
             // Nothing for a stored score that is not valid JSON, so it sorts
             // with the files that have no score
             Sort::Score => {
@@ -419,6 +426,11 @@ pub struct FileQuery {
     pub min_action: Option<f64>,
     /// Lowest accuracy of the recording player, as a fraction
     pub min_accuracy: Option<f64>,
+    /// Fewest and most players and teams, inclusive
+    pub min_players: Option<i64>,
+    pub max_players: Option<i64>,
+    pub min_teams: Option<i64>,
+    pub max_teams: Option<i64>,
     pub sort: Sort,
     pub descending: bool,
     /// Rows to skip and rows to return, for paging
@@ -484,6 +496,9 @@ pub struct FileRow {
     pub headshots: Option<i64>,
     /// The recording player's accuracy, as a fraction
     pub accuracy: Option<f64>,
+    /// How many players and teams the demo's matches had
+    pub players: Option<i64>,
+    pub teams: Option<i64>,
     pub best_window: Option<f64>,
     /// The kills that matched the kill conditions, when there were any
     pub matching_kills: Vec<KillRow>,
@@ -699,10 +714,10 @@ impl Cache {
                 demo_protocol, network_protocol, duration, recording_kind, max_clients, recorder,
                 playback, spectator_fraction, shots, unknown_shots, kills, best_window,
                 coverage_json, recorded_at, date_source, score, score_json, headshots, accuracy,
-                scanned_at, floors, clip_of, all_maps)
+                scanned_at, floors, clip_of, all_maps, players, teams)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16,
                 ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30, ?31,
-                ?32, ?33, ?34, ?35, ?36, ?37)",
+                ?32, ?33, ?34, ?35, ?36, ?37, ?38, ?39)",
             params![
                 display,
                 native_bytes(e.path),
@@ -741,6 +756,8 @@ impl Cache {
                 e.floors,
                 h.and_then(|h| h.clip_of.clone()),
                 all_maps,
+                r.map(|r| r.counted.players),
+                r.map(|r| r.counted.teams),
             ],
         )?;
         let id = tx.last_insert_rowid();
@@ -970,6 +987,20 @@ impl Cache {
             args.push(Box::new(a));
             c.push(format!("f.accuracy >= ?{}", args.len()));
         }
+
+        // Players and teams within their bounds
+        let bounds = [
+            (q.min_players, "f.players >="),
+            (q.max_players, "f.players <="),
+            (q.min_teams, "f.teams >="),
+            (q.max_teams, "f.teams <="),
+        ];
+        for (bound, test) in bounds {
+            if let Some(n) = bound {
+                args.push(Box::new(n));
+                c.push(format!("{test} ?{}", args.len()));
+            }
+        }
         if !q.kills.is_empty() {
             let kill_sql = Self::kill_conditions(&q.kills, &mut args);
             c.push(format!(
@@ -1011,7 +1042,7 @@ impl Cache {
                 (SELECT w.shots FROM weapons w WHERE w.file_id = f.id AND w.weapon = 'gauss')
                     AS gauss,
                 f.recorded_at, f.date_source, f.score, f.headshots, f.accuracy, f.path_blob,
-                f.score_json, f.mtime_ns, f.clip_of
+                f.score_json, f.mtime_ns, f.clip_of, f.players, f.teams
              FROM files f WHERE {conditions}
              ORDER BY {order} {direction} NULLS LAST, f.path
              LIMIT ?{limit} OFFSET ?{offset}"
@@ -1037,6 +1068,8 @@ impl Cache {
                     .and_then(|json| serde_json::from_str(&json).ok()),
                 headshots: r.get(18)?,
                 accuracy: r.get(19)?,
+                players: r.get(24)?,
+                teams: r.get(25)?,
                 native: r.get(20)?,
                 spectator_fraction: r.get(6)?,
                 shots: r.get(13)?,
@@ -1306,6 +1339,55 @@ mod tests {
 
         assert_eq!(rows[1].scoreboard, None);
         assert_eq!(rows[2].scoreboard, None);
+    }
+
+    #[test]
+    fn player_and_team_bounds_keep_the_demos_within_them() {
+        let mut c = Cache::in_memory().unwrap();
+        for (name, players, teams) in [("duel.dem", 2, 2), ("big.dem", 10, 2), ("ffa.dem", 6, 0)] {
+            c.store(&Entry {
+                path: Path::new(name),
+                size: 1,
+                mtime_ns: None,
+                file_identity: None,
+                quick_hash: None,
+                full_hash: None,
+                header: None,
+                report: None,
+                error: None,
+                floors: None,
+            })
+            .unwrap();
+
+            // Stored as an analysis would have
+            c.conn
+                .execute(
+                    "UPDATE files SET players = ?1, teams = ?2 WHERE path = ?3",
+                    params![players, teams, name],
+                )
+                .unwrap();
+        }
+
+        let names = |q: FileQuery| -> Vec<String> {
+            let q = FileQuery {
+                sort: Sort::Players,
+                limit: 10,
+                ..q
+            };
+            c.query(&q).unwrap().into_iter().map(|f| f.path).collect()
+        };
+        let four_or_more = FileQuery {
+            min_players: Some(4),
+            ..FileQuery::default()
+        };
+        assert_eq!(names(four_or_more), ["ffa.dem", "big.dem"]);
+        let two_teams_up_to_eight = FileQuery {
+            min_teams: Some(2),
+            max_teams: Some(2),
+            max_players: Some(8),
+            ..FileQuery::default()
+        };
+        assert_eq!(names(two_teams_up_to_eight), ["duel.dem"]);
     }
 
     #[test]

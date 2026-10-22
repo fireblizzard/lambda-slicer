@@ -23,6 +23,7 @@ use serde::{Deserialize, Serialize};
 use super::highlights::KillContext;
 use super::match_events::MatchEvents;
 use super::motion::{MapName, Motion, MotionState, Sample, gravity, state_at};
+use super::roster::Roster;
 use super::weapons::Weapon;
 use crate::protocol::messages::{Message, ParsedMessage};
 use crate::slice::range::GroupIndex;
@@ -692,6 +693,8 @@ pub struct Context {
     places: std::collections::BTreeMap<u8, [f32; 3]>,
     /// Votes, timeouts, pauses and sudden death, each change once
     pub match_events: MatchEvents,
+    /// Who plays, for the players and teams counted when a match starts
+    pub roster: Roster,
 }
 
 impl Context {
@@ -813,7 +816,13 @@ impl Context {
             self.teams.clear();
             self.places.clear();
             self.match_events.new_session();
+            self.roster.new_session();
             self.scores.clear();
+        }
+
+        // A player who came, went or was renamed changes who plays
+        if let Message::UpdateUserInfo { .. } = &m.message {
+            self.roster.changed(d, &self.teams);
         }
 
         if let Message::Intermission = &m.message
@@ -838,10 +847,12 @@ impl Context {
             return;
         };
 
-        // Votes, timeouts and sudden death are followed on their own
+        // Votes, timeouts and sudden death are followed on their own, and so
+        // is who plays
         let name = def.name_lossy();
         self.match_events
             .message(d, loc.playback_time(), &name, body);
+        self.roster.message(d, &name, body, &self.teams);
 
         match name.as_str() {
             "DeathMsg" => {
@@ -938,6 +949,7 @@ impl Context {
                 let end = rest.iter().position(|&b| b == 0).unwrap_or(rest.len());
                 self.teams
                     .insert(player, String::from_utf8_lossy(&rest[..end]).into_owned());
+                self.roster.changed(d, &self.teams);
                 if self.scores.contains_key(&player) {
                     self.log_score(loc, d, player);
                 }

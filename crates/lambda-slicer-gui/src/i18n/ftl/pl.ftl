@@ -87,6 +87,8 @@ filter-player = Gracz
 filter-weapon-any = Dowolna broń
 filter-min-minutes = Co najmniej (minuty)
 filter-min-kills = Co najmniej (zabójstwa)
+filter-players = Gracze
+filter-teams = Drużyny
 filter-spectating-any = Gra lub obserwacja
 filter-spectating-mostly = Głównie obserwacja
 filter-spectating-playing = Głównie gra
@@ -415,6 +417,10 @@ event-headshot = w głowę
 scores-headshots = SG
 
 column-accuracy = Celność
+column-players = Gracze
+column-teams = Drużyny
+help-players-column = Gracze w grze, bez obserwatorów, liczeni w chwili rozpoczęcia meczu po odliczaniu albo przy pierwszym zabójstwie, jeśli mecz już trwał, gdy zaczęło się nagranie. W grze drużynowej liczą się tylko gracze w drużynie. Demo z kilkoma meczami pokazuje największą liczbę, a demo bez meczu największą liczbę w dowolnej chwili.
+help-teams-column = Drużyny, w których jest co najmniej jeden gracz, liczone tak jak gracze. Gra bez drużyn nie ma żadnej.
 filter-min-accuracy = Celność co najmniej (%)
 scores-accuracy = Cel.
 

@@ -83,6 +83,8 @@ filter-player = Jogador
 filter-weapon-any = Qualquer arma
 filter-min-minutes = Pelo menos (minutos)
 filter-min-kills = Pelo menos (abates)
+filter-players = Jogadores
+filter-teams = Equipes
 filter-spectating-any = Jogando ou espectando
 filter-spectating-mostly = Quase só espectando
 filter-spectating-playing = Quase só jogando
@@ -408,6 +410,10 @@ event-headshot = headshot
 scores-headshots = HS
 
 column-accuracy = Precisão
+column-players = Jogadores
+column-teams = Equipes
+help-players-column = Jogadores no jogo, sem contar espectadores, contados quando a partida começou depois da contagem regressiva, ou no primeiro abate se a partida já estava em andamento quando a gravação começou. Num jogo em equipe, só contam os jogadores que estão numa equipe. Uma demo com várias partidas mostra o maior número, e uma demo sem partida, o maior número em qualquer momento.
+help-teams-column = Equipes com pelo menos um jogador, contadas como os jogadores. Um jogo sem equipes não tem nenhuma.
 filter-min-accuracy = Precisão mínima (%)
 scores-accuracy = Prec.
 

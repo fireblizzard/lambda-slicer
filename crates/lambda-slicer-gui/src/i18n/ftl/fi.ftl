@@ -79,6 +79,8 @@ filter-player = Pelaaja
 filter-weapon-any = Mikä tahansa ase
 filter-min-minutes = Vähintään (minuuttia)
 filter-min-kills = Vähintään (tappoa)
+filter-players = Pelaajat
+filter-teams = Joukkueet
 filter-spectating-any = Pelaten tai katsojana
 filter-spectating-mostly = Enimmäkseen katsojana
 filter-spectating-playing = Enimmäkseen pelaten
@@ -390,6 +392,10 @@ event-headshot = päälaukaus
 scores-headshots = PL
 
 column-accuracy = Tarkkuus
+column-players = Pelaajat
+column-teams = Joukkueet
+help-players-column = Pelissä olevat pelaajat, ei katsojia, laskettuna ottelun alkaessa lähtölaskennan jälkeen, tai ensimmäisen tapon kohdalla, jos ottelu oli jo käynnissä tallennuksen alkaessa. Joukkuepelissä lasketaan vain joukkueessa olevat pelaajat. Usean ottelun demo näyttää suurimman määrän, ja demo, jossa ei ole ottelua, suurimman määrän millä tahansa hetkellä.
+help-teams-column = Joukkueet, joissa on pelaaja, laskettuna samoin kuin pelaajat. Pelissä ilman joukkueita niitä ei ole.
 filter-min-accuracy = Tarkkuus vähintään (%)
 scores-accuracy = Tark.
 

@@ -83,6 +83,8 @@ filter-player = Joueur
 filter-weapon-any = N’importe quelle arme
 filter-min-minutes = Au moins (minutes)
 filter-min-kills = Au moins (éliminations)
+filter-players = Joueurs
+filter-teams = Équipes
 filter-spectating-any = En jeu ou en spectateur
 filter-spectating-mostly = Surtout en spectateur
 filter-spectating-playing = Surtout en jeu
@@ -408,6 +410,10 @@ event-headshot = tir à la tête
 scores-headshots = TT
 
 column-accuracy = Précision
+column-players = Joueurs
+column-teams = Équipes
+help-players-column = Les joueurs dans la partie, sans les spectateurs, comptés au début de la partie après le compte à rebours, ou à la première élimination si la partie était déjà en cours au début de l’enregistrement. Dans un jeu en équipe, seuls les joueurs dans une équipe comptent. Une démo de plusieurs parties montre le plus grand nombre, et une démo sans partie le plus grand nombre à n’importe quel moment.
+help-teams-column = Les équipes qui ont au moins un joueur, comptées comme les joueurs. Un jeu sans équipes n’en a aucune.
 filter-min-accuracy = Précision minimale (%)
 scores-accuracy = Préc.
 

@@ -69,6 +69,8 @@ filter-player = 玩家
 filter-weapon-any = 任意武器
 filter-min-minutes = 至少（分钟）
 filter-min-kills = 至少（击杀）
+filter-players = 玩家数
+filter-teams = 队伍数
 filter-spectating-any = 游戏或观战
 filter-spectating-mostly = 主要在观战
 filter-spectating-playing = 主要在游戏
@@ -367,6 +369,10 @@ event-headshot = 爆头
 scores-headshots = 爆头
 
 column-accuracy = 命中率
+column-players = 玩家数
+column-teams = 队伍数
+help-players-column = 游戏中的玩家，不含观战者，在比赛倒计时结束、比赛开始时计数；如果录制开始时比赛已在进行，则在第一次击杀时计数。有队伍的游戏只计入在队伍中的玩家。包含多场比赛的录像显示最多的人数，没有比赛的录像显示任意时刻的最多人数。
+help-teams-column = 至少有一名玩家的队伍，计数方式与玩家相同。没有队伍的游戏则为零。
 filter-min-accuracy = 命中率至少（%）
 scores-accuracy = 命中率
 

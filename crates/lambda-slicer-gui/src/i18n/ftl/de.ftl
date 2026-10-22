@@ -79,6 +79,8 @@ filter-player = Spieler
 filter-weapon-any = Beliebige Waffe
 filter-min-minutes = Mindestens (Minuten)
 filter-min-kills = Mindestens (Abschüsse)
+filter-players = Spieler
+filter-teams = Teams
 filter-spectating-any = Spielend oder zuschauend
 filter-spectating-mostly = Meist zuschauend
 filter-spectating-playing = Meist spielend
@@ -390,6 +392,10 @@ event-headshot = Kopfschuss
 scores-headshots = KS
 
 column-accuracy = Treffsicherheit
+column-players = Spieler
+column-teams = Teams
+help-players-column = Spieler im Spiel, keine Zuschauer, gezählt beim Start des Matches nach dem Countdown, oder beim ersten Abschuss, wenn das Match schon lief, als die Aufnahme begann. In einem Teamspiel zählen nur Spieler in einem Team. Eine Demo mit mehreren Matches zeigt die höchste Zahl, eine Demo ohne Match die höchste Zahl zu irgendeinem Zeitpunkt.
+help-teams-column = Teams mit mindestens einem Spieler, gezählt wie die Spieler. Ein Spiel ohne Teams hat keine.
 filter-min-accuracy = Treffsicherheit mindestens (%)
 scores-accuracy = Treff.
 

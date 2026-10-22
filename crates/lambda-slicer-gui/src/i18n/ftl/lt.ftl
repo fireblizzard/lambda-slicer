@@ -87,6 +87,8 @@ filter-player = Žaidėjas
 filter-weapon-any = Bet kuris ginklas
 filter-min-minutes = Bent (minučių)
 filter-min-kills = Bent (nužudymų)
+filter-players = Žaidėjai
+filter-teams = Komandos
 filter-spectating-any = Žaidžiant ar stebint
 filter-spectating-mostly = Daugiausia stebint
 filter-spectating-playing = Daugiausia žaidžiant
@@ -415,6 +417,10 @@ event-headshot = į galvą
 scores-headshots = ŠG
 
 column-accuracy = Taiklumas
+column-players = Žaidėjai
+column-teams = Komandos
+help-players-column = Žaidime esantys žaidėjai, ne stebėtojai, suskaičiuoti rungtynėms prasidėjus po atgalinės atskaitos arba ties pirmuoju nužudymu, jei rungtynės jau vyko, kai prasidėjo įrašas. Komandiniame žaidime skaičiuojami tik komandoje esantys žaidėjai. Kelių rungtynių įrašas rodo didžiausią skaičių, o įrašas be rungtynių – didžiausią skaičių bet kuriuo metu.
+help-teams-column = Komandos, kuriose yra bent vienas žaidėjas, suskaičiuotos taip pat kaip žaidėjai. Žaidime be komandų jų nėra.
 filter-min-accuracy = Taiklumas bent (%)
 scores-accuracy = Taikl.
 

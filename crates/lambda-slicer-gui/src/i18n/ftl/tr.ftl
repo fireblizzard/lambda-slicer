@@ -70,6 +70,8 @@ filter-player = Oyuncu
 filter-weapon-any = Herhangi bir silah
 filter-min-minutes = En az (dakika)
 filter-min-kills = En az (öldürme)
+filter-players = Oyuncular
+filter-teams = Takımlar
 filter-spectating-any = Oynayan ya da izleyen
 filter-spectating-mostly = Çoğunlukla izleyici
 filter-spectating-playing = Çoğunlukla oynayan
@@ -378,6 +380,10 @@ event-headshot = kafadan
 scores-headshots = KV
 
 column-accuracy = İsabet
+column-players = Oyuncular
+column-teams = Takımlar
+help-players-column = Oyundaki oyuncular, izleyiciler hariç; maç geri sayımdan sonra başladığında ya da kayıt başladığında maç zaten sürüyorsa ilk öldürmede sayılır. Takımlı bir oyunda yalnızca bir takımdaki oyuncular sayılır. Birkaç maç içeren bir demo en yüksek sayıyı, maç içermeyen bir demo ise herhangi bir andaki en yüksek sayıyı gösterir.
+help-teams-column = İçinde en az bir oyuncu olan takımlar, oyuncular gibi sayılır. Takımsız bir oyunda takım yoktur.
 filter-min-accuracy = En az isabet (%)
 scores-accuracy = İsabet
 

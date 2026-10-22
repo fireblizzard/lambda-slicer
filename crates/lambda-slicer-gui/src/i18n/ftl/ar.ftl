@@ -95,6 +95,8 @@ filter-player = اللاعب
 filter-weapon-any = أي سلاح
 filter-min-minutes = على الأقل (دقائق)
 filter-min-kills = على الأقل (قتلات)
+filter-players = اللاعبون
+filter-teams = الفرق
 filter-spectating-any = لعب أو مشاهدة
 filter-spectating-mostly = مشاهدة في الغالب
 filter-spectating-playing = لعب في الغالب
@@ -450,6 +452,10 @@ event-headshot = طلقة في الرأس
 scores-headshots = رأس
 
 column-accuracy = الدقة
+column-players = اللاعبون
+column-teams = الفرق
+help-players-column = اللاعبون في اللعبة، لا المشاهدون، يُعدّون عند بدء المباراة بعد العد التنازلي، أو عند أول قتل إذا كانت المباراة جارية حين بدأ التسجيل. في لعبة الفرق لا يُحتسب إلا اللاعبون المنضمون إلى فريق. التسجيل الذي يضم عدة مباريات يعرض أكبر عدد، والتسجيل الذي لا مباراة فيه يعرض أكبر عدد في أي لحظة.
+help-teams-column = الفرق التي فيها لاعب واحد على الأقل، تُعدّ كما يُعدّ اللاعبون. اللعبة التي بلا فرق ليس فيها أي فريق.
 filter-min-accuracy = الدقة لا تقل عن (٪)
 scores-accuracy = الدقة
 

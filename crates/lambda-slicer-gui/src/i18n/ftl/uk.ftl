@@ -87,6 +87,8 @@ filter-player = Гравець
 filter-weapon-any = Будь-яка зброя
 filter-min-minutes = Не коротше (хвилин)
 filter-min-kills = Не менше (вбивств)
+filter-players = Гравці
+filter-teams = Команди
 filter-spectating-any = Гра або спостереження
 filter-spectating-mostly = Переважно спостереження
 filter-spectating-playing = Переважно гра
@@ -415,6 +417,10 @@ event-headshot = в голову
 scores-headshots = ХШ
 
 column-accuracy = Влучність
+column-players = Гравці
+column-teams = Команди
+help-players-column = Гравці в грі, без спостерігачів, підраховані на початку матчу після зворотного відліку або на першому вбивстві, якщо матч уже тривав, коли почався запис. У командній грі враховуються лише гравці в команді. Для демозапису з кількома матчами показується найбільше число, а для демозапису без матчу — найбільше число в будь-який момент.
+help-teams-column = Команди, у яких є хоча б один гравець, підраховані так само, як гравці. У грі без команд їх немає.
 filter-min-accuracy = Влучність не нижче (%)
 scores-accuracy = Влуч.
 

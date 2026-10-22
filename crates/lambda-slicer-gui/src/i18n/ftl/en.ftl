@@ -80,6 +80,8 @@ filter-player = Player
 filter-weapon-any = Any weapon
 filter-min-minutes = At least (minutes)
 filter-min-kills = At least (kills)
+filter-players = Players
+filter-teams = Teams
 filter-spectating-any = Playing or spectating
 filter-spectating-mostly = Mostly spectating
 filter-spectating-playing = Mostly playing
@@ -391,6 +393,10 @@ event-headshot = headshot
 scores-headshots = HS
 
 column-accuracy = Accuracy
+column-players = Players
+column-teams = Teams
+help-players-column = Players in the game, not spectators, counted when the match started after its countdown, or at the first kill when the match was already on as the recording began. In a game with teams only players on a team count. A demo of several matches shows the most, and a demo with no match the most at any moment.
+help-teams-column = Teams with a player on them, counted as the players are. A game without teams has none.
 filter-min-accuracy = Accuracy at least (%)
 scores-accuracy = Acc.
 

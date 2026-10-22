@@ -7,6 +7,8 @@ mod world;
 
 pub use run::{DECODE_REPORT_SCHEMA, DecodeOptions, DecodeReport, DecodeStatus, decode_demo};
 
+pub(crate) use world::userinfo_value;
+
 pub use world::{
     ActorResolution, DecodeError, DecodeErrorKind, DecodeStats, DecodedEvent, Decoder, EntityState,
     EventSource, FrameLocation, NameChange, NameChangeKind, PlayerIdentity, PlayerInfo, Snapshot,

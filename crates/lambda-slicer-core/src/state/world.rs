@@ -393,7 +393,8 @@ struct Building {
     weapons: Option<Arc<Vec<Option<Arc<StructState>>>>>,
 }
 
-fn userinfo_value(info: &[u8], key: &[u8]) -> Option<Vec<u8>> {
+/// The value of `key` in the userinfo `info`, none when it has no such key
+pub(crate) fn userinfo_value(info: &[u8], key: &[u8]) -> Option<Vec<u8>> {
     // Infostrings are "\key\value\key\value"
     let mut parts = info.split(|&b| b == b'\\');
     if info.first() == Some(&b'\\') {
