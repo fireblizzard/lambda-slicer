@@ -186,6 +186,26 @@ pub struct App {
 }
 
 /// The app's icon as a texture, for the toolbar
+/// How long one pulse of the border showing someone new where to start
+/// takes, in seconds, how wide it is, and how faint it gets, of full
+const PULSE_PERIOD: f64 = 2.5;
+const PULSE_WIDTH: f32 = 1.5;
+const PULSE_LEAST: f32 = 0.3;
+
+/// A red border around `rect` that brightens and fades in turn, to show
+/// someone new where to start. It keeps the app drawing while it shows
+fn pulse_border(ui: &egui::Ui, rect: egui::Rect) {
+    let time = ui.input(|i| i.time);
+    let wave = (time / PULSE_PERIOD * std::f64::consts::TAU).sin() as f32;
+    let strength = PULSE_LEAST + (1. - PULSE_LEAST) * (wave + 1.) / 2.;
+
+    let stroke = egui::Stroke::new(PULSE_WIDTH, theme::ERROR.gamma_multiply(strength));
+    let radius = egui::CornerRadius::same(theme::RADIUS_CONTROL);
+    ui.painter()
+        .rect_stroke(rect, radius, stroke, egui::StrokeKind::Outside);
+    ui.ctx().request_repaint();
+}
+
 fn brand_texture(ctx: &egui::Context) -> egui::TextureHandle {
     let png = include_bytes!("../../../assets/branding/icons/icon-48.png");
     let image = image::load_from_memory(png)
@@ -1035,6 +1055,20 @@ impl App {
         self.open_files(ctx, files);
     }
 
+    /// Whether nothing has been added yet, no library folder, no demo
+    /// opened and nothing in the library once it is counted, as for someone
+    /// new to the app
+    fn nothing_added(&self) -> bool {
+        let empty_library = self
+            .library
+            .as_ref()
+            .is_none_or(|l| l.counted() && l.library_files() == 0);
+        self.settings.folders.is_empty()
+            && self.opened.is_empty()
+            && self.demo.is_none()
+            && empty_library
+    }
+
     /// A toolbar button with text after its icon
     fn tool(&self, ctx: &egui::Context, icon: Icon, id: &str) -> widgets::Button {
         widgets::Button::new(Some(icon), self.t(ctx, id), Variant::Ghost, self.rtl())
@@ -1063,15 +1097,19 @@ impl App {
             self.brand(ui);
             ui.add_space(theme::GAP_M);
 
-            if ui
-                .add(self.tool(&ctx, Icon::Open, "toolbar-open"))
-                .clicked()
-            {
-                self.open_dialog(&ctx);
+            // Someone new to the app is shown where to start
+            let pulse = self.nothing_added();
+            let open = ui.add(self.tool(&ctx, Icon::Open, "toolbar-open"));
+            let add_folder = ui.add(self.tool(&ctx, Icon::AddFolder, "toolbar-add-folder"));
+            if pulse {
+                pulse_border(ui, open.rect);
+                pulse_border(ui, add_folder.rect);
             }
 
-            let add_folder = self.tool(&ctx, Icon::AddFolder, "toolbar-add-folder");
-            if ui.add(add_folder).clicked()
+            if open.clicked() {
+                self.open_dialog(&ctx);
+            }
+            if add_folder.clicked()
                 && let Some(folders) = rfd::FileDialog::new().pick_folders()
             {
                 self.add_folders(&ctx, folders);

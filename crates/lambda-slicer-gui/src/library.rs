@@ -592,6 +592,12 @@ impl LibraryView {
         self.stats.files
     }
 
+    /// Whether the files have been counted yet, which happens as the list
+    /// is first drawn
+    pub fn counted(&self) -> bool {
+        self.applied.is_some()
+    }
+
     fn query(&self) -> FileQuery {
         FileQuery {
             every_map: self.every_map,
