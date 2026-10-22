@@ -154,6 +154,16 @@ const SEARCH_MIN_WIDTH: f32 = 60.;
 /// The room a slider leaves beside it for its value
 const SLIDER_VALUE_ROOM: f32 = 56.;
 
+/// The longest a demo can be asked to be at least, in minutes, and the
+/// step that number takes as it is dragged
+pub const MAX_MINUTES: f32 = 120.;
+pub const MINUTES_STEP: f64 = 0.5;
+
+/// The most kills a demo can be asked to have at least, and the step that
+/// number takes as it is dragged
+pub const MAX_KILLS: u32 = 1000;
+pub const KILLS_STEP: f64 = 0.2;
+
 /// Weapons that leave events, so a shot count can show their use
 pub const WEAPONS: [Weapon; 12] = [
     Weapon::Gauss,
@@ -187,6 +197,8 @@ pub struct Filters {
     pub player: String,
     pub weapon: Option<Weapon>,
     pub min_minutes: f32,
+    /// Fewest kills, 0 for any
+    pub min_kills: u32,
     pub spectating: Spectating,
     /// Recording date bounds, inclusive
     pub from: Option<Ymd>,
@@ -213,6 +225,7 @@ impl Filters {
         let others = [
             self.weapon.is_some(),
             self.min_minutes > 0.,
+            self.min_kills > 0,
             self.spectating != Spectating::Any,
             self.headshot,
             self.midair,
@@ -237,6 +250,7 @@ impl Filters {
             player: text(&self.player),
             weapon_used: self.weapon.map(|w| w.name().to_string()),
             min_duration: (self.min_minutes > 0.).then_some(self.min_minutes * 60.),
+            min_kills: (self.min_kills > 0).then_some(i64::from(self.min_kills)),
             min_spectating: (self.spectating == Spectating::Mostly).then_some(0.5000001),
             max_spectating: (self.spectating == Spectating::Playing).then_some(0.5),
             min_accuracy: (self.min_accuracy > 0.).then_some(f64::from(self.min_accuracy) / 100.),
@@ -773,9 +787,23 @@ impl LibraryView {
             layout::trailing(ui, rtl, |ui| {
                 ui.add(
                     egui::DragValue::new(minutes)
-                        .range(0.0..=120.0)
-                        .speed(0.5)
+                        .range(0.0..=MAX_MINUTES)
+                        .speed(MINUTES_STEP)
                         .custom_formatter(|v, _| catalog.number(v, 1))
+                        .custom_parser(parse_number),
+                );
+            });
+        });
+
+        let kills = &mut self.filters.min_kills;
+        layout::row(ui, rtl, |ui| {
+            ui.label(t("filter-min-kills"));
+            layout::trailing(ui, rtl, |ui| {
+                ui.add(
+                    egui::DragValue::new(kills)
+                        .range(0..=MAX_KILLS)
+                        .speed(KILLS_STEP)
+                        .custom_formatter(|v, _| catalog.number(v, 0))
                         .custom_parser(parse_number),
                 );
             });

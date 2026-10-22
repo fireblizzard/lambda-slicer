@@ -222,6 +222,10 @@ impl App {
         if let (Some(l), Some(d)) = (&mut library, &launch.demo) {
             l.select_path(d);
         }
+        if let Some(l) = &mut library {
+            l.filters.min_minutes = settings.start_min_minutes;
+            l.filters.min_kills = settings.start_min_kills;
+        }
 
         // The filters as they were left, and the order chosen to start with
         if let Some(l) = &mut library {

@@ -420,6 +420,7 @@ impl App {
         }
 
         self.starting_order(ui, rtl);
+        self.starting_filters(ui, rtl);
 
         heading(ui, &self.catalog, "settings-cache", None, rtl, false);
         let cache = self.cache_path.as_ref().map(|p| p.display().to_string());
@@ -488,6 +489,58 @@ impl App {
         self.settings.sort_column = column;
         self.settings.sort_descending = descending;
         self.settings_unsaved = true;
+    }
+
+    /// The filters the library starts with, the least length of a demo and
+    /// the fewest kills. The filters themselves change only from the next
+    /// start
+    fn starting_filters(&mut self, ui: &mut egui::Ui, rtl: bool) {
+        heading(
+            ui,
+            &self.catalog,
+            "settings-start-filters",
+            Some("settings-start-filters-hint"),
+            rtl,
+            false,
+        );
+
+        let catalog = &self.catalog;
+        let mut minutes = self.settings.start_min_minutes;
+        let mut kills = self.settings.start_min_kills;
+        let ids = ["filter-min-minutes", "filter-min-kills"];
+        let width = label_width(ui, catalog, &ids, rtl);
+        field(ui, catalog, "filter-min-minutes", width, rtl, |ui| {
+            ui.add(
+                egui::DragValue::new(&mut minutes)
+                    .range(0.0..=library::MAX_MINUTES)
+                    .speed(library::MINUTES_STEP)
+                    .custom_formatter(|v, _| catalog.number(v, 1))
+                    .custom_parser(parse_number),
+            );
+        });
+        field(ui, catalog, "filter-min-kills", width, rtl, |ui| {
+            ui.add(
+                egui::DragValue::new(&mut kills)
+                    .range(0..=library::MAX_KILLS)
+                    .speed(library::KILLS_STEP)
+                    .custom_formatter(|v, _| catalog.number(v, 0))
+                    .custom_parser(parse_number),
+            );
+        });
+
+        let wanted = (minutes, kills);
+        if wanted
+            != (
+                self.settings.start_min_minutes,
+                self.settings.start_min_kills,
+            )
+        {
+            (
+                self.settings.start_min_minutes,
+                self.settings.start_min_kills,
+            ) = wanted;
+            self.settings_unsaved = true;
+        }
     }
 
     /// Every setting that changes only how the viewer shows and plays a
@@ -875,10 +928,12 @@ fn changed_settings(current: &Settings, restored: &Settings) -> Vec<&'static str
     let (now, then) = (current, restored);
     let (view, first) = (&now.viewer, &then.viewer);
     let order = |s: &Settings| (s.sort_column.clone(), s.sort_descending);
+    let starting = |s: &Settings| (s.start_min_minutes, s.start_min_kills);
     let checks = [
         (now.locale != then.locale, "settings-language"),
         (now.workers != then.workers, "settings-workers"),
         (order(now) != order(then), "settings-sort"),
+        (starting(now) != starting(then), "settings-start-filters"),
         (view.gamma != first.gamma, "settings-gamma"),
         (view.brightness != first.brightness, "settings-brightness"),
         (view.texgamma != first.texgamma, "settings-texgamma"),

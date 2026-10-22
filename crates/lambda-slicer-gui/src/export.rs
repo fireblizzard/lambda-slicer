@@ -53,7 +53,7 @@ pub struct FileNaming {
 impl Default for FileNaming {
     fn default() -> Self {
         Self {
-            clip_name: false,
+            clip_name: true,
             demo_first: true,
         }
     }

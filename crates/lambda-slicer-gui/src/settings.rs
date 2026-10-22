@@ -8,6 +8,7 @@ use lambda_slicer_playback::decals::MAX_DECALS;
 use serde::{Deserialize, Serialize};
 
 use crate::i18n::Locale;
+use crate::library::{MAX_KILLS, MAX_MINUTES};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -27,6 +28,10 @@ pub struct Settings {
     /// or highest first when `sort_descending`
     pub sort_column: String,
     pub sort_descending: bool,
+    /// The least length in minutes and the fewest kills the library's
+    /// filters ask of a demo when the app starts, 0 for any
+    pub start_min_minutes: f32,
+    pub start_min_kills: u32,
     /// Whether a demo opens with its player lanes under the timeline. Files
     /// from before the timeline was always shown name it `show_timeline`
     #[serde(alias = "show_timeline")]
@@ -220,11 +225,13 @@ impl Default for Settings {
             hidden_columns: vec!["gauss".into()],
             sort_column: "modified".into(),
             sort_descending: true,
+            start_min_minutes: 0.,
+            start_min_kills: 0,
             player_lanes: false,
             preroll: 4.,
             postroll: 1.,
             export_folder: None,
-            clip_name_files: false,
+            clip_name_files: true,
             demo_name_first: true,
             viewer: ViewerSettings::default(),
             layout: LayoutSettings::default(),
@@ -280,6 +287,12 @@ impl Settings {
         };
         self.preroll = padding(self.preroll);
         self.postroll = padding(self.postroll);
+        self.start_min_minutes = if self.start_min_minutes.is_finite() {
+            self.start_min_minutes.clamp(0., MAX_MINUTES)
+        } else {
+            0.
+        };
+        self.start_min_kills = self.start_min_kills.min(MAX_KILLS);
         self.viewer = self.viewer.clamped();
         self.layout = self.layout.clamped();
         self
@@ -324,11 +337,13 @@ mod tests {
             hidden_columns: Vec::new(),
             sort_column: "kills".into(),
             sort_descending: false,
+            start_min_minutes: 5.,
+            start_min_kills: 25,
             player_lanes: true,
             preroll: 2.5,
             postroll: 0.,
             export_folder: Some(PathBuf::from("F:/clips")),
-            clip_name_files: true,
+            clip_name_files: false,
             demo_name_first: false,
             viewer: ViewerSettings {
                 game: Some(PathBuf::from("F:/Half-Life")),
@@ -356,12 +371,14 @@ mod tests {
 
         std::fs::write(
             &path,
-            b"{\"workers\": 9, \"locale\": \"zh-Hans\", \"preroll\": -4, \"postroll\": 1e9}",
+            b"{\"workers\": 9, \"locale\": \"zh-Hans\", \"preroll\": -4, \"postroll\": 1e9, \"start_min_minutes\": 1e9, \"start_min_kills\": 99999}",
         )
         .unwrap();
         let loaded = Settings::load_from(&path);
         assert_eq!((loaded.workers, loaded.locale), (4, Some(Locale::ZhHans)));
         assert_eq!((loaded.preroll, loaded.postroll), (0., MAX_PADDING));
+        assert_eq!(loaded.start_min_minutes, MAX_MINUTES);
+        assert_eq!(loaded.start_min_kills, MAX_KILLS);
 
         // The viewer's settings stay in the game's ranges
         std::fs::write(
@@ -452,15 +469,19 @@ mod tests {
     }
 
     #[test]
-    fn clips_keep_their_times_in_file_names_until_asked() {
+    fn clips_take_their_names_for_file_names_until_asked_not_to() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("settings.json");
 
         // A file from before the choice was there
         std::fs::write(&path, br#"{"workers": 2}"#).unwrap();
         let loaded = Settings::load_from(&path);
-        assert!(!loaded.clip_name_files);
+        assert!(loaded.clip_name_files);
         assert!(loaded.demo_name_first);
+
+        // A choice made stays
+        std::fs::write(&path, br#"{"clip_name_files": false}"#).unwrap();
+        assert!(!Settings::load_from(&path).clip_name_files);
     }
 
     #[test]

@@ -399,8 +399,9 @@ pub struct FileQuery {
     pub map: Option<String>,
     /// Text in any player's name, ignoring case
     pub player: Option<String>,
-    /// Shortest duration in seconds
+    /// Shortest duration in seconds, and fewest kills
     pub min_duration: Option<f32>,
+    pub min_kills: Option<i64>,
     /// Recording dates as `YYYY-MM-DD`, inclusive
     pub from_date: Option<String>,
     pub to_date: Option<String>,
@@ -918,6 +919,10 @@ impl Cache {
             args.push(Box::new(d));
             c.push(format!("f.duration >= ?{}", args.len()));
         }
+        if let Some(k) = q.min_kills {
+            args.push(Box::new(k));
+            c.push(format!("f.kills >= ?{}", args.len()));
+        }
         if let Some(d) = &q.from_date {
             args.push(Box::new(d.clone()));
             c.push(format!("substr(f.recorded_at, 1, 10) >= ?{}", args.len()));
@@ -1282,6 +1287,32 @@ mod tests {
 
         assert_eq!(rows[1].scoreboard, None);
         assert_eq!(rows[2].scoreboard, None);
+    }
+
+    #[test]
+    fn the_fewest_kills_leave_out_demos_with_fewer() {
+        let c = cache(&[
+            ("a.dem", None, None),
+            ("b.dem", None, None),
+            ("c.dem", None, None),
+        ]);
+        for (name, kills) in [("a.dem", 3), ("b.dem", 10), ("c.dem", 25)] {
+            c.conn
+                .execute(
+                    "UPDATE files SET kills = ?1 WHERE path = ?2",
+                    params![kills, name],
+                )
+                .unwrap();
+        }
+
+        let at_least = |kills| FileQuery {
+            min_kills: Some(kills),
+            limit: 10,
+            ..Default::default()
+        };
+        assert_eq!(c.count(&at_least(10)).unwrap(), 2);
+        assert_eq!(c.count(&at_least(30)).unwrap(), 0);
+        assert_eq!(c.count(&FileQuery::default()).unwrap(), 3);
     }
 
     #[test]
