@@ -53,6 +53,12 @@ const SPRITE_ATTRIBUTES: [wgpu::VertexAttribute; 3] =
 /// Light style slots, the game's 64 and full brightness
 const STYLE_SLOTS: usize = FULL_BRIGHT as usize + 1;
 
+/// The way round the world's and brushes' faces wind their corners as
+/// they face the camera. The game draws none from behind, so a brush's far
+/// side never shows through what is see-through on its near side, such as a
+/// ladder's gaps or a pool of water (`R_DrawBrushModel`, `SURF_PLANEBACK`)
+const WORLD_FRONT: wgpu::FrontFace = wgpu::FrontFace::Cw;
+
 const SHADER: &str = r#"
 // The faces silhouettes leave out, those the shader calls front, as the
 // game's models wind their corners the other way round
@@ -993,7 +999,8 @@ impl Scene {
                         buffer: wgpu::VertexBufferLayout<'_>,
                         blend: Option<wgpu::BlendState>,
                         depth_write: bool,
-                        depth_compare: wgpu::CompareFunction| {
+                        depth_compare: wgpu::CompareFunction,
+                        cull: Option<wgpu::Face>| {
             let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some(name),
                 bind_group_layouts: layouts,
@@ -1008,7 +1015,11 @@ impl Scene {
                     compilation_options: Default::default(),
                     buffers: &[Some(buffer)],
                 },
-                primitive: wgpu::PrimitiveState::default(),
+                primitive: wgpu::PrimitiveState {
+                    front_face: WORLD_FRONT,
+                    cull_mode: cull,
+                    ..Default::default()
+                },
                 depth_stencil: Some(wgpu::DepthStencilState {
                     format: DEPTH_FORMAT,
                     depth_write_enabled: Some(depth_write),
@@ -1072,6 +1083,7 @@ impl Scene {
                 blend,
                 write,
                 compare,
+                None,
             )
         };
         let model_pipeline = |name: &str, blend, write| {
@@ -1087,6 +1099,7 @@ impl Scene {
                 blend,
                 write,
                 less,
+                None,
             )
         };
         // Only where something nearer was drawn
@@ -1141,6 +1154,7 @@ impl Scene {
                 None,
                 true,
                 less,
+                Some(wgpu::Face::Back),
             ),
             blend: pipeline(
                 "world blend",
@@ -1150,6 +1164,7 @@ impl Scene {
                 Some(wgpu::BlendState::ALPHA_BLENDING),
                 false,
                 less,
+                Some(wgpu::Face::Back),
             ),
             add: pipeline(
                 "world add",
@@ -1159,6 +1174,7 @@ impl Scene {
                 Some(additive),
                 false,
                 less,
+                Some(wgpu::Face::Back),
             ),
             model: model_pipeline("model", None, true),
             model_blend: model_pipeline(
@@ -1180,6 +1196,7 @@ impl Scene {
                 None,
                 false,
                 wgpu::CompareFunction::LessEqual,
+                None,
             ),
             sprite_cut: sprite_pipeline("sprite cut", None, true, less),
             sprite_blend: sprite_pipeline(

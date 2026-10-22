@@ -255,6 +255,21 @@ struct Polygon {
     /// Facing the side the face is drawn on
     normal: [f32; 3],
     warp: bool,
+    /// Drawn from below too, as a water entity's surface is
+    two_sided: bool,
+}
+
+/// How near straight up or down a face must point to be level
+const LEVEL: f32 = 0.999;
+
+/// Whether a turbulent face of a brush entity whose bottom is at `bottom`
+/// is its water's surface, a level face above that bottom. Of a water
+/// entity the game draws only that, not its sides or its bottom, which
+/// stand inside the walls around it (Xash3D's `R_DrawBrushModel`)
+fn water_surface(normal: [f32; 3], points: &[[f32; 3]], bottom: f32) -> bool {
+    let level = normal[2].abs() >= LEVEL;
+    let height = points.first().map_or(bottom, |p| p[2]);
+    level && height > bottom + 1.
 }
 
 /// The animation chains of `+` textures, by texture index
@@ -407,6 +422,19 @@ pub fn build(bsp: &BspDocument, wad_texture: &mut dyn FnMut(&str) -> Option<Rgba
             if points.len() < 3 {
                 continue;
             }
+            let normal = planes.get(usize::from(face.plane)).map_or([0.; 3], |n| {
+                if face.plane_side != 0 {
+                    n.map(|v| -v)
+                } else {
+                    *n
+                }
+            });
+
+            // A water entity shows only its surface, from above and below
+            let water_entity = model_index > 0 && warp;
+            if water_entity && !water_surface(normal, &points, model.minimum[2].value) {
+                continue;
+            }
 
             let axes = [info.s_axis.map(|f| f.value), info.t_axis.map(|f| f.value)];
             let st = |p: [f32; 3], a: [f32; 4]| p[0] * a[0] + p[1] * a[1] + p[2] * a[2] + a[3];
@@ -451,14 +479,9 @@ pub fn build(bsp: &BspDocument, wad_texture: &mut dyn FnMut(&str) -> Option<Rgba
                     at,
                 },
                 axes,
-                normal: planes.get(usize::from(face.plane)).map_or([0.; 3], |n| {
-                    if face.plane_side != 0 {
-                        n.map(|v| -v)
-                    } else {
-                        *n
-                    }
-                }),
+                normal,
                 warp,
+                two_sided: water_entity,
             });
         }
     }
@@ -511,6 +534,7 @@ pub fn build(bsp: &BspDocument, wad_texture: &mut dyn FnMut(&str) -> Option<Rgba
             axes,
             normal,
             warp,
+            two_sided,
         } = polygon;
         let base = out_vertices.len() as u32;
         let [tw, th] = sizes.get(*texture).copied().unwrap_or([1., 1.]);
@@ -550,9 +574,14 @@ pub fn build(bsp: &BspDocument, wad_texture: &mut dyn FnMut(&str) -> Option<Rgba
                 flags: if *warp { flags::WARP } else { 0 },
             });
         }
+        // The other way round as well for a face seen from both sides, as
+        // faces seen from behind are not drawn
         if let Some(list) = per_texture[*model].get_mut(*texture) {
             for i in 1..points.len() as u32 - 1 {
                 list.extend_from_slice(&[base, base + i, base + i + 1]);
+                if *two_sided {
+                    list.extend_from_slice(&[base, base + i + 1, base + i]);
+                }
             }
         }
     }
@@ -599,6 +628,20 @@ pub fn build(bsp: &BspDocument, wad_texture: &mut dyn FnMut(&str) -> Option<Rgba
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_water_entity_keeps_only_its_level_top() {
+        let at = |z: f32| vec![[0., 0., z], [64., 0., z], [64., 64., z]];
+        let bottom = -65.;
+
+        // The top, facing up or down
+        assert!(water_surface([0., 0., 1.], &at(0.), bottom));
+        assert!(water_surface([0., 0., -1.], &at(0.), bottom));
+
+        // A side and the bottom
+        assert!(!water_surface([1., 0., 0.], &at(0.), bottom));
+        assert!(!water_surface([0., 0., -1.], &at(-64.), bottom));
+    }
 
     #[test]
     fn entities_and_wads_read_from_the_entity_text() {
