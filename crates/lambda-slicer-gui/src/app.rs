@@ -142,6 +142,9 @@ pub struct App {
     export_on_open: bool,
     /// A scan to start once the stopping one has stopped
     rescan: bool,
+    /// Library folders removed while a scan ran, whose demos are forgotten
+    /// once it has stopped, so it cannot write them back
+    forget_after_scan: Vec<PathBuf>,
     /// Clips exported into the library folders, scanned on their own once
     /// no scan runs, so they show without a rescan
     exported: Vec<PathBuf>,
@@ -312,6 +315,7 @@ impl App {
             open_show: launch.show,
             export_on_open: launch.export,
             rescan: false,
+            forget_after_scan: Vec::new(),
             exported: Vec::new(),
             scanned_with: None,
             floors: None,
@@ -816,6 +820,38 @@ impl App {
         self.scan.as_ref().is_some_and(ScanJob::running)
     }
 
+    /// Forget the demos of a library folder that was removed. A running
+    /// scan would still write the folder's demos as it reaches them, so it
+    /// is stopped and they are forgotten once it has, and the folders left
+    /// are scanned again, as the stopped scan did not finish them
+    fn forget_folder(&mut self, folder: PathBuf) {
+        if let Some(job) = &self.scan
+            && job.running()
+        {
+            job.cancel();
+            self.forget_after_scan.push(folder);
+            self.rescan = true;
+            return;
+        }
+
+        if let Some(l) = &mut self.library {
+            l.forget_folder(&folder, &self.settings.folders);
+        }
+    }
+
+    /// Forget the folders removed while a scan ran, once it has stopped
+    fn forget_removed_folders(&mut self) {
+        if self.forget_after_scan.is_empty() || self.scanning() {
+            return;
+        }
+
+        for folder in std::mem::take(&mut self.forget_after_scan) {
+            if let Some(l) = &mut self.library {
+                l.forget_folder(&folder, &self.settings.folders);
+            }
+        }
+    }
+
     /// Scan the library folders and opened files. A running scan is stopped
     /// first, keeping what it finished. Stopping is not waited for, as the
     /// window would hang while a worker finishes its current read, so the
@@ -1259,6 +1295,7 @@ impl eframe::App for App {
             }
             self.start_scan(&ctx);
         }
+        self.forget_removed_folders();
         if self.rescan && !self.scanning() {
             self.start_scan(&ctx);
         }

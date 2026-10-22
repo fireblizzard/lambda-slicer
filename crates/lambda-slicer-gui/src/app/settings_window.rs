@@ -404,9 +404,7 @@ impl App {
         // Its demos leave the library with it
         if let Some(i) = remove {
             let folder = self.settings.folders.remove(i);
-            if let Some(l) = &mut self.library {
-                l.forget_folder(&folder, &self.settings.folders);
-            }
+            self.forget_folder(folder);
             self.settings_unsaved = true;
         }
 
