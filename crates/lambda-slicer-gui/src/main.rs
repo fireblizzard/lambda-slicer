@@ -76,6 +76,7 @@ mod theme;
 mod timeline;
 mod viewer;
 mod vitals;
+mod weapon_menu;
 mod widgets;
 
 use std::path::PathBuf;

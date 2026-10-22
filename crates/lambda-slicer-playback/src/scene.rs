@@ -204,6 +204,9 @@ pub struct Camera {
     /// data
     pub viewmodel: Option<Arc<str>>,
     pub health: i64,
+    /// The weapons the recorder owns, a bit for each weapon's id and the
+    /// suit's, from its client data
+    pub weapons: u32,
 }
 
 /// A player of the session, with what its userinfo names for drawing it
@@ -512,6 +515,7 @@ impl Scene {
             observer_target,
             viewmodel,
             health: client("health").unwrap_or(0),
+            weapons: client("weapons").unwrap_or(0) as u32,
         };
         if camera != self.camera {
             self.camera = camera;

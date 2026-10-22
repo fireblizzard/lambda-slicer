@@ -1,8 +1,9 @@
 //! The parts of the HUD playback shows, AG's countdown before a match, the
 //! kill feed, the chat, the messages [`crate::announcements`] keeps, the
 //! health, armour and ammo [`crate::status`] keeps, the scores
-//! [`crate::scores`] keeps, the damage [`crate::damage`] keeps, and the
-//! server's own text [`crate::hud_messages`] keeps
+//! [`crate::scores`] keeps, the damage [`crate::damage`] keeps, the
+//! server's own text [`crate::hud_messages`] keeps, and the weapon menu
+//! [`crate::weapon_menu`] keeps
 //!
 //! AG's client counts down when the server sends `Countdown`, a signed byte
 //! of seconds left, a byte saying whether to speak it, and the names of the
@@ -39,6 +40,7 @@ use crate::scene::Camera;
 use crate::scores::{ScoreRow, Scores};
 use crate::status::{self, Status};
 use crate::time::SourceTime;
+use crate::weapon_menu::{MenuShown, WeaponMenu};
 
 /// The user message AG's server counts down with
 const MESSAGE: &str = "Countdown";
@@ -143,6 +145,8 @@ pub struct Hud {
     damage: Damage,
     /// The text the server places on the HUD
     messages: HudMessages,
+    /// The weapon menu the recording player opens with their keys
+    menu: WeaponMenu,
 }
 
 /// A string ending at its first nought, and what follows it
@@ -326,6 +330,17 @@ impl Hud {
             return DamageShown::default();
         }
         self.damage.at(at)
+    }
+
+    /// A command the recording player gave, with the weapons of `camera`,
+    /// and the sound the client plays for it, if any
+    pub(crate) fn on_command(&mut self, command: &str, camera: &Camera) -> Option<&'static str> {
+        self.menu.command(command, &self.status, camera.weapons)
+    }
+
+    /// The weapon menu with the weapons of `camera`, while it is open
+    pub fn weapon_menu(&self, camera: &Camera) -> Option<MenuShown> {
+        self.menu.shown(&self.status, camera.weapons)
     }
 
     /// The text the server placed on the HUD that shows at `at`

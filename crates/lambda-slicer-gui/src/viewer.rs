@@ -1526,8 +1526,9 @@ impl Viewer {
                             let fov = frame.recorder.fov;
                             self.crosshairs.draw(ui, rect, weapon, fov, library);
                         }
-                        // The game shows no health, armour, ammo, pickups or
-                        // damage to a spectator or at intermission
+                        // The game shows no health, armour, ammo, pickups,
+                        // damage or weapon menu to a spectator or at
+                        // intermission
                         let camera = &frame.recorder;
                         let shown = !camera.spectating && !camera.intermission;
                         if self.settings.vitals && shown {
@@ -1544,6 +1545,9 @@ impl Viewer {
                             crate::vitals::draw_damage(
                                 ui, vitals, library, rect, size, damage, health,
                             );
+                            if let Some(menu) = &frame.weapon_menu {
+                                crate::weapon_menu::draw(ui, vitals, library, rect, size, menu);
+                            }
                         }
                         self.kill_feed.draw(ui, rect, &frame.death_notices, library);
                         if self.settings.scores {

@@ -35,6 +35,7 @@ pub mod status;
 pub mod tempents;
 pub mod time;
 pub mod trace;
+pub mod weapon_menu;
 pub mod worker;
 
 pub use playback::PresentedFrame;

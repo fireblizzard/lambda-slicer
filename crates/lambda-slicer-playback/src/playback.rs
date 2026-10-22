@@ -42,6 +42,7 @@ use crate::status;
 use crate::tempents::{Lookup, TempEntities, TempEntity};
 use crate::time::{Position, ServerTime, SourceTime};
 use crate::trace::Hull;
+use crate::weapon_menu::MenuShown;
 
 /// Everything a renderer and a mixer need for one moment, and which load
 /// and seek it answers
@@ -110,6 +111,8 @@ pub struct PresentedFrame {
     pub damage: DamageShown,
     /// The text the server placed on the HUD
     pub hud_messages: Vec<ShownMessage>,
+    /// The weapon menu, while the recording player has it open
+    pub weapon_menu: Option<MenuShown>,
     /// The small scoreboard's rows, highest first
     pub scores: Vec<ScoreRow>,
 }
@@ -424,19 +427,8 @@ impl Playback {
                     let applied = decoder.network_frame(record.location, frame, |d, m| {
                         scene.on_message(d, m, time);
                         audio.on_message(d, m, time, lengths);
-                        // The client speaks the countdown where the listener
-                        // is, at full volume (`pfnPlaySoundByName`)
                         if let Some(sample) = hud.on_message(d, m, time, &scene.camera) {
-                            let call = SoundCall {
-                                entity: view_entity(d),
-                                channel: CHAN_AUTO,
-                                sample: Arc::from(sample),
-                                volume: 1.,
-                                attenuation: 0.,
-                                flags: 0,
-                                pitch: PITCH_NORM,
-                                origin: scene.camera.origin,
-                            };
+                            let call = hud_sound(d, sample, scene.camera.origin);
                             audio.play(&call, time, view_entity(d), lengths);
                         }
                         match &m.message {
@@ -469,6 +461,21 @@ impl Playback {
                 }
                 FrameBody::Event(event) => {
                     decoder.demo_event(record.location, event);
+                    Ok(())
+                }
+                FrameBody::ConsoleCommand(command) => {
+                    let end = command
+                        .iter()
+                        .position(|&b| b == 0)
+                        .unwrap_or(command.len());
+                    let command = String::from_utf8_lossy(&command[..end]);
+
+                    if let Some(sample) = hud.on_command(command.trim(), &scene.camera) {
+                        let call = hud_sound(decoder, sample, scene.camera.origin);
+                        effects
+                            .audio
+                            .play(&call, time, view_entity(decoder), lengths);
+                    }
                     Ok(())
                 }
                 other => {
@@ -721,6 +728,7 @@ impl Playback {
             pickups: state.hud.pickups(at),
             damage: state.hud.damage(at),
             hud_messages: state.hud.messages(at),
+            weapon_menu: state.hud.weapon_menu(&state.scene.camera),
             scores: state.hud.scores(&state.decoder),
             temp_entities: state
                 .tempents
@@ -730,6 +738,22 @@ impl Playback {
                 .cloned()
                 .collect(),
         }
+    }
+}
+
+/// A sound the HUD plays, such as the countdown's numbers or the weapon
+/// menu's clicks, which the client plays where the listener at `origin`
+/// is, at full volume (`pfnPlaySoundByName`)
+fn hud_sound(decoder: &Decoder, sample: &'static str, origin: [f32; 3]) -> SoundCall {
+    SoundCall {
+        entity: view_entity(decoder),
+        channel: CHAN_AUTO,
+        sample: Arc::from(sample),
+        volume: 1.,
+        attenuation: 0.,
+        flags: 0,
+        pitch: PITCH_NORM,
+        origin,
     }
 }
 

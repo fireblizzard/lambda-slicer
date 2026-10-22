@@ -88,7 +88,7 @@ const PICKUP_COUNT_GAP: f32 = 10.;
 /// size, and the colour of a weapon without ammo (`RGB_REDISH`)
 const PICKUP_FADE: f32 = 80.;
 const PICKUP_TEXT_SIZE: f32 = 13.;
-const NO_AMMO_COLOUR: Color32 = Color32::from_rgb(255, 16, 16);
+pub(crate) const NO_AMMO_COLOUR: Color32 = Color32::from_rgb(255, 16, 16);
 
 /// The sheet whose four frames mark a hit's side, above, right, below and
 /// left (`PAIN_NAME`)
@@ -118,7 +118,7 @@ fn reading_brightness(reading: &Reading, at: SourceTime) -> f32 {
 }
 
 /// `colour` at `brightness` of 255, to add to the picture (`ScaleColors`)
-fn scaled(colour: Color32, brightness: f32) -> Color32 {
+pub(crate) fn scaled(colour: Color32, brightness: f32) -> Color32 {
     let k = brightness.clamp(0., 255.) / 255.;
     let [r, g, b, _] = colour.to_array();
     let scale = |c: u8| (f32::from(c) * k).round() as u8;
@@ -135,7 +135,7 @@ fn digits(value: i32) -> [Option<u32>; DIGITS as usize] {
 }
 
 /// Draws on the view at the game's scale
-struct Painter<'a> {
+pub(crate) struct Painter<'a> {
     painter: egui::Painter,
     ctx: &'a egui::Context,
     library: &'a Library,
@@ -146,7 +146,7 @@ struct Painter<'a> {
 
 impl<'a> Painter<'a> {
     /// A painter over the view at `rect`, `size` times the game's size
-    fn new(
+    pub(crate) fn new(
         ui: &'a egui::Ui,
         sprites: &'a mut HudSprites,
         library: &'a Library,
@@ -177,13 +177,13 @@ impl<'a> Painter<'a> {
     }
 
     /// The icon `name` of the list `list`
-    fn icon(&mut self, list: &str, name: &str) -> Option<TextureHandle> {
+    pub(crate) fn icon(&mut self, list: &str, name: &str) -> Option<TextureHandle> {
         self.sprites.icon(self.ctx, self.library, list, name)
     }
 
     /// `icon` added at `x`, `y` in `tint`, the rows from `from` of its height
     /// on, as a share of it, the ones above left out
-    fn draw(&self, icon: &TextureHandle, x: f32, y: f32, tint: Color32, from: f32) {
+    pub(crate) fn draw(&self, icon: &TextureHandle, x: f32, y: f32, tint: Color32, from: f32) {
         let size = icon.size_vec2();
         let top = size.y * from;
         let place = Rect::from_min_size(
@@ -195,7 +195,7 @@ impl<'a> Painter<'a> {
     }
 
     /// A bar `width` by `height` added at `x`, `y` in `tint` (`FillRGBA`)
-    fn bar(&self, x: f32, y: f32, width: f32, height: f32, tint: Color32) {
+    pub(crate) fn bar(&self, x: f32, y: f32, width: f32, height: f32, tint: Color32) {
         let place = Rect::from_min_size(self.at(x, y), Vec2::new(width, height) * self.scale);
         self.painter.rect_filled(place, 0., tint);
     }

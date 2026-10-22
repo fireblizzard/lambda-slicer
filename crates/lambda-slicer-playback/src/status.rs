@@ -28,6 +28,15 @@ const HIDE_HEALTH: u8 = 8;
 /// A magazine of this means the weapon has none
 const NO_MAGAZINE: i8 = -1;
 
+/// The weapon menu's columns and the places in each, and the room kept
+/// for both (`MAX_WEAPON_SLOTS`, `MAX_WEAPON_POSITIONS`)
+pub(crate) const MENU_SLOTS: usize = 5;
+pub(crate) const MENU_PLACES: usize = 5;
+const MENU_ROOM: usize = 6;
+
+/// The weapon in each column and place of the menu, by id
+pub(crate) type MenuSlots = [[Option<i8>; MENU_ROOM]; MENU_ROOM];
+
 /// The most ammo that means a weapon takes none, and `WeaponList`'s flag
 /// for a weapon that can be taken out empty (`WEAPON_FLAGS_SELECTONEMPTY`)
 const NO_MOST_AMMO: u8 = 255;
@@ -116,8 +125,13 @@ struct WeaponInfo {
     /// Its ammo types, negative for none
     ammo: i8,
     ammo2: i8,
-    /// The most of its first ammo it holds, `NO_MOST_AMMO` for none
+    /// The most of its first and second ammo it holds, `NO_MOST_AMMO` for
+    /// none
     most_ammo: u8,
+    most_ammo2: u8,
+    /// Its column in the weapon menu and its place in the column
+    slot: u8,
+    position: u8,
     flags: u8,
     /// What its magazine holds, as `CurWeapon` last said, out or not
     magazine: i8,
@@ -208,7 +222,7 @@ impl Status {
     /// the slot and its id
     fn weapon_list(&mut self, body: &[u8]) {
         let (name, rest) = c_string(body);
-        let Some(&[ammo, most_ammo, ammo2, _, _, _, id]) = rest.get(..7) else {
+        let Some(&[ammo, most_ammo, ammo2, most_ammo2, slot, position, id]) = rest.get(..7) else {
             return;
         };
         let info = WeaponInfo {
@@ -216,6 +230,9 @@ impl Status {
             ammo: ammo as i8,
             ammo2: ammo2 as i8,
             most_ammo,
+            most_ammo2,
+            slot,
+            position,
             flags: rest.get(7).copied().unwrap_or(0),
             magazine: 0,
         };
@@ -346,6 +363,63 @@ impl Status {
     fn carried(&self, kind: i8) -> Option<i32> {
         let kind = u8::try_from(kind).ok().filter(|&k| k > 0)?;
         Some(i32::from(self.ammo.get(&kind).copied().unwrap_or(0)))
+    }
+
+    /// The weapons of `owned`, the client data's weapon bits, in their
+    /// columns and places of the menu (`PickupWeapon`)
+    pub(crate) fn menu_slots(&self, owned: u32) -> MenuSlots {
+        let mut slots: MenuSlots = Default::default();
+        for (&id, info) in self.weapons.iter().rev() {
+            let owns = u32::try_from(id).is_ok_and(|bit| bit < 32 && owned & (1 << bit) != 0);
+            let (slot, position) = (usize::from(info.slot), usize::from(info.position));
+            if owns && slot < MENU_ROOM && position < MENU_ROOM {
+                slots[slot][position] = Some(id);
+            }
+        }
+        slots
+    }
+
+    /// Whether the weapon `id` has ammo to fire
+    pub(crate) fn weapon_has_ammo(&self, id: i8) -> bool {
+        self.weapons
+            .get(&id)
+            .is_some_and(|info| self.has_ammo(info))
+    }
+
+    /// The weapon out, by id
+    pub(crate) fn current_id(&self) -> Option<i8> {
+        self.current.map(|(id, _)| id)
+    }
+
+    /// The weapon `id`'s name, and how full its ammo is as shares of the
+    /// most it holds, none without ammo carried (`DrawAmmoBar`)
+    pub(crate) fn menu_weapon(&self, id: i8) -> Option<(String, Vec<f32>)> {
+        let info = self.weapons.get(&id)?;
+        // The client takes no most ammo as -1, so such a bar shows empty
+        let share = |kind: i8, most: u8| {
+            let carried = self.carried(kind).unwrap_or(0) as f32;
+            let most = if most == NO_MOST_AMMO {
+                -1.
+            } else {
+                f32::from(most)
+            };
+            (carried / most).clamp(0., 1.)
+        };
+
+        let mut bars = Vec::new();
+        if info.ammo >= 0 && self.carried(info.ammo).unwrap_or(0) > 0 {
+            bars.push(share(info.ammo, info.most_ammo));
+            if info.ammo2 >= 0 {
+                bars.push(share(info.ammo2, info.most_ammo2));
+            }
+        }
+
+        Some((info.name.clone(), bars))
+    }
+
+    /// Whether `HideWeapon` hides the weapon's ammo, and with it the menu
+    pub(crate) fn hides_weapons(&self) -> bool {
+        self.hide & (HIDE_WEAPONS | HIDE_ALL) != 0
     }
 
     /// Whether `HideWeapon` hides the health, and with it the damage
