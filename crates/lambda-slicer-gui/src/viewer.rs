@@ -1526,8 +1526,8 @@ impl Viewer {
                             let fov = frame.recorder.fov;
                             self.crosshairs.draw(ui, rect, weapon, fov, library);
                         }
-                        // The game shows no health, armour, ammo or pickups to a
-                        // spectator or at intermission
+                        // The game shows no health, armour, ammo, pickups or
+                        // damage to a spectator or at intermission
                         let camera = &frame.recorder;
                         let shown = !camera.spectating && !camera.intermission;
                         if self.settings.vitals && shown {
@@ -1538,6 +1538,11 @@ impl Viewer {
                             let pickups = &frame.pickups;
                             crate::vitals::draw_pickups(
                                 ui, vitals, library, rect, size, pickups, at,
+                            );
+                            let damage = &frame.damage;
+                            let health = status.health.map(|h| h.value);
+                            crate::vitals::draw_damage(
+                                ui, vitals, library, rect, size, damage, health,
                             );
                         }
                         self.kill_feed.draw(ui, rect, &frame.death_notices, library);

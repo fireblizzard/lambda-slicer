@@ -348,6 +348,11 @@ impl Status {
         Some(i32::from(self.ammo.get(&kind).copied().unwrap_or(0)))
     }
 
+    /// Whether `HideWeapon` hides the health, and with it the damage
+    pub(crate) fn hides_health(&self) -> bool {
+        self.hide & (HIDE_HEALTH | HIDE_ALL) != 0
+    }
+
     /// What the HUD shows, less what `HideWeapon` hides
     pub fn shown(&self) -> Shown {
         if self.hide & HIDE_ALL != 0 {

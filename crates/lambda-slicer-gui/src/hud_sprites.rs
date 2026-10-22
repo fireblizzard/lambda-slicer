@@ -70,6 +70,8 @@ pub struct HudSprites {
     sheets: HashMap<String, Option<Arc<Sprite>>>,
     /// Each list's icons by name, for adding to the picture
     icons: HashMap<(String, String), Option<TextureHandle>>,
+    /// Whole frames of sheets by sheet and frame, for adding to the picture
+    frames: HashMap<(String, usize), Option<TextureHandle>>,
 }
 
 impl HudSprites {
@@ -113,17 +115,48 @@ impl HudSprites {
         let icon = self.place(library, list, name).and_then(|place| {
             let sheet = self.sheet(library, &place.sheet)?;
             let id = format!("{list} {name}");
-            Some(ctx.load_texture(id, added(&sheet, &place)?, egui::TextureOptions::LINEAR))
+            Some(ctx.load_texture(id, added(&sheet, 0, &place)?, egui::TextureOptions::LINEAR))
         });
         self.icons.insert(key, icon.clone());
         icon
     }
+
+    /// The whole frame `frame` of the sheet `sprites/<sheet>.spr`, to add to
+    /// the picture, read from `library` the first time it is asked for
+    pub fn frame(
+        &mut self,
+        ctx: &egui::Context,
+        library: &Library,
+        sheet: &str,
+        frame: usize,
+    ) -> Option<TextureHandle> {
+        let key = (sheet.to_owned(), frame);
+        if let Some(texture) = self.frames.get(&key) {
+            return texture.clone();
+        }
+
+        let texture = self.sheet(library, sheet).and_then(|sprite| {
+            let whole = sprite.frames.get(frame)?;
+            let place = Place {
+                sheet: sheet.to_owned(),
+                x: 0,
+                y: 0,
+                width: whole.width,
+                height: whole.height,
+            };
+            let id = format!("{sheet} frame {frame}");
+            let image = added(&sprite, frame, &place)?;
+            Some(ctx.load_texture(id, image, egui::TextureOptions::LINEAR))
+        });
+        self.frames.insert(key, texture.clone());
+        texture
+    }
 }
 
-/// The icon at `place` in `sheet`'s first frame, its colours added to what
-/// is under it as the game adds a HUD sprite, so it carries no opacity
-fn added(sheet: &Sprite, place: &Place) -> Option<egui::ColorImage> {
-    let frame = sheet.frames.first()?;
+/// The icon at `place` in `sheet`'s frame `frame`, its colours added to
+/// what is under it as the game adds a HUD sprite, so it carries no opacity
+fn added(sheet: &Sprite, frame: usize, place: &Place) -> Option<egui::ColorImage> {
+    let frame = sheet.frames.get(frame)?;
     let (width, height) = (place.width as usize, place.height as usize);
     let mut pixels = Vec::with_capacity(width * height);
     for row in 0..height {

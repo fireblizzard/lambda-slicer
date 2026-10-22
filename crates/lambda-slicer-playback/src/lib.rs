@@ -20,6 +20,7 @@ pub mod beams;
 pub mod bullets;
 pub mod checkpoint;
 pub mod controller;
+pub mod damage;
 pub mod decals;
 pub mod events;
 pub mod gauss;

@@ -1,7 +1,7 @@
 //! The parts of the HUD playback shows, AG's countdown before a match, the
 //! kill feed, the chat, the messages [`crate::announcements`] keeps, the
-//! health, armour and ammo [`crate::status`] keeps, and the scores
-//! [`crate::scores`] keeps
+//! health, armour and ammo [`crate::status`] keeps, the scores
+//! [`crate::scores`] keeps, and the damage [`crate::damage`] keeps
 //!
 //! AG's client counts down when the server sends `Countdown`, a signed byte
 //! of seconds left, a byte saying whether to speak it, and the names of the
@@ -32,6 +32,8 @@ use lambda_slicer_core::protocol::messages::{Message, ParsedMessage};
 use lambda_slicer_core::state::Decoder;
 
 use crate::announcements::{Announced, Announcements};
+use crate::damage::{Damage, DamageShown};
+use crate::scene::Camera;
 use crate::scores::{ScoreRow, Scores};
 use crate::status::{self, Status};
 use crate::time::SourceTime;
@@ -135,6 +137,8 @@ pub struct Hud {
     status: Status,
     /// Every player's and team's frags, for the small scoreboard
     scores: Scores,
+    /// Where the recording player is hit from and what hurts them
+    damage: Damage,
 }
 
 /// A string ending at its first nought, and what follows it
@@ -145,13 +149,15 @@ fn c_string(bytes: &[u8]) -> (String, &[u8]) {
 }
 
 impl Hud {
-    /// A message the decoder has just applied at `time`, and the sound the
-    /// client plays for it, if any
+    /// A message the decoder has just applied at `time`, with the recording
+    /// player's view at `camera`, and the sound the client plays for it, if
+    /// any
     pub(crate) fn on_message(
         &mut self,
         decoder: &Decoder,
         m: &ParsedMessage,
         time: SourceTime,
+        camera: &Camera,
     ) -> Option<&'static str> {
         let (id, body) = match &m.message {
             // A new session starts with nothing on the HUD
@@ -195,6 +201,11 @@ impl Hud {
             "Location" => {
                 let (player, place) = location(body)?;
                 self.places.insert(player, place);
+                return None;
+            }
+            "Damage" => {
+                let (origin, angles) = (camera.origin, camera.angles);
+                self.damage.message(body, time, origin, angles);
                 return None;
             }
             _ => return None,
@@ -298,6 +309,15 @@ impl Hud {
     /// The recording player's health, armour and ammo as the HUD shows them
     pub fn status(&self) -> status::Shown {
         self.status.shown()
+    }
+
+    /// Where the recording player was hit from and what hurts them at `at`,
+    /// as the HUD shows it
+    pub fn damage(&self, at: SourceTime) -> DamageShown {
+        if self.status.hides_health() {
+            return DamageShown::default();
+        }
+        self.damage.at(at)
     }
 
     /// What the recording player picked up and still shows at `at`

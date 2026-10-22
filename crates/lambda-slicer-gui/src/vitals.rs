@@ -20,6 +20,15 @@
 //! from the right. Each is at full brightness until less than a little
 //! over three seconds are left, then fades out.
 //!
+//! A hit marks the side it came from around the middle of the view with
+//! that side's frame of `sprites/640_pain.spr`, in the HUD's colour or red
+//! at 25 health or less, as bright as the mark is strong but never under
+//! half. Above and below stand three and two of their heights from the
+//! middle, and left and right three and two of their widths. Lasting
+//! damage shows its icon at the left, the lowest two of its heights above
+//! the bottom and an eighth of its width from the edge, the rest stacked
+//! above, all flashing together.
+//!
 //! Everything is added to the picture in the HUD's colour, brighter for a
 //! while after it changes. Health and armour start at 228 of 255 and fade
 //! to 100 over five seconds, health is red at 25 or less and full
@@ -31,6 +40,7 @@
 
 use eframe::egui::{self, Color32, Pos2, Rect, TextureHandle, Vec2};
 use lambda_slicer_audio::library::Library;
+use lambda_slicer_playback::damage::{DamageShown, Side};
 use lambda_slicer_playback::status::{Pickup, PickupShown, Reading, Shown, WeaponStatus};
 use lambda_slicer_playback::time::SourceTime;
 
@@ -79,6 +89,15 @@ const PICKUP_COUNT_GAP: f32 = 10.;
 const PICKUP_FADE: f32 = 80.;
 const PICKUP_TEXT_SIZE: f32 = 13.;
 const NO_AMMO_COLOUR: Color32 = Color32::from_rgb(255, 16, 16);
+
+/// The sheet whose four frames mark a hit's side, above, right, below and
+/// left (`PAIN_NAME`)
+const PAIN_SHEET: &str = "640_pain";
+
+/// The least share of full brightness a mark shows at, and how many of the
+/// lasting damage icon's heights its lowest stands above the bottom
+const LEAST_MARK_BRIGHTNESS: f32 = 0.5;
+const KIND_BOTTOM: f32 = 2.;
 
 /// The brightness of a reading at `at`, `start` more than the least at its
 /// change, fading by `FADE_PER_SECOND`
@@ -294,6 +313,57 @@ pub fn draw_pickups(
                 }
             }
         }
+    }
+}
+
+/// Where the recording player was hit from and what hurts them in
+/// `damage` over the view at `rect`, `size` times the game's size, the
+/// marks red for `health` of 25 or less
+pub fn draw_damage(
+    ui: &egui::Ui,
+    sprites: &mut HudSprites,
+    library: &Library,
+    rect: Rect,
+    size: f32,
+    damage: &DamageShown,
+    health: Option<i32>,
+) {
+    let mut p = Painter::new(ui, sprites, library, rect, size);
+    let Vec2 {
+        x: width,
+        y: height,
+    } = p.screen();
+    let middle = Vec2::new(width / 2., height / 2.);
+
+    let hurt = health.is_some_and(|h| h <= HURT);
+    let colour = if hurt { HURT_COLOUR } else { HUD_COLOR };
+    for &(side, mark) in &damage.marks {
+        let frame = side as usize;
+        let Some(sprite) = p.sprites.frame(p.ctx, p.library, PAIN_SHEET, frame) else {
+            continue;
+        };
+
+        // Each side stands its own way from the middle (`DrawPain`)
+        let Vec2 { x: w, y: h } = sprite.size_vec2();
+        let (x, y) = match side {
+            Side::Front => (middle.x - w / 2., middle.y - h * 3.),
+            Side::Right => (middle.x + w * 2., middle.y - h / 2.),
+            Side::Rear => (middle.x - w / 2., middle.y + h * 2.),
+            Side::Left => (middle.x - w * 3., middle.y - h / 2.),
+        };
+        let brightness = 255. * mark.max(LEAST_MARK_BRIGHTNESS);
+        p.draw(&sprite, x, y, scaled(colour, brightness), 0.);
+    }
+
+    // Every icon flashes together (`DrawDamage`)
+    let tint = scaled(HUD_COLOR, damage.flash);
+    for &(name, place) in &damage.kinds {
+        let Some(icon) = p.icon(HUD_LIST, name) else {
+            continue;
+        };
+        let Vec2 { x: w, y: h } = icon.size_vec2();
+        let y = height - h * (KIND_BOTTOM + place as f32);
+        p.draw(&icon, w / 8., y, tint, 0.);
     }
 }
 

@@ -28,6 +28,7 @@ use crate::beams::{Beams, Trail};
 use crate::bullets;
 use crate::checkpoint::{self, Checkpoint, Checkpoints, State};
 use crate::controller::{CameraMode, Stamp};
+use crate::damage::DamageShown;
 use crate::decals::{Decal, Decals};
 use crate::events::angle_vectors;
 use crate::events::{ATTN_NORM, Action, ClientEvent, Events, PITCH_NORM, SoundCall, handle};
@@ -104,6 +105,8 @@ pub struct PresentedFrame {
     pub status: status::Shown,
     /// What the recording player picked up, while it shows
     pub pickups: Vec<status::Pickup>,
+    /// Where the recording player was hit from and what hurts them
+    pub damage: DamageShown,
     /// The small scoreboard's rows, highest first
     pub scores: Vec<ScoreRow>,
 }
@@ -420,7 +423,7 @@ impl Playback {
                         audio.on_message(d, m, time, lengths);
                         // The client speaks the countdown where the listener
                         // is, at full volume (`pfnPlaySoundByName`)
-                        if let Some(sample) = hud.on_message(d, m, time) {
+                        if let Some(sample) = hud.on_message(d, m, time, &scene.camera) {
                             let call = SoundCall {
                                 entity: view_entity(d),
                                 channel: CHAN_AUTO,
@@ -713,6 +716,7 @@ impl Playback {
             announced: state.hud.announced(at),
             status: state.hud.status(),
             pickups: state.hud.pickups(at),
+            damage: state.hud.damage(at),
             scores: state.hud.scores(&state.decoder),
             temp_entities: state
                 .tempents
