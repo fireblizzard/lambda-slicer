@@ -70,17 +70,20 @@ pub struct HudMessages {
     next: usize,
 }
 
-/// A little-endian short at `at` of `body`
-fn short(body: &[u8], at: usize) -> Option<i16> {
+/// The two little-endian bytes at `at` of `body`
+fn short(body: &[u8], at: usize) -> Option<[u8; 2]> {
     let bytes = body.get(at..at + 2)?;
-    Some(i16::from_le_bytes([bytes[0], bytes[1]]))
+    Some([bytes[0], bytes[1]])
 }
 
-/// The message in a `TE_TEXTMESSAGE`'s `body`, and its channel
+/// The message in a `TE_TEXTMESSAGE`'s `body`, and its channel. Places are
+/// signed and times unsigned, so a server's longest hold, such as 999999
+/// seconds, arrives as a little over four minutes rather than as less
+/// than nought (`FixedSigned16`, `FixedUnsigned16`)
 fn parse(body: &[u8]) -> Option<(u8, HudMessage)> {
     let channel = *body.first()?;
-    let share = |at| short(body, at).map(|v| f32::from(v) / 8192.);
-    let seconds = |at| short(body, at).map(|v| f32::from(v) / 256.);
+    let share = |at| short(body, at).map(|b| f32::from(i16::from_le_bytes(b)) / 8192.);
+    let seconds = |at| short(body, at).map(|b| f32::from(u16::from_le_bytes(b)) / 256.);
     let effect = *body.get(5)?;
     let colours = body.get(6..14)?;
 
@@ -167,7 +170,7 @@ mod tests {
         b.push(0);
         b.extend([255, 160, 0, 255, 0, 0, 0, 0]);
         for seconds in [0.25, 0.5, hold] {
-            b.extend(((seconds * 256.) as i16).to_le_bytes());
+            b.extend(((seconds * 256.) as u16).to_le_bytes());
         }
         b.extend(text.as_bytes());
         b.push(0);
@@ -207,5 +210,18 @@ mod tests {
             .map(|s| s.message.text)
             .collect();
         assert_eq!(texts, ["third"]);
+    }
+
+    #[test]
+    fn the_longest_hold_stays_up_while_the_server_resends_it() {
+        // 999999 seconds comes as the most a hold can be
+        let (_, m) = parse(&body(1, 0.7, 0.2, 999999., "Sync: 0.00%")).unwrap();
+        assert_eq!(m.hold, 65535. / 256.);
+
+        let mut messages = HudMessages::default();
+        messages.message(&body(1, 0.7, 0.2, 999999., "a"), SourceTime(0.));
+        messages.message(&body(1, 0.7, 0.2, 999999., "b"), SourceTime(30.));
+        let shown = messages.at(SourceTime(30.));
+        assert_eq!((shown[0].message.text.as_str(), shown[0].since), ("b", 30.));
     }
 }
