@@ -545,6 +545,25 @@ impl DemoView {
         let passed =
             playhead.map(|now| self.rows.partition_point(|&r| model.events[r].time <= now));
         let playing = self.viewer.as_ref().is_some_and(|v| v.is_playing());
+
+        // Turning the wheel over the list, or dragging from it, scrolls it
+        // by hand and stops it following before it is placed, as fast play
+        // places it nearly every frame
+        let area = ui.available_rect_before_wrap();
+        let wheel = ui.rect_contains_pointer(area)
+            && ui.input(|i| {
+                let turned = |e: &egui::Event| matches!(e, egui::Event::MouseWheel { .. });
+                i.events.iter().any(turned) || i.smooth_scroll_delta.y != 0.
+            });
+        let dragged = ui.input(|i| {
+            let origin = i.pointer.press_origin();
+            let from_list = i.pointer.primary_down() && origin.is_some_and(|p| area.contains(p));
+            from_list && i.pointer.delta() != Vec2::ZERO
+        });
+        if wheel || dragged {
+            self.follow_playhead = false;
+        }
+
         let moved_on = playing && passed != self.followed;
         let follow = self.follow_playhead && (moved_on || self.pan_to_playhead);
         self.followed = if playing { passed } else { None };
@@ -569,7 +588,6 @@ impl DemoView {
         } else {
             placed = false;
         }
-        let area = ui.available_rect_before_wrap();
 
         // Rows touch, so the rows the scroll area works out are the rows it
         // draws, at the same places
@@ -1362,6 +1380,29 @@ mod tests {
             draw_list(&ctx, &mut view, Vec::new());
         }
         assert!(view.list_offset > 0.);
+        assert!(!view.follow_playhead);
+    }
+
+    #[test]
+    fn a_wheel_turn_while_the_list_is_placed_still_stops_it_following() {
+        let ctx = egui::Context::default();
+        crate::theme::install(&ctx);
+        let mut view = view_of_shots(&ctx, 100);
+        draw_list(&ctx, &mut view, Vec::new());
+
+        // The list is placed on the chosen event in the very frame the wheel
+        // turns, as fast play places it on the playhead
+        view.selected = Some(50);
+        view.scroll_table = true;
+        let over_list = egui::Event::PointerMoved(Pos2::new(200., 150.));
+        let wheel = egui::Event::MouseWheel {
+            unit: egui::MouseWheelUnit::Point,
+            delta: egui::vec2(0., -200.),
+            phase: egui::TouchPhase::Move,
+            source: egui::MouseWheelSource::Wheel,
+            modifiers: egui::Modifiers::NONE,
+        };
+        draw_list(&ctx, &mut view, vec![over_list, wheel]);
         assert!(!view.follow_playhead);
     }
 }
