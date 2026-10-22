@@ -23,8 +23,8 @@ use crate::slice::range::GroupIndex;
 use crate::state::{DecodeOptions, DecodeStatus, PlayerIdentity, decode_demo};
 use accuracy::{PlayerAccuracy, ShotOutcome};
 use context::{
-    Context, Coverage, Kill, ScoreUpdate, Scoreboard, SessionMap, TeamScoreUpdate, WeaponSwitch,
-    final_moment, standing_at,
+    ChatMessage, Context, Coverage, Kill, ScoreUpdate, Scoreboard, SessionMap, TeamScoreUpdate,
+    WeaponSwitch, final_moment, standing_at,
 };
 use events::recorded_events;
 use highlights::{ActionWindow, action_windows, link_kills};
@@ -88,6 +88,8 @@ pub struct AnalysisReport {
     pub coverage: Coverage,
     /// Each session's map, in decode order
     pub maps: Vec<SessionMap>,
+    /// The chat, in decode order
+    pub chat: Vec<ChatMessage>,
     /// The final score of the session played longest
     pub scoreboard: Scoreboard,
     /// Every score and team change, for the scores at any moment
@@ -289,6 +291,7 @@ pub fn analyze_demo_with(
         weapon_switches: context.switches,
         coverage,
         maps: std::mem::take(&mut context.maps),
+        chat: std::mem::take(&mut context.chat),
         scoreboard,
         score_updates,
         team_score_updates,

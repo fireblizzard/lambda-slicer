@@ -138,9 +138,10 @@ pub struct ViewerSettings {
     /// Degrees across the view's width while zoomed in, as `default_fov`
     /// would set them in the game
     pub zoom_fov: f32,
-    /// Whether the weapon in view is drawn, and its crosshair
+    /// Whether the weapon in view is drawn, its crosshair and the chat
     pub viewmodel: bool,
     pub crosshair: bool,
+    pub chat: bool,
     /// The sound's master volume, 0 to 1
     pub volume: f32,
     /// Players shown through walls, and with `see_through_items` the other
@@ -167,6 +168,7 @@ impl Default for ViewerSettings {
             zoom_fov: 30.,
             viewmodel: true,
             crosshair: true,
+            chat: true,
             volume: 0.1,
             see_through: false,
             see_through_items: false,

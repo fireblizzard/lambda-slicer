@@ -1,5 +1,5 @@
-//! The parts of AG's HUD playback shows, its countdown before a match and
-//! the kill feed
+//! The parts of AG's HUD playback shows, its countdown before a match, the
+//! kill feed and the chat
 //!
 //! AG's client counts down when the server sends `Countdown`, a signed byte
 //! of seconds left, a byte saying whether to speak it, and the names of the
@@ -15,9 +15,17 @@
 //! dropped for a fifth. A killer of nought or the victim itself is a death
 //! with no killer named, and a weapon of `teammate` a team kill. Each name
 //! keeps the team `TeamInfo` last gave its player, for its colour
+//!
+//! The chat is the client's say text (HLSDK's `CHudSayText`). `SayText` is
+//! the sending player's entity and a line, which starting with byte 2 names
+//! that player, to be drawn in their team's colour. Five lines show at
+//! most, the oldest scrolled away for a sixth, and the top line goes five
+//! seconds after it reached the top. AG's `Location` is a player's entity
+//! and position, which a line's `%l` names (OpenAG's `CHudLocation`)
 
 use std::collections::{BTreeMap, VecDeque};
 
+use lambda_slicer_core::analysis::context::{location, say_text};
 use lambda_slicer_core::protocol::messages::{Message, ParsedMessage};
 use lambda_slicer_core::state::Decoder;
 
@@ -29,6 +37,11 @@ const MESSAGE: &str = "Countdown";
 /// How many death notices show at once, and for how long in seconds
 const NOTICES: usize = 4;
 const NOTICE_SHOWN: f64 = 6.;
+
+/// How many chat lines show at once, and how long the top one stays, in
+/// seconds (`hud_saytext_time`)
+const CHAT_LINES: usize = 5;
+const CHAT_SHOWN: f64 = 5.;
 
 /// The seconds that mean the match waits for its players
 pub const WAITING: i8 = 50;
@@ -84,6 +97,18 @@ pub struct DeathNotice {
     pub time: SourceTime,
 }
 
+/// One line of the chat
+#[derive(Clone, Debug, PartialEq)]
+pub struct ChatLine {
+    /// Colour codes such as `^1` left in, and `%l` for the sender's place
+    pub text: String,
+    /// Where in the text the sender's name is, and their team, when the
+    /// line names them
+    pub name: Option<(std::ops::Range<usize>, String)>,
+    /// Where the sender was when they sent it, as `Location` last gave it
+    pub place: Option<[f32; 3]>,
+}
+
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Hud {
     countdown: Option<Countdown>,
@@ -94,6 +119,11 @@ pub struct Hud {
     teams: BTreeMap<u8, String>,
     /// The kill feed, oldest first
     notices: VecDeque<DeathNotice>,
+    /// The chat, oldest first, and when its top line scrolls away
+    chat: VecDeque<ChatLine>,
+    scroll_at: SourceTime,
+    /// Each player's place by entity, as `Location` gave it
+    places: BTreeMap<u8, [f32; 3]>,
 }
 
 /// A string ending at its first nought, and what follows it
@@ -131,6 +161,15 @@ impl Hud {
             }
             "DeathMsg" => {
                 self.death(decoder, body, time);
+                return None;
+            }
+            "SayText" => {
+                self.say(decoder, body, time);
+                return None;
+            }
+            "Location" => {
+                let (player, place) = location(body)?;
+                self.places.insert(player, place);
                 return None;
             }
             _ => return None,
@@ -182,6 +221,53 @@ impl Hud {
         while self.notices.len() > NOTICES {
             self.notices.pop_front();
         }
+    }
+
+    /// A `SayText`, the sender's entity and the line, added at `time`
+    fn say(&mut self, decoder: &Decoder, body: &[u8], time: SourceTime) {
+        let Some((sender, named, text)) = say_text(body) else {
+            return;
+        };
+
+        // The sender's name where the line has it
+        let mut name = None;
+        if named
+            && let Some(player) = decoder.player_for_entity(i64::from(sender))
+            && !player.name.is_empty()
+            && let Some(start) = text.find(&player.name)
+        {
+            let team = self.teams.get(&sender).cloned().unwrap_or_default();
+            name = Some((start..start + player.name.len(), team));
+        }
+
+        self.scroll(time);
+        if self.chat.is_empty() {
+            self.scroll_at = SourceTime(time.0 + CHAT_SHOWN);
+        }
+        self.chat.push_back(ChatLine {
+            text,
+            name,
+            place: self.places.get(&sender).copied(),
+        });
+        while self.chat.len() > CHAT_LINES {
+            self.chat.pop_front();
+        }
+    }
+
+    /// Scroll the chat's top lines away until `at`, each five seconds after
+    /// the one before it
+    fn scroll(&mut self, at: SourceTime) {
+        while !self.chat.is_empty() && at >= self.scroll_at {
+            self.chat.pop_front();
+            self.scroll_at = SourceTime(self.scroll_at.0 + CHAT_SHOWN);
+        }
+    }
+
+    /// The chat's lines at `at`, oldest first
+    pub fn chat(&self, at: SourceTime) -> Vec<ChatLine> {
+        let mut shown = self.clone();
+        shown.scroll(at);
+        shown.chat.into()
     }
 
     /// The kill feed's lines at `at`, oldest first
@@ -243,6 +329,51 @@ mod tests {
                 .team,
             "red"
         );
+    }
+
+    #[test]
+    fn the_chat_keeps_five_lines_each_top_one_five_seconds() {
+        let decoder = Decoder::new();
+        let mut hud = Hud::default();
+        // Six lines half a second apart
+        for k in 0..6 {
+            let mut body = vec![3];
+            body.extend(format!("line {k}\n").as_bytes());
+            body.push(0);
+            hud.say(&decoder, &body, SourceTime(f64::from(k) * 0.5));
+        }
+
+        // The first scrolled away for the sixth, then the top one five
+        // seconds after the first line came, and every five seconds after
+        let texts = |at: f64| -> Vec<String> {
+            hud.chat(SourceTime(at))
+                .into_iter()
+                .map(|l| l.text)
+                .collect()
+        };
+        assert_eq!(
+            texts(3.),
+            ["line 1", "line 2", "line 3", "line 4", "line 5"]
+        );
+        assert_eq!(texts(5.5), ["line 2", "line 3", "line 4", "line 5"]);
+        assert_eq!(texts(10.5), ["line 3", "line 4", "line 5"]);
+        assert!(texts(25.).is_empty());
+    }
+
+    #[test]
+    fn a_location_places_the_next_lines_sender() {
+        let decoder = Decoder::new();
+        let mut hud = Hud::default();
+        // As a recorded one came, a sixteenth of the units in each short
+        let body = [4, 0xf3, 0x3a, 0x80, 0xea, 0x20, 0x01];
+        let (player, place) = location(&body).unwrap();
+        assert_eq!((player, place), (4, [1886.375, -688., 36.]));
+
+        hud.places.insert(player, place);
+        hud.say(&decoder, b"\x04\x02(T) naz: at %l\n\0", SourceTime(1.));
+        let line = &hud.chat(SourceTime(1.))[0];
+        assert_eq!(line.text, "(T) naz: at %l");
+        assert_eq!(line.place, Some(place));
     }
 
     #[test]

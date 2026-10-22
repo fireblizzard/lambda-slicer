@@ -56,6 +56,7 @@ use lambda_slicer_render::world::{self, WorldMesh};
 use fluent_bundle::FluentValue;
 use fluent_bundle::types::{FluentNumber, FluentNumberOptions};
 
+use crate::chat::Chat;
 use crate::crosshair::Crosshairs;
 use crate::decals::DecalCache;
 use crate::i18n::Catalog;
@@ -387,10 +388,11 @@ pub struct Viewer {
     /// The game's files, for the map's hull that hides glows, the kill
     /// feed's icons and the crosshairs
     library: Option<Arc<Library>>,
-    /// The kill feed's icons and the crosshairs, read from the game's files
-    /// as needed
+    /// The kill feed's icons, the crosshairs and the chat's places, read
+    /// from the game's files as needed
     kill_feed: KillFeed,
     crosshairs: Crosshairs,
+    chat: Chat,
     /// How wide the transport's parts were last drawn, for centring the
     /// play button under the picture
     transport_widths: TransportWidths,
@@ -574,6 +576,7 @@ impl Viewer {
             library: glow_library,
             kill_feed: KillFeed::default(),
             crosshairs: Crosshairs::default(),
+            chat: Chat::default(),
             transport_widths: TransportWidths::default(),
         }
     }
@@ -1378,6 +1381,18 @@ impl Viewer {
         (Some(size), false)
     }
 
+    /// The name of the place nearest `at` on `map`, once the game's files
+    /// are read, none before or on a map without places
+    pub fn place_name(&mut self, map: &str, at: [f32; 3]) -> Option<String> {
+        let library = self.library.clone()?;
+        self.chat.place_name(&library, map, at)
+    }
+
+    /// Whether the game's files are read, so places can be named
+    pub fn reads_game_files(&self) -> bool {
+        self.library.is_some()
+    }
+
     /// Take the worker's answers and the loaded assets, and step a capture
     /// run. Called once a frame before the view or its controls draw, so
     /// they all see the same playback state
@@ -1505,6 +1520,10 @@ impl Viewer {
                             self.crosshairs.draw(ui, rect, weapon, fov, library);
                         }
                         self.kill_feed.draw(ui, rect, &frame.death_notices, library);
+                        if self.settings.chat {
+                            let map = frame.map.as_deref();
+                            self.chat.draw(ui, rect, &frame.chat, map, library);
+                        }
                     }
                     let players = &frame.players;
                     if let Some(player) = watched(&frame.recorder, frame.local_entity, players) {
@@ -2746,7 +2765,7 @@ const MAP_CHANGE_FROM_TOP: f32 = 7.;
 /// English as AG writes it
 fn draw_countdown(painter: &egui::Painter, rect: egui::Rect, countdown: &Countdown) {
     let line = rect.height() / 32.;
-    let [first, second] = countdown.names.each_ref().map(|n| without_colours(n));
+    let [first, second] = countdown.names.each_ref().map(|n| text::without_colours(n));
     let text = if countdown.seconds == WAITING {
         if first.is_empty() {
             "Waiting for players to get ready...".to_owned()
@@ -2846,7 +2865,7 @@ fn watched<'a>(
 /// colour, on a dark band so it reads over any picture. It is sized as the
 /// countdown's text is, a 32nd of the view's height
 fn draw_watched(painter: &egui::Painter, rect: egui::Rect, player: &PlayerView) {
-    let name = without_colours(&player.name);
+    let name = text::without_colours(&player.name);
     if name.trim().is_empty() {
         return;
     }
@@ -2888,21 +2907,6 @@ fn draw_map_change(painter: &egui::Painter, rect: egui::Rect, line: &str) {
     let band = band.expand2(egui::vec2(size / 2., size / 5.));
     painter.rect_filled(band, theme::RADIUS_SMALL, NAME_BAND);
     painter.galley(at, galley, HUD_COLOR);
-}
-
-/// A player's name without the colour codes AG writes in names, a `^` and
-/// a digit
-fn without_colours(name: &str) -> String {
-    let mut out = String::with_capacity(name.len());
-    let mut chars = name.chars().peekable();
-    while let Some(c) = chars.next() {
-        if c == '^' && chars.peek().is_some_and(char::is_ascii_digit) {
-            chars.next();
-            continue;
-        }
-        out.push(c);
-    }
-    out
 }
 
 #[cfg(test)]
@@ -3008,8 +3012,8 @@ mod tests {
 
     #[test]
     fn colour_codes_leave_names_but_other_carets_stay() {
-        assert_eq!(without_colours("^1red^0 ^7naz"), "red naz");
-        assert_eq!(without_colours("a^b ^"), "a^b ^");
+        assert_eq!(text::without_colours("^1red^0 ^7naz"), "red naz");
+        assert_eq!(text::without_colours("a^b ^"), "a^b ^");
     }
 
     #[test]

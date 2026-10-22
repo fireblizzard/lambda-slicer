@@ -3,7 +3,7 @@
 //! `lambda-slicer-gui [PATH...] [--locale TAG] [--settings [--section NAME] [--restore] [--clear]]
 //! [--timeline]
 //! [--dates] [--pseudo] [--size WxH] [--cache FILE] [--clips FILE]
-//! [--demo FILE [--window N] [--event N] [--refine LIST] [--player TEXT] [--tab TAB]
+//! [--demo FILE [--window N] [--event N] [--show LIST] [--refine LIST] [--player TEXT] [--tab TAB]
 //! [--export DIR]]
 //! [--screenshot OUT.png [--frames N]]
 //! [--game DIR [--viewer-at SECONDS] [--viewer-bench SECONDS OUT.txt]
@@ -15,7 +15,9 @@
 //! overrides the saved language, `--cache` the library cache and `--clips`
 //! the clips file for this run. `--demo` shows a cached demo at start, on
 //! its `N`th golden minute candidate with `--window`, with its `N`th shown
-//! event selected with `--event`, and with the kill refinements in the
+//! event selected with `--event`, the kinds of event in the comma-separated
+//! `LIST` shown with `--show`, from `kills`, `shots`, `switches`, `actions`
+//! and `chat`, and with the kill refinements in the
 //! comma-separated `LIST` on with `--refine`, from `midair`, `both`, `one`,
 //! `speed`, `killer`, `victim` and `wallgauss`, and only events of players
 //! with `TEXT` in their name with `--player`. `--tab` shows the inspector's
@@ -48,6 +50,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod app;
+mod chat;
 mod clips;
 mod crosshair;
 mod decals;
@@ -117,6 +120,7 @@ fn main() -> eframe::Result {
     let mut event = None;
     let mut refine = KillFilters::default();
     let mut player = String::new();
+    let mut show = None;
     let mut tab = InspectorTab::default();
     let mut section = SettingsTab::default();
     let mut size = [1280., 800.];
@@ -161,6 +165,7 @@ fn main() -> eframe::Result {
                 }
             }
             "--player" => player = args.next().unwrap_or_default(),
+            "--show" => show = args.next(),
             "--section" => {
                 section = match args.next().as_deref() {
                     Some("library") => SettingsTab::Library,
@@ -306,6 +311,7 @@ fn main() -> eframe::Result {
                     event,
                     refine,
                     player,
+                    show,
                     dates,
                     export: export.is_some(),
                     pseudo,

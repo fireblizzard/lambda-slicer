@@ -31,6 +31,7 @@ use lambda_slicer_core::state::DecodeStatus;
 use lambda_slicer_core::timeline::time::DemoTime;
 
 use crate::app::SettingsTab;
+use crate::chat;
 use crate::clips::{Clip, next_name, parse_time};
 use crate::export::{ClipKey, ExportItem, ExportJob, ExportState, FileNaming};
 use crate::i18n::Catalog;
@@ -327,6 +328,7 @@ pub struct Shown {
     pub actions: bool,
     pub kills: bool,
     pub switches: bool,
+    pub chat: bool,
     pub weapon: Option<Weapon>,
     /// Refinements of the kills, kept while kills are hidden
     pub kill_filters: KillFilters,
@@ -340,6 +342,7 @@ impl Default for Shown {
             actions: false,
             kills: true,
             switches: false,
+            chat: false,
             weapon: None,
             kill_filters: KillFilters::default(),
         }
@@ -353,6 +356,7 @@ impl Shown {
             MarkKind::Action => self.actions,
             MarkKind::Kill | MarkKind::Death => self.kills,
             MarkKind::Switch => self.switches,
+            MarkKind::Chat => self.chat,
         }
     }
 
@@ -399,6 +403,24 @@ fn has_player(event: &Event, player: &str) -> bool {
     false
 }
 
+/// What a line of chat says, without its sender's name and the colon
+/// after it, as the event names its sender already. A tag before the name,
+/// such as AG's `(T)` for team chat, stays
+fn said(line: &str, sender: Option<&str>) -> String {
+    let Some(sender) = sender.map(text::without_colours) else {
+        return line.to_owned();
+    };
+    let Some(start) = line.find(&sender).filter(|_| !sender.is_empty()) else {
+        return line.to_owned();
+    };
+
+    let before = &line[..start];
+    let after = line[start + sender.len()..]
+        .trim_start_matches(':')
+        .trim_start();
+    format!("{before}{after}")
+}
+
 /// How an event is marked on the timeline. A kill's death mark in its
 /// victim's lane is the same event
 fn mark_kind(event: &Event) -> MarkKind {
@@ -407,6 +429,7 @@ fn mark_kind(event: &Event) -> MarkKind {
         EventKind::Action { .. } => MarkKind::Action,
         EventKind::Kill { .. } => MarkKind::Kill,
         EventKind::Switch => MarkKind::Switch,
+        EventKind::Chat { .. } => MarkKind::Chat,
     }
 }
 
@@ -462,6 +485,9 @@ pub struct DemoView {
     rows_for: Option<(Shown, String, u64)>,
     /// Counts each time the rows change, for what is worked out from them
     rows_version: u64,
+    /// Each line of chat by its event, its sender's place named, once the
+    /// viewer reads the game's files
+    chat_lines: Option<HashMap<usize, String>>,
     /// Kills a refinement could not tell about, so not shown
     unknown_kills: usize,
     /// The shown events' density for a version of the rows, none for a
@@ -566,6 +592,7 @@ impl DemoView {
             shown_events: Vec::new(),
             rows_for: None,
             rows_version: 0,
+            chat_lines: None,
             unknown_kills: 0,
             density: None,
             markers: None,
@@ -691,6 +718,19 @@ impl DemoView {
     /// line
     pub fn refine(&mut self, filters: KillFilters) {
         self.shown.kill_filters = filters;
+    }
+
+    /// Show the kinds of event named in the comma-separated `list`, from
+    /// `kills`, `shots`, `switches`, `actions` and `chat`, and no others, for
+    /// checking them from the command line
+    pub fn show_kinds(&mut self, list: &str) {
+        let names: Vec<&str> = list.split(',').map(str::trim).collect();
+        let shown = &mut self.shown;
+        shown.kills = names.contains(&"kills");
+        shown.shots = names.contains(&"shots");
+        shown.switches = names.contains(&"switches");
+        shown.actions = names.contains(&"actions");
+        shown.chat = names.contains(&"chat");
     }
 
     /// Show only events of players with `player` in their name, for
@@ -972,7 +1012,53 @@ impl DemoView {
                 }
             }
             EventKind::Switch => catalog.text("event-switch"),
+            EventKind::Chat { text, .. } => text::without_colours(text),
         }
+    }
+
+    /// Name the places the analysis's lines of chat stand for, once the
+    /// viewer reads the game's files
+    fn name_chat_places(&mut self) {
+        if self.chat_lines.is_some() {
+            return;
+        }
+        let (Some(model), Some(viewer)) = (&self.model, &mut self.viewer) else {
+            return;
+        };
+        if !viewer.reads_game_files() {
+            return;
+        }
+
+        let mut lines = HashMap::new();
+        for (index, event) in model.events.iter().enumerate() {
+            let EventKind::Chat { text, place } = &event.kind else {
+                continue;
+            };
+            let map = model.maps.iter().find(|m| m.segment == event.segment);
+            let name = match (map, place) {
+                (Some(map), Some(at)) => viewer.place_name(&map.name, *at),
+                _ => None,
+            };
+            lines.insert(index, chat::with_place(text, &name.unwrap_or_default()));
+        }
+        self.chat_lines = Some(lines);
+    }
+
+    /// What the event at `index` was, in words, a line of chat with its
+    /// sender's place named once the game's files are read
+    pub(super) fn what(&self, catalog: &Catalog, index: usize) -> String {
+        let Some(event) = self.model.as_ref().and_then(|m| m.events.get(index)) else {
+            return String::new();
+        };
+        if !matches!(event.kind, EventKind::Chat { .. }) {
+            return Self::describe(catalog, &event.kind);
+        }
+
+        let line = match self.chat_lines.as_ref().and_then(|l| l.get(&index)) {
+            Some(line) => text::without_colours(line),
+            None => Self::describe(catalog, &event.kind),
+        };
+        said(&line, event.actor.as_deref())
     }
 
     /// Take in the analysis, export results and playback state, and the
@@ -1013,6 +1099,7 @@ impl DemoView {
         {
             viewer.sessions = model.maps.clone();
         }
+        self.name_chat_places();
 
         // The event the command line asked for, once there are rows
         if self.model.is_some()
@@ -1880,6 +1967,19 @@ mod tests {
         view.refresh_rows();
         assert_eq!(view.rows, [0]);
         assert_eq!(view.shown.kill_filters.midair, MidairMode::Either);
+    }
+
+    #[test]
+    fn a_line_of_chat_says_what_follows_its_senders_name() {
+        let team = "(T) -<[ATK]>-naz: at Bridge";
+        assert_eq!(said(team, Some("-<[ATK]>-naz")), "(T) at Bridge");
+
+        // Lines come without colour codes, and names lose theirs to match
+        assert_eq!(said("red: hi", Some("^1red^0")), "hi");
+
+        // The server's own lines, and a name the line does not have
+        assert_eq!(said("- p has left the game", None), "- p has left the game");
+        assert_eq!(said("hello", Some("naz")), "hello");
     }
 
     #[test]

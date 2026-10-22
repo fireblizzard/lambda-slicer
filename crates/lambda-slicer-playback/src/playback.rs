@@ -31,7 +31,7 @@ use crate::decals::{Decal, Decals};
 use crate::events::angle_vectors;
 use crate::events::{ATTN_NORM, Action, ClientEvent, Events, PITCH_NORM, SoundCall, handle};
 use crate::gauss;
-use crate::hud::{Countdown, DeathNotice, Hud};
+use crate::hud::{ChatLine, Countdown, DeathNotice, Hud};
 use crate::scene::{self, Camera, Entity, PlayerView, Scene, Viewmodel};
 use crate::source::{Cursor, Group, Source};
 use crate::tempents::{Lookup, TempEntities, TempEntity};
@@ -93,6 +93,8 @@ pub struct PresentedFrame {
     pub countdown: Option<Countdown>,
     /// The kill feed's lines, oldest first
     pub death_notices: Vec<DeathNotice>,
+    /// The chat's lines, oldest first
+    pub chat: Vec<ChatLine>,
 }
 
 type Lengths = Box<dyn Fn(&SoundName) -> SoundLength + Send>;
@@ -696,6 +698,7 @@ impl Playback {
             beams: state.beams.clone(),
             countdown: state.hud.countdown(at).cloned(),
             death_notices: state.hud.death_notices(at),
+            chat: state.hud.chat(at),
             temp_entities: state
                 .tempents
                 .entities()

@@ -779,7 +779,7 @@ impl DemoView {
                     (tick, theme::MUTED)
                 }
                 MarkKind::Switch => (Rangef::new(top, top + OTHER_MARK), weapon_color(bin.weapon)),
-                MarkKind::Action | MarkKind::Death => {
+                MarkKind::Action | MarkKind::Death | MarkKind::Chat => {
                     (Rangef::new(top, top + OTHER_MARK), theme::MUTED)
                 }
             };
@@ -960,7 +960,7 @@ impl DemoView {
             .actor
             .as_deref()
             .map_or_else(|| catalog.text("lane-unknown"), text::player_name);
-        let what = Self::describe(catalog, &e.kind);
+        let what = self.what(catalog, event);
 
         let mut parts = vec![time, actor, what];
         if session {
@@ -1278,7 +1278,7 @@ impl DemoView {
             let crowd = (bin.count as f32).min(CROWD_FULL) / CROWD_FULL;
             let (mark, colour) = match bin.kind {
                 MarkKind::Shot => (LaneMark::Shot, weapon_color(bin.weapon)),
-                MarkKind::Action => (LaneMark::Action, theme::MUTED),
+                MarkKind::Action | MarkKind::Chat => (LaneMark::Action, theme::MUTED),
                 MarkKind::Kill => (LaneMark::Kill, KILL_COLOR),
                 MarkKind::Death => (LaneMark::Death, KILL_COLOR),
                 MarkKind::Switch => (LaneMark::Switch, weapon_color(bin.weapon)),

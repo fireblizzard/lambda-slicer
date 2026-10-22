@@ -555,6 +555,50 @@ pub fn map_list(maps: &[SessionMap], played: &[u32]) -> String {
     names.join(", ")
 }
 
+/// A line of chat, as `SayText` sent it
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct ChatMessage {
+    pub segment: u32,
+    pub time: f32,
+    /// The player the line names as sending it, none for the server's own
+    pub sender: Option<PlayerIdentity>,
+    /// Colour codes such as `^1` left in, and `%l` for the sender's place
+    pub text: String,
+    /// Where the sender was, as AG's `Location` last gave it
+    pub place: Option<[f32; 3]>,
+}
+
+/// The byte a chat line starts with when it names its sender
+const NAMED: u8 = 2;
+
+/// How many units a coordinate's step is, as `WRITE_COORD` sends them
+const COORD_STEP: f32 = 8.;
+
+/// A `SayText`, the sending player's entity, whether the line names that
+/// player, and the line without its leading control bytes and trailing
+/// line break
+pub fn say_text(body: &[u8]) -> Option<(u8, bool, String)> {
+    let (&sender, rest) = body.split_first()?;
+    let end = rest.iter().position(|&b| b == 0).unwrap_or(rest.len());
+    let line = String::from_utf8_lossy(&rest[..end]);
+    let named = rest.first() == Some(&NAMED);
+    let text = line
+        .trim_start_matches(|c: char| c.is_ascii_control())
+        .trim_end()
+        .to_owned();
+    Some((sender, named, text))
+}
+
+/// AG's `Location`, a player's entity and three coordinates
+pub fn location(body: &[u8]) -> Option<(u8, [f32; 3])> {
+    let (&player, rest) = body.split_first()?;
+    let coord = |k: usize| {
+        let bytes = [*rest.get(k * 2)?, *rest.get(k * 2 + 1)?];
+        Some(f32::from(i16::from_le_bytes(bytes)) / COORD_STEP)
+    };
+    Some((player, [coord(0)?, coord(1)?, coord(2)?]))
+}
+
 /// Follows kills and the recorder's weapon through the decode
 #[derive(Default)]
 pub struct Context {
@@ -582,6 +626,10 @@ pub struct Context {
     /// Every score and team change in order, for the scores at any moment
     pub score_updates: Vec<ScoreUpdate>,
     pub team_score_updates: Vec<TeamScoreUpdate>,
+    /// The chat in order, and each player's place by entity as `Location`
+    /// last gave it
+    pub chat: Vec<ChatMessage>,
+    places: std::collections::BTreeMap<u8, [f32; 3]>,
 }
 
 impl Context {
@@ -701,6 +749,7 @@ impl Context {
             });
             self.pending_deaths.clear();
             self.teams.clear();
+            self.places.clear();
             self.scores.clear();
         }
 
@@ -783,6 +832,26 @@ impl Context {
                         team: name.to_lowercase(),
                         frags,
                     });
+                }
+            }
+            "SayText" => {
+                let Some((sender, named, text)) = say_text(body) else {
+                    return;
+                };
+                let player = named
+                    .then(|| d.player_for_entity(i64::from(sender)))
+                    .flatten();
+                self.chat.push(ChatMessage {
+                    segment: d.segment,
+                    time: loc.playback_time(),
+                    place: player.as_ref().and(self.places.get(&sender).copied()),
+                    sender: player,
+                    text,
+                });
+            }
+            "Location" => {
+                if let Some((player, place)) = location(body) {
+                    self.places.insert(player, place);
                 }
             }
             "TeamInfo" => {

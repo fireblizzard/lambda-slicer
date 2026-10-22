@@ -74,6 +74,8 @@ pub struct Launch {
     pub event: Option<usize>,
     pub refine: crate::kill_filters::KillFilters,
     pub player: String,
+    /// The kinds of event shown, comma-separated, none for the usual ones
+    pub show: Option<String>,
     /// Turn on both date filters, for checking how they wrap
     pub dates: bool,
     /// Export every clip of the demo shown at start
@@ -135,6 +137,7 @@ pub struct App {
     open_event: Option<usize>,
     open_refine: Option<crate::kill_filters::KillFilters>,
     open_player: String,
+    open_show: Option<String>,
     export_on_open: bool,
     /// A scan to start once the stopping one has stopped
     rescan: bool,
@@ -305,6 +308,7 @@ impl App {
             open_event: launch.event,
             open_refine: Some(launch.refine),
             open_player: launch.player,
+            open_show: launch.show,
             export_on_open: launch.export,
             rescan: false,
             exported: Vec::new(),
@@ -1306,6 +1310,9 @@ impl eframe::App for App {
                     d.refine(filters);
                 }
                 d.filter_player(std::mem::take(&mut self.open_player));
+                if let Some(kinds) = self.open_show.take() {
+                    d.show_kinds(&kinds);
+                }
                 d.export_on_load = std::mem::take(&mut self.export_on_open);
                 d.lanes_open = self.settings.player_lanes;
                 d.clips = self.clips.get(path);

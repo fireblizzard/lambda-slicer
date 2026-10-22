@@ -23,8 +23,18 @@ pub fn has_rtl(text: &str) -> bool {
 /// A player name without the `^0` to `^9` colour codes Adrenaline Gamer
 /// draws in colour, for display. The raw name stays in tooltips and data
 pub fn player_name(name: &str) -> String {
-    let mut out = String::with_capacity(name.len());
-    let mut chars = name.chars().peekable();
+    let out = without_colours(name);
+    if out.trim().is_empty() {
+        name.to_string()
+    } else {
+        out
+    }
+}
+
+/// Text without AG's colour codes, a `^` and a digit
+pub fn without_colours(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut chars = text.chars().peekable();
     while let Some(c) = chars.next() {
         if c == '^' && chars.peek().is_some_and(char::is_ascii_digit) {
             chars.next();
@@ -32,11 +42,7 @@ pub fn player_name(name: &str) -> String {
         }
         out.push(c);
     }
-    if out.trim().is_empty() {
-        name.to_string()
-    } else {
-        out
-    }
+    out
 }
 
 /// Whether `text` reads right to left by its first letter with a direction,

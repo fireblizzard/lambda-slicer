@@ -199,6 +199,7 @@ impl DemoView {
                 (&mut shown.shots, "show-shots"),
                 (&mut shown.switches, "show-switches"),
                 (&mut shown.actions, "show-actions"),
+                (&mut shown.chat, "show-chat"),
             ];
             for (on, id) in kinds {
                 if selectable(ui, *on, &catalog.text(id), rtl).clicked() {
@@ -697,7 +698,7 @@ impl DemoView {
             paint_badge(ui, &mut line, &response, badge, k);
         }
 
-        let truncated = self.paint_parts(ui, &mut line, catalog, rtl, model, event);
+        let truncated = self.paint_parts(ui, &mut line, catalog, rtl, model, index);
         if truncated {
             let full = self.event_summary(catalog, index, false);
             return response.on_hover_text(full);
@@ -715,17 +716,21 @@ impl DemoView {
         catalog: &Catalog,
         rtl: bool,
         model: &Model,
-        event: &Event,
+        index: usize,
     ) -> bool {
+        let event = &model.events[index];
         let teams = model.team_play(event.segment);
         let name_colour = |team: Option<&str>| {
             let team = team.filter(|_| teams);
             side_colour(track::side_of(team))
         };
-        let actor = event
-            .actor
-            .as_deref()
-            .map_or_else(|| catalog.text("lane-unknown"), text::player_name);
+        // A line of chat with no sender is the server's, and names nobody
+        let chat = matches!(event.kind, EventKind::Chat { .. });
+        let actor = match event.actor.as_deref() {
+            Some(name) => text::player_name(name),
+            None if chat => String::new(),
+            None => catalog.text("lane-unknown"),
+        };
 
         let (actor_colour, weapon, second, second_colour) = match &event.kind {
             EventKind::Kill {
@@ -744,10 +749,17 @@ impl DemoView {
                     name_colour(features.victim_team.as_deref()),
                 )
             }
-            other => (
+            // A line of chat reads as what was said
+            EventKind::Chat { .. } => (
+                theme::FOREGROUND,
+                None,
+                self.what(catalog, index),
+                theme::FOREGROUND,
+            ),
+            _ => (
                 theme::FOREGROUND,
                 event.weapon.map(|w| w.name().to_string()),
-                DemoView::describe(catalog, other),
+                self.what(catalog, index),
                 theme::MUTED,
             ),
         };

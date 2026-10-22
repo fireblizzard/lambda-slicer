@@ -48,7 +48,7 @@ const FALLBACK_ICON: &str = "d_skull";
 pub(crate) const HUD_RESOLUTION: &str = "640";
 
 /// The colours `^1` to `^8` give a name
-const TAG_COLOURS: [Color32; 8] = [
+pub(crate) const TAG_COLOURS: [Color32; 8] = [
     Color32::from_rgb(255, 0, 0),
     Color32::from_rgb(0, 255, 0),
     Color32::from_rgb(255, 255, 0),
@@ -122,7 +122,7 @@ pub(crate) fn places(text: &str) -> HashMap<String, Place> {
 }
 
 /// A team's colour for a name
-fn team_colour(team: &str) -> Color32 {
+pub(crate) fn team_colour(team: &str) -> Color32 {
     match team.trim().to_lowercase().as_str() {
         "blue" => TEAM_BLUE,
         "red" => TEAM_RED,
@@ -134,11 +134,22 @@ fn team_colour(team: &str) -> Color32 {
 /// A name laid out in its team's colour, coloured further where AG's
 /// colour codes say, the codes themselves left out
 fn name_job(name: &NoticeName, font: egui::FontId) -> egui::text::LayoutJob {
-    let team = team_colour(&name.team);
     let mut job = egui::text::LayoutJob::default();
-    let mut colour = team;
+    add_tagged(&mut job, &name.name, team_colour(&name.team), &font);
+    job
+}
+
+/// `text` added to `job` in `base`, coloured otherwise where AG's colour
+/// codes say until `^0` or `^9` go back to `base`, the codes left out
+pub(crate) fn add_tagged(
+    job: &mut egui::text::LayoutJob,
+    text: &str,
+    base: Color32,
+    font: &egui::FontId,
+) {
+    let mut colour = base;
     let mut run = String::new();
-    let mut chars = name.name.chars().peekable();
+    let mut chars = text.chars().peekable();
     while let Some(c) = chars.next() {
         let code = chars
             .peek()
@@ -154,11 +165,10 @@ fn name_job(name: &NoticeName, font: egui::FontId) -> egui::text::LayoutJob {
         job.append(&std::mem::take(&mut run), 0., format);
         colour = match digit {
             1..=8 => TAG_COLOURS[digit as usize - 1],
-            _ => team,
+            _ => base,
         };
     }
-    job.append(&run, 0., egui::TextFormat::simple(font, colour));
-    job
+    job.append(&run, 0., egui::TextFormat::simple(font.clone(), colour));
 }
 
 impl KillFeed {

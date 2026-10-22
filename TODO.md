@@ -54,3 +54,5 @@
 - [ ] Add ability to make volumetric triggers to time segments for HLKZ
 - [ ] Support Opposing Force demos
 - [ ] Support Blue Shift demos
+- [ ] Find demos of players by name or SteamID
+- [ ] Find chat messages across the whole library, like words or parts of a message, with filters like sender and map

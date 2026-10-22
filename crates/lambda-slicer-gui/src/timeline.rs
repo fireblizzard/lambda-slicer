@@ -60,6 +60,8 @@ pub enum MarkKind {
     Death,
     /// The recorder changed weapon
     Switch,
+    /// A line of chat
+    Chat,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -107,6 +109,12 @@ pub enum EventKind {
         features: Box<KillFeatures>,
     },
     Switch,
+    Chat {
+        /// Colour codes such as `^1` left in, and `%l` for the sender's place
+        text: String,
+        /// Where the sender was when they sent it
+        place: Option<[f32; 3]>,
+    },
 }
 
 /// A kill's place among the analysis's kills, the same however the events
@@ -446,6 +454,32 @@ impl Model {
             }
         }
 
+        // Each line of chat in its sender's lane, the server's in the unknown
+        // one
+        for c in &r.chat {
+            let lane = match &c.sender {
+                Some(p) => b.lane(key_of(p), Some(&p.name)),
+                None => b.lane(LaneKey::Unknown, None),
+            };
+            b.mark(
+                lane,
+                c.time,
+                MarkKind::Chat,
+                None,
+                Event {
+                    segment: c.segment,
+                    time: c.time,
+                    lane,
+                    actor: c.sender.as_ref().map(|p| p.name.clone()),
+                    weapon: None,
+                    kind: EventKind::Chat {
+                        text: c.text.clone(),
+                        place: c.place,
+                    },
+                },
+            );
+        }
+
         // Events in time order, with marks pointing at their new places
         let mut order: Vec<usize> = (0..b.events.len()).collect();
         order.sort_by(|x, y| b.events[*x].time.total_cmp(&b.events[*y].time));
@@ -771,6 +805,7 @@ mod tests {
                 notes: Vec::new(),
             },
             maps: Vec::new(),
+            chat: Vec::new(),
             scoreboard: Default::default(),
             score_updates: Vec::new(),
             team_score_updates: Vec::new(),
