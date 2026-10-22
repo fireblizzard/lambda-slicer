@@ -71,6 +71,7 @@ fn main() {
             ring.push_back(Sample {
                 time,
                 origin: [coord("origin[0]"), coord("origin[1]"), coord("origin[2]")],
+                alive: true,
                 exact: None,
             });
             while ring.front().is_some_and(|s| time - s.time > 1.) {

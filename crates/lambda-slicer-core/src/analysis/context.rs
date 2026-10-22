@@ -72,7 +72,9 @@ pub struct Kill {
     pub cause: KillCause,
     /// The player weapon used, only when a player killed with one
     pub weapon: Option<Weapon>,
-    /// The victim's movement when the message arrived
+    /// The victim's movement when last seen alive, as the hit's push, such
+    /// as a blast's, moves them as they die, and the death message can come
+    /// a few frames after
     #[serde(skip)]
     pub victim_state: MotionState,
     /// The killer's recent samples, to judge its movement at the shot
@@ -530,6 +532,25 @@ pub struct SessionMap {
     pub intermission: Option<f32>,
 }
 
+/// How long before its death message a victim must have been seen alive
+/// for their movement then to count as their movement at the death
+const DEATH_DELAY: f32 = 0.25;
+
+/// A victim's movement when last seen alive in `samples`, before what
+/// killed them pushed them, unless that was well before the death message
+/// at `server_time`
+fn last_alive(samples: &[Sample], server_time: f32, d: &Decoder) -> MotionState {
+    let mut alive = samples.to_vec();
+    while alive.last().is_some_and(|s| !s.alive) {
+        alive.pop();
+    }
+
+    match alive.last() {
+        Some(s) if server_time - s.time <= DEATH_DELAY => state_at(&alive, s.time, gravity(d)),
+        _ => MotionState::not_visible(),
+    }
+}
+
 /// A map as players name it, without the `maps/` folder and `.bsp`
 pub fn short_map_name(path: &str) -> String {
     let name = path.strip_prefix("maps/").unwrap_or(path);
@@ -829,8 +850,7 @@ impl Context {
 
                 let (cause, weapon) = kill_cause(killer, victim, &weapon_name, d.max_clients);
                 let server_time = f32::from_bits(d.time_bits);
-                let victim_state =
-                    state_at(&self.motion.samples(victim.into()), server_time, gravity(d));
+                let victim_state = last_alive(&self.motion.samples(victim.into()), server_time, d);
                 self.kills.push(Kill {
                     segment: d.segment,
                     time: loc.playback_time(),

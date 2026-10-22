@@ -64,7 +64,7 @@ pub enum SpeedSubject {
 }
 
 /// The speed a fast kill needs at first, in units per second
-pub const DEFAULT_MIN_UPS: u32 = 1000;
+pub const DEFAULT_MIN_UPS: u32 = 800;
 
 /// The refinements of the kills shown, all of them on the same kill
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -482,14 +482,14 @@ mod tests {
         };
 
         let both = kill(
-            motion(Some(true), Some(900.)),
+            motion(Some(true), Some(700.)),
             motion(Some(true), None),
             false,
         );
         assert_eq!(air_badge(&both), Some(AirBadge::Both));
         // Below the badge's speed it shows only while the refinement is on
         assert_eq!(speed_badge(&both, &off), None);
-        assert_eq!(speed_badge(&both, &on), Some(SpeedBadge::Known(900.)));
+        assert_eq!(speed_badge(&both, &on), Some(SpeedBadge::Known(700.)));
 
         let one = kill(
             motion(Some(true), Some(1500.)),

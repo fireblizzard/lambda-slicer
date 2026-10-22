@@ -27,7 +27,7 @@
 - [x] Add 8 pixels of margin to the right of the kill feed
 - [x] Add a button in Settings to restore all settings to default, with a confirmation dialog mentioning all the custom settings/values that will revert to default
 - [x] Remove older decals, keep the 100 most recent ones by default, add a setting for that number
-- [ ] At least some kills have their speed wrongly marked as going over 1000ups speed
+- [x] At least some kills have their speed wrongly marked as going over 1000ups speed
 - [x] Add a setting to start the app with the filter for minimum demo time in the library set to X minutes. It's annoying to set the number every time I launch the app to filter out dumb demos
 - [ ] Add a filter for non-bot demos. If we can't determine whether a player is a bot or not, just make it filter out scores where one side is 0 in a 2-team game
 - [ ] Add a column for the number of players (not spectators) and then a filter for that. Detect when the match begins (after agstart, after the countdown) and count the players at that time. For multimap demos keep the highest count, so if there are 2 matches with 4 and 6 players, show a 6 for that demo. For demos without a match, just get the highest number of players at any point. And for demos where the match was already started before the recording began... have to see how to detect that case, and then just count the non-spectator players at the beginning of the demo in that case
@@ -48,6 +48,8 @@
 - [ ] Make mouse4 navigate back and mouse5 navigate forward. so if you're in the library view and click a demo, it opens the demo view with the player and everything, and pressing mouse4 would close that view and go back to the library where you see the whole table, and mouse5 would get you back to that demo view
 - [ ] `homeworld` map is not loading on demo `20210411_175005_homeworld`: `maps/homeworld.bsp · maps/homeworld.bsp is not a map this version reads (InvalidRecordRange { source: SourceLocation { lump: Leaves, element: 2365 }, field: "visibility", first: -8912897, count: 1, available: 46331 })`
 - [ ] Handle HudText/titles.txt messages. I think these are the white messages like when you get to the next chapter in Half-Life and it shows the chapter name, or the "Saved..." text
+- [ ] Remove hours from the event list unless the demo goes into the hours, and the same for minutes, if the demo is just 50 seconds long we don't need minutes either
+- [ ] Add context menu to events to be able to copy the text of the event, so for example a kill becomes `01:46.817 | andriu killed -<[ATK]>-naz with rpg_rocket`
 
 # Ideas for later
 - [ ] Add a Favourites tab and an Add to favourites or Remove from favourites option to the context menu of a demo. The tab should be right after the Filters button above the table, and for now there will be 2 tabs: All and Favourites. All is the normal table and Favourite will just show the favourited demos. Demo entries in the table should show a yellow star after the name of the demo, in the same column as the name, just at the end of the text

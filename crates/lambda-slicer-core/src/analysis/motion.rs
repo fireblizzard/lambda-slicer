@@ -20,6 +20,10 @@ use crate::state::{Decoder, Snapshot};
 /// `FL_ONGROUND`
 const FL_ONGROUND: i64 = 1 << 9;
 
+/// The movement the server gives a player once they die, falling and
+/// thrown about by what killed them (`MOVETYPE_TOSS`)
+const MOVETYPE_TOSS: i64 = 6;
+
 /// How much history each player keeps, enough to reach a projectile's launch
 pub const HISTORY: f32 = 5.0;
 
@@ -63,6 +67,9 @@ pub type Floors = Arc<dyn Fn(&MapName, [f32; 3]) -> Option<f32> + Send + Sync>;
 pub struct Sample {
     pub time: f32,
     pub origin: [f32; 3],
+    /// Whether the player was alive, by the recording player's health or
+    /// another player's movement
+    pub alive: bool,
     /// The recording player's exact state, from client data
     pub exact: Option<Exact>,
 }
@@ -127,6 +134,18 @@ fn moved_away(a: &Sample, b: &Sample) -> bool {
     let reach = MAX_VELOCITY * (b.time - a.time).abs();
     let squared: f32 = (0..3).map(|i| (b.origin[i] - a.origin[i]).powi(2)).sum();
     squared > 3. * reach * reach
+}
+
+/// When the player first stood where `window[index]` has them. The server
+/// moves a player only when their input arrives, often every other
+/// snapshot, so the same origin can come again in later snapshots, whose
+/// times would shorten how long the player took to get there
+fn reached_at(window: &[&Sample], index: usize) -> f32 {
+    let mut first = index;
+    while first > 0 && window[first - 1].origin == window[index].origin {
+        first -= 1;
+    }
+    window[first].time
 }
 
 /// Least-squares fit of `y = a t² + b t + c`, returning (a, b, c, RMS
@@ -230,21 +249,24 @@ pub fn state_at(samples: &[Sample], t: f32, gravity: f32) -> MotionState {
 
     // Horizontal velocity from the displacement over the last part of the
     // window, which follows air strafing and collisions better than the
-    // whole-window fit. Vertical velocity from the fit at the last sample
-    let recent = window
-        .iter()
-        .find(|s| last.time - s.time <= SPEED_SPAN)
-        .filter(|s| last.time - s.time > 0.)
-        .copied();
-    let velocity = match recent {
-        Some(s) => {
-            let dt = last.time - s.time;
-            [
-                (last.origin[0] - s.origin[0]) / dt,
-                (last.origin[1] - s.origin[1]) / dt,
-                z.1,
-            ]
+    // whole-window fit, each end timed by when the player got there.
+    // Vertical velocity from the fit at the last sample
+    let end = window.len() - 1;
+    let end_time = reached_at(&window, end);
+    let mut recent = None;
+    for k in 0..end {
+        let dt = end_time - reached_at(&window, k);
+        if dt <= SPEED_SPAN && dt > 0. {
+            recent = Some((window[k], dt));
+            break;
         }
+    }
+    let velocity = match recent {
+        Some((s, dt)) => [
+            (last.origin[0] - s.origin[0]) / dt,
+            (last.origin[1] - s.origin[1]) / dt,
+            z.1,
+        ],
         None => [x.1, y.1, z.1],
     };
     let (speed, horizontal) = speeds(velocity);
@@ -334,11 +356,14 @@ impl Motion {
                     _ => 0.,
                 };
                 let mut origin = [coord("origin[0]"), coord("origin[1]"), coord("origin[2]")];
+                let movement = e.fields.value(&schema, "movetype").and_then(|v| v.as_i64());
+                let mut alive = movement != Some(MOVETYPE_TOSS);
                 let mut sample_exact = None;
                 if e.number == recorder
-                    && let Some((o, x)) = exact
+                    && let Some((o, x, a)) = exact
                 {
                     origin = o;
+                    alive = a;
                     sample_exact = Some(x);
                 }
 
@@ -349,6 +374,7 @@ impl Motion {
                 ring.push_back(Sample {
                     time,
                     origin,
+                    alive,
                     exact: sample_exact,
                 });
                 while ring.front().is_some_and(|s| time - s.time > HISTORY) {
@@ -367,8 +393,9 @@ impl Motion {
     }
 }
 
-/// Origin, on-ground flag and velocity of the recording player
-fn recorder_exact(d: &Decoder, snap: &Snapshot) -> Option<([f32; 3], Exact)> {
+/// Origin, on-ground flag and velocity of the recording player, and whether
+/// they are alive
+fn recorder_exact(d: &Decoder, snap: &Snapshot) -> Option<([f32; 3], Exact, bool)> {
     let schema = d.schema("clientdata_t")?;
     let client = snap.clientdata.as_ref()?;
     let float = |name: &str| {
@@ -388,6 +415,7 @@ fn recorder_exact(d: &Decoder, snap: &Snapshot) -> Option<([f32; 3], Exact)> {
         float("velocity[2]")?,
     ];
     let flags = client.value(&schema, "flags")?.as_i64()?;
+    let alive = float("health").is_none_or(|health| health > 0.);
 
     Some((
         origin,
@@ -395,6 +423,7 @@ fn recorder_exact(d: &Decoder, snap: &Snapshot) -> Option<([f32; 3], Exact)> {
             on_ground: flags & FL_ONGROUND != 0,
             velocity,
         },
+        alive,
     ))
 }
 
@@ -419,6 +448,7 @@ mod tests {
             .map(|&t| Sample {
                 time: t,
                 origin: [t * 300., 0., (z(t) * 8.).round() / 8.],
+                alive: true,
                 exact: None,
             })
             .collect()
@@ -485,6 +515,7 @@ mod tests {
                 } else {
                     [900., 0., 0.]
                 },
+                alive: true,
                 exact: None,
             })
             .collect();
@@ -534,6 +565,7 @@ mod tests {
         let samples = [Sample {
             time: 1.,
             origin: [0.; 3],
+            alive: true,
             exact: Some(Exact {
                 on_ground: false,
                 velocity: [300., 400., 0.],
@@ -544,5 +576,47 @@ mod tests {
             (s.evidence, s.airborne, s.speed),
             (MotionEvidence::Exact, Some(true), Some(500.))
         );
+    }
+
+    #[test]
+    fn a_position_repeated_in_later_snapshots_is_timed_when_reached() {
+        // A player after a rocket launch, moved every other snapshot or so,
+        // as recorded, the times from 237.9 seconds. Timing the repeats by
+        // their own snapshots made this over a thousand ups
+        let recorded = [
+            (0.0748, 1589.3438, 42.1875, -183.65625),
+            (0.0852, 1593.375, 52.6875, -182.1875),
+            (0.0954, 1593.375, 52.6875, -182.1875),
+            (0.106, 1600.4375, 74.96875, -179.5625),
+            (0.1161, 1600.4375, 74.96875, -179.5625),
+            (0.126, 1603.625, 85.75, -178.53125),
+            (0.136, 1603.625, 85.75, -178.53125),
+            (0.1461, 1606.9688, 97.40625, -177.53125),
+            (0.1562, 1610.0625, 108.25, -176.78125),
+            (0.1667, 1613.3438, 119.90625, -176.09375),
+            (0.1767, 1613.3438, 119.90625, -176.09375),
+            (0.1872, 1619.2813, 141.65625, -175.25),
+            (0.1978, 1619.2813, 141.65625, -175.25),
+            (0.2083, 1622.5, 153.34375, -175.03125),
+            (0.2188, 1625.5938, 164.1875, -174.96875),
+            (0.2287, 1628.9063, 175.84375, -175.03125),
+            (0.239, 1632.0, 186.6875, -175.25),
+            (0.2489, 1632.0, 186.6875, -175.25),
+            (0.2592, 1635.3125, 198.34375, -175.625),
+            (0.2692, 1638.4063, 209.1875, -176.09375),
+        ];
+        let samples: Vec<Sample> = recorded
+            .iter()
+            .map(|&(time, x, y, z)| Sample {
+                time,
+                origin: [x, y, z],
+                alive: true,
+                exact: None,
+            })
+            .collect();
+
+        let s = state_at(&samples, 0.2692, DEFAULT_GRAVITY);
+        let horizontal = s.horizontal_speed.unwrap();
+        assert!((800. ..900.).contains(&horizontal), "{horizontal}");
     }
 }
