@@ -4,6 +4,19 @@ use super::{
     LUMP_COUNT, LumpKind, ParseError, SourceLocation, read_i16, read_i32, read_u16, record_stride,
 };
 
+/// A leaf's visibility offset that says it has no visibility data, so
+/// everything is visible from it
+pub(super) const NO_VISIBILITY: i32 = -1;
+
+/// A leaf's visibility offset `raw` into visibility data `length` long, as
+/// [`NO_VISIBILITY`] when it points outside the data. Some compilers leave
+/// such an offset in a leaf nothing reaches, which the game reads without
+/// looking and never uses, such as leaf 2365 of `homeworld.bsp`
+pub(super) fn visibility_offset(raw: i32, length: usize) -> i32 {
+    let inside = usize::try_from(raw).is_ok_and(|offset| offset < length);
+    if inside { raw } else { NO_VISIBILITY }
+}
+
 pub(super) fn validate_topology(
     bytes: &[u8],
     lumps: &[Range<usize>; LUMP_COUNT],
@@ -250,18 +263,7 @@ fn validate_leaves(
     lumps: &[Range<usize>; LUMP_COUNT],
     counts: &[usize; LUMP_COUNT],
 ) -> Result<(), ParseError> {
-    let visibility_length = lumps[LumpKind::Visibility.index()].len();
     for (element, record) in records(bytes, lumps, LumpKind::Leaves, 28).enumerate() {
-        let visibility = read_i32(record, 4) as i64;
-        if visibility != -1 && (visibility < 0 || visibility as usize >= visibility_length) {
-            return Err(ParseError::InvalidRecordRange {
-                source: location(LumpKind::Leaves, element),
-                field: "visibility",
-                first: visibility,
-                count: 1,
-                available: visibility_length,
-            });
-        }
         check_range(
             LumpKind::Leaves,
             element,
@@ -280,14 +282,15 @@ fn validate_visibility(
     leaf_count: usize,
 ) -> Result<(), ParseError> {
     let visibility = &bytes[lumps[LumpKind::Visibility.index()].clone()];
+    let visibility_length = visibility.len();
     let visibility_leaf_count = records(bytes, lumps, LumpKind::Models, 64)
         .next()
         .map(|model| read_i32(model, 52) as usize)
         .unwrap_or_else(|| leaf_count.saturating_sub(1));
     let row_length = visibility_leaf_count.saturating_add(7) >> 3;
     for (leaf, record) in records(bytes, lumps, LumpKind::Leaves, 28).enumerate() {
-        let raw_offset = read_i32(record, 4);
-        if raw_offset == -1 {
+        let raw_offset = visibility_offset(read_i32(record, 4), visibility_length);
+        if raw_offset == NO_VISIBILITY {
             continue;
         }
         let offset = raw_offset as usize;
@@ -480,4 +483,19 @@ fn validate_texture_info(
         )?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_offset_outside_the_visibility_data_is_read_as_none() {
+        assert_eq!(visibility_offset(0, 46331), 0);
+        assert_eq!(visibility_offset(46330, 46331), 46330);
+        assert_eq!(visibility_offset(46331, 46331), NO_VISIBILITY);
+        assert_eq!(visibility_offset(-8912897, 46331), NO_VISIBILITY);
+        assert_eq!(visibility_offset(NO_VISIBILITY, 46331), NO_VISIBILITY);
+        assert_eq!(visibility_offset(0, 0), NO_VISIBILITY);
+    }
 }

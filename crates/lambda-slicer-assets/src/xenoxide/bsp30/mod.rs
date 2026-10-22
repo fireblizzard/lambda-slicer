@@ -672,17 +672,22 @@ impl<'a> BspDocument<'a> {
             })
     }
 
+    /// The leaves, an offset outside the visibility data read as none
     pub fn leaves(&self) -> impl ExactSizeIterator<Item = Leaf> + '_ {
+        let visibility_length = self.lump(LumpKind::Visibility).len();
         self.lump(LumpKind::Leaves)
             .chunks_exact(28)
             .enumerate()
-            .map(|(element, bytes)| Leaf {
+            .map(move |(element, bytes)| Leaf {
                 source: SourceLocation {
                     lump: LumpKind::Leaves,
                     element,
                 },
                 contents: read_i32(bytes, 0),
-                visibility_offset: read_i32(bytes, 4),
+                visibility_offset: validation::visibility_offset(
+                    read_i32(bytes, 4),
+                    visibility_length,
+                ),
                 minimum: [read_i16(bytes, 8), read_i16(bytes, 10), read_i16(bytes, 12)],
                 maximum: [
                     read_i16(bytes, 14),
