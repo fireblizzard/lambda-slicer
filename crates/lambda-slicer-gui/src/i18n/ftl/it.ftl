@@ -186,7 +186,7 @@ io-not-found = File o cartella non trovati.
 io-other = { $detail }
 io-permission-denied = Accesso negato.
 io-unexpected-end = Il file è finito inaspettatamente.
-protocol-unsupported = Questa demo è di una versione del gioco non supportata (protocollo { $demo }/{ $network }). È supportata solo la 5/48.
+protocol-unsupported = Questa demo è di una versione del gioco non supportata (protocollo { $demo }/{ $network }). Sono supportate solo la 5/47 e la 5/48.
 protocol-unsupported-network = Il server è passato a una versione del gioco non supportata (protocollo { $network }).
 
 ## Vista della demo

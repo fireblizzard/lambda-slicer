@@ -173,8 +173,12 @@ impl Hud {
                 *self = Self::default();
                 return None;
             }
+            // A singleplayer recording's pauses do not stop the game it
+            // shows, as the player keeps moving through them
             Message::SetPause(paused) => {
-                self.announcements.pause(*paused != 0);
+                if decoder.max_clients > 1 {
+                    self.announcements.pause(*paused != 0);
+                }
                 return None;
             }
             Message::User { id, body } => (*id, body),

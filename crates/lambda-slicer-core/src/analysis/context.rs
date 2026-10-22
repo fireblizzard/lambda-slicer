@@ -822,7 +822,11 @@ impl Context {
             session.intermission = Some(loc.playback_time());
         }
 
-        if let Message::SetPause(paused) = &m.message {
+        // A singleplayer recording's pauses do not stop the game it shows,
+        // as the player keeps moving through them
+        if let Message::SetPause(paused) = &m.message
+            && d.max_clients > 1
+        {
             let paused = *paused != 0;
             self.match_events.pause(d, loc.playback_time(), paused);
         }

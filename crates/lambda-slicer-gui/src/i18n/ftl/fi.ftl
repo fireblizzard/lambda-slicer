@@ -179,7 +179,7 @@ io-not-found = Tiedostoa tai kansiota ei löytynyt.
 io-other = { $detail }
 io-permission-denied = Pääsy estetty.
 io-unexpected-end = Tiedosto päättyi odottamatta.
-protocol-unsupported = Tämä demo on pelin versiosta, jota ei tueta (protokolla { $demo }/{ $network }). Vain 5/48 on tuettu.
+protocol-unsupported = Tämä demo on pelin versiosta, jota ei tueta (protokolla { $demo }/{ $network }). Vain 5/47 ja 5/48 ovat tuettuja.
 protocol-unsupported-network = Palvelin vaihtoi pelin versioon, jota ei tueta (protokolla { $network }).
 
 ## Demonäkymä

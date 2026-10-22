@@ -99,9 +99,6 @@ impl InspectReport {
     }
 }
 
-/// Supported demo/network protocol profile for the initial implementation
-pub const SUPPORTED_PROFILE: (i32, i32) = (profile::DEMO_PROTOCOL, profile::NETWORK_PROTOCOL);
-
 pub fn inspect(path: &Path, limits: Limits) -> InspectReport {
     let mut report = InspectReport {
         schema: REPORT_SCHEMA,
@@ -149,15 +146,17 @@ pub fn inspect(path: &Path, limits: Limits) -> InspectReport {
         directory_offset: h.directory_offset,
     });
 
-    if (h.demo_protocol, h.network_protocol) != SUPPORTED_PROFILE {
+    let supported =
+        h.demo_protocol == profile::DEMO_PROTOCOL && profile::supports_network(h.network_protocol);
+    if !supported {
         add(
             &mut findings,
             Severity::Warning,
             "unsupported_profile",
             None,
             format!(
-                "protocol {}/{} is outside the supported {}/{} profile",
-                h.demo_protocol, h.network_protocol, SUPPORTED_PROFILE.0, SUPPORTED_PROFILE.1
+                "protocol {}/{} is outside the supported 5/47 and 5/48",
+                h.demo_protocol, h.network_protocol
             ),
         );
     }

@@ -190,7 +190,7 @@ io-not-found = Failas ar aplankas nerastas.
 io-other = { $detail }
 io-permission-denied = Prieiga uždrausta.
 io-unexpected-end = Failas netikėtai baigėsi.
-protocol-unsupported = Šis įrašas yra iš nepalaikomos žaidimo versijos (protokolas { $demo }/{ $network }). Palaikoma tik 5/48.
+protocol-unsupported = Šis įrašas yra iš nepalaikomos žaidimo versijos (protokolas { $demo }/{ $network }). Palaikomos tik 5/47 ir 5/48.
 protocol-unsupported-network = Serveris perėjo prie nepalaikomos žaidimo versijos (protokolas { $network }).
 
 ## Įrašo peržiūra

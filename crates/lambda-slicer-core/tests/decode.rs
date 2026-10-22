@@ -633,10 +633,10 @@ fn non_player_entities_have_no_player_identity() {
 fn serverinfo_with_another_protocol_stops_decoding() {
     let mut d = Decoder::new();
     let err = d
-        .network_frame(loc(0), &frame(1, setup_with_protocol(47)), |_, _| {})
+        .network_frame(loc(0), &frame(1, setup_with_protocol(46)), |_, _| {})
         .unwrap_err();
 
-    assert_eq!(err.kind, DecodeErrorKind::UnsupportedProtocol(47));
+    assert_eq!(err.kind, DecodeErrorKind::UnsupportedProtocol(46));
     assert_eq!(err.opcode, svc::SERVERINFO);
 }
 

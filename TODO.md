@@ -37,6 +37,8 @@
 - [x] If no folder or demo has been added yet, highlight those buttons, with a pulsing red border perhaps, until the user adds/opens one. Meant for new users
 - [ ] Clean up documents and comments so that they no longer refer to development stages (like "M6" in `vendor/README.md`) or things like that. Also try to simplify jargon in documents, even in the technical ones unless it makes it more confusing or significantly harder to explain
 - [ ] Support WON demos (protocol 5/47)
+	- [x] Singleplayer
+	- [ ] Multiplayer
 - [ ] Fix CI making an artifact with a nested zip, so there's a zip inside another zip and then the executable is inside that, 2 levels of zipping instead of 1
 - [ ] Add a release workflow that builds the artifact from the pushed tag so that users can download the app
 - [ ] Add a button to make the demo player fullscreen

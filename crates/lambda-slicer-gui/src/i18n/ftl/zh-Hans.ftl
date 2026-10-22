@@ -163,7 +163,7 @@ io-not-found = 找不到文件或文件夹。
 io-other = { $detail }
 io-permission-denied = 访问被拒绝。
 io-unexpected-end = 文件意外结束。
-protocol-unsupported = 这个录像来自不受支持的游戏版本（协议 { $demo }/{ $network }）。只支持 5/48。
+protocol-unsupported = 这个录像来自不受支持的游戏版本（协议 { $demo }/{ $network }）。只支持 5/47 和 5/48。
 protocol-unsupported-network = 服务器切换到了不受支持的游戏版本（协议 { $network }）。
 
 ## 录像视图

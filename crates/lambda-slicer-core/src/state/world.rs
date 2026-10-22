@@ -193,7 +193,7 @@ pub enum DecodeErrorKind {
     CountMismatch { declared: u16, actual: usize },
     #[error("entity numbers out of order: {previous} then {next}")]
     Unordered { previous: u16, next: u16 },
-    #[error("svc_serverinfo announces network protocol {0}, only 48 is supported")]
+    #[error("svc_serverinfo announces network protocol {0}, only 47 and 48 are supported")]
     UnsupportedProtocol(i32),
     #[error("{0}")]
     Other(String),
@@ -848,7 +848,7 @@ impl Decoder {
         match &parsed.message {
             Message::Time(bits) => self.time_bits = *bits,
             Message::ServerInfo(info) => {
-                if info.protocol != profile::NETWORK_PROTOCOL {
+                if !profile::supports_network(info.protocol) {
                     return Err(DecodeErrorKind::UnsupportedProtocol(info.protocol));
                 }
 

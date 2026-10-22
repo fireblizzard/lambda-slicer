@@ -512,16 +512,29 @@ proptest! {
 use common::demo;
 
 /// The synthetic demo with its header claiming network protocol 47
-fn protocol_47_demo() -> Vec<u8> {
+/// A demo whose header names network protocol `network`
+fn protocol_demo(network: i32) -> Vec<u8> {
     let mut b = demo(4);
-    b[12..16].copy_from_slice(&47i32.to_le_bytes());
+    b[12..16].copy_from_slice(&network.to_le_bytes());
     b
+}
+
+#[test]
+fn the_won_releases_protocol_47_is_decoded() {
+    let dir = tempfile::tempdir().unwrap();
+    let src = write(dir.path(), "p47.dem", &protocol_demo(47));
+
+    let r = inspect(&src, Limits::default());
+    assert!(!r.findings.iter().any(|f| f.code == "unsupported_profile"));
+
+    let (report, _) = decode_demo(&src, &DecodeOptions::default(), |_, _, _| {});
+    assert_ne!(report.status, DecodeStatus::Unsupported);
 }
 
 #[test]
 fn other_protocols_are_inspected_but_not_decoded_or_transformed() {
     let dir = tempfile::tempdir().unwrap();
-    let src = write(dir.path(), "p47.dem", &protocol_47_demo());
+    let src = write(dir.path(), "p46.dem", &protocol_demo(46));
 
     // Metadata inspection still works and warns
     let r = inspect(&src, Limits::default());
@@ -535,9 +548,9 @@ fn other_protocols_are_inspected_but_not_decoded_or_transformed() {
     assert_eq!(e.code, "protocol-unsupported");
     assert_eq!(
         e.args.get("network"),
-        Some(&lambda_slicer_core::message::Arg::Integer(47))
+        Some(&lambda_slicer_core::message::Arg::Integer(46))
     );
-    assert!(e.text.contains("5/47"));
+    assert!(e.text.contains("5/46"));
     assert_eq!(decoder.stats.network_frames, 0);
 
     let check = crosscheck_demo(&src, Limits::default());
@@ -558,5 +571,5 @@ fn other_protocols_are_inspected_but_not_decoded_or_transformed() {
     // The exact copy interprets nothing, so it stays available
     let copy = dir.path().join("copy.dem");
     run_control(&src, &copy, Control::ExactCopy, Limits::default()).unwrap();
-    assert_eq!(std::fs::read(&copy).unwrap(), protocol_47_demo());
+    assert_eq!(std::fs::read(&copy).unwrap(), protocol_demo(46));
 }

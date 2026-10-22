@@ -211,7 +211,7 @@ io-not-found = لم يُعثر على الملف أو المجلد.
 io-other = { $detail }
 io-permission-denied = تم رفض الوصول.
 io-unexpected-end = انتهى الملف على نحو غير متوقع.
-protocol-unsupported = هذا التسجيل من إصدار للعبة غير مدعوم (البروتوكول { $demo }/{ $network }). المدعوم 5/48 فقط.
+protocol-unsupported = هذا التسجيل من إصدار للعبة غير مدعوم (البروتوكول { $demo }/{ $network }). المدعوم 5/47 و5/48 فقط.
 protocol-unsupported-network = انتقل الخادم إلى إصدار للعبة غير مدعوم (البروتوكول { $network }).
 
 ## عرض التسجيل

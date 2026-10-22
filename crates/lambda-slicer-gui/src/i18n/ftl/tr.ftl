@@ -167,7 +167,7 @@ io-not-found = Dosya ya da klasör bulunamadı.
 io-other = { $detail }
 io-permission-denied = Erişim reddedildi.
 io-unexpected-end = Dosya beklenmedik şekilde bitti.
-protocol-unsupported = Bu demo desteklenmeyen bir oyun sürümünden (protokol { $demo }/{ $network }). Yalnızca 5/48 destekleniyor.
+protocol-unsupported = Bu demo desteklenmeyen bir oyun sürümünden (protokol { $demo }/{ $network }). Yalnızca 5/47 ve 5/48 destekleniyor.
 protocol-unsupported-network = Sunucu desteklenmeyen bir oyun sürümüne geçti (protokol { $network }).
 
 ## Demo görünümü
