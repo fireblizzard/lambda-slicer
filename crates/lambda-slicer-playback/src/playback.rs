@@ -34,6 +34,7 @@ use crate::events::angle_vectors;
 use crate::events::{ATTN_NORM, Action, ClientEvent, Events, PITCH_NORM, SoundCall, handle};
 use crate::gauss;
 use crate::hud::{ChatLine, Countdown, DeathNotice, Hud};
+use crate::hud_messages::ShownMessage;
 use crate::scene::{self, Camera, Entity, PlayerView, Scene, Viewmodel};
 use crate::scores::ScoreRow;
 use crate::source::{Cursor, Group, Source};
@@ -107,6 +108,8 @@ pub struct PresentedFrame {
     pub pickups: Vec<status::Pickup>,
     /// Where the recording player was hit from and what hurts them
     pub damage: DamageShown,
+    /// The text the server placed on the HUD
+    pub hud_messages: Vec<ShownMessage>,
     /// The small scoreboard's rows, highest first
     pub scores: Vec<ScoreRow>,
 }
@@ -717,6 +720,7 @@ impl Playback {
             status: state.hud.status(),
             pickups: state.hud.pickups(at),
             damage: state.hud.damage(at),
+            hud_messages: state.hud.messages(at),
             scores: state.hud.scores(&state.decoder),
             temp_entities: state
                 .tempents

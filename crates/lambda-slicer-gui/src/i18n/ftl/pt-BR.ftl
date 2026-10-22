@@ -529,6 +529,7 @@ settings-vitals-size = Tamanho da vida, armadura, munição e itens coletados
 settings-scores = Mostrar o placar no canto superior esquerdo
 settings-score-rows = Máximo de linhas do placar
 settings-server-settings = Mostrar as configurações do servidor no canto superior direito
+settings-hud-messages = Mostrar textos do servidor, como os cronômetros de bhop e KZ
 settings-see-through = Ver jogadores através das paredes
 settings-see-through-items = Também outros modelos, como projéteis e itens
 settings-see-through-hint = Jogadores atrás de paredes aparecem como silhuetas na cor de cima, que os jogos em equipe definem por equipe. Só aparece o que a demo contém. O servidor envia os jogadores perto de quem gravou, e servidores que escondem os jogadores que quem gravou não pode ver não deixam nada para mostrar.

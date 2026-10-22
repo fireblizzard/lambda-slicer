@@ -59,6 +59,7 @@ mod demo;
 mod export;
 mod floors;
 mod game_setup;
+mod hud_messages;
 mod hud_sprites;
 mod i18n;
 mod jobs;

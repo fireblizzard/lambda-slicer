@@ -1550,6 +1550,9 @@ impl Viewer {
                             let most = self.settings.score_rows;
                             crate::mini_scores::draw(ui, rect, &frame.scores, most);
                         }
+                        if self.settings.hud_messages {
+                            crate::hud_messages::draw(ui, rect, &frame.hud_messages);
+                        }
                         if self.settings.chat {
                             let map = frame.map.as_deref();
                             self.chat.draw(ui, rect, &frame.chat, map, library);

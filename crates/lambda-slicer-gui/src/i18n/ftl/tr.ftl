@@ -499,6 +499,7 @@ settings-vitals-size = Can, zırh, mermi ve alınan eşya boyutu
 settings-scores = Skorları sol üstte göster
 settings-score-rows = En fazla skor satırı
 settings-server-settings = Sunucu ayarlarını sağ üstte göster
+settings-hud-messages = Sunucudan gelen yazıları göster, örneğin bhop ve KZ zamanlayıcıları
 settings-see-through = Oyuncuları duvarların ardından gör
 settings-see-through-items = Mermiler ve eşyalar gibi diğer modeller de
 settings-see-through-hint = Duvarların arkasındaki oyuncular, takım oyunlarının takıma göre belirlediği üst renklerinde siluet olarak görünür. Yalnızca demonun içerdiği görünebilir. Sunucu kaydedenin yakınındaki oyuncuları gönderir; kaydedenin göremediği oyuncuları gizleyen sunucular gösterecek bir şey bırakmaz.

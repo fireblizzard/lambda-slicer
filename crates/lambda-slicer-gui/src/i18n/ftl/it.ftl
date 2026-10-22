@@ -525,6 +525,7 @@ settings-vitals-size = Dimensione di vita, armatura, munizioni e oggetti raccolt
 settings-scores = Mostra i punteggi in alto a sinistra
 settings-score-rows = Numero massimo di righe dei punteggi
 settings-server-settings = Mostra le impostazioni del server in alto a destra
+settings-hud-messages = Mostra i testi del server, come i timer di bhop e KZ
 settings-see-through = Vedi i giocatori attraverso i muri
 settings-see-through-items = Anche altri modelli, come proiettili e oggetti
 settings-see-through-hint = I giocatori dietro i muri appaiono come sagome del loro colore superiore, che i giochi a squadre impostano per squadra. Si vede solo ciò che la demo contiene. Il server invia i giocatori vicini a chi registra, e i server che nascondono i giocatori che chi registra non può vedere non lasciano nulla da mostrare.

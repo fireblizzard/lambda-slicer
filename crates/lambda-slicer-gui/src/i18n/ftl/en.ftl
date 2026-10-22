@@ -512,6 +512,7 @@ settings-vitals-size = Size of health, armour, ammo and pickups
 settings-scores = Show the scores at the top left
 settings-score-rows = Most rows of scores
 settings-server-settings = Show the server's settings at the top right
+settings-hud-messages = Show text from the server, such as bhop and KZ timers
 settings-see-through = See players through walls
 settings-see-through-items = Also other models, such as projectiles and items
 settings-see-through-hint = Players behind walls show as silhouettes in their top colour, which team games set by team. Only what the demo holds can show. The server sends the players near the recorder, and servers that hide players the recorder cannot see leave nothing to show.

@@ -663,6 +663,9 @@ impl App {
         layout::row(ui, rtl, |ui| {
             ui.checkbox(&mut viewer.server_settings, t("settings-server-settings"));
         });
+        layout::row(ui, rtl, |ui| {
+            ui.checkbox(&mut viewer.hud_messages, t("settings-hud-messages"));
+        });
 
         // Projectiles and items show through walls only with the players,
         // and keep their choice while the players do not
@@ -986,6 +989,10 @@ fn changed_settings(current: &Settings, restored: &Settings) -> Vec<&'static str
         (
             view.server_settings != first.server_settings,
             "settings-server-settings",
+        ),
+        (
+            view.hud_messages != first.hud_messages,
+            "settings-hud-messages",
         ),
         (
             view.see_through != first.see_through,

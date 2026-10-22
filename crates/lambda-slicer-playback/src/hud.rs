@@ -1,7 +1,8 @@
 //! The parts of the HUD playback shows, AG's countdown before a match, the
 //! kill feed, the chat, the messages [`crate::announcements`] keeps, the
 //! health, armour and ammo [`crate::status`] keeps, the scores
-//! [`crate::scores`] keeps, and the damage [`crate::damage`] keeps
+//! [`crate::scores`] keeps, the damage [`crate::damage`] keeps, and the
+//! server's own text [`crate::hud_messages`] keeps
 //!
 //! AG's client counts down when the server sends `Countdown`, a signed byte
 //! of seconds left, a byte saying whether to speak it, and the names of the
@@ -33,6 +34,7 @@ use lambda_slicer_core::state::Decoder;
 
 use crate::announcements::{Announced, Announcements};
 use crate::damage::{Damage, DamageShown};
+use crate::hud_messages::{HudMessages, ShownMessage, TE_TEXTMESSAGE};
 use crate::scene::Camera;
 use crate::scores::{ScoreRow, Scores};
 use crate::status::{self, Status};
@@ -139,6 +141,8 @@ pub struct Hud {
     scores: Scores,
     /// Where the recording player is hit from and what hurts them
     damage: Damage,
+    /// The text the server places on the HUD
+    messages: HudMessages,
 }
 
 /// A string ending at its first nought, and what follows it
@@ -170,6 +174,10 @@ impl Hud {
                 return None;
             }
             Message::User { id, body } => (*id, body),
+            Message::TempEntity { kind, body } if *kind == TE_TEXTMESSAGE => {
+                self.messages.message(body, time);
+                return None;
+            }
             _ => return None,
         };
         // The time left, sudden death, the next map, timeouts and votes are
@@ -318,6 +326,11 @@ impl Hud {
             return DamageShown::default();
         }
         self.damage.at(at)
+    }
+
+    /// The text the server placed on the HUD that shows at `at`
+    pub fn messages(&self, at: SourceTime) -> Vec<ShownMessage> {
+        self.messages.at(at)
     }
 
     /// What the recording player picked up and still shows at `at`

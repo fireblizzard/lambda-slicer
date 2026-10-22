@@ -536,6 +536,7 @@ settings-vitals-size = Rozmiar życia, pancerza, amunicji i podniesionych przedm
 settings-scores = Pokazuj wyniki w lewym górnym rogu
 settings-score-rows = Najwięcej wierszy wyników
 settings-server-settings = Pokazuj ustawienia serwera w prawym górnym rogu
+settings-hud-messages = Pokazuj tekst z serwera, np. timery bhop i KZ
 settings-see-through = Widź graczy przez ściany
 settings-see-through-items = Także inne modele, np. pociski i przedmioty
 settings-see-through-hint = Gracze za ścianami są widoczni jako sylwetki w ich górnym kolorze, który gry drużynowe ustawiają według drużyny. Widać tylko to, co zawiera demo. Serwer wysyła graczy w pobliżu nagrywającego, a serwery ukrywające graczy, których nagrywający nie widzi, nie zostawiają nic do pokazania.

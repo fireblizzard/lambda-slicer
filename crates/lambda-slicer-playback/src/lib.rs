@@ -25,6 +25,7 @@ pub mod decals;
 pub mod events;
 pub mod gauss;
 pub mod hud;
+pub mod hud_messages;
 pub mod kill_features;
 pub mod playback;
 pub mod scene;

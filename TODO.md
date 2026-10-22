@@ -47,6 +47,7 @@
 - [ ] Make holding left click on the demo player speed up the demo twice the current speed (x1 -> x2, x4 -> x8). releasing click makes it go back to normal (whichever replay speed you had set, not necessarily x1)
 - [ ] Make mouse4 navigate back and mouse5 navigate forward. so if you're in the library view and click a demo, it opens the demo view with the player and everything, and pressing mouse4 would close that view and go back to the library where you see the whole table, and mouse5 would get you back to that demo view
 - [ ] `homeworld` map is not loading on demo `20210411_175005_homeworld`: `maps/homeworld.bsp · maps/homeworld.bsp is not a map this version reads (InvalidRecordRange { source: SourceLocation { lump: Leaves, element: 2365 }, field: "visibility", first: -8912897, count: 1, available: 46331 })`
+- [ ] Handle HudText/titles.txt messages. I think these are the white messages like when you get to the next chapter in Half-Life and it shows the chapter name, or the "Saved..." text
 
 # Ideas for later
 - [ ] Add a Favourites tab and an Add to favourites or Remove from favourites option to the context menu of a demo. The tab should be right after the Filters button above the table, and for now there will be 2 tabs: All and Favourites. All is the normal table and Favourite will just show the favourited demos. Demo entries in the table should show a yellow star after the name of the demo, in the same column as the name, just at the end of the text

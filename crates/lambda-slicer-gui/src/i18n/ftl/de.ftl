@@ -511,6 +511,7 @@ settings-vitals-size = Größe von Leben, Rüstung, Munition und Pickups
 settings-scores = Punktestand oben links zeigen
 settings-score-rows = Höchstzahl der Zeilen im Punktestand
 settings-server-settings = Servereinstellungen oben rechts zeigen
+settings-hud-messages = Text vom Server zeigen, etwa Timer für bhop und KZ
 settings-see-through = Spieler durch Wände sehen
 settings-see-through-items = Auch andere Modelle, etwa Geschosse und Gegenstände
 settings-see-through-hint = Spieler hinter Wänden erscheinen als Umrisse in ihrer oberen Farbe, die Teamspiele nach Team setzen. Es kann nur zu sehen sein, was die Demo enthält. Der Server schickt die Spieler in der Nähe des Aufnehmenden, und Server, die Spieler verbergen, die der Aufnehmende nicht sehen kann, lassen nichts zu zeigen.
