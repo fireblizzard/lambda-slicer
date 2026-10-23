@@ -9,8 +9,9 @@ it, is in the [release notes](release-notes.md).
 `.\scripts\check.ps1` runs what CI runs: formatting, clippy with warnings as errors, every test
 and a release build, all `--locked`. `-Linux` repeats clippy, the tests and the release build in
 WSL, building into the Linux home. CI (`.github/workflows/ci.yml`) runs the same on
-`windows-latest` and `ubuntu-latest`, then packages on Windows and keeps the zip as a build
-artifact. The private corpus and the game stay out of CI. The first run on GitHub, for `00b9dee`
+`windows-latest` and `ubuntu-latest`, then packages on Windows and keeps the zip and its
+`.sha256` as build artifacts, each uploaded as it is rather than zipped again, so downloading the
+artifact gives the package zip itself. The private corpus and the game stay out of CI. The first run on GitHub, for `00b9dee`
 on 2026-10-17, passed on both systems in about 13 minutes and produced the zip
 ([run 39056627064](https://github.com/fireblizzard/lambda-slicer/actions/runs/39056627064)). The local fixture checks run with
 

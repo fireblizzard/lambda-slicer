@@ -29,7 +29,7 @@
 - [x] Remove older decals, keep the 100 most recent ones by default, add a setting for that number
 - [x] At least some kills have their speed wrongly marked as going over 1000ups speed
 - [x] Add a setting to start the app with the filter for minimum demo time in the library set to X minutes. It's annoying to set the number every time I launch the app to filter out dumb demos
-- [ ] Add a filter for non-bot demos. If we can't determine whether a player is a bot or not, just make it filter out scores where one side is 0 in a 2-team game
+- [ ] Add a filter for non-bot demos. If we can't determine whether a player is a bot or not, just make it filter out scores where the other player doesn't move in a 1v1
 - [x] Add a column for the number of players (not spectators) and then a filter for that. Detect when the match begins (after agstart, after the countdown) and count the players at that time. For multimap demos keep the highest count, so if there are 2 matches with 4 and 6 players, show a 6 for that demo. For demos without a match, just get the highest number of players at any point. And for demos where the match was already started before the recording began... have to see how to detect that case, and then just count the non-spectator players at the beginning of the demo in that case
 - [x] Add a column for the number of teams, similar approach as for the number of players column, with its own filter too
 - [ ] Add K/D (kills/death ratio) to the scoreboard where we have the kills, death, hs and accuracy%.  if deaths are 0, then do the division with 1
@@ -39,7 +39,7 @@
 - [ ] Support WON demos (protocol 5/47)
 	- [x] Singleplayer
 	- [ ] Multiplayer
-- [ ] Fix CI making an artifact with a nested zip, so there's a zip inside another zip and then the executable is inside that, 2 levels of zipping instead of 1
+- [x] Fix CI making an artifact with a nested zip, so there's a zip inside another zip and then the executable is inside that, 2 levels of zipping instead of 1
 - [ ] Add a release workflow that builds the artifact from the pushed tag so that users can download the app
 - [x] Add a button to make the demo player fullscreen
 - [ ] Add a speedometer and last jump speed to the demo player, with a setting to make it count only horizontal, only vertical or full 3D (both)
