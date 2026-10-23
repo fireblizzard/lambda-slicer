@@ -47,6 +47,6 @@ jobs:
               gh release upload $tag @files --clobber
           } else {
               $prerelease = if ($tag.Contains('-')) { @('--prerelease') } else { @() }
-              gh release create $tag @files --title "Lambda Slicer $($tag.TrimStart('v'))" --generate-notes @prerelease
+              gh release create $tag @files --title "Lambda Slicer $tag" --generate-notes @prerelease
           }
           if ($LASTEXITCODE -ne 0) { throw 'publishing the release failed' }

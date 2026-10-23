@@ -45,7 +45,7 @@ Apache-2.0 license ([dependency audit](dependency-audit.md)).
 Pushing a tag named after the version in `Cargo.toml`, such as `v0.2.0`, runs
 `.github/workflows/release.yml`. It checks that the tag matches the version, runs the tests,
 builds the package with `scripts\package.ps1` and publishes the zip and its `.sha256` on the
-repository's Releases page, titled `Lambda Slicer 0.2.0`, with notes listing the changes since the
+repository's Releases page, titled `Lambda Slicer v0.2.0`, with notes listing the changes since the
 last release. A version with a suffix, such as `v0.2.0-beta.1`, is marked as a pre-release. A tag
 that does not match the version stops the run before anything is built. Running it again for the
 same tag replaces the release's files.
