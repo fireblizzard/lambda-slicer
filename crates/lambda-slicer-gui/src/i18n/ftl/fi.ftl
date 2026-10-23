@@ -538,6 +538,8 @@ settings-clear-library-text = { $count ->
    *[other] Lambda Slicer unohtaa, mitä se löysi { $count } demosta, ja skannaa kirjaston kansiot uudelleen, mikä voi kestää hetken. Demotiedostosi, klippisi ja asetuksesi pysyvät ennallaan.
 }
 viewer-zoom = Zoomaa lähemmäs
+viewer-fullscreen = Koko näyttö
+viewer-leave-fullscreen = Poistu koko näytön tilasta
 viewer-see-through = Näe seinien läpi
 viewer-paused = Tauko
 viewer-map-change = Serveri vaihtaa kartaksi { $map }

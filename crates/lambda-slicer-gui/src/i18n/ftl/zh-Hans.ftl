@@ -514,6 +514,8 @@ settings-clear-library-text = { $count ->
    *[other] Lambda Slicer 会忘记它在 { $count } 个录像中找到的内容，并重新扫描库文件夹，这可能需要一段时间。你的录像文件、片段和设置都会保持不变。
 }
 viewer-zoom = 放大画面
+viewer-fullscreen = 全屏
+viewer-leave-fullscreen = 退出全屏
 viewer-see-through = 透视墙壁
 viewer-paused = 已暂停
 viewer-map-change = 服务器正在切换地图至 { $map }

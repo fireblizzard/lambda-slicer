@@ -95,6 +95,8 @@ pub struct Launch {
     pub viewer_gamma: Option<lambda_slicer_render::gamma::Gamma>,
     /// Players shown through walls for this run
     pub viewer_see_through: bool,
+    /// The view fills the screen once it opens
+    pub viewer_fullscreen: bool,
     /// The inspector tab shown at start
     pub tab: InspectorTab,
     /// The settings window's section shown at start
@@ -120,6 +122,8 @@ pub struct App {
     /// A control had the focus at the end of the last frame, so an Escape
     /// now only takes the focus from it
     focused_last_frame: bool,
+    /// The window was asked to fill the screen, for the open demo's view
+    fullscreen: bool,
     show_problems: bool,
     screenshot: Option<Screenshot>,
     /// A screenshot was asked for and its image has not come back
@@ -168,6 +172,7 @@ pub struct App {
     viewer_play: Option<f64>,
     viewer_gamma: Option<lambda_slicer_render::gamma::Gamma>,
     viewer_see_through: bool,
+    viewer_fullscreen: bool,
     /// A setting changed, saved once the pointer is let go
     settings_unsaved: bool,
     /// The window's GPU device, which the viewer draws with
@@ -322,6 +327,7 @@ impl App {
             confirm_clear: launch.confirm_clear,
             clear_library: false,
             focused_last_frame: false,
+            fullscreen: false,
             show_problems: false,
             screenshot: launch.screenshot,
             screenshot_requested: false,
@@ -350,6 +356,7 @@ impl App {
             viewer_play: launch.viewer_play,
             viewer_gamma: launch.viewer_gamma,
             viewer_see_through: launch.viewer_see_through,
+            viewer_fullscreen: launch.viewer_fullscreen,
             settings_unsaved: false,
             render_state: None,
             brand: None,
@@ -475,7 +482,7 @@ impl App {
             play: self.viewer_play.take(),
         };
         d.viewer_game = install.clone();
-        d.viewer = Some(crate::viewer::Viewer::open(
+        let mut viewer = crate::viewer::Viewer::open(
             render_state.clone(),
             install,
             d.path.clone(),
@@ -483,7 +490,9 @@ impl App {
             dev,
             carry,
             ctx,
-        ));
+        );
+        viewer.fullscreen = std::mem::take(&mut self.viewer_fullscreen);
+        d.viewer = Some(viewer);
     }
 
     /// Give the open demo the settings it works with this frame, this run's
@@ -620,18 +629,21 @@ impl App {
     }
 
     /// The open demo beside the narrow demo list, or with the list over it
-    /// while the window has no room for it, then what the demo asked of the
-    /// app and the settings and clips it changed
+    /// while the window has no room for it, or alone while its view fills
+    /// the screen, then what the demo asked of the app and the settings and
+    /// clips it changed
     fn workspace_ui(&mut self, ui: &mut egui::Ui, rtl: bool) {
         let ctx = ui.ctx().clone();
         let area = ui.available_rect_before_wrap();
+        let fullscreen = self.fullscreen;
 
         // The list's panel keeps its width under the id egui gives it here
         let list_id = ui.scope_id().with_salt(egui::IdSalt::new("library"));
         let narrow = self.arrange(&ctx, list_id, area.width());
 
         let mut list_action = None;
-        if !self.workspace.list_hidden && !self.workspace.list_squeezed {
+        let beside = !self.workspace.list_hidden && !self.workspace.list_squeezed;
+        if beside && !fullscreen {
             let pane = egui::Frame::side_top_panel(&ctx.global_style()).fill(theme::PANE);
             layout::leading_panel("library", rtl)
                 .frame(pane)
@@ -650,13 +662,18 @@ impl App {
             narrow,
             setup: &setup,
         };
-        egui::CentralPanel::default().show(ui, |ui| {
+        let mut middle = egui::CentralPanel::default();
+        if fullscreen {
+            middle = middle.frame(egui::Frame::NONE.fill(egui::Color32::BLACK));
+        }
+        middle.show(ui, |ui| {
             if let Some(d) = &mut self.demo {
                 d.ui(ui, &surroundings, &mut self.workspace);
             }
         });
 
-        if self.workspace.list_squeezed && self.workspace.drawer_open {
+        let drawer = self.workspace.list_squeezed && self.workspace.drawer_open;
+        if drawer && !fullscreen {
             list_action = list_action.or(self.drawer(&ctx, area, rtl));
         }
 
@@ -1306,6 +1323,55 @@ impl App {
         });
         ctx.request_repaint();
     }
+
+    /// The toolbar at the top and the status bar at the bottom
+    fn bars(&mut self, ui: &mut egui::Ui) {
+        // The toolbar's controls sit in the middle of its height
+        let margin_y = (theme::TOOLBAR_HEIGHT - theme::CONTROL_HEIGHT) / 2.;
+        let toolbar = egui::Frame::new()
+            .fill(theme::SURFACE)
+            .inner_margin(egui::Margin::symmetric(theme::GAP_M as i8, margin_y as i8));
+        egui::Panel::top("toolbar")
+            .exact_size(theme::TOOLBAR_HEIGHT)
+            .frame(toolbar)
+            .show(ui, |ui| self.toolbar(ui));
+
+        // Always there but over a view filling the screen, so the library's
+        // state can always be read
+        let status = egui::Frame::new()
+            .fill(theme::SURFACE)
+            .inner_margin(egui::Margin::symmetric(theme::GAP_M as i8, 2));
+        egui::Panel::bottom("status")
+            .min_size(theme::STATUS_HEIGHT)
+            .frame(status)
+            .show(ui, |ui| {
+                ui.add_space(2.);
+
+                // Notices wrap, each with its dismiss button under it
+                if let Some(notice) = self.clips_notice.clone()
+                    && self.notice(ui, &notice)
+                {
+                    self.clips_notice = None;
+                }
+                if let Some(notice) = self.path_notice.clone()
+                    && self.notice(ui, &notice)
+                {
+                    self.path_notice = None;
+                }
+
+                self.status_bar(ui);
+
+                if !self.rejected.is_empty() {
+                    let names = self.rejected.join(", ");
+                    let msg = self
+                        .catalog
+                        .text_with("drop-not-demo", &[("names", FluentValue::from(names))]);
+                    text::label(ui, &msg, self.rtl());
+                }
+
+                ui.add_space(2.);
+            });
+    }
 }
 
 impl eframe::App for App {
@@ -1342,50 +1408,16 @@ impl eframe::App for App {
         self.reanalyse_for_game(&ctx);
         self.scan_exported(&ctx);
 
-        // The toolbar's controls sit in the middle of its height
-        let margin_y = (theme::TOOLBAR_HEIGHT - theme::CONTROL_HEIGHT) / 2.;
-        let toolbar = egui::Frame::new()
-            .fill(theme::SURFACE)
-            .inner_margin(egui::Margin::symmetric(theme::GAP_M as i8, margin_y as i8));
-        egui::Panel::top("toolbar")
-            .exact_size(theme::TOOLBAR_HEIGHT)
-            .frame(toolbar)
-            .show(ui, |ui| self.toolbar(ui));
+        // A view filling the screen has the whole window
+        let fullscreen = self.demo.as_ref().is_some_and(DemoView::fullscreen);
+        if fullscreen != self.fullscreen {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(fullscreen));
+            self.fullscreen = fullscreen;
+        }
 
-        // Always there, so the library's state can always be read
-        let status = egui::Frame::new()
-            .fill(theme::SURFACE)
-            .inner_margin(egui::Margin::symmetric(theme::GAP_M as i8, 2));
-        egui::Panel::bottom("status")
-            .min_size(theme::STATUS_HEIGHT)
-            .frame(status)
-            .show(ui, |ui| {
-                ui.add_space(2.);
-
-                // Notices wrap, each with its dismiss button under it
-                if let Some(notice) = self.clips_notice.clone()
-                    && self.notice(ui, &notice)
-                {
-                    self.clips_notice = None;
-                }
-                if let Some(notice) = self.path_notice.clone()
-                    && self.notice(ui, &notice)
-                {
-                    self.path_notice = None;
-                }
-
-                self.status_bar(ui);
-
-                if !self.rejected.is_empty() {
-                    let names = self.rejected.join(", ");
-                    let msg = self
-                        .catalog
-                        .text_with("drop-not-demo", &[("names", FluentValue::from(names))]);
-                    text::label(ui, &msg, self.rtl());
-                }
-
-                ui.add_space(2.);
-            });
+        if !fullscreen {
+            self.bars(ui);
+        }
 
         let rtl = self.rtl();
 

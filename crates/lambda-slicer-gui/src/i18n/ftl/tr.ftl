@@ -526,6 +526,8 @@ settings-clear-library-text = { $count ->
    *[other] Lambda Slicer { $count } demoda bulduklarını unutur ve kütüphane klasörlerini yeniden tarar, bu biraz sürebilir. Demo dosyalarınız, klipleriniz ve ayarlarınız olduğu gibi kalır.
 }
 viewer-zoom = Görüntüyü yakınlaştır
+viewer-fullscreen = Tam ekran
+viewer-leave-fullscreen = Tam ekrandan çık
 viewer-see-through = Duvar arkasını gör
 viewer-paused = Duraklatıldı
 viewer-map-change = Sunucu haritayı { $map } olarak değiştiriyor

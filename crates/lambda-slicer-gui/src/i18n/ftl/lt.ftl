@@ -565,6 +565,8 @@ settings-clear-library-text = { $count ->
    *[other] Lambda Slicer pamirš, ką rado { $count } įrašų, ir iš naujo nuskaitys bibliotekos aplankus, o tai gali šiek tiek užtrukti. Jūsų įrašų failai, klipai ir nustatymai liks tokie, kokie yra.
 }
 viewer-zoom = Priartinti vaizdą
+viewer-fullscreen = Visas ekranas
+viewer-leave-fullscreen = Išjungti visą ekraną
 viewer-see-through = Matyti pro sienas
 viewer-paused = Pristabdyta
 viewer-map-change = Serveris keičia žemėlapį į { $map }

@@ -75,6 +75,9 @@ const WINDOW_TINT: Color32 = Color32::from_rgba_premultiplied(40, 32, 10, 40);
 /// The length of a clip made with New clip, before it is edited
 const NEW_CLIP_SECONDS: f32 = 10.;
 
+/// How dark the controls over the whole screen view are behind them
+const FULLSCREEN_SHADE: u8 = 160;
+
 /// What a control of the demo view asked for. Controls only collect these
 /// while they draw, and the view applies them once everything has drawn, so
 /// a button, a timeline click and a keyboard shortcut for the same thing
@@ -848,6 +851,12 @@ impl DemoView {
         self.player = player;
     }
 
+    /// The view fills the whole screen, so the app gives it the whole
+    /// window and the window the whole screen
+    pub fn fullscreen(&self) -> bool {
+        self.viewer.as_ref().is_some_and(|v| v.fullscreen)
+    }
+
     /// Still analysing or exporting
     pub fn busy(&self) -> bool {
         self.loading() || self.export.is_some() || self.export_on_load
@@ -1473,11 +1482,18 @@ impl DemoView {
     }
 
     /// The whole demo, its inspector beside the view or under it in a
-    /// narrow window, and the view between its header and its transport.
-    /// What the controls ask for is applied by [`Self::finish_frame`]
+    /// narrow window, and the view between its header and its transport,
+    /// or the view alone while it fills the screen. What the controls ask for is applied by [`Self::finish_frame`]
     pub fn ui(&mut self, ui: &mut Ui, s: &Surroundings, workspace: &mut WorkspaceUi) {
         let (catalog, rtl) = (s.catalog, s.rtl);
         self.refresh_rows();
+
+        if let Some(viewer) = &mut self.viewer
+            && viewer.fullscreen
+        {
+            fullscreen_ui(viewer, ui, catalog, rtl, &mut self.requests);
+            return;
+        }
 
         // The inspector beside the view, or under it in a narrow window
         let frame = egui::Frame::new()
@@ -1918,6 +1934,46 @@ impl DemoView {
 }
 
 /// A demo's file name without the `.dem` every demo has
+/// The view over the whole of `ui`, with the seek bar and the transport
+/// over its bottom while the pointer is about, as video players have
+fn fullscreen_ui(
+    viewer: &mut crate::viewer::Viewer,
+    ui: &mut Ui,
+    catalog: &Catalog,
+    rtl: bool,
+    requests: &mut Vec<Request>,
+) {
+    let ctx = ui.ctx().clone();
+    let whole = ui.max_rect();
+    viewer.viewport_ui(ui, catalog, rtl, whole.height());
+
+    // Where the controls were last drawn, which the pointer keeps them over
+    let id = egui::Id::unique("fullscreen controls");
+    let last = ctx
+        .memory(|m| m.area_rect(id))
+        .unwrap_or(egui::Rect::NOTHING);
+    if !viewer.fullscreen_controls_shown(&ctx, last) {
+        return;
+    }
+
+    let margin = egui::Margin::symmetric(theme::GAP_S as i8, theme::GAP_S as i8);
+    let frame = egui::Frame::new()
+        .fill(egui::Color32::from_black_alpha(FULLSCREEN_SHADE))
+        .inner_margin(margin);
+    egui::Area::new(id)
+        .order(egui::Order::Foreground)
+        .anchor(egui::Align2::LEFT_BOTTOM, egui::Vec2::ZERO)
+        .show(&ctx, |ui| {
+            frame.show(ui, |ui| {
+                ui.set_width(whole.width() - margin.sum().x);
+                viewer.seek_bar_ui(ui, catalog, f32::from(margin.left));
+                if viewer.transport_ui(ui, catalog, rtl) {
+                    requests.push(Request::Settings(SettingsTab::Viewer));
+                }
+            });
+        });
+}
+
 fn demo_name(path: &Path) -> String {
     let name = path
         .file_name()

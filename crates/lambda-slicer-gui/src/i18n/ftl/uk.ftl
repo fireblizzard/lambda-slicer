@@ -565,6 +565,8 @@ settings-clear-library-text = { $count ->
    *[other] Lambda Slicer забуде, що знайшов у { $count } демозапису, і знову просканує теки бібліотеки, це може зайняти час. Ваші файли демозаписів, кліпи та налаштування лишаться як є.
 }
 viewer-zoom = Наблизити зображення
+viewer-fullscreen = На весь екран
+viewer-leave-fullscreen = Вийти з повноекранного режиму
 viewer-see-through = Бачити крізь стіни
 viewer-paused = Пауза
 viewer-map-change = Сервер змінює мапу на { $map }

@@ -9,7 +9,7 @@
 //! [--game DIR [--viewer-at SECONDS] [--viewer-bench SECONDS OUT.txt]
 //! [--viewer-capture TIMES FOLDER] [--viewer-size WxH] [--viewer-play SECONDS]
 //! [--viewer-gamma GAMMA,BRIGHTNESS,TEXGAMMA,LIGHTGAMMA[,OVERBRIGHT]]
-//! [--viewer-see-through]]`
+//! [--viewer-see-through] [--viewer-fullscreen]]`
 //!
 //! Demos and folders given as `PATH` are opened for this session. `--locale`
 //! overrides the saved language, `--cache` the library cache and `--clips`
@@ -44,7 +44,8 @@
 //! to the device is written there as a WAV file. `--viewer-gamma` draws
 //! with the game's gamma settings for this run only, overbright when the
 //! fifth is 1, for comparing with frames the game recorded.
-//! `--viewer-see-through` shows players through walls for this run
+//! `--viewer-see-through` shows players through walls for this run, and
+//! `--viewer-fullscreen` has the view fill the screen once it opens
 
 // A release build opens no console window beside the app
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
@@ -140,6 +141,7 @@ fn main() -> eframe::Result {
     let mut viewer_play = None;
     let mut viewer_gamma = None;
     let mut viewer_see_through = false;
+    let mut viewer_fullscreen = false;
     let mut viewer_bench = None;
     while let Some(a) = args.next() {
         match a.as_str() {
@@ -210,6 +212,7 @@ fn main() -> eframe::Result {
             }
             "--viewer-play" => viewer_play = args.next().and_then(|s| s.parse().ok()),
             "--viewer-see-through" => viewer_see_through = true,
+            "--viewer-fullscreen" => viewer_fullscreen = true,
             "--viewer-gamma" => {
                 let values: Vec<f32> = args
                     .next()
@@ -327,6 +330,7 @@ fn main() -> eframe::Result {
                     viewer_play,
                     viewer_gamma,
                     viewer_see_through,
+                    viewer_fullscreen,
                     tab,
                     section,
                     viewer_capture: capture_times.map(|(times, folder)| viewer::Capture {

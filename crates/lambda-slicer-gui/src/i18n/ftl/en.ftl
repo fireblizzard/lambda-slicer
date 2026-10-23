@@ -539,6 +539,8 @@ settings-clear-library-text = { $count ->
    *[other] Lambda Slicer forgets what it found in { $count } demos and scans the library folders again, which can take a while. Your demo files, clips and settings stay as they are.
 }
 viewer-zoom = Zoom in
+viewer-fullscreen = Full screen
+viewer-leave-fullscreen = Leave full screen
 viewer-see-through = See through walls
 viewer-paused = Paused
 viewer-map-change = The server is changing the map to { $map }

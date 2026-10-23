@@ -64,8 +64,10 @@ pub enum Icon {
     /// A magnifying glass with a plus or a minus
     ZoomIn,
     ZoomOut,
-    /// Four corners pointing out, for the whole of something
+    /// Four corners pointing out, for the whole of something, and pointing
+    /// in, for leaving the whole screen
     Fit,
+    Shrink,
     /// Scissors, for cutting a clip
     Scissors,
     /// Chevrons up and down, for the item before or after
@@ -388,6 +390,22 @@ pub fn paint_icon_facing(
                 let across = tip + Vec2::new(inward.x * arm, 0.);
                 let down = tip + Vec2::new(0., inward.y * arm);
                 painter.add(Shape::line(vec![across, tip, down], stroke));
+            }
+        }
+        Icon::Shrink => {
+            // Each corner's two arms, from its bend inside the icon out to
+            // its edges
+            let corners = [
+                (p(6., 6.), Vec2::new(-1., -1.)),
+                (p(10., 6.), Vec2::new(1., -1.)),
+                (p(10., 10.), Vec2::new(1., 1.)),
+                (p(6., 10.), Vec2::new(-1., 1.)),
+            ];
+            for (bend, outward) in corners {
+                let arm = 3.5 * unit;
+                let across = bend + Vec2::new(outward.x * arm, 0.);
+                let down = bend + Vec2::new(0., outward.y * arm);
+                painter.add(Shape::line(vec![across, bend, down], stroke));
             }
         }
         Icon::Scissors => {

@@ -602,6 +602,8 @@ settings-clear-library-text = { $count ->
    *[other] ينسى Lambda Slicer ما وجده في { $count } تسجيل ويعيد فحص مجلدات المكتبة، وقد يستغرق ذلك بعض الوقت. تبقى ملفات تسجيلاتك ومقاطعك وإعداداتك كما هي.
 }
 viewer-zoom = تقريب الصورة
+viewer-fullscreen = ملء الشاشة
+viewer-leave-fullscreen = إنهاء ملء الشاشة
 viewer-see-through = الرؤية خلف الجدران
 viewer-paused = متوقف مؤقتًا
 viewer-map-change = السيرفر يغيّر الخريطة إلى { $map }

@@ -342,6 +342,14 @@ pub struct Viewer {
     unmuted_volume: Option<f32>,
     /// Zoomed in to the settings' zoomed field of view, for the session
     zoomed: bool,
+    /// The view fills the whole screen, which the app follows
+    pub fullscreen: bool,
+    /// When the pointer last moved over the whole screen view, in egui's
+    /// seconds, for its controls to hide a while after
+    pointer_moved: f64,
+    /// Where the playhead was at the last single click on the view, for a
+    /// double click to go back to
+    first_click: Option<f64>,
     render_state: RenderState,
     controller: Controller,
     worker: Worker,
@@ -534,6 +542,9 @@ impl Viewer {
             resume,
             unmuted_volume: None,
             zoomed: false,
+            fullscreen: false,
+            pointer_moved: 0.,
+            first_click: None,
             render_state,
             controller,
             worker,
@@ -1462,7 +1473,8 @@ impl Viewer {
         // reached the start
         if clicked.clicked() {
             let clock = self.controller.clock();
-            let at_start = self.controller.time(self.wall()).0 <= 0.;
+            let now = self.controller.time(self.wall()).0;
+            let at_start = now <= 0.;
             let command = if clock.playing() {
                 Command::Pause
             } else if clock.backward() && !at_start {
@@ -1470,8 +1482,22 @@ impl Viewer {
             } else {
                 Command::Play
             };
+            let pause = matches!(command, Command::Pause);
             self.command(command);
             ctx.request_repaint();
+
+            // A double click fills the screen or leaves it, its second click
+            // undoing the first's pause or play as video players do. A
+            // pause it ends on goes back to where the first click found the
+            // playhead, as the moment between them played on
+            if clicked.double_clicked() {
+                self.fullscreen = !self.fullscreen;
+                if pause && let Some(time) = self.first_click {
+                    self.command(Command::SeekTo(SourceTime(time)));
+                }
+            } else {
+                self.first_click = Some(now);
+            }
         }
 
         let capture_size = self.capture_size;
@@ -1888,12 +1914,24 @@ impl Viewer {
         }
     }
 
-    /// The picture settings, mute and the volume, see through walls and the
-    /// zoom, placed from the row's trailing end. Sound and
-    /// seeing through walls need the sound device and the game's files,
+    /// The whole screen, the picture settings, mute and the volume, see
+    /// through walls and the zoom, placed from the row's trailing end. Sound
+    /// and seeing through walls need the sound device and the game's files,
     /// and say so when they are not there. Returns true when the picture
     /// settings were asked for
     fn view_controls(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool) -> bool {
+        // The whole screen at the far end, as video players have it
+        let shortcut = catalog.text_with("viewer-shortcut", &[("key", FluentValue::from("F"))]);
+        let (icon, id) = if self.fullscreen {
+            (Icon::Shrink, "viewer-leave-fullscreen")
+        } else {
+            (Icon::Fit, "viewer-fullscreen")
+        };
+        let label = format!("{}\n{shortcut}", catalog.text(id));
+        if ui.add(IconButton::new(icon, &label)).clicked() {
+            self.fullscreen = !self.fullscreen;
+        }
+
         let picture_label = catalog.text("viewer-picture");
         let picture = ui
             .add(IconButton::new(Icon::Picture, &picture_label))
@@ -1963,6 +2001,35 @@ impl Viewer {
         }
 
         picture
+    }
+
+    /// Whether the controls over the whole screen view show, as they do
+    /// while paused, under the pointer or a while after it moved. The
+    /// pointer hides with them
+    pub fn fullscreen_controls_shown(&mut self, ctx: &egui::Context, over: egui::Rect) -> bool {
+        let (now, moved, pointer) = ctx.input(|i| {
+            let moved = i.pointer.delta() != egui::Vec2::ZERO || i.pointer.any_pressed();
+            (i.time, moved, i.pointer.hover_pos())
+        });
+        if moved {
+            self.pointer_moved = now;
+        }
+
+        let paused = !self.controller.clock().playing();
+        let over_them = pointer.is_some_and(|p| over.contains(p));
+        let since = now - self.pointer_moved;
+        if paused || over_them {
+            return true;
+        }
+
+        // Drawn again when they are due to hide, as nothing else may ask
+        if since < CONTROLS_LINGER {
+            ctx.request_repaint_after_secs((CONTROLS_LINGER - since) as f32);
+            return true;
+        }
+
+        ctx.set_cursor_icon(egui::CursorIcon::None);
+        false
     }
 
     /// The field of view to draw with, zoomed in, chosen in Settings or
@@ -2057,7 +2124,8 @@ impl Viewer {
     /// The keys that drive playback while no text is being typed. Space and
     /// L play forward or pause, J plays backward or pauses, K pauses, comma
     /// and period step one recorded group back or forward, the left and
-    /// right arrows seek five seconds and Home goes back to the start. While
+    /// right arrows seek five seconds, Home goes back to the start and F
+    /// fills the screen. While
     /// a control has the keyboard's focus, space, the arrows and Home are its
     /// own
     pub fn shortcuts(&mut self, ctx: &egui::Context) {
@@ -2078,6 +2146,16 @@ impl Viewer {
             self.zoomed = !self.zoomed;
             ctx.request_repaint();
         }
+
+        // F and F11 fill the screen or leave it, and so does Escape when it
+        // is not cancelling a scrub
+        let leave = self.fullscreen && !self.controller.scrubbing();
+        if pressed(egui::Key::F) || pressed(egui::Key::F11) || (leave && pressed(egui::Key::Escape))
+        {
+            self.fullscreen = !self.fullscreen;
+            ctx.request_repaint();
+        }
+
         let command = if self.controller.scrubbing() && pressed(egui::Key::Escape) {
             // Back to where the drag began
             self.scrub_cancelled = true;
@@ -2586,6 +2664,10 @@ const VOLUME_SLIDER_WIDTH: f32 = 64.;
 /// arrow keys with Shift
 const SEEK_STEP: f64 = 5.;
 const SKIP_STEP: f64 = 10.;
+
+/// Seconds the controls over the whole screen view stay after the pointer
+/// last moved
+const CONTROLS_LINGER: f64 = 2.5;
 
 /// A tracer's colour, `tracerred`, `tracergreen` and `tracerblue` at their
 /// defaults by `traceralpha`'s, and its width either side of its line
