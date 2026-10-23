@@ -40,6 +40,21 @@ Lambda Slicer is licensed under MIT OR Apache-2.0. All shipped dependencies are 
 compatible with that, and the corrected plural rules in `vendor` keep their own MIT OR
 Apache-2.0 license ([dependency audit](dependency-audit.md)).
 
+## Publishing a release
+
+Pushing a tag named after the version in `Cargo.toml`, such as `v0.2.0`, runs
+`.github/workflows/release.yml`. It checks that the tag matches the version, runs the tests,
+builds the package with `scripts\package.ps1` and publishes the zip and its `.sha256` on the
+repository's Releases page, titled `Lambda Slicer 0.2.0`, with notes listing the changes since the
+last release. A version with a suffix, such as `v0.2.0-beta.1`, is marked as a pre-release. A tag
+that does not match the version stops the run before anything is built. Running it again for the
+same tag replaces the release's files.
+
+```powershell
+git tag v0.2.0
+git push origin v0.2.0
+```
+
 ## Application icons and desktop launcher
 
 The app's window icon is embedded on Windows and Linux. Windows builds also embed the

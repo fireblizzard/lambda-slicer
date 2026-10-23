@@ -40,7 +40,7 @@
 	- [x] Singleplayer
 	- [ ] Multiplayer
 - [x] Fix CI making an artifact with a nested zip, so there's a zip inside another zip and then the executable is inside that, 2 levels of zipping instead of 1
-- [ ] Add a release workflow that builds the artifact from the pushed tag so that users can download the app
+- [x] Add a release workflow that builds the artifact from the pushed tag so that users can download the app
 - [x] Add a button to make the demo player fullscreen
 - [ ] Add a speedometer and last jump speed to the demo player, with a setting to make it count only horizontal, only vertical or full 3D (both)
 - [ ] Add flashlight HUD to the demo player

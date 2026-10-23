@@ -1,0 +1,52 @@
+name: release
+
+# Pushing a version tag such as v0.2.0 builds the Windows package and
+# publishes it on the repository's Releases page, for anyone to download
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup show
+      - uses: Swatinem/rust-cache@v2
+
+      # The tag has to name the version the app says it is, so the
+      # download's name, its VERSION.txt and the release all agree
+      - name: Check the tag against the version
+        shell: pwsh
+        run: |
+          $version = (Select-String -Path Cargo.toml -Pattern '^version = "(.+)"' |
+              Select-Object -First 1).Matches[0].Groups[1].Value
+          if ("v$version" -ne $env:GITHUB_REF_NAME) {
+              throw "tag $env:GITHUB_REF_NAME does not match version $version in Cargo.toml"
+          }
+
+      - run: cargo test --workspace --locked
+      - run: ./scripts/package.ps1
+        shell: pwsh
+
+      # A version with a suffix, such as v0.2.0-beta.1, is marked as a
+      # pre-release. Running again for the same tag replaces the files
+      - name: Publish the release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = $env:GITHUB_REF_NAME
+          $files = (Get-ChildItem dist -File -Filter '*.zip*').FullName
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -eq 0) {
+              gh release upload $tag @files --clobber
+          } else {
+              $prerelease = if ($tag.Contains('-')) { @('--prerelease') } else { @() }
+              gh release create $tag @files --title "Lambda Slicer $($tag.TrimStart('v'))" --generate-notes @prerelease
+          }
+          if ($LASTEXITCODE -ne 0) { throw 'publishing the release failed' }
