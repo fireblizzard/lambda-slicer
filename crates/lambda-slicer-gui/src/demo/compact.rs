@@ -1,5 +1,5 @@
 //! The timeline under the transport, with its heading and overview, and the
-//! player lanes it opens into (GUI redesign plan §9)
+//! player lanes it opens into
 //!
 //! The track, the overview and the lanes share one view. The track and the
 //! lanes share one hit test, and a press decides what its drag does until

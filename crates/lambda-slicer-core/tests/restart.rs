@@ -1,4 +1,4 @@
-//! S1 restart exports of synthetic demos whose packets decode
+//! Restart exports of synthetic demos whose packets decode
 
 mod common;
 

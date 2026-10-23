@@ -1,6 +1,6 @@
 //! Reaches each moment of the viewer's fixture matrix every way playback
-//! can and checks that they agree (implementation plan §13.9, and
-//! docs/viewer-validation.md, "Equivalence")
+//! can and checks that they agree (docs/viewer-validation.md,
+//! "Equivalence")
 //!
 //! `fixture_equivalence INSTALL MANIFEST [CASE...]`
 //!

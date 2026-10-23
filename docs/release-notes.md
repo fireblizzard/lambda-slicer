@@ -1,86 +1,102 @@
 # Release notes
 
-## 0.1.0, not yet released
+Downloads are on the [Releases page](https://github.com/fireblizzard/lambda-slicer/releases). What
+doesn't work yet is in [known limitations](limitations.md).
 
-The first release. Lambda Slicer finds weapon use in Half-Life: Adrenaline Gamer demos, cuts
-clips from them that play on their own in the game, and plays demos in a view of its own, with
-their sound, from the game's files. What has to happen before the release is in
-[release](release.md), "Before calling it release-ready".
+## 0.2.0, 2026-10-23
 
-### Analysis and clips
+### The demo player's HUD
 
-GoldSrc demos of protocol 5/48 are read: AG multiplayer recordings, singleplayer runs across level
-changes and spectator recordings are analysed and cut. HLTV recordings are recognised and labelled
-but not cut, and other protocols and mods are refused with the reason. Every export is checked
-against its source before it is written, and no file is ever replaced. The details are in the
-[support matrix](release.md#support-matrix).
+The demo player now shows most of the game's HUD, and Settings can hide most parts of it:
+
+- Health, armour and ammo, item and weapon pickups, and where damage comes from and what kind it is.
+- The weapon menu when the player changes weapons.
+- The crosshair.
+- Chat, which also shows in the event list.
+- AG's mini scoreboard at the top left, and the server's settings at the top right.
+- AG's match messages, such as votes, timeouts, pauses and sudden death, which also show in the
+  event list.
+- Text the server puts on the screen, such as KZ and bhop timers.
+
+### Watching demos
+
+- Full screen, with the button at the right of the controls, F or F11, or a double-click on the
+  picture. The controls show over the picture while paused or when the mouse moves.
+- Explosions look much closer to the game's.
+- Ladders no longer cast a wrong shadow, and water no longer shows faces that should be hidden.
+- Maps whose files have a small fault the game ignores, such as `homeworld`, now load.
+- An open demo is analysed again when the game's files change, so wallgauss kills show once the
+  Half-Life folder is set.
+
+### Library
+
+- Players and Teams columns and filters, counted when the match starts.
+- Filters at start: a minimum length and number of kills applied every time the app opens.
+- Demos with several maps leave out maps with no kills that lasted under 5 minutes. A setting
+  turns this off.
+- Open demo and Add folder pulse until you've added your first demos.
+- A demo opened from the file explorer shows its length.
+- Singleplayer demos from the old WON version (protocol 47) now open.
+
+### Kills
+
+- Kill speeds are more accurate. Repeated positions and the push of the killing hit no longer give
+  speeds that are far too high. The speed badge now shows from 800 ups.
+- Wallgauss checks now account for doors that have turned, doors in the way and crouching victims.
+- Scrolling the event list by hand stops it from following the demo, even during fast playback.
+
+### Clips
+
+- Exported clips are named after the demo and the clip by default, such as
+  `mymatch__Clip_1.dem`. Settings can name them after their times instead.
+
+### Downloads
+
+- Each new version is published on the Releases page with its Windows zip.
+- The zip from the automatic builds is no longer packed inside a second zip.
+
+## 0.1.0, 2026-10-22
+
+The first release.
+
+### Library
+
+- Add folders of demos and they are analysed in the background. Results are kept, so later starts
+  are quick. Rescan picks up new demos.
+- Columns for the date, map, length, score, kills, gauss shots, the recorder's headshots and
+  accuracy, intensity and time spent spectating, chosen with a right-click on a heading.
+- Filters for file name, map, player, weapon, headshot kills, midair kills, accuracy, length,
+  kills, date and point of view, and a default sort order.
+- Demos with several maps show every map, and the score of the map played longest.
+- Right-click a demo to show it in its folder.
 
 ### The demo view
 
-With the game's folder chosen in Settings, the demo view plays the selected demo with the game's
-maps, models, sprites and sounds. It seeks anywhere, rewinds, steps one recorded frame at a time,
-plays at a quarter to four times the speed, plays events and clips and loops them, shows players
-through walls when asked, and draws with the game's gamma settings.
+- The demo plays with the game's maps, models, sprites and sounds, read from your Half-Life
+  folder. Effects, decals, beams and the gauss and Egon are drawn as the game draws them.
+- A seek bar, 10 seconds back and forward, frame by frame, rewind and speeds from x0.25 to x4.
+- Zoom, players shown through walls, the game's gamma settings and field of view, and a limit on
+  how many decals stay.
+- The kill feed, the watched player's name, AG's match countdown, and a notice when the server
+  changes the map.
+- The event list follows the demo as it plays, can be filtered by player, and has a button to stop
+  it from scrolling.
+- Golden minute and the five most intense moments, the scoreboard at any moment, and a timeline
+  with a lane per player.
+- Kill filters for midair kills, speed and wallgauss.
 
-**Recordings it is made for.** In each, a seek reaches the same state as playing up to the moment,
-and at the fixture cases' moments also the same picture and sound, however the moment is reached
-([viewer validation](viewer-validation.md), "Equivalence"):
+### Clips
 
-| Recording | Status | Evidence |
-|---|---|---|
-| AG multiplayer, first person | supported | its frames compared with the game's (`ls_9e_stalkx`), demos of 2 to 32 players |
-| A spectator through a player's eyes | supported | its frames compared with the game's (`ls_9e_cross`) |
-| Singleplayer, across level changes | supported | its frames compared with the game's (`ls_9e_run`), a run of five maps |
-| HLTV | not tried in the view | |
-| Other protocols and mods | refused, as for analysis | |
+- Clip an event or one of the most intense moments, 4 seconds before to 1 second after by
+  default, or type the times.
+- Export writes a demo that plays on its own in the game. Every export is checked against the
+  original, the original is never changed, and no file is ever replaced.
+- With the export folder inside a mod folder, each clip shows the `playdemo` command that plays it.
 
-**Speed** on the development machine (Windows 10, RTX 3070): 139 to 324 pictures a second at 1920
-by 1080, seeks within 115 ms in 95 of 100 even in a 32-player game, sound within 5 ms of the
-picture ([viewer profile](viewer-profile.md), "Performance"). On Linux the view was checked in WSL,
-its window under Xvfb, and a Linux desktop with a GPU and a sound device has not been tried
-([viewer profile](viewer-profile.md), "Linux").
+### Other
 
-**Missing files.** The view reads the game from the folder chosen in Settings, and plays nothing
-without one. A file the demo names that the installation lacks is not replaced by another:
-
-- A map that cannot be read is named in place of the view, with the reason.
-- Models, sprites, skies and sounds that cannot be read are listed under the view, folded away
-  under their count, each with the reason. A missing texture shows as a checker and a missing
-  sound is silent.
-- Decals a server brought with it, as some servers do, are counted missing when the installed
-  `decals.wad` lacks them.
-
-**What a demo does not hold**, so the view cannot show it:
-
-- Other players are in the demo only while the server sends them to the recorder, usually while
-  they could be seen from where it is, and their shots and effects only as the server passed them
-  on. Showing players through walls shows only those the demo holds, and nothing from servers that
-  hide players the recorder cannot see.
-
-**Not shown or played yet**, though the demo holds it:
-
-- The HUD, so no scores, health, messages, vote notices or crosshair. AG's countdown before a
-  match is the one part shown, with its spoken numbers.
-- Recorded voice, and sentences (a monster's or the announcer's speech made of words). Rooms'
-  echoes.
-- Dynamic lights, such as muzzle flashes and the gauss's and Egon's light.
-- Particles: sparks' streaks, explosions' flicker, impacts' dust.
-- Beams messages draw between entities, rings, disks and cylinders, and the noise of beams from
-  messages.
-- Other players' Egon beams, the tripmine's and snark's events, crossbow bolts, player sprays and
-  the view's punch.
-- Shots are traced against players' boxes, not their models' hitboxes, so a decal or impact can
-  land where the game's would not.
-- On models, the glow shell and other render effects, remapped textures, blending between
-  sequences, mouth movement and the sky's light. On the map, randomly tiled textures and
-  scrolling conveyors.
-- The weapon in view does not bob or lag, and sits higher and larger than in the game.
-
-**Known differences from the game, not yet fixed** ([viewer validation](viewer-validation.md),
-"Found" and "Reference captures"): gauss balls and glows lingering seconds after a shot, a breaking crate's wooden gibs
-larger and nearer than the game's, and in one spectator recording some players drawn flat blue
-and green where the game drew them dark, the game having failed to load the models they named.
-
-**Not yet compared with the game:** the sound, which needs a recording of the game's, and the
-clips of each fixture case, which need the game's frames ([viewer validation](viewer-validation.md),
-"Reference captures").
+- 14 languages, including right-to-left Arabic. Apart from English they are drafts that native
+  speakers haven't checked yet.
+- Restore defaults and Clear library buttons in Settings.
+- `lambda-slicer.exe`, a command line tool with the same analysis and clipping
+  ([command line](cli.md)).

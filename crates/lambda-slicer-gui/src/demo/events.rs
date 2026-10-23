@@ -1,5 +1,5 @@
 //! The Events tab, its filters and kill refinements, the shown events and
-//! the way through them (GUI redesign plan §10.1)
+//! the way through them
 //!
 //! The filters at the top and the footer stay put, and only the events
 //! scroll. The list, the timeline and its density read the same shown rows

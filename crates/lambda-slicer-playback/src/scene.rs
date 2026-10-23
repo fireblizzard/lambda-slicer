@@ -21,7 +21,7 @@
 //!
 //! The camera is the view the client rendered when it wrote each network
 //! record, from the record's `ref_params_t`, with the field of view of the
-//! last client data record. Effects and HUD state come with M10
+//! last client data record
 
 use std::collections::VecDeque;
 

@@ -9,8 +9,6 @@
 //!   fall between two record groups
 //! - Wall time is the window's monotonic clock in seconds, given to
 //!   [`Clock`] by its caller so tests control it
-//!
-//! Audio sample time joins these with the mixer (M10)
 
 use std::cmp::Ordering;
 

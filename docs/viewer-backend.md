@@ -1,25 +1,25 @@
-# Viewer backend
+# How the demo player draws
 
-The M8 gate (implementation plan §13.1): a small `wgpu` integration compared with what Xenoxide's
+Before the demo player was built, a small test with `wgpu` was compared with what Xenoxide's
 Vulkan renderer would take to draw into Lambda Slicer's window, on the same map, with the same
-animated model, at the same sizes. This file records the measurements, the decision, and the
-contract the viewer is built on from M9.
+animated model, at the same sizes. This file records the measurements of 2026-10-18, the
+decision, and the rules the demo player has been built on since.
 
 ## Decision
 
 **Keep `wgpu`, drawing offscreen on the window's own device and shown through egui's paint
-callback.** The spike draws a lightmapped map and an animated player model at 0.3 ms a frame at
+callback.** The test draws a lightmapped map and an animated player model at 0.3 ms a frame at
 1920 by 1080, uses the device eframe already opened, and adds no second window, swapchain or GPU
 copy. Xenoxide's renderer is a Vulkan client of its own inside the game's process. Making it draw
 into this window would mean taking its swapchain, UI and device setup apart, which is far more work
-than the spike and buys no speed the spike lacks. Its asset and pose code is already reused as
-copies (docs/dependency-audit.md, "Viewer references").
+than the test and buys no speed the test lacks. Its asset and pose code is already reused as
+copies ([dependency audit](dependency-audit.md), "Demo player references").
 
 In game on the same machine and map, Xenoxide runs at 400 to 650 fps (1.5 to 2.5 ms a frame),
-which is its whole frame with its UI and the game's work. The spike's whole window frame, egui
+which is its whole frame with its UI and the game's work. The test's whole window frame, egui
 included, is 1.2 to 2.7 ms. Neither number argues for switching.
 
-## What the spike draws
+## What the test drew
 
 `lambda-slicer-render`, with `lambda-slicer-assets` for reading:
 
@@ -33,8 +33,8 @@ included, is 1.2 to 2.7 ms. Neither number argues for switching.
 - **Camera**: turning around the first deathmatch spawn, 140 units out and 40 up, the game's
   90 degree view at 4 by 3 (73.74 degrees high).
 
-Left for M9 and later: mip levels, visibility (the whole world is drawn every frame), light
-styles, the sky, brush entities, studio lighting and chrome, sprites and effects.
+Left for later, and most of it done since: mip levels, visibility (the whole world is drawn every
+frame), light styles, the sky, brush entities, studio lighting and chrome, sprites and effects.
 
 ## Measurements
 
@@ -91,8 +91,8 @@ bind group with them. It costs about half a millisecond, without a stall, and no
 Xenoxide was measured on `ag_bhop_champion_0_4_3`, its default map, because it starts a map
 without an `info_player_start`, such as `stalkx`, at the map's origin. Its `find_viewer_start`
 keeps the first deathmatch spawn as a fallback but returns nothing when the entity text ends.
-Xenoxide starts at the `info_player_start` and the spike turns around a deathmatch spawn, which
-matters little while the spike draws the whole map from anywhere.
+Xenoxide starts at the `info_player_start` and the test turns around a deathmatch spawn, which
+matters little while the test draws the whole map from anywhere.
 
 Xenoxide presents with mailbox or immediate when the driver offers them, so its counter is not
 held to the refresh rate. Its frame includes its own UI and the game's work, and its plan still
@@ -116,15 +116,15 @@ how fast. CI builds and tests the crates on Linux. A Linux desktop with a GPU ha
 | Synchronisation | none by hand, commands go in order on one queue | external semaphores between two devices, or one device shared through `wgpu`'s unsafe HAL access |
 | Windows backend | whatever wgpu picks (Vulkan here, DX12 possible) | Vulkan only, so DX12 adapters would need the Vulkan backend forced |
 | Linux | the same code, Vulkan or GL | its own surface code per platform (`surface_windows.rs`, `surface_linux.rs`) |
-| Code brought in | the spike's four modules and the copied asset and pose code | `xenoxide-render` with `xenoxide-ui`, `xenoxide-game`, `xenoxide-map`, `xenoxide-platform`, `ash`, `naga`, `glam`, `fontdue` |
+| Code brought in | the test's four modules and the copied asset and pose code | `xenoxide-render` with `xenoxide-ui`, `xenoxide-game`, `xenoxide-map`, `xenoxide-platform`, `ash`, `naga`, `glam`, `fontdue` |
 | Built for | the app's 64-bit process | a 32-bit `client.dll` loaded by Half-Life |
 
-Its render graph and studio shading are worth reading when M9 ports lighting and materials, as the
-plan says, but as algorithms brought over into `lambda-slicer-render`, not as a dependency.
+Its render graph and studio shading are worth reading for lighting and materials, but as
+algorithms brought over into `lambda-slicer-render`, not as a dependency.
 
-## Contract
+## Rules
 
-What the viewer keeps from here on:
+What the demo player keeps to:
 
 - **One device.** `lambda-slicer-render` takes the device and queue it is given and never opens
   its own. Only the headless bench does, to measure.
@@ -141,8 +141,8 @@ What the viewer keeps from here on:
   eframe is updated.
 - **CPU skinning for now.** One model skins in microseconds. GPU skinning waits until a scene with
   many players shows it is needed.
-- **Playback drives poses.** The spike's looping clock is a placeholder. From 8d on, poses come
-  from the playback controller's time and the recorded sequence, frame and blend values.
+- **Playback drives poses.** Poses come from the playback controller's time and the recorded
+  sequence, frame and blend values, not from the test's looping clock.
 
-The demo view now plays the demo on this contract (docs/viewer-profile.md, "Viewer"), with
-many posed model instances drawn from one vertex buffer a frame.
+The demo view plays demos by these rules ([demo player](viewer-profile.md), "Viewer"), with many
+posed model instances drawn from one vertex buffer a frame.

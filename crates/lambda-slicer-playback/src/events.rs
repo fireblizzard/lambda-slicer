@@ -1,5 +1,4 @@
-//! What the game's client does itself for an event (implementation plan
-//! §13.6)
+//! What the game's client does itself for an event
 //!
 //! The server and the recording client send weapon events, and the game's
 //! client turns each into sounds and effects in its event handlers. The

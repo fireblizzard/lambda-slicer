@@ -1,4 +1,4 @@
-//! Beams, trails and tracers (implementation plan §13.6)
+//! Beams, trails and tracers
 //!
 //! The server asks for them with `svc_temp_entity`, and the client's MP5
 //! handler fires tracers itself. How each is built and how long it lasts is

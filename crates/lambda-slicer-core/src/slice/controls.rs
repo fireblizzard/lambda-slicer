@@ -1,13 +1,14 @@
-//! S0 control exports (implementation plan §6.1)
+//! Control exports, simple copies that test the container writer in the
+//! game
 //!
-//! - S0a, an exact byte copy under another name
-//! - S0b, a container rebuilt from decoded frames with payloads and clocks
+//! - An exact byte copy under another name
+//! - A container rebuilt from decoded frames with payloads and clocks
 //!   unchanged
-//! - S0c, an end-only truncation `[0, end)` with a regenerated terminal record
+//! - An end-only truncation `[0, end)` with a regenerated terminal record
 //!   and directory
 //!
-//! These qualify the container writer in the game before any arbitrary-start
-//! transformation is attempted
+//! If the game plays these as it plays the source, the writer is sound, and
+//! any fault in a clip comes from what the restart export changes
 
 use std::fs::File;
 use std::io::{self, BufReader, BufWriter, Seek, SeekFrom, Write};
@@ -27,11 +28,11 @@ use crate::validate::structural::{InspectStatus, inspect};
 
 #[derive(Clone, Copy, Debug)]
 pub enum Control {
-    /// S0a
+    /// An exact byte copy
     ExactCopy,
-    /// S0b
+    /// The container rebuilt from decoded frames
     Roundtrip,
-    /// S0c, which keeps `[0, end)` of the playback entry
+    /// Only `[0, end)` of the playback entry
     TruncateEnd(DemoTime),
 }
 
@@ -71,7 +72,8 @@ pub struct ControlReport {
     pub control: &'static str,
     pub source: String,
     pub published: Published,
-    /// For S0b, whether the rebuilt file equals the source byte for byte
+    /// For a roundtrip, whether the rebuilt file equals the source byte for
+    /// byte
     pub byte_identical: Option<bool>,
     pub entries: Vec<WrittenEntry>,
     pub cut: Option<CutReport>,

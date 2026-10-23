@@ -1,5 +1,5 @@
 //! Refining the kills shown by how the players moved and how the kill was
-//! made (GUI redesign plan §10.1.1 to §10.1.4)
+//! made
 //!
 //! A movement the analysis could not see is unknown, never grounded or
 //! standing still, so a refinement asks whether a kill is known to match,

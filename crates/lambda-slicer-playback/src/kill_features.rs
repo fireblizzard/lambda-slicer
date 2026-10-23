@@ -1,5 +1,5 @@
 //! Whether a Gauss kill went through a wall, reconstructed from the shot
-//! the server fired (GUI redesign plan §10.1.5)
+//! the server fired
 //!
 //! The server's `CGauss::Fire` traces the beam from the eye along the aim.
 //! A player in the way takes the beam's damage and the beam goes on through

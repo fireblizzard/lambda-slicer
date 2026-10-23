@@ -1,4 +1,4 @@
-//! The one place playback time is chosen (implementation plan §13.4)
+//! The one place playback time is chosen
 //!
 //! Every control that moves the playhead becomes a [`Command`] here. The
 //! controller keeps the clock and answers with a [`Request`] for the

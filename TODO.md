@@ -35,7 +35,7 @@
 - [ ] Add K/D (kills/death ratio) to the scoreboard where we have the kills, death, hs and accuracy%.  if deaths are 0, then do the division with 1
 - [x] Fix explosion sprite showing up too cartoony, like in `20220102_225243_pwrcore` at 00:34.609 or at 00:42.365
 - [x] If no folder or demo has been added yet, highlight those buttons, with a pulsing red border perhaps, until the user adds/opens one. Meant for new users
-- [ ] Clean up documents and comments so that they no longer refer to development stages (like "M6" in `vendor/README.md`) or things like that. Also try to simplify jargon in documents, even in the technical ones unless it makes it more confusing or significantly harder to explain
+- [ ] Clean up documents and comments so that they no longer refer to development stages (like "M6" in `vendor/README.md`) or things like that. Also try to simplify jargon in documents, even in the technical ones unless it makes it more confusing or significantly harder to explain. Also update docs/release-notes.md, as some things in there are obsolete. And make README.md a proper document that average players can read, with minimal development/buildding notes, just enough to build the project
 - [ ] Support WON demos (protocol 5/47)
 	- [x] Singleplayer
 	- [ ] Multiplayer
@@ -54,6 +54,7 @@
 - [ ] Add context menu to events to be able to copy the text of the event, so for example a kill becomes `01:46.817 | andriu killed -<[ATK]>-naz with rpg_rocket`
 - [ ] On `afafsd.dem` it's initially a 3v3 but after 05:52.999 a new match starts while the previous one is ongoing, and this new one is a 2v2, so we should really say 4 players for this demo as the only complete match is a 2v2. if there was already an ongoing match when the demo started and that match is a 3v3 and gets to finish, and then there's a full 2v2 match after that in the same demo, then we should still count the 2v2, as it's the complete one.  if there are 2 different complete matches in the demo, then in that case we should count the match with the highest amount of players, so if one is 3v3 and the other 2v2, keep the 3v3 for the players column in the library
 - [ ] Add a setting to adjust the font size for the chat, server settings and kill feed, and make it slightly smaller (like 1 point) by default
+- [ ] Add the ability to export to different video formats that can be uploaded directly to platforms like YouTube or TikTok
 
 # Ideas for later
 - [ ] Add a Favourites tab and an Add to favourites or Remove from favourites option to the context menu of a demo. The tab should be right after the Filters button above the table, and for now there will be 2 tabs: All and Favourites. All is the normal table and Favourite will just show the favourited demos. Demo entries in the table should show a yellow star after the name of the demo, in the same column as the name, just at the end of the text
@@ -71,3 +72,4 @@
 - [ ] Find demos of players by name or SteamID
 - [ ] Find chat messages across the whole library, like words or parts of a message, with filters like sender and map
 - [ ] Improve the match highlights (top moments), accounting for things that require skill like complicated kills, headshots, stunts, trickshots, etc.
+- [ ] Add support for Xash3D

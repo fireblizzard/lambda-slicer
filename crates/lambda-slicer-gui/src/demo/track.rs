@@ -1,5 +1,5 @@
 //! The timeline's arithmetic, kept apart from its drawing so it can be
-//! tested (GUI redesign plan §9)
+//! tested
 //!
 //! Times are seconds of playback. A view is the stretch of the recording a
 //! timeline shows, and the extent is the whole recording. Every surface

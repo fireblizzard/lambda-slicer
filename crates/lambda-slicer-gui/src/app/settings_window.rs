@@ -1,6 +1,5 @@
 //! The settings window, which can be moved anywhere in the app's window,
-//! with its four sections down one side and the chosen one beside them (GUI
-//! redesign plan §11)
+//! with its four sections down one side and the chosen one beside them
 //!
 //! Every change applies at once, with no Save to press, and is written out
 //! once nothing is being dragged. Each section keeps its own scroll place,

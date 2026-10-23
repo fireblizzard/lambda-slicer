@@ -1,5 +1,4 @@
-//! Finds moments in a demo for the viewer's fixture matrix (implementation
-//! plan §13.9)
+//! Finds moments in a demo for the viewer's fixture matrix
 //!
 //! `fixture_moments DEMO [STEP]`
 //!

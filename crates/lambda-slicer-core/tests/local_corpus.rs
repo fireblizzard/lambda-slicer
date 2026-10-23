@@ -31,7 +31,7 @@ fn local_fixtures_match_manifest() {
 }
 
 /// Exports from every fixture, whether published or refused, leave the
-/// source's bytes as they were (implementation plan §12)
+/// source's bytes as they were
 #[test]
 #[ignore = "needs local fixtures; set LAMBDA_SLICER_FIXTURE_MANIFEST"]
 fn exports_leave_every_fixture_unchanged() {

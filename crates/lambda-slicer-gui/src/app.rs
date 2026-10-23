@@ -159,7 +159,7 @@ pub struct App {
     /// the folder stays the same
     floors: Option<(PathBuf, ScanFloors)>,
     /// A demo opened as a file, shown without a library row, so opening
-    /// and analysing one never needs the library cache (plan §2.3)
+    /// and analysing one never needs the library cache
     direct: Option<PathBuf>,
     /// Files opened or dropped this session, scanned along with the folders
     opened: Vec<PathBuf>,

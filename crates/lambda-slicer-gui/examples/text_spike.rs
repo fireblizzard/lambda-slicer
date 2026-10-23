@@ -1,4 +1,4 @@
-//! M6 spike, how egui renders each interface language's text
+//! A test of how egui renders each interface language's text
 //!
 //! Usage is `text_spike OUT.png`. Shows sample lines as plain egui labels
 //! and as separately shaped pieces placed in bidi order, saves a screenshot

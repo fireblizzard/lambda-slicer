@@ -1,4 +1,4 @@
-//! Widgets drawn the same way everywhere (GUI redesign plan §4.2)
+//! Widgets drawn the same way everywhere
 //!
 //! Icons are painted as lines on a 16 point grid, so they need no font or
 //! image and look the same on every platform. Every icon button names what

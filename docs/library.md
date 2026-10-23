@@ -1,7 +1,7 @@
 # Library scan and cache
 
 The library is a SQLite cache of per-demo analysis summaries, filled by `scan` and searched by
-`query` (implementation plan §7).
+`query`.
 
 ## Scan
 

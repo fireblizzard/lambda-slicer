@@ -1,7 +1,7 @@
 # Weapon analysis profile `hl-ag-1`
 
 `lambda-slicer analyze DEMO [--json FILE] [--occurrences]` reports weapon actions, charge and beam
-intervals and actors (`analysis` module, implementation plan §5). The rules form a versioned
+intervals and actors (`analysis` module). The rules form a versioned
 profile, named in every report, so a change to them changes the version.
 
 ## Evidence
@@ -307,7 +307,7 @@ of actions and how many have a known player.
 - `naz_crossfire_pb_01.dem`: 72,820 gauss records hold 550 shots (531 charged, 19 primary), 595
   stops and 545 charge intervals, 5 of them with an unseen end. Every action has a known player.
   These shot counts are in the fixture manifest.
-- Fixtures for the plan's acceptance cases, with shots per weapon, unattributed shots and
+- Fixtures for the analysis's test cases, with shots per weapon, unattributed shots and
   recording kind: `20230909_224143_stalkyard.dem` (every scripted action, 5,126 shots, all
   attributed), `run_92.dem` (singleplayer, 47 shots) and `20180208_000722_crossfire.dem` (1,028
   of 2,278 shots with an unknown shooter).

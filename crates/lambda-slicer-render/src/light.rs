@@ -10,7 +10,7 @@
 //! [`ModelLight`] turns that colour into the ambient and directional parts
 //! the renderer lights a model's vertices with. That step follows Quake's
 //! model lighting, which the game's builds on, and is not yet compared with
-//! the game (9e)
+//! the game
 
 use lambda_slicer_assets::xenoxide::bsp30::{BspDocument, LumpKind, MipTexture};
 

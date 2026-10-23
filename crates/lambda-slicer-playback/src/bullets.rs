@@ -1,5 +1,4 @@
-//! The bullets the client fires itself for a weapon event (implementation
-//! plan §13.6)
+//! The bullets the client fires itself for a weapon event
 //!
 //! The glock's, MP5's, shotgun's and python's handlers trace each bullet
 //! from the shooter's eye along its aim and the event's spread, and where it

@@ -1,4 +1,4 @@
-//! Decals laid on a BSP model's faces (implementation plan §13.6)
+//! Decals laid on a BSP model's faces
 //!
 //! A decal is its texture at one unit a texel, centred where it was aimed
 //! and lined up with each face's texture axes, on every face whose plane

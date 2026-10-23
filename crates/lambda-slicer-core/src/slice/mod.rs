@@ -1,5 +1,6 @@
-//! Export. The S0 control exports qualify the container writer in the game,
-//! and the S1 restart writes a range that plays on its own ([`restart`]).
+//! Export. The control exports test the container writer in the game
+//! ([`controls`]), and the restart export writes a range that plays on its
+//! own ([`restart`]).
 //! [`range`] tells where a restart would cut without running it, and
 //! [`naming`] suggests file names and the console command for a result
 

@@ -1,6 +1,6 @@
 //! Telling which Gauss kills of the open demo went through a wall, on a
 //! thread of its own once the analysis is in and the game's files are
-//! known (GUI redesign plan §10.1.5)
+//! known
 //!
 //! The events and the movement refinements never wait for it. Its verdicts
 //! arrive a kill at a time, each raising a revision the shown events are

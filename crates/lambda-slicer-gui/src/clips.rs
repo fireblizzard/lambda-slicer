@@ -1,5 +1,4 @@
 //! Clips marked in demos, kept between runs as JSON beside the settings
-//! (implementation plan §8)
 //!
 //! A clip is a named, requested range `[start, end)` in a demo's first
 //! session, the one an export can start in. The range an export really cuts

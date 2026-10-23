@@ -1,13 +1,15 @@
-# Protocol profile 5/48
+# The demo format, protocol 5/48
 
-Status: **container layer and network decoder (M2) implemented and checked against real
-recordings.** Sections: container (header, directory, outer records), then network messages and
-reconstructed state. Sources and licenses are in `dependency-audit.md`.
+How a Half-Life demo file is laid out, as Lambda Slicer reads and writes it: the container
+(header, directory, outer records), then the network messages and the game state rebuilt from
+them. Both are implemented and checked against real recordings. Sources and licenses are in
+[dependency audit](dependency-audit.md).
 
-**Profile enforcement.** Inspection (`inspect`, `validate`) reads any profile and warns about
-non-5/48 headers. Decoding refuses anything but demo protocol 5 with network protocol 48
-(`unsupported` status, cross-check *inconclusive*), and stops if a `svc_serverinfo` announces
-another network protocol. Roundtrip and end-only trims refuse other profiles with
+**Supported protocols.** Inspection (`inspect`, `validate`) reads any protocol and warns about
+others than 5/47 and 5/48. Decoding refuses anything but demo protocol 5 with network protocol
+47 or 48 (`unsupported` status, cross-check *inconclusive*), and stops if a `svc_serverinfo`
+announces another network protocol. The WON release's protocol 47 and the Steam release's 48 send
+the same messages in the same form for what demos hold, so everything below applies to both. Roundtrip and end-only trims refuse other profiles with
 `UnsupportedProtocol`. The exact copy interprets nothing and stays available. The rule lives in
 `protocol::profile`.
 
@@ -78,7 +80,7 @@ records after the first NextSection are reported as `records_after_terminal` (wa
 LOADING NextSection's time and frame number can be far beyond the loading records (fastrun:
 15770.47 s, frame 3,284,060) and are preserved as recorded.
 
-## Frame groups (provisional)
+## Frame groups
 
 **Observed:** records belonging to one client frame share a frame number and time, e.g.
 `[ConsoleCommand…][DemoBuffer][ClientData][Network…]`. A frame number can carry several network
@@ -86,10 +88,10 @@ records (crossfire frame 1) or none (fastrun records client frames at ~256 Hz wi
 records). The terminal NextSection carries the time and frame number of the frame that would
 have come next.
 
-S0c truncation therefore cuts **before the first record whose frame number differs from the
+An end cut therefore cuts **before the first record whose frame number differs from the
 previous record and whose time is ≥ end**, and writes a NextSection with that record's time and
-frame number. This grouping is provisional until confirmed by the S0c in-game test and by the
-network-layer audit (plan §4.3).
+frame number. The end cut played correctly in the game, as have the clips cut on these
+boundaries since ([tested in the game](engine-validation.md)).
 
 If no group starts at or after the end, the cut reaches the playback entry's own NextSection. An
 end up to and including that record's time keeps every group and reuses the source terminal
@@ -114,7 +116,7 @@ mismatch, or a track-time mismatch. The Playback-entry frame-count and track-tim
 therefore hold for every readable file in this corpus. This is container-level evidence only; it
 does not show that network payloads decode or play correctly.
 
-# Network layer (M2)
+# Network layer
 
 ## Bit stream
 
@@ -139,7 +141,7 @@ offsets outside the current schema become zero (the engine parses into a zeroed 
 | STRING | bytes to NUL | bytes |
 
 Values are stored in wire form, with each time-window value carrying the f32 bits of the
-`svc_time` it was decoded against, so a writer can re-encode them exactly (plan §4.2).
+`svc_time` it was decoded against, so a writer can re-encode them exactly.
 
 Schemas arrive in `svc_deltadescription`: name string, 16-bit field count, then each field as a
 delta of the fixed meta-schema `fieldType (32) | fieldName (string) | fieldOffset (16) |
@@ -344,11 +346,11 @@ frames, 404,821,263 messages, 1,170 s.**
 
 No opcode without a known layout, no unregistered user message, and no grammar error occurred.
 This shows the grammar and reconstruction agree with the server's own counts across the corpus;
-it does not prove every field value matches what the game client computed. That needs the
-engine trace comparison still open under M2. `max_delta_distance` is measured in recorded
+it does not prove every field value matches what the game client computed. That would need a
+comparison with a trace from the engine itself, which hasn't been done. `max_delta_distance` is measured in recorded
 numbering and is meaningless for files with drifting sequences.
 
-## Encoding full updates (M3)
+## Encoding full updates
 
 `protocol::encode` writes the inverse of the decoders, following the engine writers:
 `DELTA_WriteDelta` (3-bit mask length, mask bytes, then each sent field in schema order),
@@ -370,7 +372,7 @@ differ only by float rounding. The encoder records each inexact value with its p
 clientdata or weapon slot), field, values and the field's resolution, and sends the nearest
 value when no offset is exact.
 
-## Restart export (M3, experimental)
+## Restart export
 
 `lambda-slicer slice SOURCE --start T [--end T] --output OUT` writes `[start, end)` as a demo that
 plays on its own (`slice::restart`). The layout copies how a real recording opens, where playback
@@ -440,14 +442,14 @@ sample (15 one-shot weapon events, 4 with a lifecycle, 28 temp entity kinds):
 | HUD text (`TE_TEXTMESSAGE`) | The latest per text channel, still showing at the start: sent again with no fade-in and the remaining hold and fade-out |
 | Gibs, thrown models, projectiles | Still moving at the start: the export is refused (`ActiveEffect`), since they cannot be restarted where they are |
 | Train sounds | Nothing. The engine starts a sound that a pitch or volume change finds not playing, and trains send such a change every think |
-| Decals | Not yet, see `docs/deferred.md` |
+| Decals | Not yet ([known limitations](limitations.md)) |
 | Unknown event script or temp entity kind | The export is refused |
 
 Network messages of carried effects go in the record after the bootstrap group, with the HUD
 messages, once entities exist and a frame was drawn. Demo records (gauss, egon) end the bootstrap
 group. The report lists every carried effect.
 
-**Decisions taken for S1** (plan §10):
+**Decisions taken for restarts:**
 
 | Topic | Decision |
 |---|---|
@@ -458,7 +460,7 @@ group. The report lists every carried effect.
 | Bootstrap | Full updates for referenced pre-start frames and the newest one, plus replayed persistent messages and carried charge records |
 | Packet size | Full updates measured up to 1,048 bytes, and real LOADING records exceed 11,000, so no splitting was needed |
 
-**Refusals** follow the rule in `IMPLEMENTATION_PLAN.md` §6.2: a `failed` source
+**Refusals** follow the rule in "What arbitrary-start slicing may rely on" below: a `failed` source
 (`SourceFailedCrossCheck`), inferred state at a bootstrap frame or kept packet
 (`UnprovenState`), a kept packet the client drops (`ClientDroppedPackets`), a new session inside
 the range (`CrossSegmentRange`), and a referenced base that is not in the recording
@@ -484,7 +486,7 @@ with no differing field outside time windows (bootstraps of 1 to 9 frames), 7 we
 because their source fails its cross-check, and 1 because the start lies in a later session than
 its LOADING entry, which restarts did not support yet.
 
-### Later sessions (M7)
+### Later sessions
 
 A level change, or any new `svc_serverinfo`, starts a new session inside the playback entry. The
 client records that session's setup as ordinary playback records: `svc_serverinfo`, delta
@@ -518,7 +520,7 @@ flying at their start (`ActiveEffect`). The synthetic test
 `a_restart_starts_in_a_later_session_with_its_own_setup` covers the setup, the refusals and
 range snapping.
 
-# Validation against client-recorded values (M2)
+# Validation against client-recorded values
 
 The recording client writes its own view of the game into every demo: the 436-byte demo info
 before each network record, and standalone `ClientData` records. These are produced by the game,
@@ -682,7 +684,7 @@ Server-copy disagreements fell from 6,006 to 401 samples, and files with inferre
 to 26. Both `kzmo_downhopunvis` files, `bhop_crossfire_cup_us` and the `bhop_mann` file that
 stopped on a count mismatch are now verified. 1,401 packets in 19 files were dropped.
 
-## What M2 validation does and does not establish
+## What this validation does and does not establish
 
 - Compared and agreeing: decoded clientdata **origin** and **weapon possession bits** against the
   client's own copies, plus server/session identities, in the files with outcome `verified`.
@@ -697,7 +699,7 @@ stopped on a count mismatch are now verified. 1,401 packets in 19 files were dro
 
 ### What arbitrary-start slicing may rely on
 
-These limits carry into M3 (`IMPLEMENTATION_PLAN.md` §6.2). An arbitrary-start export writes
+These limits carry into the restart export. An arbitrary-start export writes
 reconstructed state, so it uses only state that is proven:
 
 - never from a `failed` source, because a disagreement on proven state means the proven flags

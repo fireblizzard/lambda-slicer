@@ -1,4 +1,4 @@
-//! Library scans in the background (implementation plan §7.1)
+//! Library scans in the background
 //!
 //! A scan runs the core scanner on its own thread and sends its events over
 //! a channel. The window drains a bounded number of events per frame, so a

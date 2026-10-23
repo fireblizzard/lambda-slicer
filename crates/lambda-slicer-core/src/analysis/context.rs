@@ -1,5 +1,4 @@
 //! Kills, the recorder's weapon and what the recording can show
-//! (implementation plan §5.2, §5.4)
 //!
 //! `DeathMsg` is killer entity, victim entity and a weapon string. The
 //! string is the killer's active weapon, or the inflictor's class name

@@ -33,8 +33,8 @@ Toolchain: Rust **1.98.1** (`rust-toolchain.toml`), edition 2024. `Cargo.lock` i
 `[patch.crates-io]` by a copy in `vendor/intl_pluralrules` with the Lithuanian and Arabic cardinal
 rules corrected to CLDR ([vendor](../vendor/README.md)). Same license, same version number.
 
-Not yet added (later milestones): `tracing`. Discovery uses
-`std::fs` instead of `walkdir`, to control which links are followed.
+No logging crate is used. Discovery uses `std::fs` instead of `walkdir`, to control which links
+are followed.
 
 ## Codec decision
 
@@ -43,13 +43,12 @@ independent implementation from the documented format. Layout facts were cross-c
 
 - `dem` 0.2.2, `src/types.rs` at `khanghugo/dem` master (LGPL-3.0) — read for field order and
   sizes of `DemoInfo`, `RefParams`, `UserCmd`, `MoveVars`, `Event`, `Sound`. **No code copied.**
-  The upstream commit hash was not recorded during planning; record it before adapting any of
-  its network-message code in M2.
+  Its commit hash was not recorded, so record it before adapting any of its code.
 
 Every layout claim was then verified by parsing real recordings to their terminal records and by
-byte-identical S0b roundtrips (see `engine-validation.md`).
+rebuilding demos byte for byte from their frames ([engine validation](engine-validation.md)).
 
-### Network layer (M2)
+### Network layer
 
 The bit reader, delta decoder, message grammar, and state reconstruction in
 `lambda-slicer-core::protocol` and `::state` are also an independent implementation. They were
@@ -67,12 +66,11 @@ Where references disagreed, the engine writer (what actually produced the bytes)
 layout was followed; the disagreements are listed in `protocol-profile-5-48.md`. All grammar was
 then checked by decoding the local corpus (see the scan there).
 
-The planning document called ReHLDS GPL-3.0; its file headers say GPL version 2 or later.
+ReHLDS was once noted as GPL-3.0, but its file headers say GPL version 2 or later.
 
-## Viewer references (M8)
+## Demo player references
 
-The integrated viewer (implementation plan §13) draws on two references, recorded here before any
-of their code is used.
+The demo player draws on two references, recorded here before any of their code was used.
 
 | Reference | Revision | License | Use |
 |---|---|---|---|
@@ -84,8 +82,7 @@ and what changed. They keep Xenoxide's own comments and layout, so they can be c
 source and updated from it, and the comment check skips that folder. The only changes so far are
 import paths, `libm` called directly for the pose's sines, cosines and arc cosines, studio
 attachments read, and an unresolved model's sequences readable before its sequence group files
-are, each marked `Lambda Slicer`. Copies are
-made only of what a milestone uses. Xenoxide's working tree had uncommitted changes in its
+are, each marked `Lambda Slicer`. Only what the app uses is copied. Xenoxide's working tree had uncommitted changes in its
 interface crates at that revision, none in the files copied. Its tests came along and pass, the
 six that read the installed game included (`XENOXIDE_GAME_DIRECTORY`), among them the stock
 player pose matching Xenoxide's golden transforms bit for bit.

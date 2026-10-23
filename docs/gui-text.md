@@ -1,6 +1,6 @@
 # GUI text rendering
 
-Findings of the M6 text spike (`crates/lambda-slicer-gui/examples/text_spike.rs`), run on Windows 10
+Findings of a text test (`crates/lambda-slicer-gui/examples/text_spike.rs`), run on Windows 10
 with eframe and egui 0.37.0 on 2026-10-16. The screenshot is `images/text-spike.png`.
 
 ![Plain egui labels and pieces placed in bidi order](images/text-spike.png)
@@ -41,8 +41,7 @@ Text without right-to-left characters keeps egui's own layout.
 Splitting at spaces alone is not enough. Punctuation such as an ellipsis may come from the same
 system font as the Arabic letters, and harfrust then moves it along with the word. A single
 string with its words already in visual order fails for the same reason, which is why every piece
-is shaped separately. The spike's right column shows the
-result: Arabic sentences, Arabic with Latin names and times, multi-digit numbers, punctuation and
+is shaped separately. The test's right column shows the result: Arabic sentences, Arabic with Latin names and times, multi-digit numbers, punctuation and
 brackets, and an Arabic name inside English all come out in bidi order.
 
 ## Open

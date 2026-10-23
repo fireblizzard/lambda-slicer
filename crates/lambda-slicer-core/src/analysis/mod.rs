@@ -1,4 +1,4 @@
-//! Weapon activity and actors (implementation plan §5)
+//! Weapon activity and actors
 //!
 //! [`events`] keeps the recording's events as evidence, and [`weapons`]
 //! derives weapon actions and activity intervals from them with a versioned

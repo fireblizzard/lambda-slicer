@@ -1,4 +1,4 @@
-//! Weapon actions from recorded events (implementation plan §5.3, §5.4)
+//! Weapon actions from recorded events
 //!
 //! A versioned profile maps each event script of Half-Life and AG to a
 //! weapon and an action. Only firing and launching count as shots. Charge

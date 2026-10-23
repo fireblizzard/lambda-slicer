@@ -1,5 +1,4 @@
-//! S1 restart export, a slice `[start, end)` that plays on its own
-//! (implementation plan §6)
+//! Restart export, a slice `[start, end)` that plays on its own
 //!
 //! The output keeps the LOADING entry of the session the start is in, then
 //! opens the playback
@@ -10,9 +9,9 @@
 //! numbers rebased. The client therefore rebuilds every later state itself,
 //! and the bootstrap updates are the only reconstructed state written.
 //!
-//! Only proven state is used (plan §6.2). The source must not fail its
-//! cross-check, and neither the bootstrap frames nor the kept packets may
-//! rest on inferred bases or fall in a run the client dropped as too old.
+//! Only proven state is used. The source must not fail its cross-check,
+//! and neither the bootstrap frames nor the kept packets may rest on
+//! inferred bases or fall in a run the client dropped as too old.
 //! Persistent state that changed after LOADING (user info, light styles,
 //! HUD messages) is replayed at the start of the bootstrap group, see
 //! [`super::persistent`]

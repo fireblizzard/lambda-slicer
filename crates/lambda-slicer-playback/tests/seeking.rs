@@ -1,5 +1,5 @@
 //! Seeking through checkpoints reaches exactly the state sequential
-//! playback reaches (implementation plan §13.9, the equivalence test)
+//! playback reaches, the equivalence test
 
 #[path = "../../lambda-slicer-core/tests/common/mod.rs"]
 mod common;

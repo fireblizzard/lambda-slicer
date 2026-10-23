@@ -1,7 +1,6 @@
-# Viewer validation
+# The demo player compared with the game
 
-How the viewer is compared with the game (implementation plan §13.9), and what the comparisons
-found. The viewer's rules are listed in the [viewer profile](viewer-profile.md), each marked
+How the demo player (the viewer) is compared with the game, and what the comparisons found. The viewer's rules are listed in the [viewer profile](viewer-profile.md), each marked
 **Implemented** until a comparison here confirms it.
 
 ## Status
@@ -9,10 +8,10 @@ found. The viewer's rules are listed in the [viewer profile](viewer-profile.md),
 The game's frames were recorded on 2026-10-19 and compared with the viewer's (below). What matches
 is confirmed for those three clips. What differs is listed under "Found" and not yet fixed.
 
-## Comparison clips (9e)
+## Comparison clips
 
 Three short clips cut with `lambda-slicer slice`, so both the game and the viewer play the very same
-files. A clip's clock starts at 0 at its cut, so 2.2 s into `ls_9e_stalkx.dem` is 22.2 s into its
+files. Their names keep the label `9e` of the step they were made in. A clip's clock starts at 0 at its cut, so 2.2 s into `ls_9e_stalkx.dem` is 22.2 s into its
 source.
 
 | Clip | Source | Cut | What it shows |
@@ -95,7 +94,7 @@ distance, render modes, bodies and skins), captured again the same way on 2026-1
 differ by 21.4 for `ls_9e_stalkx`, 19.4 for `ls_9e_cross` and 14.4 for `ls_9e_run`, against 24.5,
 23.6 and 15.0, at the same offsets. Most of it is the viewmodel, which covers much of each picture.
 
-With the game's gamma tables (11e), captured again on 2026-10-19 under four settings, the pairs
+With the game's gamma tables, captured again on 2026-10-19 under four settings, the pairs
 differ as follows, the same offsets fitting every time:
 
 | Gamma settings | `ls_9e_stalkx` | `ls_9e_cross` | `ls_9e_run` |
@@ -135,9 +134,9 @@ into the tap, the loudness agreeing at 0.99, all 4 starts paired 0 to 10 ms apar
 0.55 of the mix, played at a volume of 0.5. The game's sound is not yet recorded, so the sound
 has not been compared with the game's.
 
-## Fixture matrix (12a)
+## Fixture matrix
 
-The cases implementation plan §13.9 names, each pinned to a moment of a demo in the local fixture
+The cases playback must get right however a moment is reached, each pinned to a moment of a demo in the local fixture
 manifest (`moments` on a fixture, `local-fixtures.example.json`). The moments were found with
 `examples/fixture_moments.rs` in `lambda-slicer-playback`, which plays a demo through in steps of a
 quarter or half second and notes when each case is under way: a gauss's spin sound on a player, the
@@ -159,15 +158,15 @@ sound starting on an entity that is not a player.
 
 Not covered:
 
-- An expiring HUD notice. The viewer draws no HUD, so there is nothing to compare.
-- The killer and victim recording the plan asks for, a short controlled match with everyone in
+- An expiring HUD notice. The viewer draws the HUD now, but no moment for it has been picked.
+- A recording made for this, a short match with everyone in
   view, recorded by the game for comparing. The crossfire kill stands in for it until it is
   recorded.
 - The game's own sound, for comparing the mix (see "Recording the game's sound").
 
 "Equivalence" below reaches each moment every way playback can and compares what it holds.
 
-## Equivalence (12b)
+## Equivalence
 
 `examples/fixture_equivalence.rs` in `lambda-slicer-audio` reaches each moment of the fixture
 matrix every way playback can, with the game's files, and compares what playback holds there with
@@ -247,10 +246,11 @@ Found:
   57 s, where an alien grunt dies in front of the recorder. That moment too agrees every way and
   is captured the same three ways.
 
-## Reference captures (12d)
+## Reference captures
 
 A clip of each moment of the fixture matrix, cut with `lambda-slicer slice` into the game's `ag`
-folder, so the game and the viewer play the very same files, as in 9e. Each runs 6 s, the moment
+folder, so the game and the viewer play the very same files, as in the comparison of 2026-10-19.
+Their names keep the label `12d` of the step they were made in. Each runs 6 s, the moment
 2 or 3 s in. The translucent sprite's moment is in `ls_9e_run.dem`, which the game has recorded
 already.
 
@@ -300,12 +300,12 @@ makes grey 160 by 120 thumbnails, the speedometer left out, finds the offset bet
 clock and the clip's within 2 s, and says how many frames found a pair, how much the pairs differ
 against frames a second apart, and which differ most.
 
-**Checked (2026-10-20)** on `ls_9e_run.dem` and the game's frames of 9e (`-Clips ls_9e_run
--Length 16`): an offset of -0.40 s, as found by hand in 9e, so the clip's 16 s are the game's
-frames 6 to 165, all 160 paired, differing by 9.3 against 23.4 for frames a second apart (8.4 in
-9e, before the beam entities and steady glows changed this clip). The frame at the clip's end,
+**Checked (2026-10-20)** on `ls_9e_run.dem` and the game's frames of it from 2026-10-19
+(`-Clips ls_9e_run -Length 16`): an offset of -0.40 s, as found by hand then, so the clip's 16 s are the game's
+frames 6 to 165, all 160 paired, differing by 9.3 against 23.4 for frames a second apart (8.4 on
+2026-10-19, before the beam entities and steady glows changed this clip). The frame at the clip's end,
 16.0 s, is left out, as a clip's end is not in it, and the game shows its menu there. Given frames
-2 to 166, the frames 9e took, and with the frames guessed from the movement, it finds the same
+2 to 166, the frames taken on 2026-10-19, and with the frames guessed from the movement, it finds the same
 offset and pairs differing by 9.4. With the recording cut after its 120th frame it counts the 45
 frames missing and fails. The pairs differing most are at 4.4 to 4.9 s, where a crate breaks. The
 viewer's wooden gibs are larger and nearer the camera than the game's, not yet looked into.

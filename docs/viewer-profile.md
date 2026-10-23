@@ -1,7 +1,7 @@
-# Viewer profile
+# How the demo player works
 
-What the integrated viewer (implementation plan §13) reads, decodes and presents, and how far each
-part is proven. This file grows with M8 to M12. Statements marked **Observed** were checked
+What the demo player (the viewer) reads, decodes and presents, and how far each part is proven.
+Statements marked **Observed** were checked
 against the installed game or real recordings, and **Implemented** marks a rule the code follows
 that the game has not yet confirmed.
 
@@ -53,7 +53,7 @@ into a lookup (`resource::target`):
 | Entry | Looked up as |
 |---|---|
 | sound `weapons/gauss2.wav` | the file `sound/weapons/gauss2.wav` |
-| sound `!HG_ALERT0` | a sentence from `sound/sentences.txt`, resolved with the sound system (M10) |
+| sound `!HG_ALERT0` | a sentence from `sound/sentences.txt`, resolved with the sound system |
 | model `*12` | brush model 12 inside the map's own BSP |
 | model, sprite, world or generic file | that file |
 | decal `{blood1` | an entry of the first `decals.wad` in the search |
@@ -84,8 +84,7 @@ as missing instead of drawing something else.
 
 ## Playback
 
-`lambda-slicer-playback` plays a demo through the core decoder, one record group at a time
-(implementation plan §13.2 and §13.4).
+`lambda-slicer-playback` plays a demo through the core decoder, one record group at a time.
 
 ### Groups and clocks
 
@@ -130,7 +129,7 @@ reaches the scene. An entity is its session, number and life. A life ends when t
 packet or its model changes, so a reused slot is never taken for the entity before it. A new session
 starts an empty scene. The recorder's camera is the `ref_params_t` view of each network record, with
 the field of view of the last client data record. Interpolation, attachments, effects and the HUD
-come with M9 and M10.
+are described below.
 
 ### Sound state
 
@@ -152,7 +151,7 @@ compared with the game:
   it takes the one with the least time left, except that another entity's sound never takes one of
   the listener's own, and when nothing can be taken it is not heard (`SND_PickChannel`)
 
-How long a sound plays comes from its WAV file (10a). Without the files every sound counts as
+How long a sound plays comes from its WAV file ("Sound"). Without the files every sound counts as
 finished after ten seconds. Sentences are not resolved to their words yet, so they have no samples.
 
 ### Measured (2026-10-18)
@@ -220,27 +219,25 @@ keeps what thinning freed, next to the store's own estimate.
 | `ray_vs_alex_cross.dem`, spectator | 103 s | 51, 2 s apart | 0.1 s | 51 and 122 MiB | 0.13 s | 0.3, 3.6, 4.7 ms | 0 |
 
 Without the budget, stalkx keeps 608 checkpoints 2 s apart in 928 MiB and seeks in 2.9 ms at p50
-and 5.1 ms at p95. Every indexed p95 is within the plan's target of 200 ms. The longest demo is
+and 5.1 ms at p95. Every indexed p95 is within the target of 200 ms. The longest demo is
 closest to it, as its spacing doubled twice, and a longer one would double again. A first seek
 before the index reaches the destination replays from the start, at about 3 ms per second of a busy
 demo.
 
 ## Viewer
 
-The demo view plays the demo when a game folder is given with `--game DIR` (implementation plan
-§13.8). A map that cannot be read is named in place of the view with the reason, nothing of the map
+The demo view plays the demo once the Half-Life folder is known, from the settings or from
+`--game DIR`. A map that cannot be read is named in place of the view with the reason, nothing of the map
 before it drawn, and is not asked for again. Playback that stops before the demo's end, because a
 part of it could not be decoded, says why under the view. `--viewer-capture` saves its frames at chosen times for comparing with the game
 ([viewer validation](viewer-validation.md)), each once the map, the server's sky and every model
 and sprite the frame draws are in, effects included. It keeps a playback controller and worker per demo, and a thread that reads the session's
 map and the studio models its entities use. Play, pause and a time bar drive the controller, and
-`--viewer-at SECONDS` seeks there once the demo is loaded. The asset folder setting and the rest
-of the viewer's controls come with M11.
+`--viewer-at SECONDS` seeks there once the demo is loaded.
 
-### Timeline and viewer (11a)
+### Timeline and viewer
 
-The demo view's event table and timeline move the viewer's playhead through its controller
-(implementation plan §13.4):
+The demo view's event table and timeline move the viewer's playhead through its controller:
 
 | Action | What the viewer does |
 |---|---|
@@ -255,7 +252,7 @@ a time from the table needs no conversion. A demo whose times start again in a l
 the same time twice, and a seek by time finds its first. Zooming and panning the timeline only
 change what it shows.
 
-### Transport (11b)
+### Transport
 
 | Control | Key | What it does |
 |---|---|---|
@@ -277,7 +274,7 @@ checkpoint and playing forward from it. **Measured (2026-10-19)** on `naz_crossf
 the median and 35 ms at the 95th percentile, and from 300 s, 48 ms and 97 ms (209 ms at most).
 Backward playback shows 10 to 40 pictures a second, still at the right time for each.
 
-### Viewer settings (11e)
+### Viewer settings
 
 The settings window has a tab for the viewer, saved with the other settings and in all 14
 languages. The Half-Life folder sits with the other folders on the general tab ([GUI](gui.md),
@@ -308,7 +305,7 @@ A list under the view, folded away under its count, names every file the viewer 
 and why: maps, models, sprites, skies and sounds. A capture now waits for a frame drawn before
 saving it, where it once skipped the first frame of a run.
 
-### See-through walls (11f)
+### See-through walls
 
 A mode, off by default, shows players behind walls. "See through walls" beside the controls turns it
 on and off, and Settings keeps it, with a second choice for every other model too, projectiles and
@@ -325,7 +322,7 @@ visible set, which often holds players still behind a corner, and a server that 
 the recorder cannot see, as some anti-wallhack plugins do, leaves nothing to show. The setting's
 description says so. It changes only how the viewer draws a recording.
 
-### Clips in the viewer (11c)
+### Clips in the viewer
 
 | Action | What the viewer does |
 |---|---|
@@ -334,12 +331,12 @@ description says so. It changes only how the viewer draws a recording.
 | Editing a start or end | shows that moment, paused, while an edge is dragged on the timeline and when a typed time is committed. The clip keeps its own range, whatever the playhead does |
 
 Going back to a loop's start is a seek, so the state at the start is restored as for any seek,
-and the sound device drops every block it holds from before (10b, "Old blocks"). The mixer also
+and the sound device drops every block it holds from before ("Sound output", "Old blocks"). The mixer also
 mixes nothing from the loop's end, or a played range's end, on: it runs about 40 ms ahead of what
 is heard and would otherwise mix past the end before the window's next frame goes back. A block
 that starts before the end is mixed whole, so at most 10 ms past it can be heard.
 
-### Scrubbing (11d)
+### Scrubbing
 
 Dragging the time bar, the timeline's ruler along its top, or the playhead line on the timeline
 scrubs: playback holds still and silent while the playhead follows the pointer, and when the drag
@@ -371,7 +368,7 @@ Before the index covers the demo, the first seek of a drag plays from the neares
 start at worst. A seek a newer one stops leaves playback where it got to, and the next goes on from
 there, so the drag still catches up.
 
-### What is drawn (9a)
+### What is drawn
 
 | Part | How |
 |---|---|
@@ -383,14 +380,14 @@ there, so the drag still catches up.
 
 **Observed:** AG ships some item models as sprites under a `.mdl` name (`ag/models/w_357.mdl`
 starts with `IDSP`). The game tells a model's kind by its header, and so does the viewer, which
-leaves those items for the sprites (9d). They are index-alpha icons in one flat colour each, the
+leaves those items for the sprites ("Viewmodel and sprites"). They are index-alpha icons in one flat colour each, the
 palette's last (magenta for the .357 and its ammunition, yellow for the 9 mm weapons, green for the
 crossbow), and an ammunition box's icon is a box outline round a bullet.
 
-### World (9b)
+### World
 
 **Implemented**, from the game's renderer as GLQuake's source shows it, not yet compared with the
-game (9e):
+game ([comparison](viewer-validation.md)):
 
 | Part | How |
 |---|---|
@@ -405,10 +402,10 @@ game (9e):
 Not drawn yet: visibility and frustum culling (the whole world is drawn every frame), random tiling
 textures (`-0` names) and scrolling conveyors.
 
-### Models (9c)
+### Models
 
 **Implemented**, from the game's client as the Half-Life SDK's `StudioModelRenderer` shows it, not yet
-compared with the game (9e):
+compared with the game ([comparison](viewer-validation.md)):
 
 | Part | How |
 |---|---|
@@ -436,10 +433,10 @@ texture, so it looks like the checker drawn for a missing texture.
 Not drawn yet: `remap` textures, sequence transitions, mouth movement, render effects such as the
 glow shell, and the sky's light on models.
 
-### Viewmodel and sprites (9d)
+### Viewmodel and sprites
 
 **Implemented**, from the game's client and GLQuake's sprite drawing, not yet compared with the game
-(9e):
+([comparison](viewer-validation.md)):
 
 | Part | How |
 |---|---|
@@ -448,14 +445,14 @@ glow shell, and the sky's light on models.
 | Sprites | `IDSP` version 2, single frames and frame groups, in normal, additive, index-alpha and alpha-tested formats. Every sprite in the surveyed install reads (268, AG's sprite items included) |
 | Sprite entities | an entity whose model is a `.spr`, or one of AG's sprites under a `.mdl` name, at its frame and scale (0 meaning 1) |
 | Orientation | facing the view, facing the view upright, facing the camera's position upright, turned by the entity's angles, or facing the view rolled by the entity, as the five `SPR_` types say |
-| Render modes | normal and alpha modes cut out at half alpha, texture and colour modes blended by the render amount, additive mode added, and glow added without depth, fading as 19000 over the squared distance between 0.05 and 1, and grown by its distance over 200 to keep its size on screen unless it is steady. A glow the world hides from the eye, the line to it stopping more than 8 units short, is not drawn, brush entities and models hiding none (`R_SpriteGlowBlend`). Every mode takes the render colour, white when it is black, as Xash3D says the engine's sprite drawing does (until 10d only additive and glowing sprites did). Drawn together with translucent models and brushes, all from the furthest in |
+| Render modes | normal and alpha modes cut out at half alpha, texture and colour modes blended by the render amount, additive mode added, and glow added without depth, fading as 19000 over the squared distance between 0.05 and 1, and grown by its distance over 200 to keep its size on screen unless it is steady. A glow the world hides from the eye, the line to it stopping more than 8 units short, is not drawn, brush entities and models hiding none (`R_SpriteGlowBlend`). Every mode takes the render colour, white when it is black, as Xash3D says the engine's sprite drawing does (at first only additive and glowing sprites did). Drawn together with translucent models and brushes, all from the furthest in |
 
 Not drawn yet: the bob and lag the game adds to the viewmodel.
 
 **Measured (2026-10-18)** with `--viewer-bench 10`, playing from 20 s in a 1920 by 1080 window with
 the view 1098 by 950 pixels, while the library scan ran:
 
-| Demo | Models in view | 9a mean, p95 | With the world of 9b, mean, p95 | With the models of 9c, mean, p95 |
+| Demo | Models in view | First drawing, mean, p95 | With the world below, mean, p95 | With the models below, mean, p95 |
 |---|---|---|---|---|
 | `stalkx_naz_248.dem` | 4 | 3.7, 4.8 ms | 3.4, 4.3 ms | 3.2, 4.8 ms |
 | `ray_vs_alex_cross.dem`, spectator | 8 to 9 | 6.7, 19.6 ms | 3.9, 5.1 ms | 4.6, 6.3 ms |
@@ -463,7 +460,7 @@ the view 1098 by 950 pixels, while the library scan ran:
 
 The library scan's load changes between runs, so the columns are not a measure of each step.
 
-## Sound (10a)
+## Sound
 
 `lambda-slicer-audio` reads the game's sounds and mixes playback's channels into stereo samples.
 
@@ -492,7 +489,7 @@ recorder's view:
 
 Not yet: sentences and room effects.
 
-## Sound output (10b)
+## Sound output
 
 The demo view plays sound on the system's default output device while playing forward, with a
 volume slider beside the controls. `lambda-slicer-audio`'s `device` feature holds the output, through
@@ -543,10 +540,9 @@ second left out (about 1,000 blocks and 2,600 pictures):
 
 Pictures trail the playhead by 4.5 ms at the median and 33 ms at the 95th percentile, from the
 worker's answer to the paint, not counting the display's own delay. So sound and picture now
-agree within a few milliseconds where the sound came 50 ms late, inside the 40 ms the plan sets
-(implementation plan §13.9).
+agree within a few milliseconds where the sound came 50 ms late, inside the target of 40 ms.
 
-## Client events (10c)
+## Client events
 
 The game's client turns weapon events into sounds, weapon animations and effects in its event
 handlers, and acts on the client events in the animations of the models it draws. Playback does
@@ -615,10 +611,11 @@ the recorder's and the opponent's. None falls more than 200 units, and the 300 s
 Not yet: the tripmine's and snark's handlers, which trace first, the view's punch, sparks (event 5002), and
 the lights of muzzle flashes and `EF_MUZZLEFLASH`.
 
-## Temporary entities (10d)
+## Temporary entities
 
 The server asks the client for effects with `svc_temp_entity`, and the client makes them as
-temporary entities alongside the shells of 10c (`lambda-slicer-playback`'s `tempents`).
+temporary entities alongside the shells of "Client events" (`lambda-slicer-playback`'s
+`tempents`).
 
 **Observed:** five demos (`stalkx_naz_248.dem`, `naz_crossfire_pb_01.dem`, `run_92.dem`,
 `ray_vs_alex_cross.dem` and `20230909_224143_stalkyard.dem`, `examples/effects_survey.rs`) hold 21
@@ -686,7 +683,7 @@ full buffer sends them all again (55,000 vertices for 4096 decals).
 
 The server leaves the impacts of the glock's, MP5's, shotgun's and python's bullets to the clients,
 whose event handlers trace them (`EV_HLDM_FireBullets`). Playback traces them as it runs the
-handlers of 10c.
+handlers of "Client events".
 
 **Implemented**, from the SDK's `ev_hldm.cpp`, not yet compared with the game:
 
@@ -743,7 +740,7 @@ Not yet: beams between entities as messages (`TE_BEAMENTS`, `TE_BEAMENTPOINT`), 
 cylinders, the noise of the beams messages make, and the start and end attachments of entity
 beams.
 
-### Gauss and Egon (10e)
+### Gauss and Egon
 
 **Implemented**, from the SDK's `EV_FireGauss`, `EV_EgonFire`, `EV_EgonStop` and `EV_UpdateBeams`,
 not yet compared with the game:
@@ -766,7 +763,7 @@ reflect off walls at a glancing angle, and leave glows and balls where they land
 Not yet: the beams' noise, the Egon's for other players, the lights of the gauss and Egon, and the
 view's punch.
 
-## Seeking with effects (10e)
+## Seeking with effects
 
 Everything this milestone adds is part of playback's state, so a checkpoint holds it and a seek
 restores it, then plays on to the moment asked for as sequential playback would: the sound channels
@@ -813,9 +810,9 @@ viewer's captures read the scene alone, without it. In `20210424_012456_crossfir
 counts from five at 0.83 s, a second apart, to nought at 5.83 s, and hides it at 6.83 s. Each
 number is heard, centred, and the line and number show.
 
-## Performance (12c)
+## Performance
 
-The plan's targets (implementation plan §13.9), measured on 2026-10-19 on the development machine,
+The targets set before the demo player was built, measured on 2026-10-19 on the development machine,
 an AMD Ryzen 5 3600X with 32 GB and an NVIDIA GeForce RTX 3070 drawn through Vulkan, Windows 10,
 release build:
 
@@ -896,7 +893,7 @@ Played for 20 s with the sound tap set, so the device plays silence at the same 
 stalkyard from 100 s, stalkx from 20 s or fastrun from 3,000 s, two runs each. A mixer slowed on
 purpose to 15 ms for each 10 ms block gave 192 in 5 s.
 
-## Linux (12e)
+## Linux
 
 Checked on 2026-10-19 under WSL 1 on the development machine, Ubuntu 26.04.1 with Rust 1.98.1. WSL
 1 has no display, no sound device and no GPU, so Mesa's llvmpipe draws through software Vulkan.

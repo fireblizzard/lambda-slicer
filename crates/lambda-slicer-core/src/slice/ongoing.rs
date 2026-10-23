@@ -1,4 +1,4 @@
-//! Effects under way at a restart's start (implementation plan §6.2)
+//! Effects under way at a restart's start
 //!
 //! Events, sounds and temp entities before the start already happened, so
 //! they are not replayed. Some of them start something that lasts past the
@@ -19,7 +19,8 @@
 //! Event loops whose updates restart a stopped sound need nothing. The
 //! engine starts a sound that a pitch or volume change finds not playing,
 //! and trains send such an update every think. Decals are lasting world
-//! state rather than an effect and are listed in `docs/deferred.md`
+//! state rather than an effect, and clips don't carry them yet
+//! (`docs/limitations.md`)
 
 use crate::container::{Frame, FrameBody};
 use crate::protocol::delta::StructState;
@@ -69,7 +70,7 @@ const CHAN_STATIC: u8 = 6;
 enum Lasting {
     /// Over within its own short animation
     Instant,
-    /// Lasting world state, see `docs/deferred.md`
+    /// Lasting world state, not carried yet (`docs/limitations.md`)
     Decal,
     /// A life byte at this body offset, in tenths of a second, so it can be
     /// sent again with the remaining life. With `entity`, the effect is

@@ -34,9 +34,8 @@ pub struct Fixture {
     pub expect: Expectations,
     #[serde(default)]
     pub notes: String,
-    /// Moments in the demo for the viewer's fixture matrix (implementation
-    /// plan §13.9), each reached every way playback can reach a moment and
-    /// compared
+    /// Moments in the demo for the viewer's fixture matrix, each reached
+    /// every way playback can reach a moment and compared
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub moments: Vec<Moment>,
 }

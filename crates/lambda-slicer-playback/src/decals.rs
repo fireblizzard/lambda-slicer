@@ -1,5 +1,4 @@
-//! The decals the server asks the client to put on the map (implementation
-//! plan §13.6)
+//! The decals the server asks the client to put on the map
 //!
 //! A decal is a texture from `decals.wad` stamped on the surfaces about a
 //! point (`R_DecalShoot`). The server numbers it by its own list of decals,

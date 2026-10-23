@@ -1,4 +1,4 @@
-//! Recorded event evidence (implementation plan §5.1)
+//! Recorded event evidence
 //!
 //! One record per event the recording holds, whether a standalone demo
 //! `Event` record or an `svc_event`/`svc_event_reliable` network event, with

@@ -1,5 +1,4 @@
-//! The client events in studio models' animations (implementation plan
-//! §13.6)
+//! The client events in studio models' animations
 //!
 //! A sequence can name client events on its frames, muzzle flashes and
 //! sounds among them, which the engine fires while it draws the model, for

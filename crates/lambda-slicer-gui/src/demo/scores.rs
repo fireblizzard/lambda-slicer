@@ -1,6 +1,6 @@
 //! The Scoreboard tab, the standings at the selected event or the final
 //! ones, a table per team or per player of a duel and one ranked table for
-//! anything else (GUI redesign plan §10.3)
+//! anything else
 //!
 //! Other players' kills and shots often happen outside what the recording
 //! client receives, so their headshots and accuracy are incomplete. Only

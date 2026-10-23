@@ -52,8 +52,8 @@ const DEFAULT_VOLUME: f32 = 1.;
 const DEFAULT_ATTENUATION: f32 = 1.;
 const DEFAULT_PITCH: u8 = 100;
 
-/// A sound whose length is unknown counts as finished this long after it
-/// started, until sample lengths are read (M10)
+/// A sound whose length is not known counts as finished this long after
+/// it started
 pub const UNKNOWN_LIMIT: f64 = 10.;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]

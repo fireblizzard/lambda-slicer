@@ -1,4 +1,4 @@
-//! Playing a demo inside Lambda Slicer (implementation plan §13.2 and §13.4)
+//! Playing a demo inside Lambda Slicer
 //!
 //! [`source`] reads a demo's records in groups, the frames the recording
 //! client wrote together, and [`playback::Playback`] applies them in order

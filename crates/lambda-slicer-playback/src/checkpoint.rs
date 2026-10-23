@@ -1,4 +1,4 @@
-//! Saved playback states to seek from (implementation plan §13.5)
+//! Saved playback states to seek from
 //!
 //! A checkpoint is everything sequential playback had after one group, the
 //! decoder with its schemas, baselines and delta history, the scene, the

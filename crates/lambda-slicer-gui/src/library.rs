@@ -1,5 +1,5 @@
 //! The library, as a full table beside a filter pane or as a narrow list
-//! beside an open demo (GUI redesign plan §7)
+//! beside an open demo
 //!
 //! Both show the same query of the cache in the same order. Rows come from
 //! the cache a page at a time as they scroll into view, so a library of any

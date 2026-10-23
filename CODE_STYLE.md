@@ -1,11 +1,12 @@
-# XenOxide Code Style
+# Lambda Slicer Code Style
 
-Follow these rules for handwritten Rust code and tests maintained by XenOxide.
+Follow these rules for handwritten Rust code and tests maintained by Lambda Slicer.
 Readability for a human reviewer is part of correctness and maintainability.
 
-These rules do not apply to vendored third-party source or generated code. Keep
-the vendored Quinn tree reproducible through its documented patch workflow.
-Change a generator rather than restyling its output by hand.
+These rules do not apply to vendored third-party source or generated code, such
+as `vendor/` and the code copied from Xenoxide in
+`crates/lambda-slicer-assets/src/xenoxide`. Change a generator rather than
+restyling its output by hand.
 
 ## 1. Organize code into semantic paragraphs
 

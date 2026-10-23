@@ -13,12 +13,14 @@ Each fixture may pin `bytes`, `blake3`, and container expectations (`expect`). O
 are checked. Hashes in the example were computed on 2026-10-14 from the developer's files; none of
 these fixtures is a known-positive gauss fixture.
 
-## Controlled recordings still needed
+## Recordings still wanted
 
-Plan §11.1 lists the required controlled recordings (gauss primary/charged/stop-only, two
-simultaneous actors, every standard weapon action, singleplayer, slot reuse, name change, and the
-slice-state cases). For each recording, note: date, map, mod/client build, participants, input
-settings, the exact sequence of actions with approximate times, and what was visible in playback.
+Demos recorded on purpose, where it's known exactly what happened, test the analysis best. Still
+wanted: gauss primary shots, charged shots and charges stopped without a shot, two players
+shooting at once, every standard weapon action, singleplayer, a player slot reused by someone
+else, a name change, and the cases clips must carry over their start. For each recording, note
+the date, map, mod and client build, who played, their settings, what they did and roughly when,
+and what could be seen when playing it back.
 
 ## Viewer moments
 

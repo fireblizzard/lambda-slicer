@@ -1,5 +1,4 @@
-//! The app's colours, sizes and type, installed once at start (GUI redesign
-//! plan §4)
+//! The app's colours, sizes and type, installed once at start
 //!
 //! Sizes are egui points. Team and error colours keep their meaning, and the
 //! weapon colours of the timeline are not part of this palette

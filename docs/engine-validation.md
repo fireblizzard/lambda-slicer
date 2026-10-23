@@ -1,7 +1,10 @@
-# Engine validation record
+# Clips tested in the game
 
-Plan §6.1 requires S0 controls to pass in the installed Windows game **before** any arbitrary-start
-(S1) work. This file records the generated controls and, once played, the observations.
+Clips are checked by playing them in the installed Windows game. This record lists what was
+generated, how to check it, and what was seen. The first tests were simple copies of a demo,
+played before any clip that starts partway through a demo was tried. The test files keep the short
+labels used at the time: `s0` for those copies, `s1` for the first clips and `m7` for the checks
+before the first release.
 
 ## Environment
 
@@ -11,7 +14,7 @@ Plan §6.1 requires S0 controls to pass in the installed Windows game **before**
 | Mod | `ag` (liblist labels AG 6.7/openag.pro; server DLL is Metamod — customized install) |
 | Exact engine/client build | Protocol 48, exe version 1.1.2.2 (valve), build 8684 of Aug 3 2020 (console `version`, 2026-10-17) |
 
-## S0 controls — generated and played 2026-10-14
+## Copies, generated and played 2026-10-14
 
 Source: `F:\HLScreeniesDemos\09aug2018\naz_crossfire_pb_01.dem`, 97,633,668 bytes,
 BLAKE3 `09c31cabbfab0fde200185461ab78a2558a1261304fb7e3243b687c65208740e`.
@@ -19,19 +22,19 @@ The source hash was verified unchanged before and after every export.
 
 | Control | Command | Output | Output BLAKE3 | Structural |
 |---|---|---|---|---|
-| S0a exact copy | `control exact-copy SRC --output work\ls_s0a_crossfire.dem` | 97,633,668 bytes | `09c31cab…740e` (identical) | pass |
-| S0b roundtrip | `control roundtrip SRC --output work\ls_s0b_crossfire.dem` | 97,633,668 bytes | `09c31cab…740e` (**byte-identical**) | pass |
-| S0c truncate `[0, 4:48)` | `control truncate-end SRC --end 4:48 --output work\ls_s0c_crossfire.dem` | 23,266,328 bytes | `b864040fb2a009cc63be243a9545809f66613ea734f374b0107f2d8d546fbcf9` | pass |
+| Exact copy | `control exact-copy SRC --output work\ls_s0a_crossfire.dem` | 97,633,668 bytes | `09c31cab…740e` (identical) | pass |
+| Roundtrip | `control roundtrip SRC --output work\ls_s0b_crossfire.dem` | 97,633,668 bytes | `09c31cab…740e` (**byte-identical**) | pass |
+| End cut `[0, 4:48)` | `control truncate-end SRC --end 4:48 --output work\ls_s0c_crossfire.dem` | 23,266,328 bytes | `b864040fb2a009cc63be243a9545809f66613ea734f374b0107f2d8d546fbcf9` | pass |
 
-S0c detail: requested end 00:04:48.000, effective end 00:04:48.002 (next frame-group boundary);
+End cut detail: requested end 00:04:48.000, effective end 00:04:48.002 (next frame-group boundary);
 36,100 network records kept; directory frame count 36,100, track time 288.0027.
 
-Also: S0b on `20220413_171130_prochallenge_bhop_skip.dem` (89 repeated LOADING terminals) is
+Also: a roundtrip of `20220413_171130_prochallenge_bhop_skip.dem` (89 repeated LOADING terminals) is
 byte-identical (BLAKE3 `a462e26f…a81a`).
 
-Because S0a and S0b are byte-identical to the source, they prove the writer reproduces the
-container exactly; their in-game run mainly confirms the test procedure. **S0c is the first
-output whose bytes differ from any original and is the real gate.**
+Because the exact copy and the roundtrip are byte for byte the same as the source, they prove the
+writer reproduces the file exactly, and playing them mainly checks the test itself. **The end cut
+is the first output whose bytes differ from any original, so it is the real test.**
 
 ### Procedure (to run in the game)
 
@@ -50,19 +53,17 @@ output whose bytes differ from any original and is the real gate.**
 
 | Control | Date | Result | Observations |
 |---|---|---|---|
-| S0a | 2026-10-14 | pass | Played back to back with S0c in one session; plays like the original. |
-| S0b | — | pass by identity | Byte-identical to the source, so not played separately. |
-| S0c | 2026-10-14 | pass | Plays correctly and looks like the original. On first viewing, lighting looked different (some walls darker, others brighter). A/B in one session showed this affects **whichever demo is played first**, regardless of file. Not a slicer issue: the S0c output differs from the source in only 108 bytes (header directory offset and the regenerated terminal record + directory); everything played is byte-identical. |
+| Exact copy | 2026-10-14 | pass | Played back to back with the end cut in one session, and plays like the original. |
+| Roundtrip | — | pass by identity | Byte for byte the same as the source, so not played separately. |
+| End cut | 2026-10-14 | pass | Plays correctly and looks like the original. On first viewing, lighting looked different (some walls darker, others brighter). A/B in one session showed this affects **whichever demo is played first**, regardless of file. Not a Lambda Slicer issue: the end cut differs from the source in only 108 bytes (header directory offset and the regenerated terminal record + directory); everything played is byte-identical. |
 
 **Testing note:** in this install, the first `playdemo` of a game session renders lighting
 differently. For visual comparisons, play a throwaway demo first, or compare runs only after the
 first playback.
 
-Still to record: the console `version` output for the exact engine/client build.
+## Clips starting partway through
 
-## S1 (nonzero start)
-
-First restart output, generated 2026-10-15 (layout in `docs/protocol-profile-5-48.md`, "Restart
+First clip, generated 2026-10-15 (layout in `docs/protocol-profile-5-48.md`, "Restart
 export"):
 
 ```powershell
@@ -95,12 +96,12 @@ values older than the 8-bit window allows. The output's own cross-check is *veri
 
 | Test | Date | Result | Observations |
 |---|---|---|---|
-| S1 crossfire `[1:36, 4:48)` | 2026-10-15 | pass | Plays on its own from the 1:36 scene to the 4:48 scene and stops cleanly. No problems seen. |
+| crossfire `[1:36, 4:48)` | 2026-10-15 | pass | Plays on its own from the 1:36 scene to the 4:48 scene and stops cleanly. No problems seen. |
 
 That output was generated before the bootstrap group stopped copying the events of the last
 group before the start. Regenerated outputs differ from it only in that group.
 
-### S1 gauss charge across the start
+### A gauss charge across the start
 
 ```powershell
 .\target\release\lambda-slicer.exe slice F:\HLScreeniesDemos\09aug2018\naz_crossfire_pb_01.dem --start 1:59.8 --end 2:10 --output work\ls_s1_gauss.dem
@@ -120,9 +121,9 @@ Check, comparing with the original from 1:59.8:
 
 | Test | Date | Result | Observations |
 |---|---|---|---|
-| S1 gauss `[1:59.8, 2:10)` | 2026-10-15 | pass | Spin sound present from the first frame, charged shot has its sound, nothing odd. The view model spin-up was not checked: the custom gauss model in this install has no visible spin-up (a single colour). |
+| gauss `[1:59.8, 2:10)` | 2026-10-15 | pass | Spin sound present from the first frame, charged shot has its sound, nothing odd. The view model spin-up was not checked: the custom gauss model in this install has no visible spin-up (a single colour). |
 
-### S1 AG match HUD state
+### AG's match HUD
 
 Source: `F:\HLScreeniesDemos\01jan2022\20210418_004941_vengeance.dem`, a 41-minute AG team
 match with five players. Two slices test the replayed AG messages:
@@ -152,8 +153,8 @@ Check, comparing with the original at the same times:
 
 | Test | Date | Result | Observations |
 |---|---|---|---|
-| S1 vengeance vote `[13:21, 13:51)` | 2026-10-15 | partial | Scoreboard and teammate locations right from the start. The vote display appeared only about 1 s in and the timer about 0.5 s in, with the next real messages. Cause and fix below, retest pending. |
-| S1 vengeance sudden death `[20:05, 20:15)` | 2026-10-15 | not testable | 20:05 is already the end-of-match screen, which hides the HUD, so the sudden-death state cannot show. |
+| vengeance vote `[13:21, 13:51)` | 2026-10-15 | partial | Scoreboard and teammate locations right from the start. The vote display appeared only about 1 s in and the timer about 0.5 s in, with the next real messages. Cause and fix below, retest pending. |
+| vengeance sudden death `[20:05, 20:15)` | 2026-10-15 | not testable | 20:05 is already the end-of-match screen, which hides the HUD, so the sudden-death state cannot show. |
 
 Cause: OpenAG shows Timer and Vote for a window after each message, timed from the HUD clock,
 which only moves when a frame is drawn. The replayed messages were read before any frame at the
@@ -163,9 +164,9 @@ Regenerate `work\ls_s1_vote.dem` with the command above to retest.
 
 | Test | Date | Result | Observations |
 |---|---|---|---|
-| S1 vengeance vote, HUD group | 2026-10-15 | pass | Vote display and timer show from the first frame, with everything else as before. |
+| vengeance vote, HUD group | 2026-10-15 | pass | Vote display and timer show from the first frame, with everything else as before. |
 
-### S1 effects under way at the start
+### Effects under way at the start
 
 Effects that started before the cut are carried over it (see "Effects under way at the start"
 in `docs/protocol-profile-5-48.md`). Two slices from the sample exercise the common cases:
@@ -191,14 +192,14 @@ startup event and should show the beam (with a wind-up sound) from the first fra
 
 | Test | Date | Result | Observations |
 |---|---|---|---|
-| S1 sound loop `[2:00, 2:20)` | 2026-10-16 | matches original, not audible | The loop (started 1:57.8, stopped 2:20.2) is not audible at this point in the original either, so the carry cannot be judged by ear here. |
-| S1 HUD text `[1:00, 1:20)` | 2026-10-16 | pass | The timer text shows from the first frame and updates like the original. |
+| sound loop `[2:00, 2:20)` | 2026-10-16 | matches original, not audible | The loop (started 1:57.8, stopped 2:20.2) is not audible at this point in the original either, so the carry cannot be judged by ear here. |
+| HUD text `[1:00, 1:20)` | 2026-10-16 | pass | The timer text shows from the first frame and updates like the original. |
 
-## M7 release matrix
+## Checks before the first release
 
-The release gate (implementation plan §10, M7) needs the Windows game to play multiplayer,
-singleplayer and spectator cuts, including cuts that start after a level change. M7 made a
-restart start in any session of a recording: the output's LOADING entry is then the setup the
+Before the first release, the Windows game had to play multiplayer, singleplayer and spectator
+clips, including clips that start after a level change. For those, a clip can start in any
+session of a recording: the output's LOADING entry is then the setup the
 session recorded in playback, from its `svc_serverinfo` to its `svc_signonnum` ("Later sessions"
 in `docs/protocol-profile-5-48.md`). Generated 2026-10-17 with the release CLI:
 
@@ -263,8 +264,7 @@ starting right after their level loaded (`ls_m7_diag_s3_early` `[0:23, 0:30)` an
 `ls_m7_diag_s5_early` `[1:27.5, 1:35)`) failed the same way, which ruled out the server clock jump
 at the start. The setup records are now written as startup records, the synthetic later-session
 test checks their tags, and the singleplayer cuts above were generated again (hashes above).
-All of them then played cleanly in the game, with no issue noticed, which completes the M7 engine
-matrix.
+All of them then played cleanly in the game, with no issue noticed, which completed these checks.
 
 After that test a review found that these cuts kept the source header's map, `c3a1a`, so the
 library listed them under the wrong map. Their header now names the session's map with checksum

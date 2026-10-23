@@ -1,6 +1,6 @@
 # User messages
 
-The core stays language-neutral (implementation plan §8.1). Everything it reports to a user is a
+The core doesn't depend on a language. Everything it reports to a user is a
 `message::Message` with a stable code, named arguments and the English text. The CLI, logs and
 JSON show the English text, and the GUI looks the code up in its catalog for the chosen language.
 

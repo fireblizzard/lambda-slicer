@@ -1,4 +1,4 @@
-//! The gauss's shot as the client draws it (implementation plan §13.6)
+//! The gauss's shot as the client draws it
 //!
 //! The gauss's handler traces its shot itself (`EV_FireGauss`). From the
 //! eye along the aim the shot is drawn as a beam a tenth of a second long,

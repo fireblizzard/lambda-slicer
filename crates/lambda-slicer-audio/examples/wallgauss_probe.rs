@@ -1,5 +1,5 @@
 //! Says for each Gauss kill of real demos whether it went through a wall,
-//! as the viewer's enrichment reconstructs it (GUI redesign plan §10.1.5)
+//! as the viewer's enrichment reconstructs it
 //!
 //! `wallgauss_probe INSTALL DEMO...`
 //!

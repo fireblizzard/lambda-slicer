@@ -1,5 +1,4 @@
 //! The installed game's content, found the way the game finds it
-//! (implementation plan §13.3)
 //!
 //! A [`SearchPath`] lists the game folders and archives to search, in the
 //! game's order. It finds a name such as `models/player.mdl` in the first

@@ -1,4 +1,4 @@
-//! The demo played in the demo view (implementation plan §13.4 and §13.8)
+//! The demo played in the demo view
 //!
 //! Each viewer keeps a playback controller and worker for its demo, and a
 //! thread that reads the session's map and the studio models its entities
@@ -10,9 +10,8 @@
 //!
 //! Sound plays on the default output device while playing forward, mixed
 //! from a playback of its own that shares the worker's checkpoints and
-//! heard from the recorder's view. Shown only
-//! when a game folder is given with `--game`, until the viewer's settings
-//! come (M11)
+//! heard from the recorder's view. Shown only once the Half-Life folder is
+//! known, from the settings or from `--game`
 
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;

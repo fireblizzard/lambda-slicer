@@ -1,5 +1,4 @@
 //! File names for exported clips and the console command that plays them
-//! (implementation plan §8 and §9)
 //!
 //! A clip of `[1:36, 4:48)` from `source.dem` is suggested as
 //! `source__01m36s000-04m48s000.dem`, or after its own name as

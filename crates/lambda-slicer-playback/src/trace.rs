@@ -1,5 +1,5 @@
 //! A point traced through the map's world, as the client traces its
-//! temporary entities (implementation plan §13.6)
+//! temporary entities
 //!
 //! The client moves a temporary entity that collides with the world along a
 //! line each frame and stops it where the line first meets a solid leaf of

@@ -1,4 +1,4 @@
-//! The client's temporary entities (implementation plan §13.6)
+//! The client's temporary entities
 //!
 //! A temporary entity is a sprite or model the client makes and moves
 //! itself, such as a shell a weapon throws out or an explosion's sprite.

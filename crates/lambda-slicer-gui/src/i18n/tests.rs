@@ -204,9 +204,9 @@ fn plural_forms_follow_each_language() {
     assert_eq!(say(Locale::PtBr, 0), "0 abate");
 }
 
-/// The counts the plan names for the languages with several plural forms
+/// Counts that reach every plural form of the languages with several
 #[test]
-fn plurals_are_right_for_the_plan_counts() {
+fn plurals_are_right_for_counts_of_every_form() {
     let say = |l: Locale, n: i64| {
         plain(Catalog::new(l).text_with("details-kills", &[("count", n.into())]))
     };

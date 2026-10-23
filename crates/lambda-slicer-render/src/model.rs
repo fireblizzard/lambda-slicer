@@ -2,7 +2,7 @@
 //!
 //! The chosen submodel of every body part is gathered into corners that
 //! name their point, normal and bone, grouped by skin texture. Skinning
-//! moves each corner by its bone's transform, on the CPU for the spike.
+//! moves each corner by its bone's transform, on the CPU.
 //!
 //! A texture's flags change how its corners are drawn, as the engine's
 //! studio renderer draws them (`R_StudioDrawPoints` in Xash3D's restatement).

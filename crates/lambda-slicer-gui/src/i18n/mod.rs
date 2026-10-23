@@ -1,4 +1,4 @@
-//! Interface languages (implementation plan §8.1)
+//! Interface languages
 //!
 //! One Fluent catalog per locale is embedded in the binary. A message
 //! missing from a locale falls back to English, and a core message missing
@@ -357,9 +357,9 @@ pub struct Catalog {
     pub pseudo: bool,
 }
 
-/// A pseudo-localised message (implementation plan §8.1). Letters get
-/// accents, the text grows by two fifths like German or Finnish often does,
-/// and brackets mark both ends, so a cut-off message lacks its `]`.
+/// A pseudo-localised message. Letters get accents, the text grows by two
+/// fifths like German or Finnish often does, and brackets mark both ends,
+/// so a cut-off message lacks its `]`.
 /// Arguments, which Fluent isolates between U+2068 and U+2069, stay as they
 /// are
 pub fn pseudo(text: &str) -> String {

@@ -11,8 +11,8 @@ Baseline inspected on **20 October 2026**:
 - Application repository: `C:\Users\naz\source\repos\lambda-slicer`, commit **`a5bf3fa`**, `Add match countdown HUD/sounds`.
 - Live visual reference: <https://lambda-slicer-v0-2-0.vercel.app/>.
 - Local reference: `C:\Users\naz\Documents\lambda-slicer-ui-redesign`.
-- Current behavior: [gui.md](gui.md), [gui-text.md](gui-text.md), and [IMPLEMENTATION_PLAN.md](../IMPLEMENTATION_PLAN.md).
-- Existing application assets: [assets/branding](../assets/branding).
+- Current behavior: [gui.md](../gui.md), [gui-text.md](../gui-text.md), and [IMPLEMENTATION_PLAN.md](implementation-plan.md).
+- Existing application assets: [assets/branding](../../assets/branding).
 
 The local reference is a Next.js mockup with generated demo records, a static viewer image, a simulated playback timer, simulated scanning, and several buttons without handlers. Use its appearance and organization. Use the Rust application as the authority for actual data, calculations, supported file formats, frame boundaries, playback, and export restrictions.
 

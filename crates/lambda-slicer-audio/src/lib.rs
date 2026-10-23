@@ -1,5 +1,4 @@
-//! A demo's sounds, mixed from playback's logical channels (implementation
-//! plan §13.7)
+//! A demo's sounds, mixed from playback's logical channels
 //!
 //! [`library::Library`] reads the game's sound files through its search
 //! path and tells playback how long each one plays. [`mixer`] turns the

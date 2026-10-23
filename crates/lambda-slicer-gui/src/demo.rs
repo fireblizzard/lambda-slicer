@@ -1,5 +1,5 @@
 //! One demo's view, its timeline with lanes per player, its clips and its
-//! events (implementation plan §8, GUI redesign plan §9 and §10)
+//! events
 //!
 //! Selecting a demo analyses it again on a thread of its own, since weapon
 //! occurrences are not kept in the cache. Only the compact timeline model

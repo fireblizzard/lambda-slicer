@@ -1,4 +1,4 @@
-//! Library scan jobs (implementation plan §7.1)
+//! Library scan jobs
 //!
 //! A discovery thread streams paths into a bounded queue, workers check the
 //! cache by metadata and analyse what is missing or stale, and the calling

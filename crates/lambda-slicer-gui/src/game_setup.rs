@@ -1,5 +1,4 @@
-//! Finding the Half-Life installation the viewer reads its files from (GUI
-//! redesign plan §8.4)
+//! Finding the Half-Life installation the viewer reads its files from
 //!
 //! The viewer draws and plays demos itself, so `hl.exe` only says where the
 //! installation is. The folder holding it and `valve` is what the viewer

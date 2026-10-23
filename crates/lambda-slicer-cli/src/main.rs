@@ -62,7 +62,8 @@ enum Command {
         #[arg(long)]
         json: Option<PathBuf>,
     },
-    /// Write an S0 control export for in-game validation. Never overwrites
+    /// Write a simple copy of a demo for testing the game's playback. Never
+    /// overwrites
     Control {
         kind: ControlKind,
         source: PathBuf,
@@ -74,8 +75,8 @@ enum Command {
         #[arg(long)]
         json: Option<PathBuf>,
     },
-    /// Experimental S1 restart, writing `[start, end)` as a demo that plays
-    /// on its own. Never overwrites
+    /// Write `[start, end)` as a clip, a demo that plays on its own. Never
+    /// overwrites
     Slice {
         source: PathBuf,
         #[arg(long)]
@@ -242,11 +243,12 @@ enum Command {
 
 #[derive(Clone, Copy, ValueEnum)]
 enum ControlKind {
-    /// S0a, exact copy
+    /// An exact copy
     ExactCopy,
-    /// S0b, container rebuilt from decoded frames
+    /// The file rebuilt from its decoded frames
     Roundtrip,
-    /// S0c, keep [0, end) and regenerate the terminal record and directory
+    /// Only [0, end), with the file's ending and table of contents written
+    /// again
     TruncateEnd,
 }
 

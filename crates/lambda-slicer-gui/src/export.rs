@@ -1,4 +1,4 @@
-//! Clip exports in the background (implementation plan §8 and §9)
+//! Clip exports in the background
 //!
 //! An export job writes its clips one after another on its own thread with
 //! the core's restart export, which only publishes a file once it validated

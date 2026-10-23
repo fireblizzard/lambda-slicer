@@ -1,4 +1,4 @@
-//! SQLite cache of per-file analysis summaries (implementation plan §7.2)
+//! SQLite cache of per-file analysis summaries
 //!
 //! One row per demo holds its fingerprint, the versions it was analysed with,
 //! its status and summary columns. Players, weapon totals, kills with their

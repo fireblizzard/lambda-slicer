@@ -1,4 +1,4 @@
-//! Language-neutral messages for users (implementation plan §8.1)
+//! Language-neutral messages for users
 //!
 //! Anything the core reports to a user carries a stable code and named
 //! arguments, which the GUI looks up in its catalogs. The English text stays

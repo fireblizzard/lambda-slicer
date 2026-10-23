@@ -1,6 +1,5 @@
 //! Seeks through real demos with the game's files and checks that sound
-//! and effects come back as sequential playback has them (implementation
-//! plan §13.5, M10)
+//! and effects come back as sequential playback has them
 //!
 //! `effects_seek INSTALL DEMO...`
 //!

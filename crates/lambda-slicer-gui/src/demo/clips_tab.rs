@@ -1,6 +1,5 @@
 //! The Clips tab, each clip a card with its name, its start and end, the
-//! ways to play, show, export and remove it, and how its export went (GUI
-//! redesign plan §10.2)
+//! ways to play, show, export and remove it, and how its export went
 //!
 //! The buttons to add and export clips stay at the top and where exports go
 //! at the bottom, and only the cards scroll. A time typed into a card is

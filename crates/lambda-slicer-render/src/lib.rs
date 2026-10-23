@@ -1,11 +1,11 @@
-//! Drawing a demo's world and models with `wgpu` (implementation plan §13)
+//! Drawing a demo's world and models with `wgpu`
 //!
-//! The M8 backend spike. [`world`] turns a BSP into textured, lightmapped
-//! triangles, [`model`] turns a studio model and an evaluated pose into
-//! skinned triangles, and [`gpu`] draws both into an offscreen texture with
-//! depth, which a window shows through [`gpu::Blit`]. Everything here takes
-//! the device and queue it is given, so it shares the window's GPU device
-//! instead of opening one of its own. Nothing here depends on egui
+//! [`world`] turns a BSP into textured, lightmapped triangles, [`model`]
+//! turns a studio model and an evaluated pose into skinned triangles, and
+//! [`gpu`] draws both into an offscreen texture with depth, which a window
+//! shows through [`gpu::Blit`]. Everything here takes the device and queue it
+//! is given, so it shares the window's GPU device instead of opening one of
+//! its own. Nothing here depends on egui
 //! (docs/viewer-backend.md)
 
 pub mod camera;

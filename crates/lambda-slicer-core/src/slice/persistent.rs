@@ -1,4 +1,4 @@
-//! Persistent state a restart re-emits (implementation plan §6.2)
+//! Persistent state a restart re-emits
 //!
 //! Messages before the start that set lasting client state are reduced to
 //! the last one per type and key, such as an ammo index or a player slot,

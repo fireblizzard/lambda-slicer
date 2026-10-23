@@ -1,5 +1,4 @@
-//! A demo's weapon activity arranged for the timeline (implementation plan
-//! §8)
+//! A demo's weapon activity arranged for the timeline
 //!
 //! One lane per player connection, keyed by slot and incarnation so a
 //! reused slot is a new lane, plus one lane for actors that could not be
