@@ -66,7 +66,7 @@ pub enum ExportError {
     StartAtFirstGroup,
     #[error("delta base {0} before the start is not in the recording")]
     MissingDeltaBase(u32),
-    #[error("{0} before the start sets state a restart cannot carry over yet")]
+    #[error("the {0} message is not supported in clips yet")]
     UnknownPersistentMessage(String),
     #[error("{0} is under way at the start and cannot be carried over it yet")]
     ActiveEffect(String),

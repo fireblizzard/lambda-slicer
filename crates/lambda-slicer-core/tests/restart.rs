@@ -357,11 +357,48 @@ fn an_unclassified_persistent_message_is_refused() {
     let mut rec = Recording::steady(60, 1);
     rec.groups[9].1 = w.finish();
 
+    // Only the name, so the translated sentence around it has no English
     let err = slice(&rec, 30, None).unwrap_err();
     assert!(
-        matches!(&err, ExportError::UnknownPersistentMessage(m) if m.contains("Mystery")),
+        matches!(&err, ExportError::UnknownPersistentMessage(m) if m == "Mystery"),
         "{err}"
     );
+}
+
+/// `StatusIcon` with this status and icon name, registered as user message
+/// 71 with a body of any length, and a colour when the icon shows
+fn status_icon(status: u8, icon: &[u8]) -> Vec<u8> {
+    let mut body = vec![status];
+    body.extend_from_slice(icon);
+    body.push(0);
+    if status != 0 {
+        body.extend_from_slice(&[255, 160, 0]);
+    }
+
+    let mut w = BitWriter::new();
+    w.u8(svc::NEWUSERMSG);
+    w.u8(71);
+    w.u8(255);
+    let mut name = [0u8; 16];
+    name[..10].copy_from_slice(b"StatusIcon");
+    w.bytes(&name);
+    w.u8(71);
+    w.u8(body.len() as u8);
+    w.bytes(&body);
+    w.finish()
+}
+
+#[test]
+fn status_icons_before_the_start_are_replayed_once_per_icon() {
+    // The first icon is shown and later hidden, and a second one shown, so
+    // one message per icon remains besides the registration
+    let mut rec = Recording::steady(60, 1);
+    rec.groups[4].1 = status_icon(1, b"dmg_rad");
+    rec.groups[9].1 = status_icon(1, b"dmg_poison");
+    rec.groups[14].1 = status_icon(0, b"dmg_rad");
+
+    let (_out, _dir, r) = slice(&rec, 30, None).unwrap();
+    assert_eq!(r.persistent_messages, 3);
 }
 
 #[test]

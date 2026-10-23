@@ -136,6 +136,13 @@ fn user_treatment(name: &str, body: &[u8]) -> Treatment {
     } else if name == "WeaponList" || name == "TeamScore" {
         let end = body.iter().position(|&b| b == 0).unwrap_or(body.len());
         Treatment::Keep(body[..end].to_vec(), None)
+    } else if name == "StatusIcon" {
+        // Whether the icon shows, its sprite name, then its colour when it
+        // does. The HUD keeps each icon by name, so the last message for a
+        // name shows or hides that icon
+        let icon = body.get(1..).unwrap_or_default();
+        let end = icon.iter().position(|&b| b == 0).unwrap_or(icon.len());
+        Treatment::Keep(icon[..end].to_vec(), None)
     } else if TRANSIENT.contains(&name) {
         Treatment::Drop
     } else {
@@ -253,8 +260,10 @@ impl Persistent {
                 let name = d.user_message(*id).map(|u| u.name_lossy());
                 match name {
                     Some(n) => match user_treatment(&n, body) {
+                        // Only the message's name, which reads the same in
+                        // every language
                         Treatment::Block => {
-                            self.blocker.get_or_insert(format!("user message {n}"));
+                            self.blocker.get_or_insert(n);
                             return;
                         }
                         t => t,
