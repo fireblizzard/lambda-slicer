@@ -83,6 +83,9 @@ pub struct RestartReport {
     pub expired_notices: usize,
     /// Effects under way at the start that were carried over it
     pub carried: Vec<String>,
+    /// Effects under way at the start that the clip leaves out, gibs and
+    /// thrown models still in the air
+    pub left_out: Vec<String>,
     pub persistent_bytes: usize,
     pub bootstrap_bytes: usize,
     pub kept_records: u64,
@@ -118,6 +121,8 @@ struct Plan {
     late: Vec<u8>,
     /// One line per carried effect
     notes: Vec<String>,
+    /// One line per effect under way at the start that is left out
+    left_out: Vec<String>,
     /// (snapshot, the source record that carried it) per bootstrap frame
     bootstrap: Vec<(Arc<Snapshot>, NetworkFrame)>,
     /// The network records that set up the start's session, when it is a
@@ -321,6 +326,7 @@ fn plan(
                 carried: carried.records,
                 late: carried.messages,
                 notes: carried.notes,
+                left_out: carried.left_out,
                 bootstrap: Vec::new(),
                 setup_map: start_setup.as_ref().and(session_map.clone()),
                 setup: start_setup,
@@ -1159,6 +1165,7 @@ pub fn run_restart(
         persistent_messages: p.persistent_count + p.hud_count,
         expired_notices: p.expired_notices,
         carried: p.notes.clone(),
+        left_out: p.left_out.clone(),
         persistent_bytes: p.persistent.len() + p.hud.len(),
         bootstrap_bytes: written.bootstrap_bytes,
         kept_records: p.kept_records,

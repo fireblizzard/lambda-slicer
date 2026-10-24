@@ -3,7 +3,8 @@
 //! Events, sounds and temp entities before the start already happened, so
 //! they are not replayed. Some of them start something that lasts past the
 //! start, which the client would then lack. Those with a known lifecycle are
-//! carried over, and the others refuse the export while they are active.
+//! carried over, gibs and thrown models are left out, and the others refuse
+//! the export while they are active.
 //!
 //! - The recorder's gauss charge and egon fire need their starting demo
 //!   events, which create the spin sound and the local egon beam
@@ -14,7 +15,8 @@
 //! - Beams, lights and HUD text last for a set time. Those still alive are
 //!   sent again with their remaining life
 //! - Gibs and thrown models move under physics and cannot be restarted
-//!   where they are, so they refuse the export while alive
+//!   where they are. They are only debris, so a clip leaves out those still
+//!   in the air at its start and its report says so
 //!
 //! Event loops whose updates restart a stopped sound need nothing. The
 //! engine starts a sound that a pitch or volume change finds not playing,
@@ -182,6 +184,17 @@ pub struct Carried {
     pub messages: Vec<u8>,
     /// One line per carried effect, for the report
     pub notes: Vec<String>,
+    /// One line per effect still under way that the clip leaves out, for
+    /// the report
+    pub left_out: Vec<String>,
+}
+
+/// What becomes of a temp entity under way at the start
+enum Carry {
+    /// Sent again as these bytes, with a line for the report
+    Sent(Vec<u8>, String),
+    /// Left out of the clip, with a line for the report
+    LeftOut(String),
 }
 
 /// Sounds that may still be playing at the start, confirmed by a stop
@@ -418,9 +431,13 @@ impl Ongoing {
 
         for t in &self.temps {
             let elapsed = (start - t.time).max(0.);
-            if let Some((bytes, note)) = carry_temp(t, elapsed, &present)? {
-                carried.messages.extend_from_slice(&bytes);
-                carried.notes.push(note);
+            match carry_temp(t, elapsed, &present) {
+                Some(Carry::Sent(bytes, note)) => {
+                    carried.messages.extend_from_slice(&bytes);
+                    carried.notes.push(note);
+                }
+                Some(Carry::LeftOut(note)) => carried.left_out.push(note),
+                None => {}
             }
         }
 
@@ -469,62 +486,52 @@ fn attached(t: &Temp) -> Option<u16> {
     }
 }
 
-/// The temp entity sent again with its remaining life, nothing when it has
-/// ended, or an error when it is still moving under physics
-fn carry_temp(
-    t: &Temp,
-    elapsed: f32,
-    present: &impl Fn(u16) -> bool,
-) -> Result<Option<(Vec<u8>, String)>, String> {
+/// The temp entity sent again with its remaining life, left out when it is
+/// still moving under physics, or nothing when it has ended
+fn carry_temp(t: &Temp, elapsed: f32, present: &impl Fn(u16) -> bool) -> Option<Carry> {
     let mut bytes = t.bytes.clone();
     let tenths = |b: &[u8], at: usize| b.get(2 + at).map(|v| f32::from(*v) / 10.);
     let note = |left: f32| format!("temp entity {} ({left:.1} s left)", t.kind);
 
     match lasting(t.kind) {
         Some(Lasting::Byte { at, entity }) => {
-            let Some(life) = tenths(&bytes, at) else {
-                return Ok(None);
-            };
+            let life = tenths(&bytes, at)?;
             if let Some(e) = entity.and_then(|_| attached(t))
                 && !present(e)
             {
-                return Ok(None);
+                return None;
             }
 
             // A life of zero lasts until the beam is killed
             let left = if life == 0. { 0. } else { life - elapsed };
             if life != 0. && left <= 0. {
-                return Ok(None);
+                return None;
             }
 
             if life != 0. {
                 bytes[2 + at] = ((left * 10.).ceil() as u8).max(1);
             }
-            Ok(Some((bytes, note(left))))
+            Some(Carry::Sent(bytes, note(left)))
         }
         Some(Lasting::Short { at }) => {
-            let Some(b) = bytes.get(2 + at..4 + at) else {
-                return Ok(None);
-            };
+            let b = bytes.get(2 + at..4 + at)?;
             let left = f32::from(u16::from_le_bytes([b[0], b[1]])) / 10. - elapsed;
             if left <= 0. {
-                return Ok(None);
+                return None;
             }
 
             let v = ((left * 10.).ceil() as u16).max(1).to_le_bytes();
             bytes[2 + at..4 + at].copy_from_slice(&v);
-            Ok(Some((bytes, note(left))))
+            Some(Carry::Sent(bytes, note(left)))
         }
-        Some(Lasting::Text) => Ok(carry_text(bytes, elapsed).map(|(b, left)| (b, note(left)))),
+        Some(Lasting::Text) => {
+            carry_text(bytes, elapsed).map(|(b, left)| Carry::Sent(b, note(left)))
+        }
         Some(Lasting::Physics { at }) => match tenths(&bytes, at) {
-            Some(life) if life > elapsed => Err(format!(
-                "temp entity {} still moving at the start ({:.1} s left)",
-                t.kind,
-                life - elapsed
-            )),
-            _ => Ok(None),
+            Some(life) if life > elapsed => Some(Carry::LeftOut(note(life - elapsed))),
+            _ => None,
         },
-        _ => Ok(None),
+        _ => None,
     }
 }
 

@@ -35,7 +35,7 @@
 - [ ] Add K/D (kills/death ratio) to the scoreboard where we have the kills, death, hs and accuracy%.  if deaths are 0, then do the division with 1
 - [x] Fix explosion sprite showing up too cartoony, like in `20220102_225243_pwrcore` at 00:34.609 or at 00:42.365
 - [x] If no folder or demo has been added yet, highlight those buttons, with a pulsing red border perhaps, until the user adds/opens one. Meant for new users
-- [ ] Clean up documents and comments so that they no longer refer to development stages (like "M6" in `vendor/README.md`) or things like that. Also try to simplify jargon in documents, even in the technical ones unless it makes it more confusing or significantly harder to explain. Also update docs/release-notes.md, as some things in there are obsolete. And make README.md a proper document that average players can read, with minimal development/buildding notes, just enough to build the project
+- [x] Clean up documents and comments so that they no longer refer to development stages (like "M6" in `vendor/README.md`) or things like that. Also try to simplify jargon in documents, even in the technical ones unless it makes it more confusing or significantly harder to explain. Also update docs/release-notes.md, as some things in there are obsolete. And make README.md a proper document that average players can read, with minimal development/buildding notes, just enough to build the project
 - [ ] Support WON demos (protocol 5/47)
 	- [x] Singleplayer
 	- [ ] Multiplayer

@@ -26,14 +26,16 @@ Some ranges can't be clipped:
 
 - A start on the very first moment of a demo, or while a map is still loading.
 - A range with a map change or a reconnect inside it.
-- A start while something the clip can't carry over is still going on, such as gibs or
-  projectiles in the air.
+- A start while something the clip can't carry over is still going on, such as an effect from
+  a weapon or mod the app doesn't know.
 - A range where the game threw away data that arrived late, or where the demo relies on data that
   had to be guessed.
 
 Other things:
 
 - Bullet holes, blood and sprays made before a clip's start aren't in the clip.
+- Gibs and other debris still flying at a clip's start aren't in the clip. The command line's
+  report lists what was left out.
 - An event the game scheduled just before the start, to play just after it,
   is lost. It's usually a sound or effect a few milliseconds long.
 - Each frame of a demo carries a little data from the game's client, which

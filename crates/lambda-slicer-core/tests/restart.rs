@@ -632,15 +632,23 @@ fn a_beam_still_alive_is_sent_again_with_its_remaining_life() {
 }
 
 #[test]
-fn gibs_still_flying_at_the_start_are_refused() {
-    // TE_BREAKMODEL with a 2 s life, which moves under physics
+fn gibs_still_flying_at_the_start_are_left_out_and_reported() {
+    // TE_BREAKMODEL with a 2 s life, which moves under physics, at group
+    // 29, 0.1 s before the start
     let mut body = [0u8; 24];
     body[22] = 20;
     let mut rec = Recording::steady(60, 1);
     rec.groups[28].1 = temp(108, &body);
 
-    let err = slice(&rec, 30, None).unwrap_err();
-    assert!(matches!(err, ExportError::ActiveEffect(_)), "{err}");
+    let (_out, _dir, r) = slice(&rec, 30, None).unwrap();
+    assert_eq!(r.left_out, ["temp entity 108 (1.9 s left)"]);
+    assert!(r.carried.is_empty(), "{:?}", r.carried);
+
+    // Landed 2.5 s before the start, nothing is left out
+    rec.groups[28].1 = Vec::new();
+    rec.groups[4].1 = temp(108, &body);
+    let (_out, _dir, r) = slice(&rec, 30, None).unwrap();
+    assert!(r.left_out.is_empty(), "{:?}", r.left_out);
 }
 
 #[test]

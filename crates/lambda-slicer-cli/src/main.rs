@@ -405,6 +405,9 @@ fn run() -> Result<ExitCode> {
                     for c in &r.carried {
                         println!("  carried over the start: {c}");
                     }
+                    for c in &r.left_out {
+                        println!("  left out, still in the air at the start: {c}");
+                    }
                     println!(
                         "  time windows: {} inexact, {} outside the window",
                         r.inexact_time_windows, r.clamped_time_windows

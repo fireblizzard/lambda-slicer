@@ -440,7 +440,7 @@ sample (15 one-shot weapon events, 4 with a lifecycle, 28 temp entity kinds):
 | Server sound loops | A sound started before the start whose stop (same entity, channel and sample) arrives after it, before any other sound replaces it on that channel, was still playing. Its message is sent again. Packets past the end are decoded until every such sound is resolved |
 | Beams, lights, lines | Still alive at the start: sent again with the remaining life (kinds 0, 1, 7, 8, 19 to 22, 24, 27, 28, 30, 31). Those attached to an entity only if the entity is in the bootstrap state, and `TE_KILLBEAM` ends them |
 | HUD text (`TE_TEXTMESSAGE`) | The latest per text channel, still showing at the start: sent again with no fade-in and the remaining hold and fade-out |
-| Gibs, thrown models, projectiles | Still moving at the start: the export is refused (`ActiveEffect`), since they cannot be restarted where they are |
+| Gibs, thrown models, projectiles | Still moving at the start: left out, since they cannot be restarted where they are, and listed in the report's `left_out` |
 | Train sounds | Nothing. The engine starts a sound that a pitch or volume change finds not playing, and trains send such a change every think |
 | Decals | Not yet ([known limitations](limitations.md)) |
 | Unknown event script or temp entity kind | The export is refused |
@@ -515,8 +515,8 @@ new session inside it with `CrossSegmentRange` as before.
 
 **Measured (2026-10-17):** `run_92.dem` `[0:03, 0:10)`, `[0:30, 0:50)` and `[1:30, 1:40)`, in
 sessions 2, 3 and 5, exported with 1,683, 4,956 and 1,968 kept snapshots and no differing field
-outside time windows. `[0:20, 0:25)` and `[1:00, 1:20)` are refused because gibs are still
-flying at their start (`ActiveEffect`). The synthetic test
+outside time windows. `[0:20, 0:25)` and `[1:00, 1:20)` were refused because gibs were still
+flying at their start (`ActiveEffect`). Such clips now leave the gibs out. The synthetic test
 `a_restart_starts_in_a_later_session_with_its_own_setup` covers the setup, the refusals and
 range snapping.
 
