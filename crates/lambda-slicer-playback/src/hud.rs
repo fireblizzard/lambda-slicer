@@ -35,7 +35,7 @@ use lambda_slicer_core::state::Decoder;
 
 use crate::announcements::{Announced, Announcements};
 use crate::damage::{Damage, DamageShown};
-use crate::hud_messages::{HudMessages, ShownMessage, TE_TEXTMESSAGE};
+use crate::hud_messages::{HudMessage, HudMessages, ShownMessage, TE_TEXTMESSAGE};
 use crate::scene::Camera;
 use crate::scores::{ScoreRow, Scores};
 use crate::status::{self, Status};
@@ -158,14 +158,15 @@ fn c_string(bytes: &[u8]) -> (String, &[u8]) {
 
 impl Hud {
     /// A message the decoder has just applied at `time`, with the recording
-    /// player's view at `camera`, and the sound the client plays for it, if
-    /// any
+    /// player's view at `camera` and `titles.txt`'s messages by name, and
+    /// the sound the client plays for it, if any
     pub(crate) fn on_message(
         &mut self,
         decoder: &Decoder,
         m: &ParsedMessage,
         time: SourceTime,
         camera: &Camera,
+        titles: &dyn Fn(&str) -> Option<HudMessage>,
     ) -> Option<&'static str> {
         let (id, body) = match &m.message {
             // A new session starts with nothing on the HUD
@@ -222,6 +223,14 @@ impl Hud {
             "Damage" => {
                 let (origin, angles) = (camera.origin, camera.angles);
                 self.damage.message(body, time, origin, angles);
+                return None;
+            }
+            "HudText" => {
+                // The name is looked up without a leading `#`, and shown
+                // with it when the file lacks it
+                let (name, _) = c_string(body);
+                let found = titles(name.strip_prefix('#').unwrap_or(&name));
+                self.messages.title(&name, found, time);
                 return None;
             }
             _ => return None,

@@ -23,6 +23,7 @@ use lambda_slicer_assets::xenoxide::studio::StudioModel;
 use lambda_slicer_playback::GameFiles;
 use lambda_slicer_playback::animation::{Sequence, StudioEvent};
 use lambda_slicer_playback::audio::{SoundLength, SoundLengths, SoundName};
+use lambda_slicer_playback::hud_messages::{HudMessage, parse_titles};
 use lambda_slicer_playback::trace::{Child, Hull, HullFace, PlayerHulls, SOLID};
 
 /// `STUDIO_LOOPING`
@@ -41,6 +42,8 @@ pub struct Library {
     materials: Mutex<Option<Arc<Materials>>>,
     /// `decals.wad`'s names in its order, read once
     decal_names: Mutex<Option<Arc<Vec<String>>>>,
+    /// `titles.txt`'s messages by their names in lowercase, read once
+    titles: Mutex<Option<Arc<HashMap<String, HudMessage>>>>,
 }
 
 impl Library {
@@ -56,6 +59,7 @@ impl Library {
             sprites: Mutex::new(HashMap::new()),
             materials: Mutex::new(None),
             decal_names: Mutex::new(None),
+            titles: Mutex::new(None),
         }
     }
 
@@ -73,6 +77,18 @@ impl Library {
         });
         let at = names.iter().position(|n| n.eq_ignore_ascii_case(name))?;
         u16::try_from(at).ok()
+    }
+
+    /// The message of `titles.txt` named `name`, ignoring case as the game
+    /// does. The mod's own file replaces the game's, as the engine loads
+    /// the first it finds
+    pub fn title(&self, name: &str) -> Option<HudMessage> {
+        let mut known = self.titles.lock().unwrap_or_else(|e| e.into_inner());
+        let titles = known.get_or_insert_with(|| {
+            let file = self.read("titles.txt").unwrap_or_default();
+            Arc::new(parse_titles(&file))
+        });
+        titles.get(&name.to_ascii_lowercase()).cloned()
     }
 
     /// The textures' materials, read once from `sound/materials.txt`
@@ -259,13 +275,14 @@ impl Library {
     /// playback reads
     pub fn game_files(self: &Arc<Self>) -> GameFiles {
         let (models, maps, sprites) = (self.clone(), self.clone(), self.clone());
-        let decals = self.clone();
+        let (decals, titles) = (self.clone(), self.clone());
         GameFiles {
             lengths: self.lengths(),
             sequences: Arc::new(move |path| models.sequences(path)),
             hulls: Arc::new(move |path| maps.hull(path)),
             sprite_frames: Arc::new(move |path| sprites.sprite_frames(path)),
             decal_index: Arc::new(move |name| decals.decal_index(name)),
+            titles: Arc::new(move |name| titles.title(name)),
         }
     }
 }

@@ -106,8 +106,8 @@ stuff like a zooming in or seeing players through walls, as long as the demo has
   up only while the recorder could see them, so their shots and kills elsewhere aren't in the demo.
 - Some clips can't be cut, for example across a map change or right while a map is loading. The
   app tells you why.
-- The demo player doesn't show everything the game does yet. The flashlight, chapter titles,
-  dynamic lights, particles and voice chat are among what's missing. The full list is in
+- The demo player doesn't show everything the game does yet. The flashlight, dynamic lights,
+  particles and voice chat are among what's missing. The full list is in
   [known limitations](docs/limitations.md).
 - The app is in 14 languages: English, Arabic, Chinese, Finnish, French, German, Italian,
   Lithuanian, Polish, Brazilian Portuguese, Russian, Latin American Spanish, Turkish and Ukrainian.

@@ -10,6 +10,24 @@
 //! channel already listed. A message on a channel past the last, or on
 //! none, takes the next in turn. A new message also clears any other
 //! standing at exactly the same place
+//!
+//! `HudText` names a message of the game's `titles.txt` instead, such as a
+//! singleplayer chapter's title, which shows in the same list (HLSDK's
+//! `CHudMessage::MessageAdd`). A leading `#` is left out of the name, which
+//! is found ignoring case. A name the file lacks shows as its own text in
+//! the client's custom style, and the client keeps a single custom message,
+//! so a second one still listed takes over the first's text and start. A
+//! message whose text is already listed is not added again, and at most 16
+//! are listed
+//!
+//! `titles.txt` is read as the engine reads it (`TextMessageParse`). Lines
+//! starting with `$` set the place, effect, colours and times of the
+//! messages after them, a line on its own names the next message, and its
+//! text is every line between a `{` and a `}`. Blank lines and lines
+//! starting with `//` are left out, and a stray `{` or `}` makes the engine
+//! keep no messages at all
+
+use std::collections::HashMap;
 
 use crate::time::SourceTime;
 
@@ -21,6 +39,9 @@ const CHANNELS: usize = 6;
 
 /// The effect that writes the text out a letter at a time
 pub const WRITE_OUT: u8 = 2;
+
+/// How many messages the client lists at once (`maxHUDMessages`)
+const LISTED: usize = 16;
 
 /// One message as the server sent it
 #[derive(Clone, Debug, PartialEq)]
@@ -62,12 +83,141 @@ pub struct ShownMessage {
     pub since: f32,
 }
 
-/// The messages by channel, each with its start
+/// A message from `titles.txt`, or a custom one, with its start
+#[derive(Clone, Debug, PartialEq)]
+struct Titled {
+    message: HudMessage,
+    start: SourceTime,
+    custom: bool,
+}
+
+/// The messages by channel, each with its start, and the titled ones
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct HudMessages {
     channels: [Option<(HudMessage, SourceTime)>; CHANNELS],
     /// The channel a message on none takes next
     next: usize,
+    titled: Vec<Titled>,
+}
+
+/// A name `titles.txt` lacks, shown as its own text in the client's custom
+/// style, written out in the middle a little below the centre
+fn custom(name: &str) -> HudMessage {
+    HudMessage {
+        x: -1.,
+        y: 0.7,
+        effect: WRITE_OUT,
+        colour: [100, 100, 100],
+        colour2: [240, 110, 0],
+        fade_in: 0.01,
+        fade_out: 1.5,
+        hold: 5.,
+        settle: 0.25,
+        text: name.to_owned(),
+    }
+}
+
+/// The messages of a `titles.txt`, by their names in lowercase. The first
+/// of a name wins, as the engine looks them up in order
+pub fn parse_titles(file: &[u8]) -> HashMap<String, HudMessage> {
+    let mut titles = HashMap::new();
+
+    // The settings start at nought and carry on to every later message
+    let mut style = HudMessage {
+        x: 0.,
+        y: 0.,
+        effect: 0,
+        colour: [0; 3],
+        colour2: [0; 3],
+        fade_in: 0.,
+        fade_out: 0.,
+        hold: 0.,
+        settle: 0.,
+        text: String::new(),
+    };
+    let mut name = String::new();
+    let mut text: Option<Vec<&[u8]>> = None;
+
+    for raw in file.split(|&b| b == b'\n') {
+        let line = String::from_utf8_lossy(raw);
+        let trimmed = line.trim();
+
+        if let Some(lines) = &mut text {
+            if trimmed.starts_with('}') {
+                let joined = lines.join(&b'\n');
+                let mut message = style.clone();
+                message.text = String::from_utf8_lossy(&joined).replace('\r', "");
+                titles.entry(name.to_ascii_lowercase()).or_insert(message);
+                text = None;
+            } else if trimmed.starts_with('{') {
+                return HashMap::new();
+            } else {
+                lines.push(raw);
+            }
+            continue;
+        }
+
+        if trimmed.is_empty() || trimmed.starts_with("//") {
+            continue;
+        }
+        if let Some(directive) = trimmed.strip_prefix('$') {
+            set(&mut style, directive);
+        } else if trimmed.starts_with('{') {
+            text = Some(Vec::new());
+        } else if trimmed.starts_with('}') {
+            return HashMap::new();
+        } else {
+            name = trimmed.to_owned();
+        }
+    }
+
+    titles
+}
+
+/// The numbers after a directive's word, nought for any missing or not a
+/// number, as C's `atof` reads them
+fn numbers<const N: usize>(directive: &str) -> [f32; N] {
+    let mut words = directive.split_whitespace().skip(1);
+    std::array::from_fn(|_| words.next().map_or(0., leading_number))
+}
+
+/// The number `word` starts with, nought when it starts with none
+fn leading_number(word: &str) -> f32 {
+    let mut end = 0;
+    for (i, c) in word.char_indices() {
+        let sign = i == 0 && (c == '-' || c == '+');
+        if !(sign || c.is_ascii_digit() || c == '.') {
+            break;
+        }
+        end = i + c.len_utf8();
+    }
+    word[..end].parse().unwrap_or(0.)
+}
+
+/// `style` with the directive applied, its word matched as a prefix
+/// ignoring case. `color2` is tried before `color`, which it starts with,
+/// and an unknown word changes nothing
+fn set(style: &mut HudMessage, directive: &str) {
+    let word = directive.to_ascii_lowercase();
+    let colour = |[r, g, b]: [f32; 3]| [r as u8, g as u8, b as u8];
+
+    if word.starts_with("position") {
+        [style.x, style.y] = numbers(directive);
+    } else if word.starts_with("effect") {
+        style.effect = numbers::<1>(directive)[0] as u8;
+    } else if word.starts_with("fxtime") {
+        style.settle = numbers::<1>(directive)[0];
+    } else if word.starts_with("color2") {
+        style.colour2 = colour(numbers(directive));
+    } else if word.starts_with("color") {
+        style.colour = colour(numbers(directive));
+    } else if word.starts_with("fadein") {
+        style.fade_in = numbers::<1>(directive)[0];
+    } else if word.starts_with("fadeout") {
+        style.fade_out = numbers::<1>(directive)[0];
+    } else if word.starts_with("holdtime") {
+        style.hold = numbers::<1>(directive)[0];
+    }
 }
 
 /// The two little-endian bytes at `at` of `body`
@@ -140,13 +290,68 @@ impl HudMessages {
                 *slot = None;
             }
         }
+        self.titled.retain(|t| !same_place(&t.message, &message));
         self.channels[channel] = Some((message, start));
+    }
+
+    /// A `HudText` naming `name` at `time`, with the message `titles.txt`
+    /// has for it, if any
+    pub(crate) fn title(&mut self, name: &str, found: Option<HudMessage>, time: SourceTime) {
+        // The client drops a message from its list once it is over
+        let over = |message: &HudMessage, start: SourceTime| {
+            time.0 > start.0 + f64::from(message.length())
+        };
+        self.titled.retain(|t| !over(&t.message, t.start));
+        for slot in &mut self.channels {
+            if slot.as_ref().is_some_and(|(m, start)| over(m, *start)) {
+                *slot = None;
+            }
+        }
+
+        if self.listed().count() >= LISTED {
+            return;
+        }
+
+        // The one custom message takes the new text, so a custom message
+        // still listed shows it from its own start
+        let is_custom = found.is_none();
+        let message = found.unwrap_or_else(|| custom(name));
+        if is_custom && let Some(shown) = self.titled.iter_mut().find(|t| t.custom) {
+            shown.message.text = message.text;
+            return;
+        }
+
+        // Already listed by its text, it is not added again
+        for (listed, _) in self.listed() {
+            if listed.text == message.text {
+                return;
+            }
+        }
+
+        for slot in &mut self.channels {
+            if slot.as_ref().is_some_and(|(m, _)| same_place(m, &message)) {
+                *slot = None;
+            }
+        }
+        self.titled.retain(|t| !same_place(&t.message, &message));
+        self.titled.push(Titled {
+            message,
+            start: time,
+            custom: is_custom,
+        });
+    }
+
+    /// Every message listed, on its channel or titled, with its start
+    fn listed(&self) -> impl Iterator<Item = (&HudMessage, SourceTime)> {
+        let channels = self.channels.iter().flatten().map(|(m, start)| (m, *start));
+        let titled = self.titled.iter().map(|t| (&t.message, t.start));
+        channels.chain(titled)
     }
 
     /// The messages showing at `at`
     pub fn at(&self, at: SourceTime) -> Vec<ShownMessage> {
         let mut out = Vec::new();
-        for (message, start) in self.channels.iter().flatten() {
+        for (message, start) in self.listed() {
             let since = (at.0 - start.0) as f32;
             if since >= 0. && since <= message.length() {
                 let message = message.clone();
@@ -210,6 +415,94 @@ mod tests {
             .map(|s| s.message.text)
             .collect();
         assert_eq!(texts, ["third"]);
+    }
+
+    /// A `titles.txt` in the game's own style, with Windows line ends
+    const TITLES: &str = "//TITLES FOR HALF-LIFE\r\n\
+        $position -1 -1\r\n\
+        $effect 2\r\n\
+        // The final colour, then the highlight\r\n\
+        $color 100 100 100\r\n\
+        $color2 240 110 0\r\n\
+        $fadein 0.01\r\n\
+        $fxtime 0.25\r\n\
+        $holdtime 3.5\r\n\
+        $fadeout 1.5\r\n\
+        \r\n\
+        CR27\r\n\
+        {\r\n\
+        Black Mesa Research Facility\r\n\
+        Black Mesa, New Mexico\r\n\
+        }\r\n\
+        \r\n\
+        $position 0.1 0.8\r\n\
+        $effect 1\r\n\
+        CR1\r\n\
+        {\r\n\
+        Ted Backman\r\n\
+        }\r\n";
+
+    #[test]
+    fn titles_read_with_their_settings_carried_to_later_messages() {
+        let titles = parse_titles(TITLES.as_bytes());
+        assert_eq!(titles.len(), 2);
+
+        let intro = &titles["cr27"];
+        assert_eq!(
+            intro.text,
+            "Black Mesa Research Facility\nBlack Mesa, New Mexico"
+        );
+        assert_eq!((intro.x, intro.y, intro.effect), (-1., -1., WRITE_OUT));
+        assert_eq!((intro.colour, intro.colour2), ([100; 3], [240, 110, 0]));
+        assert_eq!((intro.fade_in, intro.settle), (0.01, 0.25));
+        assert_eq!((intro.hold, intro.fade_out), (3.5, 1.5));
+
+        // Only the place and effect change, the rest carries on
+        let credit = &titles["cr1"];
+        assert_eq!(credit.text, "Ted Backman");
+        assert_eq!((credit.x, credit.y, credit.effect), (0.1, 0.8, 1));
+        assert_eq!((credit.colour, credit.hold), ([100; 3], 3.5));
+    }
+
+    #[test]
+    fn a_stray_brace_leaves_no_titles_as_in_the_engine() {
+        assert!(parse_titles(b"A\n{\ntext\n{\n}\n").is_empty());
+        assert!(parse_titles(b"A\n}\n").is_empty());
+    }
+
+    #[test]
+    fn a_title_shows_once_and_clears_its_place() {
+        let titles = parse_titles(TITLES.as_bytes());
+        let mut messages = HudMessages::default();
+        messages.message(&body(1, -1., -1., 5., "server"), SourceTime(0.));
+
+        // At the same place as the server's text, it takes over
+        messages.title("CR27", titles.get("cr27").cloned(), SourceTime(1.));
+        let shown = messages.at(SourceTime(1.));
+        assert_eq!(shown.len(), 1);
+        assert!(shown[0].message.text.starts_with("Black Mesa"));
+
+        // Sent again while listed, it keeps its start
+        messages.title("CR27", titles.get("cr27").cloned(), SourceTime(2.));
+        assert_eq!(messages.at(SourceTime(2.))[0].since, 1.);
+    }
+
+    #[test]
+    fn a_name_the_file_lacks_shows_as_the_one_custom_message() {
+        let mut messages = HudMessages::default();
+        messages.title("#Hello", None, SourceTime(0.));
+        let shown = messages.at(SourceTime(0.));
+        assert_eq!(shown[0].message.text, "#Hello");
+        assert_eq!((shown[0].message.x, shown[0].message.y), (-1., 0.7));
+
+        // A second custom message takes over the first's text and start
+        messages.title("World", None, SourceTime(1.));
+        let shown = messages.at(SourceTime(1.));
+        assert_eq!(shown.len(), 1);
+        assert_eq!(
+            (shown[0].message.text.as_str(), shown[0].since),
+            ("World", 1.)
+        );
     }
 
     #[test]

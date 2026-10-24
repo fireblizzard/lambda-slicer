@@ -74,8 +74,8 @@ Good to know
   Other players usually show up only while the recorder could see them.
 - Some clips can't be cut, for example across a map change or while a map
   is loading. The app tells you why.
-- The demo player doesn't show everything yet. The flashlight, chapter
-  titles, dynamic lights, particles and voice chat are among what's missing.
+- The demo player doesn't show everything yet. The flashlight, dynamic
+  lights, particles and voice chat are among what's missing.
 - The app is in 14 languages, chosen in Settings. Apart from English, they
   are drafts that native speakers haven't checked yet.
 - Settings and clips are kept in %APPDATA%\lambda-slicer, and the library in

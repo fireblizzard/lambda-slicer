@@ -52,7 +52,13 @@ pub struct GameFiles {
     pub sprite_frames: SpriteFrames,
     /// A decal's place in `decals.wad` by its name
     pub decal_index: DecalIndex,
+    /// A message of `titles.txt` by its name
+    pub titles: Titles,
 }
+
+/// Where playback finds a message of `titles.txt`, by its name ignoring
+/// case
+pub type Titles = std::sync::Arc<dyn Fn(&str) -> Option<hud_messages::HudMessage> + Send + Sync>;
 
 /// Where playback learns a decal's place in `decals.wad`, by its name
 pub type DecalIndex = std::sync::Arc<dyn Fn(&str) -> Option<u16> + Send + Sync>;

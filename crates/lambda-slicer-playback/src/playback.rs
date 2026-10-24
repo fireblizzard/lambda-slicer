@@ -34,7 +34,7 @@ use crate::events::angle_vectors;
 use crate::events::{ATTN_NORM, Action, ClientEvent, Events, PITCH_NORM, SoundCall, handle};
 use crate::gauss;
 use crate::hud::{ChatLine, Countdown, DeathNotice, Hud};
-use crate::hud_messages::ShownMessage;
+use crate::hud_messages::{HudMessage, ShownMessage};
 use crate::scene::{self, Camera, Entity, PlayerView, Scene, Viewmodel};
 use crate::scores::ScoreRow;
 use crate::source::{Cursor, Group, Source};
@@ -122,6 +122,7 @@ type Sequences = Box<dyn Fn(&str) -> Option<Arc<[Sequence]>> + Send>;
 type Hulls = Box<dyn Fn(&str) -> Option<Arc<Hull>> + Send>;
 type SpriteFrames = Box<dyn Fn(&str) -> Option<u32> + Send>;
 type DecalIndex = Box<dyn Fn(&str) -> Option<u16> + Send>;
+type Titles = Box<dyn Fn(&str) -> Option<HudMessage> + Send>;
 
 pub struct Playback {
     path: Arc<Path>,
@@ -137,6 +138,7 @@ pub struct Playback {
     hulls: Hulls,
     sprite_frames: SpriteFrames,
     decal_index: DecalIndex,
+    titles: Titles,
     /// The map traced through and its world, once read
     hull: Option<(String, Option<Arc<Hull>>)>,
     /// True when the caller no longer wants the seek under way
@@ -191,6 +193,7 @@ impl Playback {
             hulls: Box::new(|_| None),
             sprite_frames: Box::new(|_| None),
             decal_index: Box::new(|_| None),
+            titles: Box::new(|_| None),
             hull: None,
             interrupt: Box::new(|| false),
         })
@@ -241,6 +244,8 @@ impl Playback {
         self.sprite_frames = Box::new(move |sprite| frames(sprite));
         let decal_index = files.decal_index.clone();
         self.decal_index = Box::new(move |name| decal_index(name));
+        let titles = files.titles.clone();
+        self.titles = Box::new(move |name| titles(name));
         self.hull = None;
     }
 
@@ -390,6 +395,7 @@ impl Playback {
         let lengths: &dyn Fn(&SoundName) -> SoundLength = &*self.lengths;
         let frames: &dyn Fn(&str) -> Option<u32> = &*self.sprite_frames;
         let decal_index: &dyn Fn(&str) -> Option<u16> = &*self.decal_index;
+        let titles: &dyn Fn(&str) -> Option<HudMessage> = &*self.titles;
         let State {
             decoder,
             scene,
@@ -427,7 +433,7 @@ impl Playback {
                     let applied = decoder.network_frame(record.location, frame, |d, m| {
                         scene.on_message(d, m, time);
                         audio.on_message(d, m, time, lengths);
-                        if let Some(sample) = hud.on_message(d, m, time, &scene.camera) {
+                        if let Some(sample) = hud.on_message(d, m, time, &scene.camera, titles) {
                             let call = hud_sound(d, sample, scene.camera.origin);
                             audio.play(&call, time, view_entity(d), lengths);
                         }
