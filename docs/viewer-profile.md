@@ -384,6 +384,11 @@ leaves those items for the sprites ("Viewmodel and sprites"). They are index-alp
 palette's last (magenta for the .357 and its ammunition, yellow for the 9 mm weapons, green for the
 crossbow), and an ammunition box's icon is a box outline round a bullet.
 
+They are drawn in normal mode, and the game blends them by their index alpha rather than cutting
+them out, so a battery shows its shading with the floor through it. The viewer cut them out at
+first, which left flat shapes in one colour, and now blends a normal-mode index-alpha sprite by its
+texels' alpha as the game does (2026-10-24, compared with a screenshot of a battery on `boot_camp`).
+
 ### World
 
 **Implemented**, from the game's renderer as GLQuake's source shows it, not yet compared with the
@@ -445,7 +450,7 @@ glow shell, and the sky's light on models.
 | Sprites | `IDSP` version 2, single frames and frame groups, in normal, additive, index-alpha and alpha-tested formats. Every sprite in the surveyed install reads (268, AG's sprite items included) |
 | Sprite entities | an entity whose model is a `.spr`, or one of AG's sprites under a `.mdl` name, at its frame and scale (0 meaning 1) |
 | Orientation | facing the view, facing the view upright, facing the camera's position upright, turned by the entity's angles, or facing the view rolled by the entity, as the five `SPR_` types say |
-| Render modes | normal and alpha modes cut out at half alpha, texture and colour modes blended by the render amount, additive mode added, and glow added without depth, fading as 19000 over the squared distance between 0.05 and 1, and grown by its distance over 200 to keep its size on screen unless it is steady. A glow the world hides from the eye, the line to it stopping more than 8 units short, is not drawn, brush entities and models hiding none (`R_SpriteGlowBlend`). Every mode takes the render colour, white when it is black, as Xash3D says the engine's sprite drawing does (at first only additive and glowing sprites did). Drawn together with translucent models and brushes, all from the furthest in |
+| Render modes | normal and alpha modes cut out at half alpha, except an index-alpha sprite in normal mode, blended by its texels' alpha, texture and colour modes blended by the render amount, additive mode added, and glow added without depth, fading as 19000 over the squared distance between 0.05 and 1, and grown by its distance over 200 to keep its size on screen unless it is steady. A glow the world hides from the eye, the line to it stopping more than 8 units short, is not drawn, brush entities and models hiding none (`R_SpriteGlowBlend`). Every mode takes the render colour, white when it is black, as Xash3D says the engine's sprite drawing does (at first only additive and glowing sprites did). Drawn together with translucent models and brushes, all from the furthest in |
 
 Not drawn yet: the bob the game adds to the viewmodel.
 

@@ -568,6 +568,7 @@ struct SpriteFrame {
 
 struct SpriteGpu {
     orientation: Orientation,
+    format: sprite::Format,
     frames: Vec<SpriteFrame>,
 }
 
@@ -737,9 +738,10 @@ fn normalize(v: [f32; 3]) -> [f32; 3] {
 }
 
 /// A sprite's six corners as two triangles, its pipeline and its distance
-/// from the camera, turned as its orientation turns it (`R_DrawSpriteModel`)
+/// from the camera, turned as its orientation turns it and drawn as its
+/// format and render mode say (`R_DrawSpriteModel`)
 fn sprite_quad(
-    orientation: Orientation,
+    (orientation, format): (Orientation, sprite::Format),
     frame_origin: [i32; 2],
     frame_size: [u32; 2],
     s: &SpriteInstance,
@@ -779,6 +781,12 @@ fn sprite_quad(
     // Every mode takes the render colour, black meaning none
     let tint = if s.color == [0.; 3] { [1.; 3] } else { s.color };
     let (pass, color) = match s.mode {
+        // A sprite whose texels carry their alpha in their index blends by
+        // it even drawn normally, as AG's battery does, a sprite in place
+        // of the model
+        RenderMode::Normal if format == sprite::Format::IndexAlpha => {
+            (SpritePass::Blend, [tint[0], tint[1], tint[2], 1.])
+        }
         RenderMode::Normal => (SpritePass::Cut, [tint[0], tint[1], tint[2], 2.]),
         // A sprite blends by its texels' own alpha and the render amount,
         // as smoke's soft edges need, rather than cutting them out as a
@@ -1469,6 +1477,7 @@ impl Scene {
             .collect();
         self.sprites.push(SpriteGpu {
             orientation: sprite.orientation,
+            format: sprite.format,
             frames,
         });
         SpriteHandle(self.sprites.len() - 1)
@@ -1493,8 +1502,13 @@ impl Scene {
             .filter_map(|(i, s)| {
                 let gpu = self.sprites.get(s.sprite.0)?;
                 let frame = gpu.frames.get(s.frame % gpu.frames.len().max(1))?;
-                let (quad, pass, distance) =
-                    sprite_quad(gpu.orientation, frame.origin, frame.size, s, view);
+                let (quad, pass, distance) = sprite_quad(
+                    (gpu.orientation, gpu.format),
+                    frame.origin,
+                    frame.size,
+                    s,
+                    view,
+                );
                 Some((distance, i, pass, quad))
             })
             .collect();
@@ -2340,18 +2354,35 @@ mod tests {
             amount: 1.,
             ..sprite(RenderMode::Alpha)
         };
-        let (quad, pass, _) = sprite_quad(Orientation::Parallel, [-1, 1], [2, 2], &smoke, &view());
+        let (quad, pass, _) = sprite_quad(
+            (Orientation::Parallel, sprite::Format::Normal),
+            [-1, 1],
+            [2, 2],
+            &smoke,
+            &view(),
+        );
         assert_eq!(pass, SpritePass::Blend);
         assert_eq!(quad[0].color, [0.1, 0.1, 0.1, 1.]);
 
         let (_, pass, _) = sprite_quad(
-            Orientation::Parallel,
+            (Orientation::Parallel, sprite::Format::Normal),
             [-1, 1],
             [2, 2],
             &sprite(RenderMode::Normal),
             &view(),
         );
         assert_eq!(pass, SpritePass::Cut);
+
+        // Unless its texels carry their own alpha, as AG's battery's do
+        let (quad, pass, _) = sprite_quad(
+            (Orientation::Parallel, sprite::Format::IndexAlpha),
+            [-1, 1],
+            [2, 2],
+            &sprite(RenderMode::Normal),
+            &view(),
+        );
+        assert_eq!(pass, SpritePass::Blend);
+        assert_eq!(quad[0].color[3], 1.);
     }
 
     #[test]
@@ -2359,7 +2390,7 @@ mod tests {
         // Looking along x, right is -y and up is z. A 2 by 2 frame whose
         // top left is 1 left and 1 up of the origin, at scale 2
         let (quad, pass, distance) = sprite_quad(
-            Orientation::Parallel,
+            (Orientation::Parallel, sprite::Format::Normal),
             [-1, 1],
             [2, 2],
             &sprite(RenderMode::Normal),
@@ -2376,7 +2407,7 @@ mod tests {
         let mut v = view();
         v.angles = [45., 0., 0.];
         let (quad, _, _) = sprite_quad(
-            Orientation::FacingUpright,
+            (Orientation::FacingUpright, sprite::Format::Normal),
             [-1, 1],
             [2, 2],
             &sprite(RenderMode::Additive),
@@ -2386,7 +2417,7 @@ mod tests {
 
         // Additive sprites without a render colour are white, glow fades far
         let (quad, pass, _) = sprite_quad(
-            Orientation::Parallel,
+            (Orientation::Parallel, sprite::Format::Normal),
             [0, 0],
             [1, 1],
             &sprite(RenderMode::Additive),
