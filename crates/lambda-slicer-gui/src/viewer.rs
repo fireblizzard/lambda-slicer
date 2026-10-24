@@ -2245,10 +2245,17 @@ impl Viewer {
     }
 
     /// The field of view to draw with, zoomed in, chosen in Settings or
-    /// none for the recorded one
+    /// none for the recorded one. A free camera never takes the recorded
+    /// one, which narrows as the recorder zooms
     fn fov(&self) -> Option<f32> {
         if self.zoomed {
             return Some(self.settings.zoom_fov);
+        }
+
+        // A free camera looks through nobody's scope, so the recorder's
+        // zoom stays theirs
+        if self.free.is_some() {
+            return Some(self.settings.fov.unwrap_or(DEFAULT_FOV));
         }
         self.settings.fov
     }

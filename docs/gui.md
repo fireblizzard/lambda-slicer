@@ -106,7 +106,9 @@ when the line from the camera stops more than 8 units short of it, at the map's 
 brush entity drawn solid, such as a door or a walkway; a see-through one, such as a grate,
 hides nothing. A hidden player's name is left out unless players are seen through walls, and a
 free camera inside a wall is not hidden by it. Show position and view angles, in Settings, puts
-where the picture is seen from and the way it looks on its left, the free camera's when it is on. The keys are in the [README](../README.md#watching-a-demo).
+where the picture is seen from and the way it looks on its left, the free camera's when it is on. The
+free camera keeps the field of view chosen in Settings, or 90°, so it never narrows as the recorder
+zooms in with the crossbow or another scope, while Zoom still zooms it. The keys are in the [README](../README.md#watching-a-demo).
 
 In full screen the app hides its toolbar, status bar and demo list and asks the window to fill the
 screen. The seek bar and controls show over the bottom of the picture while paused, under the
