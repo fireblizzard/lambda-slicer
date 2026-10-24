@@ -817,6 +817,12 @@ impl Context {
             self.match_events.new_session();
             self.roster.new_session();
             self.scores.clear();
+
+            // Every part after the first starts with a change of map
+            if self.maps.len() > 1 {
+                let map = short_map_name(&String::from_utf8_lossy(&info.map_name));
+                self.match_events.map_changed(d, loc.playback_time(), map);
+            }
         }
 
         // A player who came, went or was renamed changes who plays

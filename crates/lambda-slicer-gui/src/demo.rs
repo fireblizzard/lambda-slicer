@@ -411,7 +411,8 @@ fn has_player(event: &Event, player: &str) -> bool {
     false
 }
 
-/// A vote, a timeout, a pause or sudden death, in words
+/// A vote, a timeout, a pause, sudden death, a change of map or a player
+/// starting or stopping spectating, in words
 fn describe_match(catalog: &Catalog, change: &MatchChange) -> String {
     let named = |s: &str| FluentValue::from(text::without_colours(s));
     match change {
@@ -453,6 +454,12 @@ fn describe_match(catalog: &Catalog, change: &MatchChange) -> String {
         MatchChange::Resumed => catalog.text("event-resumed"),
         MatchChange::SuddenDeath => catalog.text("event-sudden-death"),
         MatchChange::SuddenDeathOver => catalog.text("event-sudden-death-over"),
+        MatchChange::MapChanged { map } => catalog.text_with(
+            "event-map-changed",
+            &[("map", FluentValue::from(map.clone()))],
+        ),
+        MatchChange::Spectating => catalog.text("event-spectating"),
+        MatchChange::Playing => catalog.text("event-playing"),
     }
 }
 

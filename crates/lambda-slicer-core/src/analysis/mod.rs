@@ -299,7 +299,10 @@ pub fn analyze_demo_with(
         coverage,
         maps: std::mem::take(&mut context.maps),
         chat: std::mem::take(&mut context.chat),
-        match_events: std::mem::take(&mut context.match_events.events),
+        match_events: {
+            context.match_events.finish();
+            std::mem::take(&mut context.match_events.events)
+        },
         counted: context.roster.counted(),
         scoreboard,
         score_updates,

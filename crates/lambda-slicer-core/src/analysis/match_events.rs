@@ -11,10 +11,24 @@
 //! called it as `Timeout called by` and the name. `SuddenDeath` turns
 //! sudden death on or off, and the engine's `svc_setpause` pauses and
 //! resumes the game
+//!
+//! A new part of the demo, after a level change or a reconnect, names the
+//! map it is on. `Spectator` is a player's entity and whether they now
+//! spectate. The server sends it again for players already known, so only
+//! a change counts, and a player not yet known to spectate plays. A player
+//! joining is often switched back and forth at one instant, so a player's
+//! switches at one instant count as one change, none when they end as they
+//! began. Spectator proxies such as HLTV, whose userinfo has `*hltv`, and
+//! players with no name yet are left out
+
+use std::collections::BTreeSet;
 
 use serde::Serialize;
 
-use crate::state::{Decoder, PlayerIdentity};
+use crate::state::{Decoder, PlayerIdentity, userinfo_value};
+
+/// The userinfo key a spectator proxy carries
+const PROXY_KEY: &[u8] = b"*hltv";
 
 /// `Vote`'s statuses, nought hiding it
 pub const VOTE_OPEN: u8 = 1;
@@ -65,6 +79,14 @@ pub enum MatchChange {
     Resumed,
     SuddenDeath,
     SuddenDeathOver,
+    /// A new part of the demo on this map, after a level change or a
+    /// reconnect
+    MapChanged {
+        map: String,
+    },
+    /// A player started spectating, or stopped and plays again
+    Spectating,
+    Playing,
 }
 
 /// One change, and the player behind it when there is one, who called a
@@ -117,6 +139,30 @@ pub struct MatchEvents {
     timeout_caller: Option<String>,
     paused: bool,
     sudden_death: bool,
+    /// The entities of the players spectating
+    spectating: BTreeSet<u8>,
+    /// Switches at the latest instant, kept until time moves on
+    switches: Vec<Switch>,
+}
+
+/// A player's switches at one instant, from whether they spectated before
+/// it to whether they do after it
+#[derive(Clone, Debug)]
+struct Switch {
+    entity: u8,
+    segment: u32,
+    time: f32,
+    before: bool,
+    after: bool,
+    player: Option<PlayerIdentity>,
+}
+
+/// Whether the player at `entity` is a spectator proxy
+fn is_proxy(d: &Decoder, entity: u8) -> bool {
+    let slot = entity.wrapping_sub(1);
+    d.players
+        .get(&slot)
+        .is_some_and(|p| userinfo_value(&p.info, PROXY_KEY).is_some())
 }
 
 /// A string ending at its first nought, and what follows it
@@ -129,6 +175,7 @@ fn c_string(bytes: &[u8]) -> (String, &[u8]) {
 impl MatchEvents {
     /// A new session, where nothing lasts from the one before
     pub fn new_session(&mut self) {
+        self.finish();
         let events = std::mem::take(&mut self.events);
         *self = Self {
             events,
@@ -152,8 +199,44 @@ impl MatchEvents {
         });
     }
 
+    /// Record the switches still kept, once the recording ends
+    pub fn finish(&mut self) {
+        self.settle(None, f32::INFINITY);
+    }
+
+    /// Record the switches kept from before `time`, those that changed
+    /// whether their player spectates. A player joining is switched before
+    /// their name arrives, so one still unnamed is looked up again in `d`
+    fn settle(&mut self, d: Option<&Decoder>, time: f32) {
+        let (done, kept): (Vec<Switch>, Vec<Switch>) =
+            self.switches.drain(..).partition(|s| s.time < time);
+        self.switches = kept;
+
+        for switch in done {
+            if switch.before == switch.after {
+                continue;
+            }
+            let named_now = || d.and_then(|d| d.player_for_entity(i64::from(switch.entity)));
+            let Some(player) = switch.player.or_else(named_now) else {
+                continue;
+            };
+            let change = if switch.after {
+                MatchChange::Spectating
+            } else {
+                MatchChange::Playing
+            };
+            self.events.push(MatchEvent {
+                segment: switch.segment,
+                time: switch.time,
+                player: Some(player),
+                change,
+            });
+        }
+    }
+
     /// `svc_setpause`, the game paused or not
     pub fn pause(&mut self, d: &Decoder, time: f32, paused: bool) {
+        self.settle(Some(d), time);
         if paused == self.paused {
             return;
         }
@@ -167,9 +250,17 @@ impl MatchEvents {
         self.push(d, time, None, change);
     }
 
+    /// A new part of the demo at `time` on the map `map`
+    pub fn map_changed(&mut self, d: &Decoder, time: f32, map: String) {
+        self.settle(Some(d), time);
+        self.push(d, time, None, MatchChange::MapChanged { map });
+    }
+
     /// The user message `name` with `body` at `time`, if it is one of these
     pub fn message(&mut self, d: &Decoder, time: f32, name: &str, body: &[u8]) {
+        self.settle(Some(d), time);
         match name {
+            "Spectator" => self.spectator(d, time, body),
             "Vote" => self.vote(d, time, body),
             "Timeout" => self.timeout(d, time, body),
             "SuddenDeath" => {
@@ -192,6 +283,39 @@ impl MatchEvents {
             }
             _ => {}
         }
+    }
+
+    /// A `Spectator`, kept as a switch of its player at this instant
+    fn spectator(&mut self, d: &Decoder, time: f32, body: &[u8]) {
+        let (Some(&entity), Some(&on)) = (body.first(), body.get(1)) else {
+            return;
+        };
+
+        let spectating = on != 0;
+        let changed = if spectating {
+            self.spectating.insert(entity)
+        } else {
+            self.spectating.remove(&entity)
+        };
+        if !changed || is_proxy(d, entity) {
+            return;
+        }
+
+        // The name known last at this instant names the player
+        let player = d.player_for_entity(i64::from(entity));
+        if let Some(switch) = self.switches.iter_mut().find(|s| s.entity == entity) {
+            switch.after = spectating;
+            switch.player = player.or(switch.player.take());
+            return;
+        }
+        self.switches.push(Switch {
+            entity,
+            segment: d.segment,
+            time,
+            before: !spectating,
+            after: spectating,
+            player,
+        });
     }
 
     /// A `Vote`, recorded when it is called, when its tally changes and when
@@ -290,6 +414,62 @@ mod tests {
 
     fn changes(events: &MatchEvents) -> Vec<MatchChange> {
         events.events.iter().map(|e| e.change.clone()).collect()
+    }
+
+    /// A decoder with `name` in the first slot, entity 1, and a spectator
+    /// proxy in the second
+    fn decoder_with(name: &str) -> Decoder {
+        let mut d = Decoder::new();
+        d.max_clients = 8;
+        let player = |slot: u8, name: &str, info: &[u8]| crate::state::PlayerInfo {
+            slot,
+            user_id: u32::from(slot) + 1,
+            info: info.to_vec(),
+            name: name.to_owned(),
+            incarnation: 0,
+        };
+        d.players.insert(0, player(0, name, br"\name\p"));
+        d.players
+            .insert(1, player(1, "HLTV", br"\name\HLTV\*hltv\1"));
+        d
+    }
+
+    #[test]
+    fn switches_at_one_instant_count_once_and_proxies_are_left_out() {
+        let d = decoder_with("punk");
+        let mut m = MatchEvents::default();
+
+        // A join switches back and forth at once, and ends spectating
+        m.message(&d, 1., "Spectator", &[1, 1]);
+        m.message(&d, 1., "Spectator", &[1, 0]);
+        m.message(&d, 1., "Spectator", &[1, 1]);
+        m.message(&d, 1., "Spectator", &[2, 1]);
+
+        // Sent again while known, then back to playing
+        m.message(&d, 5., "Spectator", &[1, 1]);
+        m.message(&d, 9., "Spectator", &[1, 0]);
+        m.finish();
+
+        assert_eq!(changes(&m), [MatchChange::Spectating, MatchChange::Playing]);
+        let named: Vec<_> = m
+            .events
+            .iter()
+            .map(|e| e.player.clone().map(|p| p.name))
+            .collect();
+        assert_eq!(named, [Some("punk".into()), Some("punk".into())]);
+    }
+
+    #[test]
+    fn a_change_of_map_names_the_new_map() {
+        let d = Decoder::new();
+        let mut m = MatchEvents::default();
+        m.map_changed(&d, 900., "elixir".into());
+        assert_eq!(
+            changes(&m),
+            [MatchChange::MapChanged {
+                map: "elixir".into()
+            }]
+        );
     }
 
     #[test]

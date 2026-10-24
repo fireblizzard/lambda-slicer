@@ -1445,7 +1445,10 @@ fn copied(catalog: &Catalog, event: &Event, what: &str, longest: f32) -> String 
             Some(sender) => format!("{sender}: {what}"),
             None => what.to_owned(),
         },
-        EventKind::Match(_) => what.to_owned(),
+        EventKind::Match(_) => match actor {
+            Some(player) => format!("{player} · {what}"),
+            None => what.to_owned(),
+        },
         EventKind::Action { .. } | EventKind::Switch => {
             let actor = actor.unwrap_or_else(|| catalog.text("lane-unknown"));
             format!("{actor} · {what}")
