@@ -730,6 +730,18 @@ impl DemoView {
             paint_badge(ui, &mut line, &response, badge, k);
         }
 
+        // A right click copies the event as one line of text
+        response.context_menu(|ui| {
+            let label = catalog.text("event-copy");
+            let label = text::widget_text(ui.ctx(), &label, rtl, None, Look::Plain);
+            let copy = widgets::Button::new(Some(Icon::Copy), label, Variant::Default, rtl);
+            if ui.add(copy).clicked() {
+                let what = self.what(catalog, index);
+                ui.ctx().copy_text(copied(catalog, event, &what, longest));
+                ui.close();
+            }
+        });
+
         let truncated = self.paint_parts(ui, &mut line, catalog, rtl, model, index);
         if truncated {
             let full = self.event_summary(catalog, index, false);
@@ -1321,6 +1333,70 @@ fn paint_badge(ui: &Ui, line: &mut RowLine, row: &Response, badge: &Badge, k: us
     }
 }
 
+/// `event` as one line of text to copy, its time as the list shows it and
+/// then what happened, as `what` words it. A kill reads as a sentence, such
+/// as `01:46.817 | andriu killed -<[ATK]>-naz with rpg_rocket`, and chat as
+/// its sender and line. Names lose their colour codes, and the marks Fluent
+/// puts around arguments are left out
+fn copied(catalog: &Catalog, event: &Event, what: &str, longest: f32) -> String {
+    let time = event_clock(event.time, longest);
+    let actor = event.actor.as_deref().map(text::player_name);
+
+    let line = match &event.kind {
+        EventKind::Kill {
+            victim,
+            weapon_name,
+            cause,
+            headshot,
+            ..
+        } => {
+            let killed = kill_sentence(catalog, event, *cause, victim.as_deref(), weapon_name);
+            if *headshot == Some(true) {
+                format!("{killed} · {}", catalog.text("event-headshot"))
+            } else {
+                killed
+            }
+        }
+        EventKind::Chat { .. } => match actor {
+            Some(sender) => format!("{sender}: {what}"),
+            None => what.to_owned(),
+        },
+        EventKind::Match(_) => what.to_owned(),
+        EventKind::Action { .. } | EventKind::Switch => {
+            let actor = actor.unwrap_or_else(|| catalog.text("lane-unknown"));
+            format!("{actor} · {what}")
+        }
+    };
+
+    format!("{time} | {line}").replace(['\u{2068}', '\u{2069}'], "")
+}
+
+/// A kill as a sentence by its cause. One with no killer named, such as a
+/// fall or a monster, says the victim died
+fn kill_sentence(
+    catalog: &Catalog,
+    event: &Event,
+    cause: KillCause,
+    victim: Option<&str>,
+    weapon: &str,
+) -> String {
+    let name = |n: Option<&str>| n.map_or_else(|| catalog.text("lane-unknown"), text::player_name);
+    let id = match cause {
+        KillCause::Suicide => "event-copy-suicide",
+        KillCause::Teammate => "event-copy-teamkill",
+        KillCause::World | KillCause::Environment | KillCause::Monster => "event-copy-death",
+        _ if event.actor.is_none() => "event-copy-death",
+        _ => "event-copy-kill",
+    };
+
+    let args = [
+        ("killer", FluentValue::from(name(event.actor.as_deref()))),
+        ("victim", FluentValue::from(name(victim))),
+        ("weapon", FluentValue::from(weapon.to_owned())),
+    ];
+    catalog.text_with(id, &args)
+}
+
 /// What every row of the event list shares, the highlight chosen and the
 /// longest time of the demo
 #[derive(Clone, Copy)]
@@ -1352,6 +1428,78 @@ mod tests {
     use lambda_slicer_core::analysis::weapons::Action;
 
     use super::*;
+
+    /// A kill at 1:46.817 by `killer` with `weapon`, of this cause
+    fn kill(killer: Option<&str>, weapon: &str, cause: KillCause) -> Event {
+        let features = KillFeatures {
+            key: crate::timeline::KillKey {
+                segment: 0,
+                ordinal: 0,
+            },
+            killer_motion: None,
+            victim_motion: None,
+            shot: None,
+            victim: None,
+            killer_team: None,
+            victim_team: None,
+            gauss: false,
+            gauss_kill: None,
+        };
+
+        Event {
+            segment: 0,
+            time: 106.817,
+            lane: 0,
+            actor: killer.map(str::to_owned),
+            weapon: None,
+            kind: EventKind::Kill {
+                victim: Some("-<[ATK]>-^1naz".into()),
+                weapon_name: weapon.into(),
+                cause,
+                killer: None,
+                headshot: None,
+                features: Box::new(features),
+            },
+        }
+    }
+
+    #[test]
+    fn a_copied_kill_reads_as_a_sentence_without_colour_codes() {
+        let catalog = Catalog::new(crate::i18n::Locale::En);
+        let copy = |e: &Event| copied(&catalog, e, "", 1200.);
+
+        let shot = kill(Some("andriu"), "rpg_rocket", KillCause::PlayerWeapon);
+        assert_eq!(
+            copy(&shot),
+            "01:46.817 | andriu killed -<[ATK]>-naz with rpg_rocket"
+        );
+
+        let fall = kill(None, "world", KillCause::World);
+        assert_eq!(copy(&fall), "01:46.817 | -<[ATK]>-naz died from world");
+
+        let own = kill(Some("-<[ATK]>-naz"), "rpg_rocket", KillCause::Suicide);
+        assert_eq!(
+            copy(&own),
+            "01:46.817 | -<[ATK]>-naz killed themselves with rpg_rocket"
+        );
+    }
+
+    #[test]
+    fn copied_chat_reads_as_its_sender_and_line() {
+        let catalog = Catalog::new(crate::i18n::Locale::En);
+        let chat = Event {
+            segment: 0,
+            time: 7.25,
+            lane: 0,
+            actor: Some("^2andriu".into()),
+            weapon: None,
+            kind: EventKind::Chat {
+                text: "gg".into(),
+                place: None,
+            },
+        };
+        assert_eq!(copied(&catalog, &chat, "gg", 50.), "07.250 | andriu: gg");
+    }
 
     #[test]
     fn event_times_leave_out_what_the_demo_never_reaches() {
