@@ -86,7 +86,15 @@ jobs:
             "dist/lambda-slicer-$version-linux-x86_64.tar.gz"
             "dist/lambda-slicer-$version-linux-x86_64.tar.gz.sha256"
           )
-          for file in "${files[@]}"; do test -s "$file"; done
+          for file in "${files[@]}"; do
+            if [[ ! -s "$file" ]]; then
+              echo "::error::$file is missing or empty"
+              ls -la dist
+              exit 1
+            fi
+          done
+          # A checksum file written with Windows line endings is read the same
+          sed -i 's/\r$//' dist/*.sha256
           (cd dist && sha256sum -c ./*.sha256)
           if gh release view "$tag" >/dev/null 2>&1; then
             gh release upload "$tag" "${files[@]}" --clobber

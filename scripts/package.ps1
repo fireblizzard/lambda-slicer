@@ -38,7 +38,9 @@ try {
     if (Test-Path $zip) { Remove-Item -Force $zip }
     Compress-Archive -Path $stage -DestinationPath $zip
     $hash = (Get-FileHash -Algorithm SHA256 $zip).Hash.ToLower()
-    "$hash  $name.zip" | Set-Content -Encoding ascii "$zip.sha256"
+    # One line ending in LF, as sha256sum -c on Linux reads it. Set-Content
+    # would end it in CRLF on Windows, which makes the name not match
+    Set-Content -NoNewline -Encoding ascii -Path "$zip.sha256" -Value "$hash  $name.zip`n"
 
     Write-Host "$zip"
     Write-Host "sha256 $hash"
