@@ -2066,8 +2066,13 @@ impl Viewer {
         });
 
         // Players through walls, a setting the app saves
-        let see_through = catalog.text("viewer-see-through");
-        let button = IconButton::new(Icon::Eye, &see_through).selected(self.settings.see_through);
+        let shortcut = catalog.text_with("viewer-shortcut", &[("key", FluentValue::from("X"))]);
+        let label = format!(
+            "{}
+{shortcut}",
+            catalog.text("viewer-see-through")
+        );
+        let button = IconButton::new(Icon::Eye, &label).selected(self.settings.see_through);
         let response = ui.add_enabled(self.assets, button);
         let response = response
             .on_hover_text(text::help(
@@ -2249,6 +2254,10 @@ impl Viewer {
         }
         if pressed(egui::Key::C) {
             self.toggle_free();
+            ctx.request_repaint();
+        }
+        if pressed(egui::Key::X) && self.assets {
+            self.settings.see_through = !self.settings.see_through;
             ctx.request_repaint();
         }
 
