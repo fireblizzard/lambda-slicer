@@ -428,6 +428,8 @@ help-players-column = Gracze w grze, bez obserwatorów, liczeni w chwili rozpocz
 help-teams-column = Drużyny, w których jest co najmniej jeden gracz, liczone tak jak gracze. Gra bez drużyn nie ma żadnej.
 filter-min-accuracy = Celność co najmniej (%)
 scores-accuracy = Cel.
+scores-kd = K/D
+help-kd = Fragi na zgon, czyli fragi podzielone przez zgony. Gracz, który ani razu nie zginął, ma tu swoje fragi.
 
 help-headshots = Zabójstwa trafieniem w głowę, rozpoznane po animacji śmierci ofiary. Wybuchy się nie liczą. Pokazywane są tylko zabójstwa nagrywającego, bo inni gracze często zabijają poza jego polem widzenia. W pojedynku pokazywane są też zabójstwa przeciwnika, bo wszystkie dotyczą nagrywającego.
 help-headshots-column = Zabójstwa nagrywającego trafieniem w głowę, rozpoznane po animacji śmierci ofiary. Wybuchy się nie liczą. Zabójstwa innych graczy nie są liczone, bo często dzieją się poza polem widzenia nagrania.

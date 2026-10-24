@@ -391,6 +391,8 @@ help-players-column = Oyundaki oyuncular, izleyiciler hariç; maç geri sayımda
 help-teams-column = İçinde en az bir oyuncu olan takımlar, oyuncular gibi sayılır. Takımsız bir oyunda takım yoktur.
 filter-min-accuracy = En az isabet (%)
 scores-accuracy = İsabet
+scores-kd = K/D
+help-kd = Ölüm başına frag, yani fraglar bölü ölümler. Hiç ölmeyen bir oyuncunun fragları gösterilir.
 
 help-headshots = Kafaya isabetle yapılan öldürmeler; kurbanın ölüm animasyonundan anlaşılır. Patlamalar sayılmaz. Yalnızca kaydedenin öldürmeleri gösterilir, çünkü diğer oyuncular çoğu zaman kaydın göremediği yerlerde öldürür. Düelloda rakibinkiler de gösterilir, çünkü rakibin tüm öldürmeleri kaydedene karşıdır.
 help-headshots-column = Kaydedenin kafaya isabetle yaptığı öldürmeler; kurbanın ölüm animasyonundan anlaşılır. Patlamalar sayılmaz. Diğer oyuncuların öldürmeleri sayılmaz, çünkü çoğu zaman kaydın göremediği yerlerde olur.

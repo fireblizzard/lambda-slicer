@@ -403,6 +403,8 @@ help-players-column = Spieler im Spiel, keine Zuschauer, gezählt beim Start des
 help-teams-column = Teams mit mindestens einem Spieler, gezählt wie die Spieler. Ein Spiel ohne Teams hat keine.
 filter-min-accuracy = Treffsicherheit mindestens (%)
 scores-accuracy = Treff.
+scores-kd = K/D
+help-kd = Frags pro Tod, also die Frags geteilt durch die Tode. Wer nie gestorben ist, bekommt seine Frags angezeigt.
 
 help-headshots = Abschüsse durch einen Treffer am Kopf, erkannt an der Todesanimation des Opfers. Explosionen zählen nicht. Gezeigt werden nur die der aufnehmenden Person, weil andere Spieler oft außerhalb ihres Blickfelds abschießen. Im Duell auch die des Gegners, da alle seine Abschüsse die aufnehmende Person treffen.
 help-headshots-column = Abschüsse der aufnehmenden Person durch einen Treffer am Kopf, erkannt an der Todesanimation des Opfers. Explosionen zählen nicht. Abschüsse anderer Spieler zählen nicht, weil sie oft außerhalb des Blickfelds der Aufnahme geschehen.

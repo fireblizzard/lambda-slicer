@@ -421,6 +421,8 @@ help-players-column = Jogadores no jogo, sem contar espectadores, contados quand
 help-teams-column = Equipes com pelo menos um jogador, contadas como os jogadores. Um jogo sem equipes não tem nenhuma.
 filter-min-accuracy = Precisão mínima (%)
 scores-accuracy = Prec.
+scores-kd = K/D
+help-kd = Abates por morte: os abates divididos pelas mortes. Se o jogador nunca morreu, aparecem os abates dele.
 
 help-headshots = Abates por headshot, lidos da animação de morte da vítima. Explosões não contam. Só aparecem os headshots de quem gravou, porque os outros jogadores costumam matar fora da visão da gravação. Num duelo aparecem também os do adversário, já que todos os abates dele são em quem gravou.
 help-headshots-column = Headshots de quem gravou, lidos da animação de morte da vítima. Explosões não contam. Os dos outros jogadores não contam, porque costumam acontecer fora da visão da gravação.

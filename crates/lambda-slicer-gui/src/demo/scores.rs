@@ -24,10 +24,14 @@ use crate::theme;
 use crate::timeline::{EventKind, Model};
 use crate::widgets::{self, Variant};
 
+/// How many number columns a table has, accuracy, headshots, kills per
+/// death, deaths and frags from the trailing end
+const COLUMNS: usize = 5;
+
 /// A table row's height, the least width of each number column from the
 /// trailing end, accuracy first, and the gap a column keeps before the next
 const ROW_HEIGHT: f32 = 24.;
-const NUMBER_COLUMNS: [f32; 4] = [52., 40., 48., 48.];
+const NUMBER_COLUMNS: [f32; COLUMNS] = [52., 40., 52., 48., 48.];
 const COLUMN_GAP: f32 = theme::GAP_S;
 
 /// The two sides' totals over their comparison strip, and the strip
@@ -40,6 +44,9 @@ const RECORDER_MARK: f32 = 3.;
 
 /// What a value nobody can know shows as
 const UNKNOWN: &str = "—";
+
+/// Decimals a player's kills per death shows
+const KD_DECIMALS: usize = 2;
 
 /// One player's line of a table
 struct PlayerRow {
@@ -58,6 +65,12 @@ struct SideTable {
     colour: Color32,
     frags: i32,
     players: Vec<PlayerRow>,
+}
+
+/// A player's frags for each death, or their frags alone when they never
+/// died, so a player with no deaths still has a number
+fn kills_per_death(frags: i32, deaths: i32) -> f64 {
+    f64::from(frags) / f64::from(deaths.max(1))
 }
 
 /// Whether two sides' frags can be compared as shares of one strip, which
@@ -328,6 +341,7 @@ fn side_table(ui: &mut Ui, catalog: &Catalog, rtl: bool, table: &SideTable) {
             catalog.text("scores-headshots"),
             Some(catalog.text("help-headshots")),
         ),
+        (catalog.text("scores-kd"), Some(catalog.text("help-kd"))),
         (catalog.text("scores-deaths"), None),
         (catalog.text("scores-frags"), None),
     ];
@@ -372,9 +386,11 @@ fn side_table(ui: &mut Ui, catalog: &Catalog, rtl: bool, table: &SideTable) {
         let headshots = player
             .headshots
             .map_or_else(|| UNKNOWN.to_string(), |h| h.to_string());
+        let kd = kills_per_death(player.frags, player.deaths);
         let numbers = [
             accuracy,
             headshots,
+            catalog.number(kd, KD_DECIMALS),
             player.deaths.to_string(),
             player.frags.to_string(),
         ];
@@ -401,9 +417,9 @@ fn side_table(ui: &mut Ui, catalog: &Catalog, rtl: bool, table: &SideTable) {
 
 /// The part of a row left of its numbers, or right of them in a
 /// right-to-left interface
-fn row_name_cell(ui: &Ui, rtl: bool, cells: &[Rect; 4]) -> Rect {
+fn row_name_cell(ui: &Ui, rtl: bool, cells: &[Rect; COLUMNS]) -> Rect {
     let row = cells[0].y_range();
-    let last = &cells[3];
+    let last = &cells[COLUMNS - 1];
     let across = if rtl {
         Rangef::new(last.max.x, ui.max_rect().max.x)
     } else {
@@ -420,17 +436,17 @@ fn table_row(
     rtl: bool,
     name: &str,
     recorder: bool,
-    numbers: &[String; 4],
-    widths: &[f32; 4],
+    numbers: &[String; COLUMNS],
+    widths: &[f32; COLUMNS],
     colour: Color32,
-) -> [Rect; 4] {
+) -> [Rect; COLUMNS] {
     let width = ui.available_width();
     let (rect, _) = ui.allocate_exact_size(Vec2::new(width, ROW_HEIGHT), Sense::hover());
     let painter = ui.painter();
 
     // Numbers from the trailing end, each right-aligned in its column, or
     // left-aligned from the left in a right-to-left interface
-    let mut cells = [Rect::NOTHING; 4];
+    let mut cells = [Rect::NOTHING; COLUMNS];
     let mut edge = if rtl { rect.min.x } else { rect.max.x };
     let font = egui::TextStyle::Monospace.resolve(ui.style());
     for (k, number) in numbers.iter().enumerate() {
@@ -512,6 +528,13 @@ fn table_row(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn kills_per_death_divide_by_one_for_a_player_who_never_died() {
+        assert_eq!(kills_per_death(30, 20), 1.5);
+        assert_eq!(kills_per_death(7, 0), 7.);
+        assert_eq!(kills_per_death(-2, 4), -0.5);
+    }
 
     #[test]
     fn only_two_nonnegative_sides_with_a_score_compare() {

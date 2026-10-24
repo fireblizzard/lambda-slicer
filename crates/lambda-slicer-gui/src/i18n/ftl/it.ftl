@@ -417,6 +417,8 @@ help-players-column = I giocatori in partita, non gli spettatori, contati all’
 help-teams-column = Le squadre con almeno un giocatore, contate come i giocatori. Un gioco senza squadre non ne ha.
 filter-min-accuracy = Precisione minima (%)
 scores-accuracy = Prec.
+scores-kd = K/D
+help-kd = Frag per morte, cioè i frag divisi per le morti. Per chi non è mai morto vengono mostrati i suoi frag.
 
 help-headshots = Uccisioni con un colpo alla testa, riconosciute dall’animazione di morte della vittima. Le esplosioni non contano. Si mostrano solo quelle di chi registra, perché gli altri giocatori uccidono spesso fuori dalla sua vista. In un duello anche quelle dell’avversario, dato che colpiscono tutte chi registra.
 help-headshots-column = Uccisioni di chi registra con un colpo alla testa, riconosciute dall’animazione di morte della vittima. Le esplosioni non contano. Quelle degli altri giocatori non contano, perché avvengono spesso fuori dalla vista della registrazione.

@@ -404,6 +404,8 @@ help-players-column = Players in the game, not spectators, counted when the matc
 help-teams-column = Teams with a player on them, counted as the players are. A game without teams has none.
 filter-min-accuracy = Accuracy at least (%)
 scores-accuracy = Acc.
+scores-kd = K/D
+help-kd = Kills per death, the frags divided by the deaths. A player who never died shows their frags.
 
 help-headshots = Kills by a hit to the head, read from the death animation the victim plays. Explosions don’t count. Only the recording player’s are shown, because other players often kill out of the recording’s view. In a duel the opponent’s are shown too, since all their kills are of the recording player.
 help-headshots-column = The recording player’s kills by a hit to the head, read from the death animation the victim plays. Explosions don’t count. Other players’ kills aren’t counted, because they often happen out of the recording’s view.

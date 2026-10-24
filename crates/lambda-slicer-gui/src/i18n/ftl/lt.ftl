@@ -428,6 +428,8 @@ help-players-column = Žaidime esantys žaidėjai, ne stebėtojai, suskaičiuoti
 help-teams-column = Komandos, kuriose yra bent vienas žaidėjas, suskaičiuotos taip pat kaip žaidėjai. Žaidime be komandų jų nėra.
 filter-min-accuracy = Taiklumas bent (%)
 scores-accuracy = Taikl.
+scores-kd = K/D
+help-kd = Fragai vienai mirčiai: fragai, padalyti iš mirčių. Jei žaidėjas nė karto nemirė, rodomi jo fragai.
 
 help-headshots = Nužudymai pataikius į galvą, atpažinti iš aukos mirties animacijos. Sprogimai neskaičiuojami. Rodomi tik įrašančiojo nužudymai, nes kiti žaidėjai dažnai žudo už įrašo matomumo ribų. Dvikovoje rodomi ir priešininko, nes visi jo nužudymai yra įrašančiojo.
 help-headshots-column = Įrašančiojo nužudymai pataikius į galvą, atpažinti iš aukos mirties animacijos. Sprogimai neskaičiuojami. Kitų žaidėjų nužudymai neskaičiuojami, nes dažnai įvyksta už įrašo matomumo ribų.

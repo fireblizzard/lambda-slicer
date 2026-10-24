@@ -403,6 +403,8 @@ help-players-column = Pelissä olevat pelaajat, ei katsojia, laskettuna ottelun 
 help-teams-column = Joukkueet, joissa on pelaaja, laskettuna samoin kuin pelaajat. Pelissä ilman joukkueita niitä ei ole.
 filter-min-accuracy = Tarkkuus vähintään (%)
 scores-accuracy = Tark.
+scores-kd = K/D
+help-kd = Fragit kuolemaa kohden eli fragit jaettuna kuolemilla. Jos pelaaja ei kuollut kertaakaan, näytetään hänen fragiensa määrä.
 
 help-headshots = Tapot osumalla päähän, tunnistettu uhrin kuolinanimaatiosta. Räjähdykset eivät lasketa. Vain tallentajan tapot näytetään, koska muut pelaajat tappavat usein tallennuksen näkymän ulkopuolella. Kaksintaistelussa näytetään myös vastustajan tapot, koska ne kaikki kohdistuvat tallentajaan.
 help-headshots-column = Tallentajan tapot osumalla päähän, tunnistettu uhrin kuolinanimaatiosta. Räjähdykset eivät lasketa. Muiden pelaajien tappoja ei lasketa, koska ne tapahtuvat usein tallennuksen näkymän ulkopuolella.
