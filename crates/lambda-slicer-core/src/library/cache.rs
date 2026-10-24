@@ -458,6 +458,8 @@ pub struct FileQuery {
     /// Only the files at these paths, as [`FileRow::path`] shows them, none
     /// for every file
     pub only_paths: Option<Vec<String>>,
+    /// The files at these paths left out
+    pub except_paths: Vec<String>,
     /// Fewest and most players and teams, inclusive
     pub min_players: Option<i64>,
     pub max_players: Option<i64>,
@@ -1076,6 +1078,17 @@ impl Cache {
         if q.every_map { "f.all_maps" } else { "f.map" }
     }
 
+    /// Each of `paths` as an argument added to `args`, listed as their
+    /// places in the statement, such as `?4, ?5`
+    fn path_arguments(paths: &[String], args: &mut Vec<Box<dyn ToSql>>) -> String {
+        let mut places = Vec::new();
+        for path in paths {
+            args.push(Box::new(path.clone()));
+            places.push(format!("?{}", args.len()));
+        }
+        places.join(", ")
+    }
+
     /// The WHERE clause for `q` over `files` aliased `f`, with its arguments
     fn conditions(q: &FileQuery) -> (String, Vec<Box<dyn ToSql>>) {
         Self::conditions_with_kills(q, "1")
@@ -1091,18 +1104,17 @@ impl Cache {
             c.push(format!("instr(fold(f.path), ?{}) > 0", args.len()));
         }
         if let Some(paths) = &q.only_paths {
-            let mut places = Vec::new();
-            for path in paths {
-                args.push(Box::new(path.clone()));
-                places.push(format!("?{}", args.len()));
-            }
-
             // No paths at all lists nothing
-            if places.is_empty() {
+            if paths.is_empty() {
                 c.push("0".to_string());
             } else {
-                c.push(format!("f.path IN ({})", places.join(", ")));
+                let places = Self::path_arguments(paths, &mut args);
+                c.push(format!("f.path IN ({places})"));
             }
+        }
+        if !q.except_paths.is_empty() {
+            let places = Self::path_arguments(&q.except_paths, &mut args);
+            c.push(format!("f.path NOT IN ({places})"));
         }
         if let Some(m) = q.map.as_deref().filter(|m| !m.is_empty()) {
             args.push(Box::new(fold(m)));
@@ -1808,6 +1820,11 @@ mod tests {
         assert_eq!(found(&only), [("b.dem".into(), 0), ("b.dem".into(), 1)]);
         only.files.only_paths = Some(Vec::new());
         assert_eq!(found(&only), []);
+
+        // The matches of the files left out are left out too
+        let mut except = all.clone();
+        except.files.except_paths = vec!["b.dem".into()];
+        assert_eq!(found(&except), [("a.dem".into(), 0), ("a.dem".into(), 1)]);
 
         let mut boot_camp = all.clone();
         boot_camp.files.map = Some("BOOT".into());

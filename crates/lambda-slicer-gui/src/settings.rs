@@ -23,6 +23,9 @@ pub struct Settings {
     /// The demos marked as favourites, by their path as the library shows
     /// it
     pub favourites: Vec<String>,
+    /// The demos hidden from the library's list, by their path as the
+    /// library shows it
+    pub hidden_demos: Vec<String>,
     /// None uses the platform's cache directory
     pub cache: Option<PathBuf>,
     /// Library columns left out, gauss shots by default
@@ -289,6 +292,7 @@ impl Default for Settings {
             workers: 1,
             folders: Vec::new(),
             favourites: Vec::new(),
+            hidden_demos: Vec::new(),
             cache: None,
             hidden_columns: vec!["gauss".into()],
             start_tab: "demos".into(),
@@ -380,6 +384,7 @@ impl Settings {
         let mut restored = Self {
             folders: self.folders.clone(),
             favourites: self.favourites.clone(),
+            hidden_demos: self.hidden_demos.clone(),
             cache: self.cache.clone(),
             ..Self::default()
         };
@@ -406,6 +411,7 @@ mod tests {
             workers: 3,
             folders: vec![PathBuf::from("F:/demos")],
             favourites: vec!["F:/demos/run_92.dem".into()],
+            hidden_demos: vec!["F:/demos/run_93.dem".into()],
             cache: None,
             hidden_columns: Vec::new(),
             start_tab: "matches".into(),
@@ -486,6 +492,7 @@ mod tests {
             ..Settings::default()
         };
         s.favourites = vec!["F:/demos/run_92.dem".into()];
+        s.hidden_demos = vec!["F:/demos/run_93.dem".into()];
         s.viewer.game = Some(PathBuf::from("F:/Half-Life"));
         s.viewer.more_games = vec![PathBuf::from("G:/Half-Life")];
         s.viewer.decals = 5;
@@ -498,6 +505,7 @@ mod tests {
         assert_eq!(restored.viewer.game, s.viewer.game);
         assert_eq!(restored.viewer.more_games, s.viewer.more_games);
         assert_eq!(restored.favourites, s.favourites);
+        assert_eq!(restored.hidden_demos, s.hidden_demos);
         assert_eq!(restored.layout.settings_at, s.layout.settings_at);
 
         // Everything else is the default
@@ -507,6 +515,7 @@ mod tests {
         expected.viewer.game = None;
         expected.viewer.more_games.clear();
         expected.favourites.clear();
+        expected.hidden_demos.clear();
         expected.layout.settings_at = None;
         assert_eq!(expected, Settings::default());
     }

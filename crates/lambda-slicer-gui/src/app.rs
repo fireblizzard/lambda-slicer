@@ -82,8 +82,9 @@ pub struct Launch {
     pub dates: bool,
     /// Show the library's matches rather than its demos
     pub matches: bool,
-    /// List the favourite demos alone
+    /// List the favourite demos alone, or the hidden ones alone
     pub favourites: bool,
+    pub hidden: bool,
     /// Export every clip of the demo shown at start
     pub export: bool,
     /// Pseudo-localise every message, to find text that does not fit
@@ -275,6 +276,7 @@ impl App {
             .map(|p| LibraryView::new(p, settings.hidden_columns.clone()));
         if let Some(l) = &mut library {
             l.favourites = settings.favourites.clone();
+            l.hidden_demos = settings.hidden_demos.clone();
         }
         if let (Some(l), Some(d)) = (&mut library, &launch.demo) {
             l.select_path(d);
@@ -298,6 +300,9 @@ impl App {
             l.show_tab(tab);
             if launch.favourites {
                 l.show_favourites();
+            }
+            if launch.hidden {
+                l.show_hidden();
             }
         }
 
@@ -1627,6 +1632,13 @@ impl eframe::App for App {
         {
             l.favourites_changed = false;
             self.settings.favourites = l.favourites.clone();
+            self.save_settings();
+        }
+        if let Some(l) = &mut self.library
+            && l.hidden_changed
+        {
+            l.hidden_changed = false;
+            self.settings.hidden_demos = l.hidden_demos.clone();
             self.save_settings();
         }
         if self.demo.is_some() {

@@ -313,17 +313,11 @@ impl LibraryView {
     }
 
     /// The demo's menu on the row of `played`, which shows its demo in its
-    /// folder or makes it a favourite or no longer one, the row lit while
-    /// it is open
-    fn match_menu(
-        &mut self,
-        response: &Response,
-        played: &MatchRow,
-        favourite: bool,
-        catalog: &Catalog,
-        rtl: bool,
-    ) {
-        let choice = super::row_menu(response, &played.path, favourite, catalog, rtl);
+    /// folder, makes it a favourite or no longer one, or hides it or shows
+    /// it again, the row lit while it is open
+    fn match_menu(&mut self, response: &Response, played: &MatchRow, catalog: &Catalog, rtl: bool) {
+        let marks = self.marks(&played.path);
+        let choice = super::row_menu(response, &played.path, marks, catalog, rtl);
         if choice.open {
             self.matches.menu_open = Some((played.file_id, played.ordinal));
         }
@@ -384,8 +378,7 @@ impl LibraryView {
                         continue;
                     };
                     let response = self.match_list_row(ui, &played, catalog, rtl);
-                    let favourite = self.favourite(&played.path);
-                    self.match_menu(&response, &played, favourite, catalog, rtl);
+                    self.match_menu(&response, &played, catalog, rtl);
                     if response.clicked() {
                         clicked = Some(played);
                     }
@@ -590,7 +583,7 @@ impl LibraryView {
                             if response.clicked() {
                                 clicked = Some(index);
                             }
-                            self.match_menu(&response, &played, favourite, catalog, rtl);
+                            self.match_menu(&response, &played, catalog, rtl);
                         });
                     });
             });

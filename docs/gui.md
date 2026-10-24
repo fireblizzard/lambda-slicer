@@ -19,7 +19,8 @@ Other options are for testing, and the full list is at the top of
   saves the window. `--viewer-at SECONDS`, `--viewer-fullscreen`, `--tab` and `--settings` choose
   what it shows.
 - `--demo FILE --export DIR` exports every clip of that demo into `DIR`.
-- `--matches` starts on the library's Matches tab, and `--favourites` with the favourites alone.
+- `--matches` starts on the library's Matches tab, `--favourites` with the favourites alone and
+  `--hidden` with the hidden demos alone.
 - `--viewer-free-at X,Y,Z,PITCH,YAW` starts the free camera at that place looking that way, the
   numbers Show position and view angles puts over the picture, to see someone's view again.
 
@@ -51,12 +52,14 @@ Filters opens the filter pane: file name and folder, player, map, weapon, point 
 or spectating), minimum length and kills, players and teams, minimum accuracy, headshot kills,
 midair kills and recording dates. The `(?)` beside a filter explains how it's worked out.
 
-Right-clicking a demo offers Show in folder and Add to favourites or Remove from favourites, its row
-lit while the menu is open. A match's row offers the same for the match's demo. A favourite has a yellow star after its name, in the table, the list
+Right-clicking a demo offers Show in folder, Add to favourites or Remove from favourites, and Hide
+or Unhide, its row lit while the menu is open. A match's row offers the same for the match's demo. A favourite has a yellow star after its name, in the table, the list
 beside an open demo and the Matches tab, and the star beside an open demo's Details button makes it
 one or no longer one, filled yellow while it is. All and Favourites after the Filters button list
 every demo or the favourites alone, on whichever tab is open, so Favourites on the Matches tab
-lists the favourite demos' matches, and Favourites clicked again goes back to All. Favourites are kept in the settings by each demo's path, so they stay through a
+lists the favourite demos' matches, and Favourites clicked again goes back to All. Hidden beside
+them lists the hidden demos alone, and All leaves them and their matches out. A hidden favourite
+still shows under Favourites. Hidden demos are kept in the settings by path, as favourites are. Favourites are kept in the settings by each demo's path, so they stay through a
 library rebuild and Restore defaults, and a demo moved elsewhere is no longer one. A scan analyses
 the favourites in the library's folders before anything else, so after an update analyses the
 library again they are back first.

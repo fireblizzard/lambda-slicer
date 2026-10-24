@@ -360,15 +360,24 @@ struct MenuChoice {
     failed: Option<String>,
     /// Make the demo a favourite, or no longer one
     favourite: bool,
+    /// Hide the demo, or show it again
+    hide: bool,
+}
+
+/// Whether a demo is a favourite and whether it is hidden
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct Marks {
+    favourite: bool,
+    hidden: bool,
 }
 
 /// The menu a right click on a demo's row, or one of its matches, opens,
-/// to show the demo at `path` in its folder and to make it a favourite or
-/// no longer one, as `favourite` says it is
+/// to show the demo at `path` in its folder, to make it a favourite or no
+/// longer one, and to hide it or show it again, as its `marks` say it is
 fn row_menu(
     response: &Response,
     path: &str,
-    favourite: bool,
+    marks: Marks,
     catalog: &Catalog,
     rtl: bool,
 ) -> MenuChoice {
@@ -385,7 +394,7 @@ fn row_menu(
             ui.close();
         }
 
-        let id = if favourite {
+        let id = if marks.favourite {
             "menu-favourite-remove"
         } else {
             "menu-favourite-add"
@@ -396,17 +405,31 @@ fn row_menu(
             choice.favourite = true;
             ui.close();
         }
+
+        let id = if marks.hidden {
+            "menu-unhide"
+        } else {
+            "menu-hide"
+        };
+        let label = text::widget_text(ui.ctx(), &catalog.text(id), rtl, None, Look::Plain);
+        let hide = widgets::Button::new(Some(Icon::Eye), label, Variant::Default, rtl);
+        if ui.add(hide).clicked() {
+            choice.hide = true;
+            ui.close();
+        }
     });
     choice.open = menu.is_some();
     choice
 }
 
-/// Which demos the library lists, every one or the favourites alone
+/// Which demos the library lists, every one but those hidden, the
+/// favourites alone whether hidden or not, or the hidden ones alone
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 enum Scope {
     #[default]
     All,
     Favourites,
+    Hidden,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -608,8 +631,10 @@ struct Applied {
     sort: Sort,
     descending: bool,
     matches: (MatchSort, bool, Vec<PartStatus>),
-    /// The demos kept to, the favourites while they alone are listed
+    /// The demos kept to, the favourites or the hidden ones while they
+    /// alone are listed, and those left out
     only: Option<Vec<String>>,
+    except: Vec<String>,
 }
 
 pub struct LibraryView {
@@ -643,6 +668,9 @@ pub struct LibraryView {
     /// whether every demo is listed or the favourites alone
     pub favourites: Vec<String>,
     pub favourites_changed: bool,
+    /// The hidden demos by path, and whether that changed this frame
+    pub hidden_demos: Vec<String>,
+    pub hidden_changed: bool,
     scope: Scope,
     /// The demo whose menu was open as the rows were last drawn, kept lit
     /// as if hovered, and the one found open this frame
@@ -677,6 +705,8 @@ impl LibraryView {
             columns_changed: false,
             favourites: Vec::new(),
             favourites_changed: false,
+            hidden_demos: Vec::new(),
+            hidden_changed: false,
             scope: Scope::All,
             menu_row: None,
             menu_open: None,
@@ -776,19 +806,57 @@ impl LibraryView {
         FileQuery {
             every_map: self.every_map,
             only_paths: self.only(),
+            except_paths: self.except(),
             ..self.filters.query(self.sort, self.descending)
         }
     }
 
-    /// The demos the library keeps to, the favourites while they alone are
-    /// listed
+    /// The demos the library keeps to, the favourites or the hidden ones
+    /// while they alone are listed
     fn only(&self) -> Option<Vec<String>> {
-        (self.scope == Scope::Favourites).then(|| self.favourites.clone())
+        match self.scope {
+            Scope::All => None,
+            Scope::Favourites => Some(self.favourites.clone()),
+            Scope::Hidden => Some(self.hidden_demos.clone()),
+        }
+    }
+
+    /// The demos the library leaves out, the hidden ones while every other
+    /// demo is listed
+    fn except(&self) -> Vec<String> {
+        match self.scope {
+            Scope::All => self.hidden_demos.clone(),
+            Scope::Favourites | Scope::Hidden => Vec::new(),
+        }
     }
 
     /// List the favourite demos alone
     pub fn show_favourites(&mut self) {
         self.scope = Scope::Favourites;
+    }
+
+    /// List the hidden demos alone
+    pub fn show_hidden(&mut self) {
+        self.scope = Scope::Hidden;
+    }
+
+    /// Whether the demo at `path` is a favourite and whether it is hidden
+    fn marks(&self, path: &str) -> Marks {
+        Marks {
+            favourite: self.favourite(path),
+            hidden: self.hidden_demos.iter().any(|h| h == path),
+        }
+    }
+
+    /// Hide the demo at `path`, or show it again
+    fn toggle_hidden(&mut self, path: &str) {
+        match self.hidden_demos.iter().position(|h| h == path) {
+            Some(at) => {
+                self.hidden_demos.remove(at);
+            }
+            None => self.hidden_demos.push(path.to_string()),
+        }
+        self.hidden_changed = true;
     }
 
     /// Whether the demo at `path` is a favourite
@@ -814,6 +882,9 @@ impl LibraryView {
         }
         if choice.favourite {
             self.toggle_favourite(path);
+        }
+        if choice.hide {
+            self.toggle_hidden(path);
         }
     }
 
@@ -849,6 +920,7 @@ impl LibraryView {
             descending: self.descending,
             matches: self.matches.order(),
             only: self.only(),
+            except: self.except(),
         };
         let changed = self.applied.as_ref() != Some(&wanted);
         let waited = self.last_refresh.elapsed();
@@ -956,7 +1028,7 @@ impl LibraryView {
             ),
         };
         let (shown, total) = (shown as i64, total as i64);
-        let narrowed = self.active(tab) > 0 || self.scope == Scope::Favourites;
+        let narrowed = self.active(tab) > 0 || self.scope != Scope::All;
         if !narrowed || shown == total {
             return catalog.text_with(ids.0, &[("count", shown.into())]);
         }
@@ -974,8 +1046,10 @@ impl LibraryView {
             if self.shown_rows(tab) == 0 {
                 let filtered = self.active(tab) > 0;
                 let no_favourites = self.scope == Scope::Favourites && self.favourites.is_empty();
+                let no_hidden = self.scope == Scope::Hidden && self.hidden_demos.is_empty();
                 let id = match (tab, filtered) {
                     _ if no_favourites && self.stats.files > 0 => "library-no-favourites",
+                    _ if no_hidden && self.stats.files > 0 => "library-no-hidden",
                     (Tab::Demos, false) => "library-empty",
                     (Tab::Demos, true) => "library-no-matches",
                     (Tab::Matches, _) if self.stats.files == 0 => "library-empty",
@@ -1227,21 +1301,19 @@ impl LibraryView {
                 widgets::badge(ui, active);
             }
 
-            // Every demo, or the favourites alone, whichever tab is open.
-            // Favourites clicked again goes back to every demo, a quick way
-            // back from a look at them
+            // Every demo, the favourites alone or the hidden ones alone,
+            // whichever tab is open. Favourites or Hidden clicked again goes
+            // back to every demo, a quick way back from a look at them
             let scopes = [
                 (Scope::All, "library-all"),
                 (Scope::Favourites, "library-favourites"),
+                (Scope::Hidden, "library-hidden"),
             ];
             for (scope, id) in scopes {
                 let chosen = self.scope == scope;
                 let title = text::widget_text(&ctx, &catalog.text(id), rtl, None, Look::Plain);
                 if ui.add(egui::Button::selectable(chosen, title)).clicked() {
-                    self.scope = match (chosen, scope) {
-                        (true, Scope::Favourites) => Scope::All,
-                        _ => scope,
-                    };
+                    self.scope = if chosen { Scope::All } else { scope };
                     self.cursor = None;
                 }
             }
@@ -1415,8 +1487,8 @@ impl LibraryView {
                         if response.clicked() {
                             clicked = Some(index);
                         }
-                        let favourite = self.favourite(&file.path);
-                        let choice = row_menu(&response, &file.path, favourite, catalog, rtl);
+                        let marks = self.marks(&file.path);
+                        let choice = row_menu(&response, &file.path, marks, catalog, rtl);
                         if choice.open {
                             self.menu_open = Some(file.id);
                         }
@@ -1624,8 +1696,8 @@ impl LibraryView {
                         continue;
                     };
                     let response = self.list_row(ui, &file, catalog, rtl);
-                    let favourite = self.favourite(&file.path);
-                    let choice = row_menu(&response, &file.path, favourite, catalog, rtl);
+                    let marks = self.marks(&file.path);
+                    let choice = row_menu(&response, &file.path, marks, catalog, rtl);
                     if choice.open {
                         self.menu_open = Some(file.id);
                     }
@@ -2154,7 +2226,7 @@ mod tests {
             let mut output = ctx.run_ui(input, |ui| {
                 let response = view.list_row(ui, &file, &catalog, false);
                 middle = response.rect.center();
-                row_menu(&response, &file.path, false, &catalog, false);
+                row_menu(&response, &file.path, Marks::default(), &catalog, false);
             });
             output.textures_delta.clear();
             middle

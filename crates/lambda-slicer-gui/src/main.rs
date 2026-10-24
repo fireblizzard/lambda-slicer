@@ -2,7 +2,7 @@
 //!
 //! `lambda-slicer-gui [PATH...] [--locale TAG] [--settings [--section NAME] [--restore] [--clear]]
 //! [--timeline]
-//! [--dates] [--matches] [--favourites] [--pseudo] [--size WxH] [--cache FILE] [--clips FILE]
+//! [--dates] [--matches] [--favourites] [--hidden] [--pseudo] [--size WxH] [--cache FILE] [--clips FILE]
 //! [--demo FILE [--window N] [--event N] [--show LIST] [--refine LIST] [--player TEXT] [--tab TAB]
 //! [--export DIR]]
 //! [--screenshot OUT.png [--frames N]]
@@ -28,8 +28,8 @@
 //! whether to restore the defaults with `--restore` or to clear the
 //! library with `--clear`, `--timeline` opens
 //! the player lanes under the timeline, `--dates` turns on both date
-//! filters, `--matches` shows the library's matches and `--favourites`
-//! its favourites alone, `--pseudo` lengthens
+//! filters, `--matches` shows the library's matches, `--favourites` its
+//! favourites alone and `--hidden` its hidden demos alone, `--pseudo` lengthens
 //! and accents every message to find text that does not fit, and `--size`
 //! sets the window size. `--screenshot` saves the window to a
 //! PNG `N` frames after any demo has loaded and its exports finished, and
@@ -144,6 +144,7 @@ fn main() -> eframe::Result {
     let mut dates = false;
     let mut matches = false;
     let mut favourites = false;
+    let mut hidden = false;
     let mut export = None;
     let mut pseudo = false;
     let mut game = None;
@@ -214,6 +215,7 @@ fn main() -> eframe::Result {
             "--dates" => dates = true,
             "--matches" => matches = true,
             "--favourites" => favourites = true,
+            "--hidden" => hidden = true,
             "--pseudo" => pseudo = true,
             "--export" => export = args.next().map(PathBuf::from),
             "--game" => game = args.next().map(PathBuf::from),
@@ -367,6 +369,7 @@ fn main() -> eframe::Result {
                     dates,
                     matches,
                     favourites,
+                    hidden,
                     export: export.is_some(),
                     pseudo,
                     game,
