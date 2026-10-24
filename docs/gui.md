@@ -19,6 +19,7 @@ Other options are for testing, and the full list is at the top of
   saves the window. `--viewer-at SECONDS`, `--viewer-fullscreen`, `--tab` and `--settings` choose
   what it shows.
 - `--demo FILE --export DIR` exports every clip of that demo into `DIR`.
+- `--matches` starts on the library's Matches tab.
 
 ## Library
 
@@ -38,10 +39,9 @@ the choice is kept. Clicking a heading sorts by it. Rows load a page at a time.
   recordings do, and otherwise from when the file was last changed.
 - **Map** lists every map of a demo with several. Maps with no kills that lasted under 5 minutes
   are left out unless Settings says otherwise. The score is the score of the map played longest.
-- **Players** and **Teams** are counted when the match starts after its countdown, or at the first
-  kill when the match was already on when the recording began. In team games only players on a
-  team count. A demo with several matches keeps the most of each, and one with no match the most
-  seen at any moment.
+- **Players** and **Teams** are counted when a match starts after its countdown. In team games
+  only players on a team count. A demo shows the most in any complete match, and one with no
+  complete match the most seen at any moment.
 - **Intensity** is the demo's highest action score, with a bar against the highest in the library
   ([analysis](analysis-profile.md)).
 
@@ -50,6 +50,18 @@ or spectating), minimum length and kills, players and teams, minimum accuracy, h
 midair kills and recording dates. The `(?)` beside a filter explains how it's worked out.
 
 Right-clicking a demo offers Show in folder and Copy file location.
+
+The **Matches** tab beside Demos lists every match of the demos instead, one a row, so a demo of
+two matches has two rows ([how matches are found](analysis-profile.md#matches)). Its columns are
+the demo, date, map, status, length, score, players, teams and kills. The status says how much of
+the match was recorded: Complete, Joined late (already on when the recording began), Interrupted
+(another match started, the match was called off or the map changed) or Cut off (the recording
+ended first). Five minutes or more with no match on is listed as Free play. The filters work as
+they do for demos, with the map, length, kills, players and teams those of each match and a kill
+filter needing a kill in the match, and Complete matches only keeps just the complete ones.
+Clicking a match opens its demo at the start of the countdown, or where the recording began for
+a match already on. The list beside the open demo then lists matches too, and picking another
+match of the same demo jumps to it.
 
 ## Demo view
 

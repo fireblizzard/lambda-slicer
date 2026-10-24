@@ -45,6 +45,16 @@ library-demos-of = { $shown } / { $total ->
     [one] { $total } demo
    *[other] { $total } demoa
 }
+library-matches = { $count ->
+    [one] { $count } ottelu
+   *[other] { $count } ottelua
+}
+library-matches-of = { $shown } / { $total ->
+    [one] { $total } ottelu
+   *[other] { $total } ottelua
+}
+library-no-games = Missään demossa ei ole ottelua eikä viittä minuuttia pelaamista ilman ottelua.
+library-no-games-filtered = Mikään ottelu ei vastaa näitä suodattimia.
 library-total = { $count ->
     [one] Kirjastossa { $count } demo
    *[other] Kirjastossa { $count } demoa
@@ -402,7 +412,7 @@ scores-headshots = PL
 column-accuracy = Tarkkuus
 column-players = Pelaajat
 column-teams = Joukkueet
-help-players-column = Pelissä olevat pelaajat, ei katsojia, laskettuna ottelun alkaessa lähtölaskennan jälkeen, tai ensimmäisen tapon kohdalla, jos ottelu oli jo käynnissä tallennuksen alkaessa. Joukkuepelissä lasketaan vain joukkueessa olevat pelaajat. Usean ottelun demo näyttää suurimman määrän, ja demo, jossa ei ole ottelua, suurimman määrän millä tahansa hetkellä.
+help-players-column = Pelissä olevat pelaajat, ei katsojia, laskettuna silloin, kun ottelu alkoi lähtölaskentansa jälkeen. Joukkuepelissä lasketaan vain joukkueessa olevat pelaajat. Demo näyttää suurimman määrän missä tahansa kokonaisessa ottelussa, ja demo, jossa ei ole kokonaista ottelua, suurimman määrän millä tahansa hetkellä.
 help-teams-column = Joukkueet, joissa on pelaaja, laskettuna samoin kuin pelaajat. Pelissä ilman joukkueita niitä ei ole.
 filter-min-accuracy = Tarkkuus vähintään (%)
 scores-accuracy = Tark.
@@ -490,6 +500,23 @@ setup-not-installed = Kansiossa { $folder } ei ole Half-Life-asennusta, jossa on
 tab-events = Tapahtumat
 tab-clips = Klipit
 tab-scoreboard = Pisteet
+tab-demos = Demot
+tab-matches = Ottelut
+filter-complete = Vain kokonaiset ottelut
+help-complete-filter = Vain ottelut, jotka tallennettiin lähtölaskennasta loppuun asti.
+help-status-column = Kuinka paljon ottelusta demo tallensi. Osoita rivin tilaa nähdäksesi, mitä se tarkoittaa.
+help-match-players = Pelissä olevat pelaajat, ei katsojia, kun ottelu alkoi lähtölaskennan jälkeen, tai ensimmäisen tapon kohdalla, jos ottelu oli jo käynnissä tallennuksen alkaessa. Vapaassa pelissä suurin määrä yhtä aikaa.
+help-match-teams = Joukkueet, joissa on pelaaja, laskettuna samoin kuin pelaajat. Pelissä ilman joukkueita niitä ei ole.
+match-complete = Kokonainen
+match-joined-late = Alkoi kesken
+match-interrupted = Keskeytyi
+match-cut-off = Katkesi
+match-free-play = Vapaa peli
+help-match-complete = Tallennettu lähtölaskennasta ottelun loppuun.
+help-match-joined-late = Ottelu oli jo käynnissä tallennuksen alkaessa, ja se tallennettiin loppuun asti.
+help-match-interrupted = Toinen ottelu alkoi, ottelu peruttiin tai kartta vaihtui ennen kuin ottelu päättyi.
+help-match-cut-off = Tallenne päättyi ennen ottelua.
+help-match-free-play = Viisi minuuttia tai enemmän pelaamista ilman käynnissä olevaa ottelua.
 list-hide = Piilota demoluettelo
 list-show = Näytä demoluettelo
 demo-details = Tiedot

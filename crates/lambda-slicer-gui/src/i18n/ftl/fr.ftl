@@ -47,6 +47,18 @@ library-demos-of = { $shown } sur { $total ->
     [many] { $total } de démos
    *[other] { $total } démos
 }
+library-matches = { $count ->
+    [one] { $count } partie
+    [many] { $count } de parties
+   *[other] { $count } parties
+}
+library-matches-of = { $shown } sur { $total ->
+    [one] { $total } partie
+    [many] { $total } de parties
+   *[other] { $total } parties
+}
+library-no-games = Aucune des démos ne contient de partie, ni cinq minutes de jeu sans partie.
+library-no-games-filtered = Aucune partie ne correspond à ces filtres.
 library-total = { $count ->
     [one] { $count } démo dans la bibliothèque
     [many] { $count } de démos dans la bibliothèque
@@ -420,7 +432,7 @@ scores-headshots = TT
 column-accuracy = Précision
 column-players = Joueurs
 column-teams = Équipes
-help-players-column = Les joueurs dans la partie, sans les spectateurs, comptés au début de la partie après le compte à rebours, ou à la première élimination si la partie était déjà en cours au début de l’enregistrement. Dans un jeu en équipe, seuls les joueurs dans une équipe comptent. Une démo de plusieurs parties montre le plus grand nombre, et une démo sans partie le plus grand nombre à n’importe quel moment.
+help-players-column = Les joueurs dans la partie, sans les spectateurs, comptés quand une partie a commencé après son compte à rebours. Dans un jeu en équipe, seuls les joueurs dans une équipe comptent. Une démo montre le plus grand nombre dans une partie complète, et une démo sans partie complète le plus grand nombre à n’importe quel moment.
 help-teams-column = Les équipes qui ont au moins un joueur, comptées comme les joueurs. Un jeu sans équipes n’en a aucune.
 filter-min-accuracy = Précision minimale (%)
 scores-accuracy = Préc.
@@ -508,6 +520,23 @@ setup-not-installed = { $folder } ne contient aucune installation de Half-Life a
 tab-events = Événements
 tab-clips = Clips
 tab-scoreboard = Tableau des scores
+tab-demos = Démos
+tab-matches = Parties
+filter-complete = Parties complètes seulement
+help-complete-filter = Seulement les parties enregistrées du compte à rebours jusqu’à la fin.
+help-status-column = Ce que la démo a enregistré de la partie. Passe la souris sur l’état d’une ligne pour voir ce qu’il veut dire.
+help-match-players = Les joueurs dans la partie, sans les spectateurs, au début de la partie après le compte à rebours, ou à la première élimination si elle était déjà en cours au début de l’enregistrement. En jeu libre, le plus grand nombre en même temps.
+help-match-teams = Les équipes qui ont au moins un joueur, comptées comme les joueurs. Un jeu sans équipes n’en a aucune.
+match-complete = Complète
+match-joined-late = Déjà en cours
+match-interrupted = Interrompue
+match-cut-off = Coupée
+match-free-play = Jeu libre
+help-match-complete = Enregistrée du compte à rebours jusqu’à la fin de la partie.
+help-match-joined-late = La partie était déjà en cours au début de l’enregistrement, et a été enregistrée jusqu’à la fin.
+help-match-interrupted = Une autre partie a commencé, la partie a été annulée ou la carte a changé avant la fin de la partie.
+help-match-cut-off = L’enregistrement s’est arrêté avant la fin de la partie.
+help-match-free-play = Cinq minutes de jeu ou plus sans aucune partie en cours.
 list-hide = Masquer la liste des démos
 list-show = Afficher la liste des démos
 demo-details = Détails

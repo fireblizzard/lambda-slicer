@@ -46,6 +46,16 @@ library-demos-of = { $shown } of { $total ->
     [one] { $total } demo
    *[other] { $total } demos
 }
+library-matches = { $count ->
+    [one] { $count } match
+   *[other] { $count } matches
+}
+library-matches-of = { $shown } of { $total ->
+    [one] { $total } match
+   *[other] { $total } matches
+}
+library-no-games = None of the demos has a match, or five minutes of play without one.
+library-no-games-filtered = No matches meet these filters.
 library-total = { $count ->
     [one] { $count } demo in the library
    *[other] { $count } demos in the library
@@ -403,7 +413,7 @@ scores-headshots = HS
 column-accuracy = Accuracy
 column-players = Players
 column-teams = Teams
-help-players-column = Players in the game, not spectators, counted when the match started after its countdown, or at the first kill when the match was already on as the recording began. In a game with teams only players on a team count. A demo of several matches shows the most, and a demo with no match the most at any moment.
+help-players-column = Players in the game, not spectators, counted when a match started after its countdown. In a game with teams only players on a team count. A demo shows the most in any complete match, and a demo with no complete match the most at any moment.
 help-teams-column = Teams with a player on them, counted as the players are. A game without teams has none.
 filter-min-accuracy = Accuracy at least (%)
 scores-accuracy = Acc.
@@ -491,6 +501,23 @@ setup-not-installed = { $folder } holds no Half-Life installation with a valve f
 tab-events = Events
 tab-clips = Clips
 tab-scoreboard = Scoreboard
+tab-demos = Demos
+tab-matches = Matches
+filter-complete = Complete matches only
+help-complete-filter = Only matches recorded from their countdown to their end.
+help-status-column = How much of the match the demo recorded. Point at a row's status to see what it means.
+help-match-players = Players in the game, not spectators, when the match started after its countdown, or at its first kill when it was already on as the recording began. In free play, the most at once.
+help-match-teams = Teams with a player on them, counted as the players are. A game without teams has none.
+match-complete = Complete
+match-joined-late = Joined late
+match-interrupted = Interrupted
+match-cut-off = Cut off
+match-free-play = Free play
+help-match-complete = Recorded from the countdown to the end of the match.
+help-match-joined-late = The match was already on when the recording began, and was recorded to its end.
+help-match-interrupted = Another match started, the match was called off, or the map changed before the match ended.
+help-match-cut-off = The recording ended before the match did.
+help-match-free-play = Five minutes or more of play with no match on.
 list-hide = Hide demo list
 list-show = Show demo list
 demo-details = Details

@@ -5,7 +5,8 @@
 //! the cache a page at a time as they scroll into view, so a library of any
 //! size costs only the visible pages. Changing a filter or the order counts
 //! the matches again and drops the loaded pages. While a scan stores files
-//! the list refreshes at most once a second
+//! the list refreshes at most once a second. The full table can list the
+//! demos' [matches] instead, one a row
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -20,7 +21,7 @@ use fluent_bundle::FluentValue;
 use lambda_slicer_core::analysis::context::Scoreboard;
 use lambda_slicer_core::analysis::weapons::Weapon;
 use lambda_slicer_core::library::cache::{
-    Cache, FileQuery, FileRow, KillQuery, LibraryStats, Sort,
+    Cache, FileQuery, FileRow, KillQuery, LibraryStats, MatchSort, Sort,
 };
 use lambda_slicer_core::message::{Coded, Message};
 use lambda_slicer_core::timeline::time::DemoTime;
@@ -30,6 +31,10 @@ use crate::layout;
 use crate::text::{self, Look};
 use crate::theme;
 use crate::widgets::{self, AnalysisState, Icon, IconButton, Variant};
+
+mod matches;
+
+use matches::{MatchList, Tab};
 
 /// A date bound with a checkbox to use it, its fields in the locale's order.
 /// The checkbox and the fields wrap together as one group
@@ -510,21 +515,21 @@ pub fn compact_score(board: &Scoreboard) -> Option<(String, usize)> {
     Some((shown, more))
 }
 
-/// A row's score for display, from its scoreboard, or else the stored
-/// summary, which cannot say how many sides it leaves out
-fn score_of(file: &FileRow) -> Option<(String, usize)> {
-    if let Some(score) = file.scoreboard.as_ref().and_then(compact_score) {
+/// A score for display, from its scoreboard, or else the stored summary,
+/// which cannot say how many sides it leaves out
+fn score_of(board: Option<&Scoreboard>, summary: Option<&str>) -> Option<(String, usize)> {
+    if let Some(score) = board.and_then(compact_score) {
         return Some(score);
     }
-    file.score.clone().map(|summary| (summary, 0))
+    summary.map(|summary| (summary.to_string(), 0))
 }
 
-/// A file name without the `.dem` every demo has
-fn display_name(file: &FileRow) -> String {
-    let name = Path::new(&file.path)
+/// The name of the file at `path` without the `.dem` every demo has
+fn display_name(path: &str) -> String {
+    let name = Path::new(path)
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
-        .unwrap_or_else(|| file.path.clone());
+        .unwrap_or_else(|| path.to_string());
 
     match name.strip_suffix(".dem") {
         Some(stem) if !stem.is_empty() => stem.to_string(),
@@ -538,13 +543,28 @@ fn clock(seconds: Option<f32>) -> Option<String> {
     time.split('.').next().map(str::to_string)
 }
 
+/// What the lists were last counted for
+#[derive(Clone, Debug, PartialEq)]
+struct Applied {
+    filters: Filters,
+    sort: Sort,
+    descending: bool,
+    matches: (MatchSort, bool, bool),
+}
+
 pub struct LibraryView {
     cache_path: PathBuf,
     cache: Option<Cache>,
     pub filters: Filters,
-    applied: Option<(Filters, Sort, bool)>,
+    applied: Option<Applied>,
     sort: Sort,
     descending: bool,
+    /// Whether the full table lists demos or their matches, and the
+    /// matches' own order and count
+    tab: Tab,
+    matches: MatchList,
+    /// Where to start watching the selected demo, as a match's row asked
+    pub open_at: Option<f32>,
     /// Files matching the filters, and figures over the whole library
     total: u64,
     stats: LibraryStats,
@@ -590,6 +610,9 @@ impl LibraryView {
             // The newest files first, so clips just exported are on top
             sort: Sort::Modified,
             descending: true,
+            tab: Tab::Demos,
+            matches: MatchList::default(),
+            open_at: None,
             total: 0,
             stats: LibraryStats::default(),
             pages: HashMap::new(),
@@ -702,7 +725,12 @@ impl LibraryView {
     /// [`REFRESH`], and a refresh held back is woken for when it is due, as
     /// nothing else may draw a frame once a scan has finished
     fn refresh(&mut self, ctx: &egui::Context) {
-        let wanted = (self.filters.clone(), self.sort, self.descending);
+        let wanted = Applied {
+            filters: self.filters.clone(),
+            sort: self.sort,
+            descending: self.descending,
+            matches: self.matches.order(),
+        };
         let changed = self.applied.as_ref() != Some(&wanted);
         let waited = self.last_refresh.elapsed();
         let due = self.stale && waited >= REFRESH;
@@ -724,6 +752,14 @@ impl LibraryView {
             None => self.total = 0,
         }
 
+        let query = self.match_query();
+        let count = self.cache().map(|c| c.count_matches(&query));
+        match count {
+            Some(Ok(n)) => self.matches.total = n,
+            Some(Err(e)) => self.error = Some(e.message()),
+            None => self.matches.total = 0,
+        }
+
         let stats = self.cache().map(Cache::library_stats);
         match stats {
             Some(Ok(stats)) => self.stats = stats,
@@ -736,6 +772,7 @@ impl LibraryView {
             self.cursor = None;
         }
         self.pages.clear();
+        self.matches.pages.clear();
         self.applied = Some(wanted);
         self.stale = false;
         self.last_refresh = Instant::now();
@@ -770,32 +807,58 @@ impl LibraryView {
         }
     }
 
-    /// How many demos match, and of how many when the filters leave some out
-    fn count_line(&self, catalog: &Catalog) -> String {
-        let shown = self.total as i64;
-        let total = self.stats.files as i64;
-        if self.filters.active() == 0 || shown == total {
-            return catalog.text_with("library-demos", &[("count", shown.into())]);
+    /// How many filters are on, with the matches' own on their `tab`
+    fn active(&self, tab: Tab) -> usize {
+        let complete_only = tab == Tab::Matches && self.matches.complete_only;
+        self.filters.active() + usize::from(complete_only)
+    }
+
+    /// How many rows `tab` lists
+    fn shown_rows(&self, tab: Tab) -> u64 {
+        match tab {
+            Tab::Demos => self.total,
+            Tab::Matches => self.matches.total,
+        }
+    }
+
+    /// How many demos or matches `tab` lists, and of how many when the
+    /// filters leave some out
+    fn count_line(&self, tab: Tab, catalog: &Catalog) -> String {
+        let (shown, total, ids) = match tab {
+            Tab::Demos => (
+                self.total,
+                self.stats.files,
+                ("library-demos", "library-demos-of"),
+            ),
+            Tab::Matches => (
+                self.matches.total,
+                self.stats.matches,
+                ("library-matches", "library-matches-of"),
+            ),
+        };
+        let (shown, total) = (shown as i64, total as i64);
+        if self.active(tab) == 0 || shown == total {
+            return catalog.text_with(ids.0, &[("count", shown.into())]);
         }
 
-        catalog.text_with(
-            "library-demos-of",
-            &[("shown", shown.into()), ("total", total.into())],
-        )
+        catalog.text_with(ids.1, &[("shown", shown.into()), ("total", total.into())])
     }
 
     /// Why nothing is listed, or the cache's error
-    fn empty_ui(&self, ui: &mut Ui, catalog: &Catalog, rtl: bool) {
+    fn empty_ui(&self, ui: &mut Ui, tab: Tab, catalog: &Catalog, rtl: bool) {
         layout::column(ui, rtl, |ui| {
             if let Some(e) = &self.error {
                 text::label(ui, &catalog.message(e), rtl);
             }
 
-            if self.total == 0 {
-                let id = if self.filters.active() == 0 {
-                    "library-empty"
-                } else {
-                    "library-no-matches"
+            if self.shown_rows(tab) == 0 {
+                let filtered = self.active(tab) > 0;
+                let id = match (tab, filtered) {
+                    (Tab::Demos, false) => "library-empty",
+                    (Tab::Demos, true) => "library-no-matches",
+                    (Tab::Matches, _) if self.stats.files == 0 => "library-empty",
+                    (Tab::Matches, false) => "library-no-games",
+                    (Tab::Matches, true) => "library-no-games-filtered",
                 };
                 text::label(ui, &catalog.text(id), rtl);
             }
@@ -804,12 +867,12 @@ impl LibraryView {
 
     /// The filters as groups one under another, for the filter pane and the
     /// narrow list alike
-    fn filter_form(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool) {
+    fn filter_form(&mut self, ui: &mut Ui, tab: Tab, catalog: &Catalog, rtl: bool) {
         let ctx = ui.ctx().clone();
         let t = |id: &str| text::widget_text(&ctx, &catalog.text(id), rtl, None, Look::Plain);
 
         // Find, with the reset of every filter beside its title
-        let active = self.filters.active();
+        let active = self.active(tab);
         layout::row(ui, rtl, |ui| {
             widgets::section_title(ui, &catalog.text("filters-find"), rtl);
             if active > 0 {
@@ -817,6 +880,7 @@ impl LibraryView {
                     let reset = widgets::Button::new(None, t("filter-clear"), Variant::Ghost, rtl);
                     if ui.add(reset).clicked() {
                         self.filters = Filters::default();
+                        self.matches.complete_only = false;
                     }
                 });
             }
@@ -944,6 +1008,12 @@ impl LibraryView {
             ui.checkbox(&mut self.filters.midair, t("filter-midair"));
             widgets::help(ui, &catalog.text("help-midair-filter"), rtl);
         });
+        if tab == Tab::Matches {
+            layout::row(ui, rtl, |ui| {
+                ui.checkbox(&mut self.matches.complete_only, t("filter-complete"));
+                widgets::help(ui, &catalog.text("help-complete-filter"), rtl);
+            });
+        }
         ui.add_space(theme::GAP_M);
 
         // Recorded, both bounds inclusive
@@ -979,27 +1049,42 @@ impl LibraryView {
                 .show(ui, |ui| {
                     egui::ScrollArea::vertical()
                         .id_salt("filter pane")
-                        .show(ui, |ui| self.filter_form(ui, catalog, rtl));
+                        .show(ui, |ui| self.filter_form(ui, self.tab, catalog, rtl));
                 });
         }
 
         self.table_header(ui, catalog, rtl);
         ui.separator();
 
-        if self.error.is_some() || self.total == 0 {
-            self.empty_ui(ui, catalog, rtl);
+        if self.error.is_some() || self.shown_rows(self.tab) == 0 {
+            self.empty_ui(ui, self.tab, catalog, rtl);
             return;
         }
-        self.table(ui, catalog, rtl);
+        match self.tab {
+            Tab::Demos => self.table(ui, catalog, rtl),
+            Tab::Matches => self.match_table(ui, catalog, rtl),
+        }
     }
 
-    /// Filters with how many are on, the count of demos, and the columns
+    /// The demos and matches tabs, filters with how many are on, the count
+    /// of rows, and the demos' columns
     fn table_header(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool) {
         let ctx = ui.ctx().clone();
-        let active = self.filters.active();
-        let count = self.count_line(catalog);
+        let active = self.active(self.tab);
+        let count = self.count_line(self.tab, catalog);
 
         layout::row(ui, rtl, |ui| {
+            let tabs = [(Tab::Demos, "tab-demos"), (Tab::Matches, "tab-matches")];
+            for (tab, id) in tabs {
+                let chosen = self.tab == tab;
+                let title = text::widget_text(&ctx, &catalog.text(id), rtl, None, Look::Plain);
+                if ui.add(egui::Button::selectable(chosen, title)).clicked() && !chosen {
+                    self.tab = tab;
+                    self.cursor = None;
+                }
+            }
+            ui.separator();
+
             let variant = if self.filters_open {
                 Variant::Default
             } else {
@@ -1016,6 +1101,9 @@ impl LibraryView {
             }
 
             ui.label(text::widget_text(&ctx, &count, rtl, None, Look::Weak));
+            if self.tab == Tab::Matches {
+                return;
+            }
 
             layout::trailing(ui, rtl, |ui| {
                 let label = text::widget_text(
@@ -1054,15 +1142,15 @@ impl LibraryView {
         }
     }
 
-    /// The arrow keys move through the table's rows and Enter opens the one
-    /// reached, unless a text field or another control has the keyboard.
-    /// Returns the row to open
-    fn keyboard(&mut self, ctx: &egui::Context) -> Option<usize> {
+    /// The arrow keys move through the table's `rows` and Enter opens the
+    /// one reached, unless a text field or another control has the
+    /// keyboard. Returns the row to open
+    fn keyboard(&mut self, ctx: &egui::Context, rows: u64) -> Option<usize> {
         if ctx.text_edit_focused() || ctx.memory(|m| m.focused().is_some()) {
             return None;
         }
 
-        let rows = self.total as usize;
+        let rows = rows as usize;
         if rows == 0 {
             return None;
         }
@@ -1107,7 +1195,7 @@ impl LibraryView {
 
     fn table(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool) {
         let ctx = ui.ctx().clone();
-        let open = self.keyboard(&ctx);
+        let open = self.keyboard(&ctx, self.total);
         let cols = self.shown_columns(rtl);
         let mut clicked = None;
         let mut sort_by = None;
@@ -1203,41 +1291,12 @@ impl LibraryView {
     /// A column's heading, which sorts by it when clicked and offers the
     /// columns when right-clicked. Returns true when clicked
     fn heading(&mut self, ui: &mut Ui, col: Col, catalog: &Catalog, rtl: bool) -> bool {
-        let ctx = ui.ctx().clone();
-        let sorted = col.sort() == self.sort;
-        let color = if sorted {
-            theme::FOREGROUND
-        } else {
-            theme::MUTED
-        };
-
-        layout::row(ui, rtl, |ui| {
-            let title = catalog.text(col.title());
-            let title =
-                text::styled_text(&ctx, &title, rtl, Look::Color(color), &theme::secondary());
-            let response = ui.add(
-                egui::Label::new(title)
-                    .selectable(false)
-                    .sense(Sense::click()),
-            );
-
-            if sorted {
-                let arrow = if self.descending {
-                    Icon::SortDown
-                } else {
-                    Icon::SortUp
-                };
-                let (rect, _) = ui.allocate_exact_size(Vec2::splat(12.), Sense::hover());
-                widgets::paint_icon(ui.painter(), rect, arrow, theme::ACCENT);
-            }
-
-            let response = match col.help() {
-                Some(key) => response.on_hover_text(text::help(&ctx, &catalog.text(key), rtl)),
-                None => response,
-            };
-            response.context_menu(|ui| self.column_choices(ui, catalog, rtl));
-            response.clicked()
-        })
+        let sorted = (col.sort() == self.sort).then_some(self.descending);
+        let help = col.help().map(|key| catalog.text(key));
+        let title = catalog.text(col.title());
+        let response = sort_heading(ui, &title, help.as_deref(), sorted, rtl);
+        response.context_menu(|ui| self.column_choices(ui, catalog, rtl));
+        response.clicked()
     }
 
     /// One cell of a row. A figure that is not known shows as a dash, and a
@@ -1265,13 +1324,19 @@ impl LibraryView {
 
         match col {
             Col::Name => self.name_cell(ui, file, selected, catalog, rtl),
-            Col::Date => self.date_cell(ui, file, catalog, rtl),
+            Col::Date => {
+                let (day, source) = (file.recorded_at.as_deref(), file.date_source.as_deref());
+                day_cell(ui, day, source, catalog, rtl);
+            }
             Col::FileDate => file_date_cell(ui, file, catalog, rtl),
             Col::Map => {
                 let map = file.map.as_deref().unwrap_or("");
                 text_cell(ui, map, text::starts_rtl(map), Look::Plain);
             }
-            Col::Score => score_cell(ui, file, catalog, rtl),
+            Col::Score => {
+                let (board, summary) = (file.scoreboard.as_ref(), file.score.as_deref());
+                score_cell(ui, board, summary, catalog, rtl);
+            }
             Col::Action => self.intensity_cell(ui, file.best_window, catalog, rtl),
             figure => {
                 let value = match figure {
@@ -1309,7 +1374,7 @@ impl LibraryView {
         if let Some(error) = &file.error {
             status = format!("{status}\n{}", catalog.stored(error));
         }
-        let name = display_name(file);
+        let name = display_name(&file.path);
 
         layout::row(ui, rtl, |ui| {
             widgets::status_symbol(ui, state, &status);
@@ -1319,30 +1384,6 @@ impl LibraryView {
             }
             text_cell(ui, &name, text::starts_rtl(&name), Look::Plain).on_hover_text(&file.path);
         });
-    }
-
-    /// The recording date in the locale's form, with the time and where the
-    /// date came from on hover
-    fn date_cell(&self, ui: &mut Ui, file: &FileRow, catalog: &Catalog, rtl: bool) {
-        let Some(day) = file.recorded_at.as_deref().and_then(Ymd::parse) else {
-            number_cell(ui, None, catalog, rtl);
-            return;
-        };
-
-        let source = match file.date_source.as_deref() {
-            Some("file_name") => catalog.text("date-from-name"),
-            _ => catalog.text("date-from-modified"),
-        };
-        let time = file
-            .recorded_at
-            .as_deref()
-            .and_then(|t| t.get(11..))
-            .unwrap_or("");
-        let tip = format!("{} {time}\n{source}", catalog.date(day));
-
-        let ctx = ui.ctx().clone();
-        let tip = text::widget_text(&ctx, &tip, rtl, None, Look::Plain);
-        number_cell(ui, Some(catalog.date(day)), catalog, rtl).on_hover_text(tip);
     }
 
     /// The best action window's score with a bar scaled to the highest in
@@ -1389,8 +1430,9 @@ impl LibraryView {
         });
     }
 
-    /// The narrow list beside an open demo, two lines a demo, or its filters
-    /// in place of the rows. Returns what its header asked for
+    /// The narrow list beside an open demo, two lines a demo or a match as
+    /// the table showed, or its filters in place of the rows. Returns what
+    /// its header asked for
     pub fn list_ui(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool) -> Option<ListAction> {
         self.refresh(ui.ctx());
 
@@ -1400,15 +1442,19 @@ impl LibraryView {
         if self.list_filters_open {
             egui::ScrollArea::vertical()
                 .id_salt("list filters")
-                .show(ui, |ui| self.filter_form(ui, catalog, rtl));
+                .show(ui, |ui| self.filter_form(ui, self.tab, catalog, rtl));
             return action;
         }
 
         self.list_search(ui, catalog, rtl);
         ui.separator();
 
-        if self.error.is_some() || self.total == 0 {
-            self.empty_ui(ui, catalog, rtl);
+        if self.error.is_some() || self.shown_rows(self.tab) == 0 {
+            self.empty_ui(ui, self.tab, catalog, rtl);
+            return action;
+        }
+        if self.tab == Tab::Matches {
+            self.match_list(ui, catalog, rtl);
             return action;
         }
 
@@ -1445,8 +1491,8 @@ impl LibraryView {
     /// hiding the list. Returns what was asked for
     fn list_header(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool) -> Option<ListAction> {
         let ctx = ui.ctx().clone();
-        let active = self.filters.active();
-        let count = self.count_line(catalog);
+        let active = self.active(self.tab);
+        let count = self.count_line(self.tab, catalog);
 
         layout::row(ui, rtl, |ui| {
             let mut action = None;
@@ -1491,6 +1537,11 @@ impl LibraryView {
                 .desired_width(search_width.max(SEARCH_MIN_WIDTH));
             ui.add(search);
 
+            if self.tab == Tab::Matches {
+                self.match_sort_menu(ui, catalog, rtl);
+                return;
+            }
+
             let mut sort = self.sort;
             let current = Col::ALL
                 .into_iter()
@@ -1511,15 +1562,7 @@ impl LibraryView {
                 self.descending = descending_first(sort);
             }
 
-            let (icon, id) = if self.descending {
-                (Icon::SortDown, "sort-descending")
-            } else {
-                (Icon::SortUp, "sort-ascending")
-            };
-            let label = catalog.text(id);
-            if ui.add(IconButton::new(icon, &label)).clicked() {
-                self.descending = !self.descending;
-            }
+            direction_button(ui, &mut self.descending, catalog);
         });
     }
 
@@ -1529,7 +1572,7 @@ impl LibraryView {
         let size = Vec2::new(ui.available_width(), LIST_ROW);
         let (rect, response) = ui.allocate_exact_size(size, Sense::click());
         let selected = self.selected.as_ref().is_some_and(|s| s.id == file.id);
-        let name = display_name(file);
+        let name = display_name(&file.path);
         response.widget_info(|| WidgetInfo::selected(Role::Button, true, selected, &name));
 
         if !ui.is_rect_visible(rect) {
@@ -1595,10 +1638,12 @@ impl LibraryView {
         ui.painter().galley(name_at, name_galley, theme::FOREGROUND);
 
         // The second line, the score on the trailing side
-        let score = score_of(file).map(|(shown, more)| match more {
-            0 => shown,
-            more => format!("{shown} +{more}"),
-        });
+        let score = score_of(file.scoreboard.as_ref(), file.score.as_deref()).map(
+            |(shown, more)| match more {
+                0 => shown,
+                more => format!("{shown} +{more}"),
+            },
+        );
         let score_galley = score.map(|score| {
             let text = RichText::new(score).monospace().color(theme::MUTED);
             WidgetText::from(text).into_galley(
@@ -1687,10 +1732,90 @@ pub fn clip_of(origin: &str, catalog: &Catalog) -> String {
     catalog.text_with("clip-of", &[("name", name)])
 }
 
+/// The button turning the order round, highest first when `descending`
+fn direction_button(ui: &mut Ui, descending: &mut bool, catalog: &Catalog) {
+    let (icon, id) = if *descending {
+        (Icon::SortDown, "sort-descending")
+    } else {
+        (Icon::SortUp, "sort-ascending")
+    };
+    let label = catalog.text(id);
+    if ui.add(IconButton::new(icon, &label)).clicked() {
+        *descending = !*descending;
+    }
+}
+
+/// A column's heading `title`, with `help` on hover, and an arrow when the
+/// table is sorted by it, down when `sorted` says it is descending
+fn sort_heading(
+    ui: &mut Ui,
+    title: &str,
+    help: Option<&str>,
+    sorted: Option<bool>,
+    rtl: bool,
+) -> Response {
+    let ctx = ui.ctx().clone();
+    let color = if sorted.is_some() {
+        theme::FOREGROUND
+    } else {
+        theme::MUTED
+    };
+
+    layout::row(ui, rtl, |ui| {
+        let title = text::styled_text(&ctx, title, rtl, Look::Color(color), &theme::secondary());
+        let response = ui.add(
+            egui::Label::new(title)
+                .selectable(false)
+                .sense(Sense::click()),
+        );
+
+        if let Some(descending) = sorted {
+            let arrow = if descending {
+                Icon::SortDown
+            } else {
+                Icon::SortUp
+            };
+            let (rect, _) = ui.allocate_exact_size(Vec2::splat(12.), Sense::hover());
+            widgets::paint_icon(ui.painter(), rect, arrow, theme::ACCENT);
+        }
+
+        match help {
+            Some(help) => response.on_hover_text(text::help(&ctx, help, rtl)),
+            None => response,
+        }
+    })
+}
+
 /// Text that is cut short with an ellipsis rather than wrapped
 fn text_cell(ui: &mut Ui, text: &str, rtl: bool, look: Look) -> Response {
     let text = text::widget_text(ui.ctx(), text, rtl, None, look);
     ui.add(egui::Label::new(text).selectable(false).truncate())
+}
+
+/// The recording date `recorded_at` in the locale's form, with the time
+/// and where the date came from, `source`, on hover
+fn day_cell(
+    ui: &mut Ui,
+    recorded_at: Option<&str>,
+    source: Option<&str>,
+    catalog: &Catalog,
+    rtl: bool,
+) {
+    let Some(day) = recorded_at.and_then(Ymd::parse) else {
+        number_cell(ui, None, catalog, rtl);
+        return;
+    };
+
+    let source = match source {
+        Some("file_name") => catalog.text("date-from-name"),
+        _ => catalog.text("date-from-modified"),
+    };
+    let time = recorded_at.and_then(|t| t.get(11..)).unwrap_or("");
+    let tip = format!("{} {time}\n{source}", catalog.date(day));
+
+    let ctx = ui.ctx().clone();
+    let tip = text::widget_text(&ctx, &tip, rtl, None, Look::Plain);
+    number_cell(ui, Some(catalog.date(day)), catalog, rtl).on_hover_text(tip);
 }
 
 /// The day the file was last modified, with the time on hover
@@ -1729,16 +1854,23 @@ fn number_cell(ui: &mut Ui, value: Option<String>, catalog: &Catalog, rtl: bool)
     }
 }
 
-/// The compact score, the sides past the first two counted after it, and
-/// every side with its frags on hover
-fn score_cell(ui: &mut Ui, file: &FileRow, catalog: &Catalog, rtl: bool) {
-    let Some((shown, more)) = score_of(file) else {
+/// The compact score of `board`, or else of its stored `summary`, the
+/// sides past the first two counted after it, and every side with its
+/// frags on hover
+fn score_cell(
+    ui: &mut Ui,
+    board: Option<&Scoreboard>,
+    summary: Option<&str>,
+    catalog: &Catalog,
+    rtl: bool,
+) {
+    let Some((shown, more)) = score_of(board, summary) else {
         number_cell(ui, None, catalog, rtl);
         return;
     };
 
     let mut sides = Vec::new();
-    if let Some(board) = &file.scoreboard {
+    if let Some(board) = board {
         for side in &board.sides {
             sides.push(format!("{}  {}", text::player_name(&side.name), side.frags));
         }
@@ -1926,9 +2058,8 @@ mod tests {
 
     #[test]
     fn names_lose_only_their_dem_ending() {
-        let row = file_row;
-        assert_eq!(display_name(&row("F:/demos/run_92.dem")), "run_92");
-        assert_eq!(display_name(&row("F:/demos/.dem")), ".dem");
-        assert_eq!(display_name(&row("F:/demos/notes.txt")), "notes.txt");
+        assert_eq!(display_name("F:/demos/run_92.dem"), "run_92");
+        assert_eq!(display_name("F:/demos/.dem"), ".dem");
+        assert_eq!(display_name("F:/demos/notes.txt"), "notes.txt");
     }
 }

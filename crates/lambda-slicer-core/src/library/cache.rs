@@ -2,7 +2,7 @@
 //!
 //! One row per demo holds its fingerprint, the versions it was analysed with,
 //! its status and summary columns. Players, weapon totals, kills with their
-//! context, and action windows sit in child tables. Weapon occurrences are
+//! context, action windows and matches sit in child tables. Weapon occurrences are
 //! not stored, since a selected file is analysed again on demand. A cache
 //! whose schema differs is rebuilt, and an entry analysed with other versions
 //! is stale
@@ -16,13 +16,14 @@ use serde::Serialize;
 
 use super::date::recorded;
 use crate::analysis::context::{Scoreboard, every_map, map_list, short_map_name};
+use crate::analysis::parts::PartStatus;
 use crate::analysis::weapons::{Actor, PROFILE};
 use crate::analysis::{ANALYSIS_SCHEMA, AnalysisReport};
 use crate::message::Message;
 use crate::state::{DECODE_REPORT_SCHEMA, DecodeStatus};
 
 /// Layout of the tables below. A different value rebuilds the cache
-pub const CACHE_SCHEMA: i64 = 9;
+pub const CACHE_SCHEMA: i64 = 10;
 
 #[derive(Debug, thiserror::Error)]
 pub enum CacheError {
@@ -114,6 +115,7 @@ pub fn path_from_native(bytes: &[u8]) -> Option<PathBuf> {
 
 /// Every table, the ones that refer to files first
 const DROP_TABLES: &str = "
+DROP TABLE IF EXISTS matches;
 DROP TABLE IF EXISTS windows;
 DROP TABLE IF EXISTS kills;
 DROP TABLE IF EXISTS weapons;
@@ -219,6 +221,23 @@ CREATE TABLE windows(
 );
 CREATE INDEX windows_score ON windows(score);
 CREATE INDEX windows_file ON windows(file_id);
+CREATE TABLE matches(
+    file_id INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+    ordinal INTEGER NOT NULL,
+    segment INTEGER NOT NULL,
+    status TEXT NOT NULL,
+    opens_at REAL NOT NULL,
+    start REAL NOT NULL,
+    end REAL NOT NULL,
+    length REAL NOT NULL,
+    map TEXT NOT NULL,
+    players INTEGER NOT NULL,
+    teams INTEGER NOT NULL,
+    kills INTEGER NOT NULL,
+    score TEXT,
+    score_json TEXT
+);
+CREATE INDEX matches_file ON matches(file_id);
 ";
 
 /// What the cache knows about a path, enough to decide whether it is current
@@ -304,6 +323,8 @@ pub struct CacheStats {
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct LibraryStats {
     pub files: u64,
+    /// Their matches and stretches of free play
+    pub matches: u64,
     /// The highest best action window score that is a positive number
     pub max_action: Option<f64>,
 }
@@ -437,6 +458,91 @@ pub struct FileQuery {
     pub offset: usize,
     pub limit: usize,
 }
+
+/// Matches list order
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum MatchSort {
+    /// By the demo's date, then in the order played
+    #[default]
+    Date,
+    Path,
+    Map,
+    Players,
+    Teams,
+    /// The frags of the first side, the highest
+    Score,
+    Kills,
+    Length,
+    Status,
+}
+
+impl MatchSort {
+    fn column(self) -> &'static str {
+        match self {
+            MatchSort::Date => "f.recorded_at",
+            MatchSort::Path => "f.path",
+            MatchSort::Map => "m.map",
+            MatchSort::Players => "m.players",
+            MatchSort::Teams => "m.teams",
+            MatchSort::Kills => "m.kills",
+            MatchSort::Length => "m.length",
+            MatchSort::Status => "m.status",
+            MatchSort::Score => {
+                "CASE WHEN json_valid(m.score_json)
+                 THEN json_extract(m.score_json, '$.sides[0].frags') END"
+            }
+        }
+    }
+}
+
+/// Which matches to list, and how
+#[derive(Clone, Debug, Default)]
+pub struct MatchQuery {
+    /// The demos' conditions. Its map, shortest duration, fewest kills and
+    /// players and teams are each match's own, its kill conditions need a
+    /// kill in the match, and its paging and order are the matches'
+    pub files: FileQuery,
+    /// Only matches recorded from their countdown to their end
+    pub complete_only: bool,
+    pub sort: MatchSort,
+}
+
+/// A match, or a stretch of free play, with its demo
+#[derive(Clone, Debug, Serialize)]
+pub struct MatchRow {
+    pub file_id: i64,
+    pub path: String,
+    pub recorded_at: Option<String>,
+    pub date_source: Option<String>,
+    /// Its place among the demo's parts, from nought
+    pub ordinal: i64,
+    pub status: PartStatus,
+    /// Where watching it begins, in the demo's playback
+    pub opens_at: f32,
+    /// How long it was played for, in seconds
+    pub length: f32,
+    pub map: String,
+    pub players: i64,
+    pub teams: i64,
+    pub kills: i64,
+    /// The score at its last kill, such as `88 – 74`
+    pub score: Option<String>,
+    #[serde(skip)]
+    pub scoreboard: Option<Scoreboard>,
+    /// The path's own bytes, as for [`FileRow::native`]
+    #[serde(skip)]
+    pub native: Vec<u8>,
+}
+
+impl MatchRow {
+    /// The demo this match was recorded in
+    pub fn source(&self) -> PathBuf {
+        path_from_native(&self.native).unwrap_or_else(|| PathBuf::from(&self.path))
+    }
+}
+
+/// A kill within the match `m`, by its session and times
+const KILL_IN_MATCH: &str = "k.segment = m.segment AND k.time >= m.start AND k.time <= m.end";
 
 #[derive(Clone, Debug, Serialize)]
 pub struct KillRow {
@@ -839,6 +945,31 @@ impl Cache {
                     serde_json::to_string(&w.weapons).unwrap_or_default(),
                 ])?;
             }
+
+            let mut matches = tx.prepare(
+                "INSERT INTO matches(file_id, ordinal, segment, status, opens_at, start, end,
+                    length, map, players, teams, kills, score, score_json)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+            )?;
+            for (n, p) in r.parts.iter().enumerate() {
+                let score = Some(p.scoreboard.summary(3)).filter(|s| !s.is_empty());
+                matches.execute(params![
+                    id,
+                    n as i64,
+                    p.segment,
+                    p.status.key(),
+                    p.opens_at,
+                    p.start,
+                    p.end,
+                    p.length(),
+                    p.map,
+                    p.counted.players,
+                    p.counted.teams,
+                    p.kills,
+                    score,
+                    serde_json::to_string(&p.scoreboard).unwrap_or_default(),
+                ])?;
+            }
         }
         tx.commit()?;
 
@@ -881,9 +1012,16 @@ impl Cache {
             [analysis_version()],
             |r| Ok((r.get::<_, i64>(0)?, r.get::<_, Option<f64>>(1)?)),
         )?;
+        let matches = self.conn.query_row(
+            "SELECT COUNT(*) FROM matches m JOIN files f ON f.id = m.file_id
+             WHERE f.version = ?1",
+            [analysis_version()],
+            |r| r.get::<_, i64>(0),
+        )?;
 
         Ok(LibraryStats {
             files: files as u64,
+            matches: matches as u64,
             max_action: max_action.filter(|m| m.is_finite()),
         })
     }
@@ -928,6 +1066,12 @@ impl Cache {
 
     /// The WHERE clause for `q` over `files` aliased `f`, with its arguments
     fn conditions(q: &FileQuery) -> (String, Vec<Box<dyn ToSql>>) {
+        Self::conditions_with_kills(q, "1")
+    }
+
+    /// [`Self::conditions`], where a kill meeting the kill conditions must
+    /// also meet `kill_within`
+    fn conditions_with_kills(q: &FileQuery, kill_within: &str) -> (String, Vec<Box<dyn ToSql>>) {
         let mut args: Vec<Box<dyn ToSql>> = vec![Box::new(analysis_version())];
         let mut c = vec!["f.version = ?1".to_string()];
         if let Some(t) = q.text.as_deref().filter(|t| !t.is_empty()) {
@@ -1004,10 +1148,115 @@ impl Cache {
         if !q.kills.is_empty() {
             let kill_sql = Self::kill_conditions(&q.kills, &mut args);
             c.push(format!(
-                "EXISTS (SELECT 1 FROM kills k WHERE k.file_id = f.id AND {kill_sql})"
+                "EXISTS (SELECT 1 FROM kills k WHERE k.file_id = f.id AND {kill_within}
+                  AND {kill_sql})"
             ));
         }
         (c.join(" AND "), args)
+    }
+
+    /// The WHERE clause for `q` over `matches` aliased `m` joined to their
+    /// `files` aliased `f`, with its arguments
+    fn match_conditions(q: &MatchQuery) -> (String, Vec<Box<dyn ToSql>>) {
+        // The demos' own conditions, leaving those of each match
+        let mut files = q.files.clone();
+        files.map = None;
+        files.min_duration = None;
+        files.min_kills = None;
+        files.min_players = None;
+        files.max_players = None;
+        files.min_teams = None;
+        files.max_teams = None;
+        let (conditions, mut args) = Self::conditions_with_kills(&files, KILL_IN_MATCH);
+        let mut c = vec![conditions];
+
+        let f = &q.files;
+        if let Some(m) = f.map.as_deref().filter(|m| !m.is_empty()) {
+            args.push(Box::new(fold(m)));
+            c.push(format!("instr(fold(m.map), ?{}) > 0", args.len()));
+        }
+        let bounds = [
+            (f.min_duration.map(f64::from), "m.length >="),
+            (f.min_kills.map(|n| n as f64), "m.kills >="),
+            (f.min_players.map(|n| n as f64), "m.players >="),
+            (f.max_players.map(|n| n as f64), "m.players <="),
+            (f.min_teams.map(|n| n as f64), "m.teams >="),
+            (f.max_teams.map(|n| n as f64), "m.teams <="),
+        ];
+        for (bound, test) in bounds {
+            if let Some(n) = bound {
+                args.push(Box::new(n));
+                c.push(format!("{test} ?{}", args.len()));
+            }
+        }
+        if q.complete_only {
+            args.push(Box::new(PartStatus::Complete.key()));
+            c.push(format!("m.status = ?{}", args.len()));
+        }
+        (c.join(" AND "), args)
+    }
+
+    /// How many matches of current files match `q`, ignoring its paging
+    pub fn count_matches(&self, q: &MatchQuery) -> Result<u64, CacheError> {
+        let (conditions, args) = Self::match_conditions(q);
+        let sql = format!(
+            "SELECT COUNT(*) FROM matches m JOIN files f ON f.id = m.file_id WHERE {conditions}"
+        );
+        let refs: Vec<&dyn ToSql> = args.iter().map(|a| a.as_ref()).collect();
+        Ok(self
+            .conn
+            .query_row(&sql, refs.as_slice(), |r| r.get::<_, i64>(0))? as u64)
+    }
+
+    /// One page of matches meeting every condition, in `q`'s order with the
+    /// demo and the order played breaking ties
+    pub fn query_matches(&self, q: &MatchQuery) -> Result<Vec<MatchRow>, CacheError> {
+        let (conditions, mut args) = Self::match_conditions(q);
+        args.push(Box::new(q.files.limit.max(1) as i64));
+        let limit = args.len();
+        args.push(Box::new(q.files.offset as i64));
+        let offset = args.len();
+        let direction = if q.files.descending { "DESC" } else { "ASC" };
+        let order = q.sort.column();
+
+        let sql = format!(
+            "SELECT f.id, f.path, f.path_blob, f.recorded_at, f.date_source, m.ordinal,
+                m.status, m.opens_at, m.length, m.map, m.players, m.teams, m.kills, m.score,
+                m.score_json
+             FROM matches m JOIN files f ON f.id = m.file_id WHERE {conditions}
+             ORDER BY {order} {direction} NULLS LAST, f.path, m.ordinal
+             LIMIT ?{limit} OFFSET ?{offset}"
+        );
+        let mut stmt = self.conn.prepare(&sql)?;
+        let refs: Vec<&dyn ToSql> = args.iter().map(|a| a.as_ref()).collect();
+        let rows = stmt.query_map(refs.as_slice(), |r| {
+            let status: String = r.get(6)?;
+            Ok(MatchRow {
+                file_id: r.get(0)?,
+                path: r.get(1)?,
+                native: r.get(2)?,
+                recorded_at: r.get(3)?,
+                date_source: r.get(4)?,
+                ordinal: r.get(5)?,
+                status: PartStatus::from_key(&status).unwrap_or(PartStatus::FreePlay),
+                opens_at: r.get(7)?,
+                length: r.get(8)?,
+                map: r.get(9)?,
+                players: r.get(10)?,
+                teams: r.get(11)?,
+                kills: r.get(12)?,
+                score: r.get(13)?,
+                scoreboard: r
+                    .get::<_, Option<String>>(14)?
+                    .and_then(|json| serde_json::from_str(&json).ok()),
+            })
+        })?;
+
+        let mut out = Vec::new();
+        for row in rows {
+            out.push(row?);
+        }
+        Ok(out)
     }
 
     /// How many current files match `q`, ignoring its paging
@@ -1484,5 +1733,57 @@ mod tests {
         // Nothing positive leaves no scale
         let c = cache(&[("a.dem", None, Some(0.)), ("b.dem", None, None)]);
         assert_eq!(c.library_stats().unwrap().max_action, None);
+    }
+
+    #[test]
+    fn matches_are_found_by_their_own_map_length_and_status() {
+        let c = cache(&[("a.dem", None, None), ("b.dem", None, None)]);
+        let parts = [
+            ("a.dem", 0, "interrupted", "boot_camp", 353.),
+            ("a.dem", 1, "complete", "boot_camp", 1260.),
+            ("b.dem", 0, "complete", "crossfire", 900.),
+            ("b.dem", 1, "free-play", "datacore", 400.),
+        ];
+        for (path, ordinal, status, map, length) in parts {
+            c.conn
+                .execute(
+                    "INSERT INTO matches(file_id, ordinal, segment, status, opens_at, start, end,
+                        length, map, players, teams, kills)
+                     SELECT id, ?1, 1, ?2, 0, 0, ?4, ?4, ?3, 4, 2, 10 FROM files
+                     WHERE path = ?5",
+                    params![ordinal, status, map, length, path],
+                )
+                .unwrap();
+        }
+        let found = |q: &MatchQuery| -> Vec<(String, i64)> {
+            let rows = c.query_matches(q).unwrap();
+            assert_eq!(c.count_matches(q).unwrap(), rows.len() as u64);
+            rows.into_iter().map(|r| (r.path, r.ordinal)).collect()
+        };
+        let all = MatchQuery {
+            files: FileQuery {
+                limit: 10,
+                ..FileQuery::default()
+            },
+            ..MatchQuery::default()
+        };
+        assert_eq!(found(&all).len(), 4);
+        assert_eq!(c.library_stats().unwrap().matches, 4);
+
+        let complete = MatchQuery {
+            complete_only: true,
+            ..all.clone()
+        };
+        assert_eq!(found(&complete), [("a.dem".into(), 1), ("b.dem".into(), 0)]);
+
+        let mut boot_camp = all.clone();
+        boot_camp.files.map = Some("BOOT".into());
+        boot_camp.files.min_duration = Some(600.);
+        assert_eq!(found(&boot_camp), [("a.dem".into(), 1)]);
+
+        let mut longest = all.clone();
+        longest.sort = MatchSort::Length;
+        longest.files.descending = true;
+        assert_eq!(found(&longest)[0], ("a.dem".into(), 1));
     }
 }

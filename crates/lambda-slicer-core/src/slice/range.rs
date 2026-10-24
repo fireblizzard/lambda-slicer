@@ -149,6 +149,30 @@ impl GroupIndex {
         lengths
     }
 
+    /// When each session's recording began and ended, by its frame groups,
+    /// the last one lasting until the next session's or the recording's
+    /// end. The groups before playback are left out
+    pub fn segment_spans(&self) -> BTreeMap<u32, (f32, f32)> {
+        let mut spans: BTreeMap<u32, (f32, f32)> = BTreeMap::new();
+        for (k, group) in self.groups.iter().enumerate() {
+            if group.demo_start {
+                continue;
+            }
+
+            // A later session's times start over, so its first group says
+            // nothing of when this one ended
+            let until = match self.groups.get(k + 1) {
+                Some(next) if next.segment == group.segment => next.time,
+                Some(_) => group.time,
+                None => self.end.unwrap_or(group.time),
+            };
+            let span = spans.entry(group.segment).or_insert((group.time, until));
+            span.0 = span.0.min(group.time);
+            span.1 = span.1.max(until);
+        }
+        spans
+    }
+
     /// The session played longest, by [`Self::segment_lengths`]. A tie goes
     /// to the later session
     pub fn longest_segment(&self) -> Option<u32> {

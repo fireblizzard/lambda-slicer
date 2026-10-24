@@ -559,7 +559,7 @@ pub fn short_map_name(path: &str) -> String {
 
 /// How long a map must be recorded for, in seconds, to be listed with
 /// nobody killed on it
-const LEAST_PLAYED: f32 = 5. * 60.;
+pub(crate) const LEAST_PLAYED: f32 = 5. * 60.;
 
 /// Every map in `maps` once, in the order they were first played, as the
 /// library lists them, such as `ag_hidden_lab, elixir`. A demo of several
@@ -692,7 +692,7 @@ pub struct Context {
     places: std::collections::BTreeMap<u8, [f32; 3]>,
     /// Votes, timeouts, pauses and sudden death, each change once
     pub match_events: MatchEvents,
-    /// Who plays, for the players and teams counted when a match starts
+    /// Who plays, and the matches played
     pub roster: Roster,
 }
 
@@ -815,7 +815,7 @@ impl Context {
             self.teams.clear();
             self.places.clear();
             self.match_events.new_session();
-            self.roster.new_session();
+            self.roster.new_session(loc.playback_time());
             self.scores.clear();
 
             // Every part after the first starts with a change of map
@@ -827,13 +827,14 @@ impl Context {
 
         // A player who came, went or was renamed changes who plays
         if let Message::UpdateUserInfo { .. } = &m.message {
-            self.roster.changed(d, &self.teams);
+            self.roster.changed(d, loc.playback_time(), &self.teams);
         }
 
         if let Message::Intermission = &m.message
             && let Some(session) = self.maps.last_mut()
         {
             session.intermission = Some(loc.playback_time());
+            self.roster.intermission(loc.playback_time());
         }
 
         // A singleplayer recording's pauses do not stop the game it shows,
@@ -857,7 +858,8 @@ impl Context {
         let name = def.name_lossy();
         self.match_events
             .message(d, loc.playback_time(), &name, body);
-        self.roster.message(d, &name, body, &self.teams);
+        self.roster
+            .message(d, loc.playback_time(), &name, body, &self.teams);
 
         match name.as_str() {
             "DeathMsg" => {
@@ -954,7 +956,7 @@ impl Context {
                 let end = rest.iter().position(|&b| b == 0).unwrap_or(rest.len());
                 self.teams
                     .insert(player, String::from_utf8_lossy(&rest[..end]).into_owned());
-                self.roster.changed(d, &self.teams);
+                self.roster.changed(d, loc.playback_time(), &self.teams);
                 if self.scores.contains_key(&player) {
                     self.log_score(loc, d, player);
                 }

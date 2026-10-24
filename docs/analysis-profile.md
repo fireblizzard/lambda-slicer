@@ -260,6 +260,41 @@ For example `--weapon crossbow --victim-airborne` finds midair crossbow kills, a
 `--weapon grenade --victim-airborne --killer-airborne` finds midair grenade kills by midair
 players.
 
+## Matches
+
+The report lists each match the demo recorded, and each stretch of free play long enough to list,
+in the order played. AG's `Countdown` user message opens a match at its first count and starts
+it when it reaches 0. A count of 50 only says the server is waiting for players, and a negative
+count hides the countdown, calling the match off when it never reached 0. A match already on when
+the recording began is known from the session's first `Settings` saying a match is on with no
+countdown before it, and starts where the recording of that session began. A recording that
+begins mid-game may have no `Settings` for that session at all, as the server sent them before.
+Its game is then taken for a match already on, kept when it plays out to the intermission and
+otherwise left as free play.
+
+A match ends:
+
+| By | Shown as |
+|---|---|
+| the intermission | Complete, or Joined late for a match already on |
+| another countdown reaching 0, `Settings` saying no match is on, or a new session | Interrupted |
+| the end of the recording | Cut off |
+
+A match cut short before anyone was killed has nothing to watch and isn't listed.
+
+Players and teams are counted as the match starts, or at its first kill for a match already on,
+once everyone has come in. A player is a client that isn't spectating, by AG's `Spectator`, nor
+a spectator proxy, whose userinfo has `*hltv`. Teams are counted from `TeamInfo`, and in a game
+with teams only players on a team count. Kills and the score are those between the match's start
+and its end, the score as it stood at its last kill.
+
+What is left of a session outside its matches is free play, listed when it lasts at least five
+minutes, the same length that keeps a barely played map in a demo's map list. Its players are the
+most at once. A demo's own players and teams are the most in any complete match, or the most at
+any moment when it has none.
+
+`examples/match_probe.rs` lists the messages these are found from, with their times.
+
 ## Actors
 
 | Label | Meaning |

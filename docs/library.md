@@ -39,6 +39,7 @@ file. It uses WAL so workers read while the writer stores.
 | `weapons` | shots, kills, records and intervals per weapon |
 | `kills` | each kill with its weapon string, profile weapon, linked shot weapon, cause, names, airborne flags, horizontal speeds, distance and flight time |
 | `windows` | the best action windows with their sides and weapons |
+| `matches` | each match and stretch of free play with its session, status, times, length, map, players, teams, kills and score ([analysis](analysis-profile.md#matches)) |
 
 **Invalidation.** Every entry records the cache schema, analysis schema, profile, decode report
 schema and parser version it was made with. An entry with any other version is stale. It is

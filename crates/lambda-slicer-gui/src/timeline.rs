@@ -834,6 +834,7 @@ mod tests {
             chat: Vec::new(),
             match_events: Vec::new(),
             counted: Default::default(),
+            parts: Vec::new(),
             scoreboard: Default::default(),
             score_updates: Vec::new(),
             team_score_updates: Vec::new(),

@@ -49,6 +49,20 @@ library-demos-of = { $shown } z { $total ->
     [many] { $total } dem
    *[other] { $total } dema
 }
+library-matches = { $count ->
+    [one] { $count } mecz
+    [few] { $count } mecze
+    [many] { $count } meczów
+   *[other] { $count } meczu
+}
+library-matches-of = { $shown } z { $total ->
+    [one] { $total } meczu
+    [few] { $total } meczów
+    [many] { $total } meczów
+   *[other] { $total } meczu
+}
+library-no-games = Żadne demo nie zawiera meczu ani pięciu minut gry bez meczu.
+library-no-games-filtered = Żaden mecz nie pasuje do tych filtrów.
 library-total = { $count ->
     [one] { $count } demo w bibliotece
     [few] { $count } dema w bibliotece
@@ -427,7 +441,7 @@ scores-headshots = SG
 column-accuracy = Celność
 column-players = Gracze
 column-teams = Drużyny
-help-players-column = Gracze w grze, bez obserwatorów, liczeni w chwili rozpoczęcia meczu po odliczaniu albo przy pierwszym zabójstwie, jeśli mecz już trwał, gdy zaczęło się nagranie. W grze drużynowej liczą się tylko gracze w drużynie. Demo z kilkoma meczami pokazuje największą liczbę, a demo bez meczu największą liczbę w dowolnej chwili.
+help-players-column = Gracze w grze, bez obserwatorów, liczeni w chwili, gdy mecz zaczął się po odliczaniu. W grze drużynowej liczą się tylko gracze w drużynie. Demo pokazuje największą liczbę w dowolnym pełnym meczu, a demo bez pełnego meczu największą liczbę w dowolnej chwili.
 help-teams-column = Drużyny, w których jest co najmniej jeden gracz, liczone tak jak gracze. Gra bez drużyn nie ma żadnej.
 filter-min-accuracy = Celność co najmniej (%)
 scores-accuracy = Cel.
@@ -515,6 +529,23 @@ setup-not-installed = { $folder } nie zawiera instalacji Half-Life z folderem va
 tab-events = Zdarzenia
 tab-clips = Klipy
 tab-scoreboard = Tabela wyników
+tab-demos = Dema
+tab-matches = Mecze
+filter-complete = Tylko pełne mecze
+help-complete-filter = Tylko mecze nagrane od odliczania do końca.
+help-status-column = Ile meczu nagrało demo. Najedź na stan w wierszu, aby zobaczyć, co oznacza.
+help-match-players = Gracze w grze, bez obserwatorów, w chwili rozpoczęcia meczu po odliczaniu albo przy pierwszym zabójstwie, jeśli mecz już trwał, gdy zaczęło się nagranie. W wolnej grze największa liczba naraz.
+help-match-teams = Drużyny, w których jest co najmniej jeden gracz, liczone tak jak gracze. Gra bez drużyn nie ma żadnej.
+match-complete = Pełny
+match-joined-late = Od połowy
+match-interrupted = Przerwany
+match-cut-off = Urwany
+match-free-play = Wolna gra
+help-match-complete = Nagrany od odliczania do końca meczu.
+help-match-joined-late = Mecz już trwał, gdy zaczęło się nagranie, i został nagrany do końca.
+help-match-interrupted = Zaczął się inny mecz, mecz został odwołany albo zmieniła się mapa, zanim mecz się skończył.
+help-match-cut-off = Nagranie skończyło się przed końcem meczu.
+help-match-free-play = Pięć minut gry lub więcej bez trwającego meczu.
 list-hide = Ukryj listę dem
 list-show = Pokaż listę dem
 demo-details = Szczegóły

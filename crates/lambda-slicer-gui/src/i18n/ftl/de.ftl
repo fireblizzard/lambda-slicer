@@ -45,6 +45,16 @@ library-demos-of = { $shown } von { $total ->
     [one] { $total } Demo
    *[other] { $total } Demos
 }
+library-matches = { $count ->
+    [one] { $count } Match
+   *[other] { $count } Matches
+}
+library-matches-of = { $shown } von { $total ->
+    [one] { $total } Match
+   *[other] { $total } Matches
+}
+library-no-games = Keine der Demos enthält ein Match oder fünf Minuten Spiel ohne Match.
+library-no-games-filtered = Kein Match passt zu diesen Filtern.
 library-total = { $count ->
     [one] { $count } Demo in der Bibliothek
    *[other] { $count } Demos in der Bibliothek
@@ -402,7 +412,7 @@ scores-headshots = KS
 column-accuracy = Treffsicherheit
 column-players = Spieler
 column-teams = Teams
-help-players-column = Spieler im Spiel, keine Zuschauer, gezählt beim Start des Matches nach dem Countdown, oder beim ersten Abschuss, wenn das Match schon lief, als die Aufnahme begann. In einem Teamspiel zählen nur Spieler in einem Team. Eine Demo mit mehreren Matches zeigt die höchste Zahl, eine Demo ohne Match die höchste Zahl zu irgendeinem Zeitpunkt.
+help-players-column = Spieler im Spiel, keine Zuschauer, gezählt, wenn ein Match nach seinem Countdown begann. In einem Teamspiel zählen nur Spieler in einem Team. Eine Demo zeigt die höchste Zahl in einem vollständigen Match, und eine Demo ohne vollständiges Match die höchste Zahl zu irgendeinem Zeitpunkt.
 help-teams-column = Teams mit mindestens einem Spieler, gezählt wie die Spieler. Ein Spiel ohne Teams hat keine.
 filter-min-accuracy = Treffsicherheit mindestens (%)
 scores-accuracy = Treff.
@@ -490,6 +500,23 @@ setup-not-installed = { $folder } enthält keine Half-Life-Installation mit valv
 tab-events = Ereignisse
 tab-clips = Clips
 tab-scoreboard = Punktestand
+tab-demos = Demos
+tab-matches = Matches
+filter-complete = Nur vollständige Matches
+help-complete-filter = Nur Matches, die vom Countdown bis zum Ende aufgenommen wurden.
+help-status-column = Wie viel vom Match die Demo aufgenommen hat. Zeige auf den Status einer Zeile, um zu sehen, was er bedeutet.
+help-match-players = Spieler im Spiel, keine Zuschauer, beim Start des Matches nach dem Countdown, oder beim ersten Abschuss, wenn das Match schon lief, als die Aufnahme begann. Im freien Spiel die meisten gleichzeitig.
+help-match-teams = Teams mit mindestens einem Spieler, gezählt wie die Spieler. Ein Spiel ohne Teams hat keine.
+match-complete = Vollständig
+match-joined-late = Spät eingestiegen
+match-interrupted = Unterbrochen
+match-cut-off = Abgeschnitten
+match-free-play = Freies Spiel
+help-match-complete = Vom Countdown bis zum Ende des Matches aufgenommen.
+help-match-joined-late = Das Match lief schon, als die Aufnahme begann, und wurde bis zum Ende aufgenommen.
+help-match-interrupted = Ein anderes Match begann, das Match wurde abgebrochen oder die Map wurde gewechselt, bevor das Match zu Ende war.
+help-match-cut-off = Die Aufnahme endete vor dem Match.
+help-match-free-play = Fünf Minuten oder mehr Spiel, ohne dass ein Match lief.
 list-hide = Demoliste ausblenden
 list-show = Demoliste einblenden
 demo-details = Details

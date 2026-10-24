@@ -47,6 +47,18 @@ library-demos-of = { $shown } de { $total ->
     [many] { $total } de demos
    *[other] { $total } demos
 }
+library-matches = { $count ->
+    [one] { $count } partida
+    [many] { $count } de partidas
+   *[other] { $count } partidas
+}
+library-matches-of = { $shown } de { $total ->
+    [one] { $total } partida
+    [many] { $total } de partidas
+   *[other] { $total } partidas
+}
+library-no-games = Ninguna de las demos tiene una partida, ni cinco minutos de juego sin partida.
+library-no-games-filtered = Ninguna partida coincide con estos filtros.
 library-total = { $count ->
     [one] { $count } demo en la biblioteca
     [many] { $count } de demos en la biblioteca
@@ -420,7 +432,7 @@ scores-headshots = HS
 column-accuracy = Precisión
 column-players = Jugadores
 column-teams = Equipos
-help-players-column = Jugadores en el juego, no espectadores, contados cuando arrancó la partida tras la cuenta regresiva, o en la primera baja si la partida ya estaba en curso cuando empezó la grabación. En un juego por equipos solo cuentan los jugadores que están en un equipo. Una demo con varias partidas muestra la cifra más alta, y una demo sin partida, la más alta en cualquier momento.
+help-players-column = Jugadores en el juego, no espectadores, contados cuando una partida arrancó tras su cuenta regresiva. En un juego por equipos solo cuentan los jugadores que están en un equipo. Una demo muestra la cifra más alta de cualquier partida completa, y una demo sin ninguna partida completa, la más alta en cualquier momento.
 help-teams-column = Equipos con al menos un jugador, contados igual que los jugadores. Un juego sin equipos no tiene ninguno.
 filter-min-accuracy = Precisión mínima (%)
 scores-accuracy = Prec.
@@ -508,6 +520,23 @@ setup-not-installed = { $folder } no tiene una instalación de Half-Life con car
 tab-events = Eventos
 tab-clips = Clips
 tab-scoreboard = Marcador
+tab-demos = Demos
+tab-matches = Partidas
+filter-complete = Solo partidas completas
+help-complete-filter = Solo partidas grabadas desde la cuenta regresiva hasta el final.
+help-status-column = Cuánto de la partida grabó la demo. Pasa el mouse sobre el estado de una fila para ver qué significa.
+help-match-players = Jugadores en el juego, no espectadores, cuando la partida arrancó tras la cuenta regresiva, o en la primera baja si ya estaba en curso cuando empezó la grabación. En juego libre, la mayor cantidad a la vez.
+help-match-teams = Equipos con al menos un jugador, contados igual que los jugadores. Un juego sin equipos no tiene ninguno.
+match-complete = Completa
+match-joined-late = Ya empezada
+match-interrupted = Interrumpida
+match-cut-off = Cortada
+match-free-play = Juego libre
+help-match-complete = Grabada desde la cuenta regresiva hasta el final de la partida.
+help-match-joined-late = La partida ya estaba en curso cuando empezó la grabación, y se grabó hasta el final.
+help-match-interrupted = Empezó otra partida, se canceló la partida o cambió el mapa antes de que terminara la partida.
+help-match-cut-off = La grabación terminó antes que la partida.
+help-match-free-play = Cinco minutos o más de juego sin ninguna partida en curso.
 list-hide = Ocultar la lista de demos
 list-show = Mostrar la lista de demos
 demo-details = Detalles

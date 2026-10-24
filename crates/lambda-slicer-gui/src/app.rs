@@ -79,6 +79,8 @@ pub struct Launch {
     pub show: Option<String>,
     /// Turn on both date filters, for checking how they wrap
     pub dates: bool,
+    /// Show the library's matches rather than its demos
+    pub matches: bool,
     /// Export every clip of the demo shown at start
     pub export: bool,
     /// Pseudo-localise every message, to find text that does not fit
@@ -269,6 +271,9 @@ impl App {
             l.filters_open = settings.layout.filters_open;
             l.list_filters_open = settings.layout.list_filters_open;
             l.sort_by_key(&settings.sort_column, settings.sort_descending);
+            if launch.matches {
+                l.show_matches();
+            }
         }
 
         if let Some(l) = &mut library
@@ -1438,10 +1443,24 @@ impl eframe::App for App {
             self.direct = None;
         }
         let selected = selected.or_else(|| self.direct.clone().map(|p| (p, 0.)));
-        match (&selected, &self.demo) {
-            (Some((path, _)), Some(d)) if *path == d.path => {}
+        let open_at = self.library.as_mut().and_then(|l| l.open_at.take());
+        match (&selected, &mut self.demo) {
+            (Some((path, _)), Some(d)) if *path == d.path => {
+                // Another match of the open demo is watched from its start
+                if let Some(at) = open_at {
+                    match &mut d.viewer {
+                        Some(viewer) => viewer.seek(at),
+                        None => self.viewer_at = Some(f64::from(at)),
+                    }
+                }
+            }
             (Some((path, duration)), _) => {
                 self.drop_demo();
+
+                // A match's row opens the player where watching it begins
+                if let Some(at) = open_at {
+                    self.viewer_at = Some(f64::from(at));
+                }
 
                 let floors = self.game_floors();
                 let mut d = DemoView::open(path.clone(), *duration, floors, &ctx);

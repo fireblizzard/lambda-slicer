@@ -38,7 +38,7 @@
 - [ ] Add voice chat audio to hear what players were saying in the demo
 - [ ] Support room echoes
 - [ ] Add tripmine's and snark's effects
-- [ ] Add a Matches tab for the library, which also includes Free play for parts of a demo that are long enough to be worth mentioning even if they were not in a match (agstart). Make this tab the default one for the library
+- [x] Add a Matches tab for the library, which also includes Free play for parts of a demo that are long enough to be worth mentioning even if they were not in a match (agstart). Make this tab the default one for the library
 
 # Ideas for later
 - [ ] Add a Favourites tab and an Add to favourites or Remove from favourites option to the context menu of a demo. The tab should be right after the Filters button above the table, and for now there will be 2 tabs: All and Favourites. All is the normal table and Favourite will just show the favourited demos. Demo entries in the table should show a yellow star after the name of the demo, in the same column as the name, just at the end of the text
@@ -55,3 +55,4 @@
 - [ ] Find chat messages across the whole library, like words or parts of a message, with filters like sender and map
 - [ ] Improve the match highlights (top moments), accounting for things that require skill like complicated kills, headshots, stunts, trickshots, etc.
 - [ ] Add support for Xash3D
+- [ ] Add entity view mode for the demo player which can work with or without freecam, so you click on a door to check its properties, or you're able to see (and click) invisible entities like triggers, NPC nodes, and so on. This mode would disable the 

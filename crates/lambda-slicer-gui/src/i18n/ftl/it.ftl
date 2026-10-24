@@ -47,6 +47,18 @@ library-demos-of = { $shown } su { $total ->
     [many] { $total } di demo
    *[other] { $total } demo
 }
+library-matches = { $count ->
+    [one] { $count } partita
+    [many] { $count } di partite
+   *[other] { $count } partite
+}
+library-matches-of = { $shown } su { $total ->
+    [one] { $total } partita
+    [many] { $total } di partite
+   *[other] { $total } partite
+}
+library-no-games = Nessuna delle demo contiene una partita, né cinque minuti di gioco senza partita.
+library-no-games-filtered = Nessuna partita corrisponde a questi filtri.
 library-total = { $count ->
     [one] { $count } demo nella libreria
     [many] { $count } di demo nella libreria
@@ -416,7 +428,7 @@ scores-headshots = CT
 column-accuracy = Precisione
 column-players = Giocatori
 column-teams = Squadre
-help-players-column = I giocatori in partita, non gli spettatori, contati all’inizio della partita dopo il conto alla rovescia, o alla prima uccisione se la partita era già in corso quando è iniziata la registrazione. In un gioco a squadre contano solo i giocatori in una squadra. Una demo con più partite mostra il numero più alto, e una demo senza partita il più alto in qualsiasi momento.
+help-players-column = I giocatori in partita, non gli spettatori, contati quando una partita è iniziata dopo il suo conto alla rovescia. In un gioco a squadre contano solo i giocatori in una squadra. Una demo mostra il numero più alto in una partita completa, e una demo senza partite complete il più alto in qualsiasi momento.
 help-teams-column = Le squadre con almeno un giocatore, contate come i giocatori. Un gioco senza squadre non ne ha.
 filter-min-accuracy = Precisione minima (%)
 scores-accuracy = Prec.
@@ -504,6 +516,23 @@ setup-not-installed = { $folder } non contiene un’installazione di Half-Life c
 tab-events = Eventi
 tab-clips = Clip
 tab-scoreboard = Punteggi
+tab-demos = Demo
+tab-matches = Partite
+filter-complete = Solo partite complete
+help-complete-filter = Solo le partite registrate dal conto alla rovescia alla fine.
+help-status-column = Quanto della partita ha registrato la demo. Passa il mouse sullo stato di una riga per vedere cosa significa.
+help-match-players = I giocatori in partita, non gli spettatori, all’inizio della partita dopo il conto alla rovescia, o alla prima uccisione se era già in corso quando è iniziata la registrazione. Nel gioco libero, il numero più alto nello stesso momento.
+help-match-teams = Le squadre con almeno un giocatore, contate come i giocatori. Un gioco senza squadre non ne ha.
+match-complete = Completa
+match-joined-late = Già in corso
+match-interrupted = Interrotta
+match-cut-off = Tagliata
+match-free-play = Gioco libero
+help-match-complete = Registrata dal conto alla rovescia alla fine della partita.
+help-match-joined-late = La partita era già in corso quando è iniziata la registrazione, ed è stata registrata fino alla fine.
+help-match-interrupted = È iniziata un’altra partita, la partita è stata annullata o la mappa è cambiata prima che la partita finisse.
+help-match-cut-off = La registrazione è finita prima della partita.
+help-match-free-play = Cinque minuti o più di gioco senza nessuna partita in corso.
 list-hide = Nascondi l’elenco delle demo
 list-show = Mostra l’elenco delle demo
 demo-details = Dettagli

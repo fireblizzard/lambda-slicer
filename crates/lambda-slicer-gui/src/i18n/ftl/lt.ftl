@@ -49,6 +49,20 @@ library-demos-of = { $shown } iš { $total ->
     [many] { $total } įrašo
    *[other] { $total } įrašų
 }
+library-matches = { $count ->
+    [one] { $count } rungtynės
+    [few] { $count } rungtynės
+    [many] { $count } rungtynių
+   *[other] { $count } rungtynių
+}
+library-matches-of = { $shown } iš { $total ->
+    [one] { $total } rungtynių
+    [few] { $total } rungtynių
+    [many] { $total } rungtynių
+   *[other] { $total } rungtynių
+}
+library-no-games = Nė viename įraše nėra nei rungtynių, nei penkių minučių žaidimo be jų.
+library-no-games-filtered = Šių filtrų neatitinka jokios rungtynės.
 library-total = { $count ->
     [one] Bibliotekoje { $count } įrašas
     [few] Bibliotekoje { $count } įrašai
@@ -427,7 +441,7 @@ scores-headshots = ŠG
 column-accuracy = Taiklumas
 column-players = Žaidėjai
 column-teams = Komandos
-help-players-column = Žaidime esantys žaidėjai, ne stebėtojai, suskaičiuoti rungtynėms prasidėjus po atgalinės atskaitos arba ties pirmuoju nužudymu, jei rungtynės jau vyko, kai prasidėjo įrašas. Komandiniame žaidime skaičiuojami tik komandoje esantys žaidėjai. Kelių rungtynių įrašas rodo didžiausią skaičių, o įrašas be rungtynių – didžiausią skaičių bet kuriuo metu.
+help-players-column = Žaidime esantys žaidėjai, ne stebėtojai, suskaičiuoti, kai rungtynės prasidėjo po atgalinės atskaitos. Komandiniame žaidime skaičiuojami tik komandoje esantys žaidėjai. Įrašas rodo didžiausią skaičių bet kuriose pilnose rungtynėse, o įrašas be pilnų rungtynių – didžiausią skaičių bet kuriuo metu.
 help-teams-column = Komandos, kuriose yra bent vienas žaidėjas, suskaičiuotos taip pat kaip žaidėjai. Žaidime be komandų jų nėra.
 filter-min-accuracy = Taiklumas bent (%)
 scores-accuracy = Taikl.
@@ -515,6 +529,23 @@ setup-not-installed = { $folder } neturi Half-Life diegimo su valve aplanku.
 tab-events = Įvykiai
 tab-clips = Klipai
 tab-scoreboard = Rezultatai
+tab-demos = Įrašai
+tab-matches = Rungtynės
+filter-complete = Tik pilnos rungtynės
+help-complete-filter = Tik rungtynės, įrašytos nuo atgalinės atskaitos iki pabaigos.
+help-status-column = Kiek rungtynių įrašas užfiksavo. Užveskite pelę ant eilutės būsenos, kad pamatytumėte, ką ji reiškia.
+help-match-players = Žaidime esantys žaidėjai, ne stebėtojai, kai rungtynės prasidėjo po atgalinės atskaitos, arba ties pirmuoju nužudymu, jei rungtynės jau vyko, kai prasidėjo įrašas. Laisvame žaidime – daugiausia vienu metu.
+help-match-teams = Komandos, kuriose yra bent vienas žaidėjas, suskaičiuotos taip pat kaip žaidėjai. Žaidime be komandų jų nėra.
+match-complete = Pilnos
+match-joined-late = Prisijungta vėliau
+match-interrupted = Nutrauktos
+match-cut-off = Įrašas nutrūko
+match-free-play = Laisvas žaidimas
+help-match-complete = Įrašyta nuo atgalinės atskaitos iki rungtynių pabaigos.
+help-match-joined-late = Rungtynės jau vyko, kai prasidėjo įrašas, ir buvo įrašytos iki pabaigos.
+help-match-interrupted = Prasidėjo kitos rungtynės, rungtynės buvo atšauktos arba pasikeitė žemėlapis, kol rungtynės dar nesibaigė.
+help-match-cut-off = Įrašas baigėsi anksčiau nei rungtynės.
+help-match-free-play = Penkios ar daugiau minučių žaidimo, kai nevyksta rungtynės.
 list-hide = Slėpti įrašų sąrašą
 list-show = Rodyti įrašų sąrašą
 demo-details = Išsami informacija

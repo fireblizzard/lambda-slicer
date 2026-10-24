@@ -42,6 +42,13 @@ library-demos = { $count ->
 }
 library-percent = %{ $percent }
 library-demos-of = { $total } demodan { $shown }
+library-matches = { $count ->
+    [one] { $count } maç
+   *[other] { $count } maç
+}
+library-matches-of = { $total } maçtan { $shown }
+library-no-games = Demoların hiçbirinde maç ya da maç olmadan beş dakikalık oyun yok.
+library-no-games-filtered = Bu filtrelere uyan maç yok.
 library-total = Kütüphanede { $count } demo
 filters-title = Filtreler
 filters-find = Bul
@@ -390,7 +397,7 @@ scores-headshots = KV
 column-accuracy = İsabet
 column-players = Oyuncular
 column-teams = Takımlar
-help-players-column = Oyundaki oyuncular, izleyiciler hariç; maç geri sayımdan sonra başladığında ya da kayıt başladığında maç zaten sürüyorsa ilk öldürmede sayılır. Takımlı bir oyunda yalnızca bir takımdaki oyuncular sayılır. Birkaç maç içeren bir demo en yüksek sayıyı, maç içermeyen bir demo ise herhangi bir andaki en yüksek sayıyı gösterir.
+help-players-column = Oyundaki oyuncular, izleyiciler hariç; bir maç geri sayımından sonra başladığında sayılır. Takımlı bir oyunda yalnızca bir takımdaki oyuncular sayılır. Bir demo, tam maçların herhangi birindeki en yüksek sayıyı, tam maçı olmayan bir demo ise herhangi bir andaki en yüksek sayıyı gösterir.
 help-teams-column = İçinde en az bir oyuncu olan takımlar, oyuncular gibi sayılır. Takımsız bir oyunda takım yoktur.
 filter-min-accuracy = En az isabet (%)
 scores-accuracy = İsabet
@@ -478,6 +485,23 @@ setup-not-installed = { $folder } valve klasörü olan bir Half-Life kurulumu i�
 tab-events = Olaylar
 tab-clips = Klipler
 tab-scoreboard = Skor tablosu
+tab-demos = Demolar
+tab-matches = Maçlar
+filter-complete = Yalnızca tam maçlar
+help-complete-filter = Yalnızca geri sayımdan sonuna kadar kaydedilmiş maçlar.
+help-status-column = Demonun maçın ne kadarını kaydettiği. Ne anlama geldiğini görmek için bir satırın durumunun üzerine gelin.
+help-match-players = Oyundaki oyuncular, izleyiciler hariç; maç geri sayımdan sonra başladığında ya da kayıt başladığında maç zaten sürüyorsa ilk öldürmede sayılır. Serbest oyunda aynı anda en fazla olan sayı.
+help-match-teams = İçinde en az bir oyuncu olan takımlar, oyuncular gibi sayılır. Takımsız bir oyunda takım yoktur.
+match-complete = Tam
+match-joined-late = Ortasından
+match-interrupted = Yarıda kaldı
+match-cut-off = Kesik
+match-free-play = Serbest oyun
+help-match-complete = Geri sayımdan maçın sonuna kadar kaydedildi.
+help-match-joined-late = Kayıt başladığında maç zaten sürüyordu ve sonuna kadar kaydedildi.
+help-match-interrupted = Maç bitmeden başka bir maç başladı, maç iptal edildi ya da harita değişti.
+help-match-cut-off = Kayıt maçtan önce bitti.
+help-match-free-play = Hiç maç yokken beş dakika ya da daha uzun oyun.
 list-hide = Demo listesini gizle
 list-show = Demo listesini göster
 demo-details = Ayrıntılar

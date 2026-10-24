@@ -10,6 +10,7 @@ pub mod events;
 pub mod highlights;
 pub mod match_events;
 pub mod motion;
+pub mod parts;
 pub mod roster;
 pub mod weapons;
 
@@ -30,9 +31,10 @@ use context::{
 };
 use events::recorded_events;
 use highlights::{ActionWindow, action_windows, link_kills};
+use parts::{Played, PlayedPart, demo_counted, played_parts};
 use weapons::{Action, ActivityInterval, PROFILE, Weapon, WeaponOccurrence, derive};
 
-pub const ANALYSIS_SCHEMA: u32 = 16;
+pub const ANALYSIS_SCHEMA: u32 = 18;
 
 /// Length of an action window in seconds, and how many are reported
 pub const ACTION_WINDOW: f32 = 60.;
@@ -94,9 +96,12 @@ pub struct AnalysisReport {
     pub chat: Vec<ChatMessage>,
     /// Votes, timeouts, pauses and sudden death, each change once
     pub match_events: Vec<match_events::MatchEvent>,
-    /// How many players and teams the demo's matches had, or the most at
-    /// any moment without a match
+    /// How many players and teams the demo's complete matches had at most,
+    /// or the most at any moment without one
     pub counted: roster::Counted,
+    /// Each match, and each stretch of free play long enough to list, in
+    /// the order played
+    pub parts: Vec<PlayedPart>,
     /// The final score of the session played longest
     pub scoreboard: Scoreboard,
     /// Every score and team change, for the scores at any moment
@@ -278,6 +283,17 @@ pub fn analyze_demo_with(
     );
     let action_windows = action_windows(&kills, ACTION_WINDOW, ACTION_WINDOWS);
 
+    context.roster.finish();
+    let parts = played_parts(&Played {
+        matches: &context.roster.matches,
+        history: &context.roster.history,
+        maps: &context.maps,
+        kills: &kills,
+        updates: &score_updates,
+        team_updates: &team_score_updates,
+        spans: &report.groups.segment_spans(),
+    });
+
     AnalysisReport {
         schema: ANALYSIS_SCHEMA,
         profile: PROFILE,
@@ -303,7 +319,8 @@ pub fn analyze_demo_with(
             context.match_events.finish();
             std::mem::take(&mut context.match_events.events)
         },
-        counted: context.roster.counted(),
+        counted: demo_counted(&parts, context.roster.any_moment),
+        parts,
         scoreboard,
         score_updates,
         team_score_updates,
