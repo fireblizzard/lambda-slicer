@@ -352,6 +352,9 @@ pub struct Viewer {
     /// the first frame is in, turned this many degrees round them, for
     /// checking the picture from the command line
     pub free_behind: Option<(f32, f32)>,
+    /// Where a free camera starts once the first frame is in, and the way
+    /// it looks, for seeing again a view someone saw
+    pub free_at: Option<([f32; 3], [f32; 3])>,
     /// The view fills the whole screen, which the app follows
     pub fullscreen: bool,
     /// When the pointer last moved over the whole screen view, in egui's
@@ -550,6 +553,7 @@ impl Viewer {
             fullbright: false,
             free: None,
             free_behind: None,
+            free_at: None,
             fullscreen: false,
             pointer_moved: 0.,
             first_click: None,
@@ -886,6 +890,9 @@ impl Viewer {
             free.back_off(units);
             self.free = Some(free);
             self.free_behind = None;
+        }
+        if let Some((origin, angles)) = self.free_at.take() {
+            self.free = Some(FreeCamera::new(origin, angles));
         }
         let Some(free) = &mut self.free else {
             return;
@@ -1679,6 +1686,10 @@ impl Viewer {
                     if self.settings.player_names {
                         let aspect = pixels[0] as f32 / pixels[1] as f32;
                         self.draw_names(ui.painter(), rect, frame, aspect);
+                    }
+                    if self.settings.show_position {
+                        let seen_from = self.eye(frame);
+                        draw_position(ui.painter(), rect, catalog, seen_from);
                     }
                     if let Some(countdown) = &frame.countdown {
                         draw_countdown(ui.painter(), rect, countdown);
@@ -3375,6 +3386,54 @@ fn changing_to(sessions: &[SessionMap], at: f64) -> Option<&SessionMap> {
     let current = sessions.get(next.checked_sub(1)?)?;
     let began = current.intermission?;
     (at >= f64::from(began)).then(|| &sessions[next])
+}
+
+/// How far down the picture the position starts, as a share of its
+/// height, clear of the scores above and the chat below
+const POSITION_FROM_TOP: f32 = 0.3;
+
+/// Where the picture is seen from, `origin`, and the way it looks,
+/// `angles`, in the game's units and degrees, on the left of the picture.
+/// They are what `--viewer-free-at` takes to see the same view again
+fn draw_position(
+    painter: &egui::Painter,
+    rect: egui::Rect,
+    catalog: &Catalog,
+    (origin, angles): ([f32; 3], [f32; 3]),
+) {
+    let number = |v: f32| FluentValue::from(format!("{v:.1}"));
+    let position = catalog.text_with(
+        "viewer-position-line",
+        &[
+            ("x", number(origin[0])),
+            ("y", number(origin[1])),
+            ("z", number(origin[2])),
+        ],
+    );
+    let looking = catalog.text_with(
+        "viewer-angles-line",
+        &[("pitch", number(angles[0])), ("yaw", number(angles[1]))],
+    );
+
+    let size = rect.height() / NAME_LINES;
+    let font = egui::FontId::monospace(size);
+    let mut at = egui::pos2(
+        rect.left() + size,
+        rect.top() + rect.height() * POSITION_FROM_TOP,
+    );
+    for line in [position, looking] {
+        // Left to right whatever the language, so the numbers keep the
+        // order `--viewer-free-at` takes, and a right-to-left label still
+        // reads as it should
+        let line = text::visual_pieces(&line, false).concat();
+        let galley = painter.layout_no_wrap(line, font.clone(), HUD_COLOR);
+        let band = egui::Rect::from_min_size(at, galley.size());
+        let band = band.expand2(egui::vec2(size / 3., size / 8.));
+        painter.rect_filled(band, theme::RADIUS_SMALL, NAME_BAND);
+        let height = galley.size().y;
+        painter.galley(at, galley, HUD_COLOR);
+        at.y += height + size / 3.;
+    }
 }
 
 /// Which map the server is changing to, where AG's countdown stands, on a

@@ -105,6 +105,8 @@ pub struct Launch {
     /// A free camera this many units behind the recording player's view,
     /// turned this many degrees round them, once the view opens
     pub viewer_free: Option<(f32, f32)>,
+    /// Where a free camera starts, and the way it looks
+    pub viewer_free_at: Option<([f32; 3], [f32; 3])>,
     /// The inspector tab shown at start
     pub tab: InspectorTab,
     /// The settings window's section shown at start
@@ -183,6 +185,7 @@ pub struct App {
     viewer_fullbright: bool,
     viewer_fullscreen: bool,
     viewer_free: Option<(f32, f32)>,
+    viewer_free_at: Option<([f32; 3], [f32; 3])>,
     /// A setting changed, saved once the pointer is let go
     settings_unsaved: bool,
     /// The window's GPU device, which the viewer draws with
@@ -379,6 +382,7 @@ impl App {
             viewer_fullbright: launch.viewer_fullbright,
             viewer_fullscreen: launch.viewer_fullscreen,
             viewer_free: launch.viewer_free,
+            viewer_free_at: launch.viewer_free_at,
             settings_unsaved: false,
             render_state: None,
             brand: None,
@@ -566,6 +570,7 @@ impl App {
         viewer.fullscreen = std::mem::take(&mut self.viewer_fullscreen);
         viewer.fullbright = std::mem::take(&mut self.viewer_fullbright);
         viewer.free_behind = self.viewer_free.take();
+        viewer.free_at = self.viewer_free_at.take();
         d.viewer = Some(viewer);
     }
 

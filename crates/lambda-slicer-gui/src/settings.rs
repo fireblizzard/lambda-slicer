@@ -180,6 +180,8 @@ pub struct ViewerSettings {
     /// Each player's name over them, hidden by walls unless players are
     /// seen through them
     pub player_names: bool,
+    /// Where the picture is seen from and the way it looks, over it
+    pub show_position: bool,
     /// The most decals left in play that are shown, the newest. The map's
     /// own are always shown
     pub decals: usize,
@@ -216,6 +218,7 @@ impl Default for ViewerSettings {
             see_through: false,
             see_through_items: false,
             player_names: true,
+            show_position: false,
             decals: 100,
         }
     }

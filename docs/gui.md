@@ -20,6 +20,8 @@ Other options are for testing, and the full list is at the top of
   what it shows.
 - `--demo FILE --export DIR` exports every clip of that demo into `DIR`.
 - `--matches` starts on the library's Matches tab.
+- `--viewer-free-at X,Y,Z,PITCH,YAW` starts the free camera at that place looking that way, the
+  numbers Show position and view angles puts over the picture, to see someone's view again.
 
 ## Library
 
@@ -90,7 +92,8 @@ and out to either shoulder, and keeps their name while any of them is in view. A
 when the line from the camera stops more than 8 units short of it, at the map's walls or at a
 brush entity drawn solid, such as a door or a walkway; a see-through one, such as a grate,
 hides nothing. A hidden player's name is left out unless players are seen through walls, and a
-free camera inside a wall is not hidden by it. The keys are in the [README](../README.md#watching-a-demo).
+free camera inside a wall is not hidden by it. Show position and view angles, in Settings, puts
+where the picture is seen from and the way it looks on its left, the free camera's when it is on. The keys are in the [README](../README.md#watching-a-demo).
 
 In full screen the app hides its toolbar, status bar and demo list and asks the window to fill the
 screen. The seek bar and controls show over the bottom of the picture while paused, under the

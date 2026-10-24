@@ -842,6 +842,10 @@ impl App {
             ui.checkbox(&mut viewer.player_names, t("settings-player-names"));
             widgets::help(ui, &catalog.text("settings-player-names-hint"), rtl);
         });
+        layout::row(ui, rtl, |ui| {
+            ui.checkbox(&mut viewer.show_position, t("settings-show-position"));
+            widgets::help(ui, &catalog.text("settings-show-position-hint"), rtl);
+        });
 
         // Bullet holes and other marks, the newest kept
         heading(
@@ -1178,6 +1182,10 @@ fn changed_settings(current: &Settings, restored: &Settings) -> Vec<&'static str
         (
             view.player_names != first.player_names,
             "settings-player-names",
+        ),
+        (
+            view.show_position != first.show_position,
+            "settings-show-position",
         ),
         (view.decals != first.decals, "settings-section-decals"),
         (view.volume != first.volume, "viewer-volume"),
