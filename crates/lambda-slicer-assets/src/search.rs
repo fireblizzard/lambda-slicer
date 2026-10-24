@@ -4,7 +4,9 @@
 //! of `<game>_addon`, `<game>_<language>`, `<game>_hd`, `<game>` and
 //! `<game>_downloads`, the first three only when the matching option is on.
 //! Within a folder its `pakN.pak` archives come first, the highest number
-//! first, then its loose files (docs/viewer-profile.md, "Search order")
+//! first, then its loose files (docs/viewer-profile.md, "Search order").
+//! Further Half-Life folders can follow, each searched the same way once
+//! the one before it has nothing
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -135,6 +137,78 @@ fn fallback_dir(game_folder: &Path) -> Option<String> {
     })
 }
 
+/// A folder name of one component, or why it is refused
+fn one(name: &str) -> Result<String, AssetError> {
+    match components(name)?.as_slice() {
+        [single] => Ok(single.clone()),
+        _ => Err(AssetError::Refused {
+            name: name.to_string(),
+            reason: "a game folder name with more than one component",
+        }),
+    }
+}
+
+/// The places searched for `game` in the installation folder `install`,
+/// first first, each labelled after `label` and its own name
+fn sources_in(
+    install: &Path,
+    game: &str,
+    options: &SearchOptions,
+    limits: Limits,
+    label: impl Fn(&str) -> String,
+) -> Result<Vec<Source>, AssetError> {
+    let mut games = vec![one(game)?];
+    if let Some(f) = fallback_dir(&install.join(game))
+        && let Ok(f) = one(&f)
+        && !games.iter().any(|g| g.eq_ignore_ascii_case(&f))
+    {
+        games.push(f);
+    }
+    if !games.iter().any(|g| g.eq_ignore_ascii_case("valve")) {
+        games.push("valve".to_string());
+    }
+
+    let mut sources = Vec::new();
+    for g in &games {
+        let mut folders = Vec::new();
+        if options.addon {
+            folders.push(format!("{g}_addon"));
+        }
+        if let Some(language) = &options.language {
+            folders.push(format!("{g}_{}", one(language)?));
+        }
+        if options.hd {
+            folders.push(format!("{g}_hd"));
+        }
+        folders.push(g.clone());
+        folders.push(format!("{g}_downloads"));
+
+        for name in folders {
+            let folder = install.join(&name);
+            let Some(names) = read_listing(&folder)? else {
+                continue;
+            };
+            let mut paks: Vec<(u32, &String)> = names
+                .iter()
+                .filter_map(|n| pak_number(n).map(|k| (k, n)))
+                .collect();
+            paks.sort_by_key(|p| std::cmp::Reverse(p.0));
+            for (_, pak_name) in paks {
+                let pak = Pak::open(&folder.join(pak_name), limits)?;
+                sources.push(Source {
+                    label: label(&format!("{name}/{pak_name}")),
+                    kind: SourceKind::Pak(Arc::new(pak)),
+                });
+            }
+            sources.push(Source {
+                label: label(&name),
+                kind: SourceKind::Folder(folder),
+            });
+        }
+    }
+    Ok(sources)
+}
+
 impl SearchPath {
     /// The search for `game` in the installation folder `install`, such as
     /// `ag` in the folder that holds `valve`. Only folders that exist are
@@ -145,62 +219,29 @@ impl SearchPath {
         options: &SearchOptions,
         limits: Limits,
     ) -> Result<Self, AssetError> {
-        let one = |name: &str| -> Result<String, AssetError> {
-            match components(name)?.as_slice() {
-                [single] => Ok(single.clone()),
-                _ => Err(AssetError::Refused {
-                    name: name.to_string(),
-                    reason: "a game folder name with more than one component",
-                }),
-            }
-        };
-        let mut games = vec![one(game)?];
-        if let Some(f) = fallback_dir(&install.join(game))
-            && let Ok(f) = one(&f)
-            && !games.iter().any(|g| g.eq_ignore_ascii_case(&f))
-        {
-            games.push(f);
-        }
-        if !games.iter().any(|g| g.eq_ignore_ascii_case("valve")) {
-            games.push("valve".to_string());
-        }
+        Self::across(&[install.to_path_buf()], game, options, limits)
+    }
 
+    /// The search for `game` in each of `installs` in turn, the first of
+    /// which must be readable. A later one that cannot be read, or holds
+    /// an archive that cannot be opened, is left out. Its places are
+    /// labelled with its folder, as the first one's own names are not
+    pub fn across(
+        installs: &[PathBuf],
+        game: &str,
+        options: &SearchOptions,
+        limits: Limits,
+    ) -> Result<Self, AssetError> {
         let mut sources = Vec::new();
-        for g in &games {
-            let mut folders = Vec::new();
-            if options.addon {
-                folders.push(format!("{g}_addon"));
-            }
-            if let Some(language) = &options.language {
-                folders.push(format!("{g}_{}", one(language)?));
-            }
-            if options.hd {
-                folders.push(format!("{g}_hd"));
-            }
-            folders.push(g.clone());
-            folders.push(format!("{g}_downloads"));
-
-            for label in folders {
-                let folder = install.join(&label);
-                let Some(names) = read_listing(&folder)? else {
-                    continue;
-                };
-                let mut paks: Vec<(u32, &String)> = names
-                    .iter()
-                    .filter_map(|n| pak_number(n).map(|k| (k, n)))
-                    .collect();
-                paks.sort_by_key(|p| std::cmp::Reverse(p.0));
-                for (_, name) in paks {
-                    let pak = Pak::open(&folder.join(name), limits)?;
-                    sources.push(Source {
-                        label: format!("{label}/{name}"),
-                        kind: SourceKind::Pak(Arc::new(pak)),
-                    });
-                }
-                sources.push(Source {
-                    label,
-                    kind: SourceKind::Folder(folder),
-                });
+        for (k, install) in installs.iter().enumerate() {
+            let label = |name: &str| match k {
+                0 => name.to_string(),
+                _ => install.join(name).display().to_string(),
+            };
+            match sources_in(install, game, options, limits, label) {
+                Ok(found) => sources.extend(found),
+                Err(e) if k == 0 => return Err(e),
+                Err(_) => {}
             }
         }
 
@@ -327,6 +368,35 @@ mod tests {
     fn found(search: &SearchPath, name: &str) -> (String, Vec<u8>) {
         let f = search.find(name).unwrap();
         (f.source.clone(), search.read(&f).unwrap())
+    }
+
+    #[test]
+    fn a_later_install_is_searched_once_the_first_has_nothing() {
+        let first = tempfile::tempdir().unwrap();
+        let second = tempfile::tempdir().unwrap();
+        file(first.path(), "valve/models/player.mdl", b"first");
+        file(first.path(), "ag/sprites/a.spr", b"first ag");
+        file(second.path(), "valve/models/player.mdl", b"second");
+        file(second.path(), "ag_downloads/maps/x.bsp", b"second map");
+
+        let installs = [first.path().to_path_buf(), second.path().to_path_buf()];
+        let search = SearchPath::across(
+            &installs,
+            "ag",
+            &SearchOptions::default(),
+            Limits::default(),
+        )
+        .unwrap();
+
+        // The first folder's valve comes before the second's ag
+        assert_eq!(found(&search, "models/player.mdl").1, b"first");
+        assert_eq!(found(&search, "sprites/a.spr").1, b"first ag");
+        let (source, bytes) = found(&search, "maps/x.bsp");
+        assert_eq!(bytes, b"second map");
+        assert_eq!(
+            source,
+            second.path().join("ag_downloads").display().to_string()
+        );
     }
 
     #[test]

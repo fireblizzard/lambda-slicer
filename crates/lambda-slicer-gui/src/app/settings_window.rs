@@ -369,6 +369,79 @@ impl App {
             let width = Some(ui.available_width());
             ui.add(egui::Label::new(text::widget_text(&ctx, &line, rtl, width, Look::Weak)).wrap());
         }
+
+        ui.add_space(SETTING_GAP);
+        self.more_games(ui, rtl);
+    }
+
+    /// Other Half-Life folders searched in turn for what the first lacks,
+    /// each moved up or down the order or removed
+    fn more_games(&mut self, ui: &mut egui::Ui, rtl: bool) {
+        let ctx = ui.ctx().clone();
+        labelled(
+            ui,
+            &self.catalog,
+            "settings-more-games",
+            Some("settings-more-games-hint"),
+            rtl,
+        );
+        let folders = &self.settings.viewer.more_games;
+        if folders.is_empty() {
+            path(ui, &self.catalog.text("settings-more-games-empty"), rtl);
+        }
+
+        // One change a frame, made once the rows are drawn
+        let (up, down) = (
+            self.catalog.text("settings-move-up"),
+            self.catalog.text("settings-move-down"),
+        );
+        let last = folders.len().saturating_sub(1);
+        let mut swap = None;
+        let mut remove = None;
+        for (i, folder) in folders.iter().enumerate() {
+            layout::row(ui, rtl, |ui| {
+                let shown = folder.display().to_string();
+                ui.label(text::widget_text(&ctx, &shown, rtl, None, Look::Weak));
+                if ui
+                    .add_enabled(i > 0, IconButton::new(Icon::Previous, &up))
+                    .clicked()
+                {
+                    swap = Some((i - 1, i));
+                }
+                if ui
+                    .add_enabled(i < last, IconButton::new(Icon::Next, &down))
+                    .clicked()
+                {
+                    swap = Some((i, i + 1));
+                }
+                if ui.small_button(self.t(&ctx, "settings-remove")).clicked() {
+                    remove = Some(i);
+                }
+            });
+        }
+
+        let add = layout::row(ui, rtl, |ui| {
+            let label = self.t(&ctx, "toolbar-add-folder");
+            let add = widgets::Button::new(Some(Icon::AddFolder), label, Variant::Default, rtl);
+            ui.add(add).clicked()
+        });
+        let folders = &mut self.settings.viewer.more_games;
+        if let Some((a, b)) = swap {
+            folders.swap(a, b);
+            self.settings_unsaved = true;
+        }
+        if let Some(i) = remove {
+            folders.remove(i);
+            self.settings_unsaved = true;
+        }
+        if add && let Some(chosen) = rfd::FileDialog::new().pick_folders() {
+            for folder in chosen {
+                if !folders.contains(&folder) {
+                    folders.push(folder);
+                }
+            }
+            self.settings_unsaved = true;
+        }
     }
 
     /// The folders scanned for demos, removed without touching their files,

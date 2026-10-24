@@ -97,7 +97,7 @@ pub struct Walls {
     job: Option<WallJob>,
     /// The installation the verdicts are for, none without the game's
     /// files, and nothing until set up
-    set_up_for: Option<Option<PathBuf>>,
+    set_up_for: Option<Option<Vec<PathBuf>>>,
     verdicts: HashMap<KillKey, WallGauss>,
     revision: u64,
     progress: Progress,
@@ -143,11 +143,11 @@ impl Walls {
         &mut self,
         path: &Path,
         model: &Model,
-        install: Option<&Path>,
+        install: Option<&[PathBuf]>,
         hulls: impl FnOnce() -> Option<MapHulls>,
         ctx: &egui::Context,
     ) {
-        let install = install.map(Path::to_path_buf);
+        let install = install.map(<[PathBuf]>::to_vec);
         if self.set_up_for.as_ref() == Some(&install) {
             return;
         }
@@ -253,8 +253,8 @@ mod tests {
         assert!(walls.get(&key).is_some());
 
         // Other files drop what was told with the old ones
-        let install = Path::new("C:/games/Half-Life");
-        walls.update(Path::new("a.dem"), &model, Some(install), || None, &ctx);
+        let install = [PathBuf::from("C:/games/Half-Life")];
+        walls.update(Path::new("a.dem"), &model, Some(&install), || None, &ctx);
         assert!(walls.revision() > before);
         assert_eq!(walls.get(&key), None);
     }

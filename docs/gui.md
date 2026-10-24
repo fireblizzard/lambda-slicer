@@ -195,8 +195,9 @@ would refuse are left out and their buttons are off.
 The settings window can be moved anywhere in the app's window, and keeps its place for the next
 run. Every change applies at once. A setting that needs explaining has a `(?)` beside it.
 
-- **General.** The Half-Life folder or `hl.exe`, the language, and how many demos are analysed at
-  once.
+- **General.** The Half-Life folder or `hl.exe`, more Half-Life folders the player looks in, in
+  order, for maps, models and sounds the first one lacks, the language, and how many demos are
+  analysed at once.
 - **Library.** The library folders, leaving out short maps with no kills, where the library is
   kept, Clear library, the order at start and the filters at start.
 - **Demo viewer.** The picture (the game's gamma settings), the view (field of view, zoomed field
@@ -205,7 +206,7 @@ run. Every change applies at once. A setting that needs explaining has a `(?)` b
 - **Clips.** The export folder, how files are named, and the clip padding.
 
 Restore defaults lists every setting that differs from its default before putting them back. The
-Half-Life folder and the library folders stay as they are.
+Half-Life folders and the library folders stay as they are.
 
 ## Right-to-left languages
 

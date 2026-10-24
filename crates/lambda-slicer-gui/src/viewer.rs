@@ -228,15 +228,16 @@ struct Loader {
 }
 
 impl Loader {
-    fn start(install: PathBuf, game: String, ctx: egui::Context) -> Self {
+    fn start(installs: Vec<PathBuf>, game: String, ctx: egui::Context) -> Self {
         let (request_tx, request_rx) = mpsc::channel::<Asset>();
         let (loaded_tx, loaded_rx) = mpsc::channel();
         std::thread::Builder::new()
             .name("viewer assets".into())
             .spawn(move || {
                 let limits = AssetLimits::default();
-                let search = SearchPath::new(&install, &game, &SearchOptions::default(), limits)
-                    .map_err(|e| e.to_string());
+                let search =
+                    SearchPath::across(&installs, &game, &SearchOptions::default(), limits)
+                        .map_err(|e| e.to_string());
                 for request in request_rx {
                     let loaded = match (&search, request) {
                         (Ok(search), Asset::Map(name)) => {
@@ -437,11 +438,12 @@ fn map_name(map: &str) -> String {
 }
 
 impl Viewer {
-    /// A viewer for `demo`, reading the game's files from `install` when
-    /// there is one, and playing on as `carry` says a viewer before it did
+    /// A viewer for `demo`, reading the game's files from the Half-Life
+    /// folders in `install` in turn when there are any, and playing on as
+    /// `carry` says a viewer before it did
     pub fn open(
         render_state: RenderState,
-        install: Option<PathBuf>,
+        install: Option<Vec<PathBuf>>,
         demo: PathBuf,
         duration: f32,
         dev: Dev,
@@ -475,7 +477,7 @@ impl Viewer {
             .as_ref()
             .zip(game.as_ref())
             .and_then(|(install, game)| {
-                let search = SearchPath::new(
+                let search = SearchPath::across(
                     install,
                     game,
                     &SearchOptions::default(),

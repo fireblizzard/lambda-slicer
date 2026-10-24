@@ -161,10 +161,10 @@ pub struct App {
     exported: Vec<PathBuf>,
     /// The game folder the last scan read maps from, none for a scan
     /// without the game's files, and nothing before the first scan
-    scanned_with: Option<Option<PathBuf>>,
+    scanned_with: Option<Option<Vec<PathBuf>>>,
     /// The floor under players on the maps of a game folder, kept while
     /// the folder stays the same
-    floors: Option<(PathBuf, ScanFloors)>,
+    floors: Option<(Vec<PathBuf>, ScanFloors)>,
     /// A demo opened as a file, shown without a library row, so opening
     /// and analysing one never needs the library cache
     direct: Option<PathBuf>,
@@ -195,6 +195,9 @@ pub struct App {
     /// The game folder last checked for the game's files, and whether it
     /// held them, so the disk is read once for each folder
     install_checked: Option<(PathBuf, bool)>,
+    /// The other Half-Life folders the settings name, and those of them
+    /// that are there, read from disk once for each list
+    more_checked: Option<(Vec<PathBuf>, Vec<PathBuf>)>,
     /// The same for the game's executable the settings name
     executable_checked: Option<(PathBuf, bool)>,
 }
@@ -382,6 +385,7 @@ impl App {
             },
             setup_refusal: None,
             install_checked: None,
+            more_checked: None,
             executable_checked: None,
         }
     }
@@ -411,6 +415,35 @@ impl App {
 
         let installed = self.install_checked.as_ref().is_some_and(|(_, ok)| *ok);
         installed.then_some(wanted)
+    }
+
+    /// Every Half-Life folder the viewer reads the game's files from, in
+    /// the order searched, the one [`Self::install_root`] gives first and
+    /// then those of the settings' other folders that are there, none
+    /// without the game
+    fn game_folders(&mut self) -> Option<Vec<PathBuf>> {
+        let first = self.install_root()?;
+        let wanted = &self.settings.viewer.more_games;
+        let checked = matches!(&self.more_checked, Some((list, _)) if list == wanted);
+        if !checked {
+            let mut present = Vec::new();
+            for folder in wanted {
+                if folder.is_dir() {
+                    present.push(folder.clone());
+                }
+            }
+            self.more_checked = Some((wanted.clone(), present));
+        }
+
+        let mut folders = vec![first];
+        if let Some((_, present)) = &self.more_checked {
+            for folder in present {
+                if !folders.contains(folder) {
+                    folders.push(folder.clone());
+                }
+            }
+        }
+        Some(folders)
     }
 
     /// Whether the game's executable the settings name is still there,
@@ -480,7 +513,7 @@ impl App {
     /// otherwise playing the demo with nothing to draw or hear. It opens
     /// again when the folder it reads changes, going on where it stood
     fn open_viewer(&mut self, ctx: &egui::Context) {
-        let install = self.install_root();
+        let install = self.game_folders();
         let (Some(d), Some(render_state)) = (&mut self.demo, &self.render_state) else {
             return;
         };
@@ -929,7 +962,7 @@ impl App {
         }
         self.scan = None;
         self.exported.clear();
-        self.scanned_with = Some(self.install_root());
+        self.scanned_with = Some(self.game_folders());
         let options = ScanOptions {
             roots,
             cache,
@@ -969,7 +1002,7 @@ impl App {
     /// The floor under players on the game's maps, none without the game's
     /// files
     fn floor_reader(&mut self) -> Option<ScanFloors> {
-        let install = self.install_root()?;
+        let install = self.game_folders()?;
         let kept = self
             .floors
             .as_ref()
@@ -980,18 +1013,18 @@ impl App {
         self.floors.as_ref().map(|(_, floors)| floors.clone())
     }
 
-    /// The game folder the floor under players is read from, with what was
-    /// read, none without the game's files
-    fn game_floors(&mut self) -> Option<(PathBuf, Floors)> {
+    /// The game folders the floor under players is read from, with what
+    /// was read, none without the game's files
+    fn game_floors(&mut self) -> Option<(Vec<PathBuf>, Floors)> {
         let floors = self.floor_reader()?.floors;
-        Some((self.install_root()?, floors))
+        Some((self.game_folders()?, floors))
     }
 
     /// Analyse the open demo again when the game's files change, so its
     /// midair kills are told with the new maps or without any, as the
     /// library's are once it is scanned again
     fn reanalyse_for_game(&mut self, ctx: &egui::Context) {
-        let install = self.install_root();
+        let install = self.game_folders();
         let Some(d) = &self.demo else {
             return;
         };
@@ -1011,7 +1044,7 @@ impl App {
         let Some(scanned) = self.scanned_with.clone() else {
             return;
         };
-        if scanned != self.install_root() {
+        if scanned != self.game_folders() {
             self.start_scan(ctx);
         }
     }

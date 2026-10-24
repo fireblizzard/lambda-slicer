@@ -37,6 +37,12 @@ Within a folder its PAK archives come before its loose files, the highest-number
 first, as in Quake, whose file system GoldSrc's descends from. This install has no PAK archive,
 so the order inside a folder cannot be checked here.
 
+Settings can name more Half-Life folders after the first, for maps, models and sounds it lacks.
+Each is searched in the same order once everything in the one before it has been, so the first
+folder's `valve` still comes before a later folder's mod. A later folder that can't be read is
+left out, and its files are named with their folder in the list of what's missing. The floor
+under players for midair kills is read through the same folders.
+
 ### Names
 
 Asset names in demos use either slash and the game's own capitalisation. A name is split into

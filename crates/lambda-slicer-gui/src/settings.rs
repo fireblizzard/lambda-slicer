@@ -130,6 +130,9 @@ pub struct ViewerSettings {
     /// it, as the viewer draws and plays demos itself. None when the folder
     /// was chosen as a folder
     pub executable: Option<PathBuf>,
+    /// Other Half-Life folders searched in turn for what the first lacks,
+    /// such as maps or a model, the first first
+    pub more_games: Vec<PathBuf>,
     /// The game's `gamma`, `brightness`, `texgamma`, `lightgamma` and
     /// `gl_overbright`
     pub gamma: f32,
@@ -180,6 +183,7 @@ impl Default for ViewerSettings {
         Self {
             game: None,
             executable: None,
+            more_games: Vec::new(),
             gamma: g.gamma,
             brightness: g.brightness,
             texgamma: g.texgamma,
@@ -358,6 +362,7 @@ impl Settings {
         };
         restored.viewer.game = self.viewer.game.clone();
         restored.viewer.executable = self.viewer.executable.clone();
+        restored.viewer.more_games = self.viewer.more_games.clone();
         restored.layout.settings_at = self.layout.settings_at;
         restored
     }
@@ -456,6 +461,7 @@ mod tests {
             ..Settings::default()
         };
         s.viewer.game = Some(PathBuf::from("F:/Half-Life"));
+        s.viewer.more_games = vec![PathBuf::from("G:/Half-Life")];
         s.viewer.decals = 5;
         s.layout.inspector_width = Some(400.);
         s.layout.settings_at = Some([10., 20.]);
@@ -464,6 +470,7 @@ mod tests {
         assert_eq!(restored.folders, s.folders);
         assert_eq!(restored.cache, s.cache);
         assert_eq!(restored.viewer.game, s.viewer.game);
+        assert_eq!(restored.viewer.more_games, s.viewer.more_games);
         assert_eq!(restored.layout.settings_at, s.layout.settings_at);
 
         // Everything else is the default
@@ -471,6 +478,7 @@ mod tests {
         expected.folders.clear();
         expected.cache = None;
         expected.viewer.game = None;
+        expected.viewer.more_games.clear();
         expected.layout.settings_at = None;
         assert_eq!(expected, Settings::default());
     }
