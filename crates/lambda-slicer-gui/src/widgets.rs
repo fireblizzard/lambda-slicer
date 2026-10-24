@@ -86,6 +86,8 @@ pub enum Icon {
     /// A circle with a cross through it, for taking the playhead's time or
     /// keeping to it
     Crosshair,
+    /// A cross with an arrowhead on each arm, for a camera moved freely
+    Move,
 }
 
 /// The width of an icon's lines
@@ -470,6 +472,21 @@ pub fn paint_icon_facing(
             painter.line_segment([p(8., 11.), p(8., 15.)], stroke);
             painter.line_segment([p(1., 8.), p(5., 8.)], stroke);
             painter.line_segment([p(11., 8.), p(15., 8.)], stroke);
+        }
+        Icon::Move => {
+            painter.line_segment([p(8., 1.5), p(8., 14.5)], stroke);
+            painter.line_segment([p(1.5, 8.), p(14.5, 8.)], stroke);
+
+            // Each arm's arrowhead, from its tip back along both sides
+            let heads = [
+                (p(8., 1.5), p(6., 3.5), p(10., 3.5)),
+                (p(8., 14.5), p(6., 12.5), p(10., 12.5)),
+                (p(1.5, 8.), p(3.5, 6.), p(3.5, 10.)),
+                (p(14.5, 8.), p(12.5, 6.), p(12.5, 10.)),
+            ];
+            for (tip, one, other) in heads {
+                painter.add(Shape::line(vec![one, tip, other], stroke));
+            }
         }
     }
 }

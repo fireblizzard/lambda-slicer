@@ -543,6 +543,7 @@ settings-crosshair = Mostrar la mira
 settings-chat = Mostrar el chat
 settings-vitals = Mostrar vida, armadura, munición y pickups
 settings-vitals-size = Tamaño de vida, armadura, munición y pickups
+settings-free-vitals = Mostrar vida, armadura, munición y pickups también con la cámara libre
 settings-scores = Mostrar los puntajes arriba a la izquierda
 settings-score-rows = Máximo de filas de puntajes
 settings-server-settings = Mostrar la config del server arriba a la derecha
@@ -567,6 +568,8 @@ settings-clear-library-text = { $count ->
    *[other] Lambda Slicer olvida lo que encontró en { $count } demos y vuelve a escanear las carpetas de la biblioteca, lo que puede tardar un rato. Tus archivos de demos, clips y opciones se quedan como están.
 }
 viewer-zoom = Hacer zoom
+viewer-free-camera = Cámara libre
+viewer-free-camera-help = Vuela por el mapa sin seguir al jugador que grabó la demo. W, A, S y D para moverte, Espacio para subir, Ctrl para bajar y Shift para ir más rápido. Mantén presionado el botón derecho del mouse y arrastra para mirar alrededor.
 viewer-fullscreen = Pantalla completa
 viewer-leave-fullscreen = Salir de pantalla completa
 viewer-see-through = Ver tras paredes

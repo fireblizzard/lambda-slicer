@@ -35,6 +35,10 @@ pub struct Listener {
     pub entity: u16,
 }
 
+/// What a listener away from every entity names as its own, so every sound
+/// is placed
+const NO_ENTITY: u16 = u16::MAX;
+
 impl Listener {
     /// Where `playback`'s recorder hears from
     pub fn of(playback: &Playback) -> Self {
@@ -45,6 +49,16 @@ impl Listener {
             entity: camera
                 .view_entity
                 .unwrap_or(u16::from(playback.decoder().player_num) + 1),
+        }
+    }
+
+    /// Hearing from `origin` looking along `angles` instead, such as a free
+    /// camera, where the recorder's own sounds are placed as everyone's are
+    pub fn heard_from(origin: [f32; 3], angles: [f32; 3]) -> Self {
+        Self {
+            origin,
+            right: right_of(angles),
+            entity: NO_ENTITY,
         }
     }
 }
@@ -63,13 +77,19 @@ pub fn right_of(angles: [f32; 3]) -> [f32; 3] {
 /// engine moves a dynamic sound with its entity while the latest packet
 /// holds the entity (`SND_Spatialize`). Static sounds stay where they
 /// started, and so do the world's and brush entities', which the engine
-/// places at the brush's centre
-pub fn follow(channels: &[Channel], scene: &Scene) -> Vec<Channel> {
+/// places at the brush's centre. The server leaves the recorder's own
+/// entity, `own`, at nought, so its sounds go where the recorder's frames
+/// say they are
+pub fn follow(channels: &[Channel], scene: &Scene, own: u16) -> Vec<Channel> {
     channels
         .iter()
         .map(|c| {
             let mut c = c.clone();
             if c.is_static() || c.entity == 0 {
+                return c;
+            }
+            if c.entity == own {
+                c.origin = scene.camera.player_origin;
                 return c;
             }
             let found = scene
@@ -270,9 +290,30 @@ mod tests {
                 channel(9, [7.; 3], 0.),
             ],
             &scene,
+            1,
         );
         let origins: Vec<[f32; 3]> = moved.iter().map(|c| c.origin).collect();
         assert_eq!(origins, [[100., 0., 0.], [5.; 3], [0.; 3], [7.; 3]]);
+    }
+
+    #[test]
+    fn the_recorders_own_sounds_are_placed_for_a_free_camera() {
+        // The server leaves the recorder's entity at nought
+        let mut scene = Scene::default();
+        scene.camera.player_origin = [0., -100., 0.];
+        let own = follow(&[channel(1, [0.; 3], 0.)], &scene, 1);
+        assert_eq!(own[0].origin, [0., -100., 0.]);
+
+        // Heard by the recorder they stay in the middle, and by a camera
+        // looking along x they come from its right, minus y
+        let recorder = Listener {
+            origin: [0.; 3],
+            right: right_of([0.; 3]),
+            entity: 1,
+        };
+        assert_eq!(spatialize(&own[0], &recorder), [1.; 2]);
+        let [left, right] = spatialize(&own[0], &Listener::heard_from([0.; 3], [0.; 3]));
+        assert!(right > left, "{left} {right}");
     }
 
     /// A ramp from 0 up by 1/16 of full scale a frame, at 10 frames a second

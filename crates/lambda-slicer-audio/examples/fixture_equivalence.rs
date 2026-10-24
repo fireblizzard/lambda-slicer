@@ -148,8 +148,8 @@ impl Demo {
             let from = SourceTime(at.0 + (k * BLOCK) as f64 / f64::from(RATE));
             let to = SourceTime(from.0 + BLOCK as f64 / f64::from(RATE));
             p.advance_to(to).map_err(|m| m.text)?;
-            let channels = follow(p.audio().channels(), p.scene());
             let listener = Listener::of(p);
+            let channels = follow(p.audio().channels(), p.scene(), listener.entity);
             out.extend(mix(&channels, &sound, &listener, from, BLOCK, &output));
         }
         Ok(out)

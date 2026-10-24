@@ -526,6 +526,7 @@ settings-crosshair = Show the crosshair
 settings-chat = Show the chat
 settings-vitals = Show health, armour, ammo and pickups
 settings-vitals-size = Size of health, armour, ammo and pickups
+settings-free-vitals = Show health, armour, ammo and pickups with the free camera too
 settings-scores = Show the scores at the top left
 settings-score-rows = Most rows of scores
 settings-server-settings = Show the server's settings at the top right
@@ -549,6 +550,8 @@ settings-clear-library-text = { $count ->
    *[other] Lambda Slicer forgets what it found in { $count } demos and scans the library folders again, which can take a while. Your demo files, clips and settings stay as they are.
 }
 viewer-zoom = Zoom in
+viewer-free-camera = Free camera
+viewer-free-camera-help = Fly around the map apart from the recording player. W, A, S and D move, Space goes up, Ctrl goes down and Shift goes faster. Hold the right mouse button and drag to look around.
 viewer-fullscreen = Full screen
 viewer-leave-fullscreen = Leave full screen
 viewer-see-through = See through walls

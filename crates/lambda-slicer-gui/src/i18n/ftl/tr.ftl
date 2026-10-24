@@ -513,6 +513,7 @@ settings-crosshair = Nişangahı göster
 settings-chat = Sohbeti göster
 settings-vitals = Can, zırh, mermi ve alınan eşyaları göster
 settings-vitals-size = Can, zırh, mermi ve alınan eşya boyutu
+settings-free-vitals = Serbest kamerada da can, zırh, mermi ve alınan eşyaları göster
 settings-scores = Skorları sol üstte göster
 settings-score-rows = En fazla skor satırı
 settings-server-settings = Sunucu ayarlarını sağ üstte göster
@@ -536,6 +537,8 @@ settings-clear-library-text = { $count ->
    *[other] Lambda Slicer { $count } demoda bulduklarını unutur ve kütüphane klasörlerini yeniden tarar, bu biraz sürebilir. Demo dosyalarınız, klipleriniz ve ayarlarınız olduğu gibi kalır.
 }
 viewer-zoom = Görüntüyü yakınlaştır
+viewer-free-camera = Serbest kamera
+viewer-free-camera-help = Kaydı yapan oyuncudan bağımsız olarak haritada serbestçe uç. W, A, S ve D ile hareket et, Space ile yüksel, Ctrl ile alçal, Shift ile hızlan. Etrafa bakmak için farenin sağ tuşunu basılı tutup sürükle.
 viewer-fullscreen = Tam ekran
 viewer-leave-fullscreen = Tam ekrandan çık
 viewer-see-through = Duvar arkasını gör

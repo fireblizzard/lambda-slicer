@@ -550,6 +550,7 @@ settings-crosshair = Pokazuj celownik
 settings-chat = Pokazuj czat
 settings-vitals = Pokazuj życie, pancerz, amunicję i podniesione przedmioty
 settings-vitals-size = Rozmiar życia, pancerza, amunicji i podniesionych przedmiotów
+settings-free-vitals = Pokazuj życie, pancerz, amunicję i podniesione przedmioty także w wolnej kamerze
 settings-scores = Pokazuj wyniki w lewym górnym rogu
 settings-score-rows = Najwięcej wierszy wyników
 settings-server-settings = Pokazuj ustawienia serwera w prawym górnym rogu
@@ -575,6 +576,8 @@ settings-clear-library-text = { $count ->
    *[other] Lambda Slicer zapomni, co znalazł w { $count } dema, i ponownie przeskanuje foldery biblioteki, co może chwilę potrwać. Twoje pliki dem, klipy i ustawienia zostaną bez zmian.
 }
 viewer-zoom = Przybliż widok
+viewer-free-camera = Wolna kamera
+viewer-free-camera-help = Lataj po mapie niezależnie od gracza, który nagrał demo. W, A, S i D – ruch, Spacja – w górę, Ctrl – w dół, Shift – szybciej. Przytrzymaj prawy przycisk myszy i przeciągnij, aby się rozejrzeć.
 viewer-fullscreen = Pełny ekran
 viewer-leave-fullscreen = Wyjdź z pełnego ekranu
 viewer-see-through = Widź przez ściany

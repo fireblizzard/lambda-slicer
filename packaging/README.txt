@@ -50,6 +50,8 @@ Keys in the demo player
     Shift+Left / Right  10 seconds back / forward
     Comma / Period      One frame back / forward
     Z                   Zoom in or out
+    C                   Free camera: fly with W, A, S, D, Space up, Ctrl
+                        down, Shift faster, right mouse button to look
     F, F11              Full screen (or double-click the picture)
     Ctrl+Left / Right   Previous / next event
     I / O               Set the clip's start / end to now

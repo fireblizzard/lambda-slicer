@@ -9,7 +9,7 @@
 //! [--game DIR [--viewer-at SECONDS] [--viewer-bench SECONDS OUT.txt]
 //! [--viewer-capture TIMES FOLDER] [--viewer-size WxH] [--viewer-play SECONDS]
 //! [--viewer-gamma GAMMA,BRIGHTNESS,TEXGAMMA,LIGHTGAMMA[,OVERBRIGHT]]
-//! [--viewer-see-through] [--viewer-fullscreen]]`
+//! [--viewer-see-through] [--viewer-fullscreen] [--viewer-free UNITS[,DEGREES]]]`
 //!
 //! Demos and folders given as `PATH` are opened for this session. `--locale`
 //! overrides the saved language, `--cache` the library cache and `--clips`
@@ -45,7 +45,9 @@
 //! with the game's gamma settings for this run only, overbright when the
 //! fifth is 1, for comparing with frames the game recorded.
 //! `--viewer-see-through` shows players through walls for this run, and
-//! `--viewer-fullscreen` has the view fill the screen once it opens
+//! `--viewer-fullscreen` has the view fill the screen once it opens.
+//! `--viewer-free` starts a free camera that many units behind the
+//! recording player's view, turned that many degrees round them first
 
 // A release build opens no console window beside the app
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
@@ -59,6 +61,7 @@ mod decals;
 mod demo;
 mod export;
 mod floors;
+mod free_camera;
 mod game_setup;
 mod hud_messages;
 mod hud_sprites;
@@ -142,6 +145,7 @@ fn main() -> eframe::Result {
     let mut viewer_gamma = None;
     let mut viewer_see_through = false;
     let mut viewer_fullscreen = false;
+    let mut viewer_free = None;
     let mut viewer_bench = None;
     while let Some(a) = args.next() {
         match a.as_str() {
@@ -213,6 +217,14 @@ fn main() -> eframe::Result {
             "--viewer-play" => viewer_play = args.next().and_then(|s| s.parse().ok()),
             "--viewer-see-through" => viewer_see_through = true,
             "--viewer-fullscreen" => viewer_fullscreen = true,
+            "--viewer-free" => {
+                let text = args.next().unwrap_or_default();
+                let mut values = text.split(',').map(|v| v.trim().parse::<f32>());
+                if let Some(Ok(units)) = values.next() {
+                    let degrees = values.next().and_then(Result::ok).unwrap_or(0.);
+                    viewer_free = Some((units, degrees));
+                }
+            }
             "--viewer-gamma" => {
                 let values: Vec<f32> = args
                     .next()
@@ -338,6 +350,7 @@ fn main() -> eframe::Result {
                     viewer_gamma,
                     viewer_see_through,
                     viewer_fullscreen,
+                    viewer_free,
                     tab,
                     section,
                     viewer_capture: capture_times.map(|(times, folder)| viewer::Capture {

@@ -397,31 +397,41 @@ impl FieldTable {
     }
 }
 
+/// Each weapon's model in a player's hand and in view
+const WEAPON_MODELS: [(&str, &str); 15] = [
+    ("models/p_crossbow.mdl", "models/v_crossbow.mdl"),
+    ("models/p_crowbar.mdl", "models/v_crowbar.mdl"),
+    ("models/p_egon.mdl", "models/v_egon.mdl"),
+    ("models/p_gauss.mdl", "models/v_gauss.mdl"),
+    ("models/p_9mmhandgun.mdl", "models/v_9mmhandgun.mdl"),
+    ("models/p_grenade.mdl", "models/v_grenade.mdl"),
+    ("models/p_hgun.mdl", "models/v_hgun.mdl"),
+    ("models/p_9mmAR.mdl", "models/v_9mmAR.mdl"),
+    ("models/p_357.mdl", "models/v_357.mdl"),
+    ("models/p_rpg.mdl", "models/v_rpg.mdl"),
+    ("models/p_shotgun.mdl", "models/v_shotgun.mdl"),
+    ("models/p_squeak.mdl", "models/v_squeak.mdl"),
+    ("models/p_tripmine.mdl", "models/v_tripmine.mdl"),
+    ("models/p_satchel_radio.mdl", "models/v_satchel_radio.mdl"),
+    ("models/p_satchel.mdl", "models/v_satchel.mdl"),
+];
+
 /// The viewmodel of a player's weapon model, as the client finds it for
 /// a spectator watching through the player's eyes
 /// (`V_FindViewModelByWeaponModel`)
 fn view_model_for(weapon: &str) -> Option<&'static str> {
-    const MODELS: [(&str, &str); 15] = [
-        ("models/p_crossbow.mdl", "models/v_crossbow.mdl"),
-        ("models/p_crowbar.mdl", "models/v_crowbar.mdl"),
-        ("models/p_egon.mdl", "models/v_egon.mdl"),
-        ("models/p_gauss.mdl", "models/v_gauss.mdl"),
-        ("models/p_9mmhandgun.mdl", "models/v_9mmhandgun.mdl"),
-        ("models/p_grenade.mdl", "models/v_grenade.mdl"),
-        ("models/p_hgun.mdl", "models/v_hgun.mdl"),
-        ("models/p_9mmAR.mdl", "models/v_9mmAR.mdl"),
-        ("models/p_357.mdl", "models/v_357.mdl"),
-        ("models/p_rpg.mdl", "models/v_rpg.mdl"),
-        ("models/p_shotgun.mdl", "models/v_shotgun.mdl"),
-        ("models/p_squeak.mdl", "models/v_squeak.mdl"),
-        ("models/p_tripmine.mdl", "models/v_tripmine.mdl"),
-        ("models/p_satchel_radio.mdl", "models/v_satchel_radio.mdl"),
-        ("models/p_satchel.mdl", "models/v_satchel.mdl"),
-    ];
-    MODELS
+    WEAPON_MODELS
         .iter()
         .find(|(p, _)| p.eq_ignore_ascii_case(weapon))
         .map(|(_, v)| *v)
+}
+
+/// The model in a player's hand of a viewmodel, the other way round
+pub fn weapon_model_for(viewmodel: &str) -> Option<&'static str> {
+    WEAPON_MODELS
+        .iter()
+        .find(|(_, v)| v.eq_ignore_ascii_case(viewmodel))
+        .map(|(p, _)| *p)
 }
 
 /// The sky's name in an `svc_newmovevars` body, a string after 16 floats,

@@ -59,6 +59,9 @@ pub struct Feed {
     /// Nothing past it is mixed, as the playhead goes back or pauses there
     /// before the window's next frame says so
     pub until: Option<SourceTime>,
+    /// Where a free camera hears from and the way it looks, none to hear
+    /// from the recorder
+    pub ears: Option<([f32; 3], [f32; 3])>,
 }
 
 /// A block of samples, the mark of the feed it was mixed for, and where in
@@ -461,15 +464,17 @@ fn run(
                 speed,
                 volume: f32::from_bits(volume.load(Ordering::Relaxed)),
             };
-            let channels = follow(playback.audio().channels(), playback.scene());
-            buffer.extend(mix(
-                &channels,
-                &sound,
-                &Listener::of(playback),
-                from,
-                block,
-                &output,
-            ));
+            let recorder = Listener::of(playback);
+            let channels = follow(
+                playback.audio().channels(),
+                playback.scene(),
+                recorder.entity,
+            );
+            let listener = match f.ears {
+                Some((origin, angles)) => Listener::heard_from(origin, angles),
+                None => recorder,
+            };
+            buffer.extend(mix(&channels, &sound, &listener, from, block, &output));
             Some((f.stamp, to, from, f.clock, f.clock_base))
         });
         // A block whose feed changed while it was mixed is not heard, and

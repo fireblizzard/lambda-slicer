@@ -662,7 +662,9 @@ impl DemoView {
 
         // Ctrl+A chooses every shown event and Ctrl+C copies those chosen,
         // unless text is being typed
-        if !text::typing(ui.ctx()) {
+        // A flies a free camera left, with Ctrl held to fly down too
+        let free = self.viewer.as_ref().is_some_and(|v| v.free_camera());
+        if !text::typing(ui.ctx()) && !free {
             let all = ui.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, egui::Key::A));
             if all {
                 self.marked = self.rows.iter().copied().collect();

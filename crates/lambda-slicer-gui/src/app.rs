@@ -97,6 +97,9 @@ pub struct Launch {
     pub viewer_see_through: bool,
     /// The view fills the screen once it opens
     pub viewer_fullscreen: bool,
+    /// A free camera this many units behind the recording player's view,
+    /// turned this many degrees round them, once the view opens
+    pub viewer_free: Option<(f32, f32)>,
     /// The inspector tab shown at start
     pub tab: InspectorTab,
     /// The settings window's section shown at start
@@ -173,6 +176,7 @@ pub struct App {
     viewer_gamma: Option<lambda_slicer_render::gamma::Gamma>,
     viewer_see_through: bool,
     viewer_fullscreen: bool,
+    viewer_free: Option<(f32, f32)>,
     /// A setting changed, saved once the pointer is let go
     settings_unsaved: bool,
     /// The window's GPU device, which the viewer draws with
@@ -357,6 +361,7 @@ impl App {
             viewer_gamma: launch.viewer_gamma,
             viewer_see_through: launch.viewer_see_through,
             viewer_fullscreen: launch.viewer_fullscreen,
+            viewer_free: launch.viewer_free,
             settings_unsaved: false,
             render_state: None,
             brand: None,
@@ -492,6 +497,7 @@ impl App {
             ctx,
         );
         viewer.fullscreen = std::mem::take(&mut self.viewer_fullscreen);
+        viewer.free_behind = self.viewer_free.take();
         d.viewer = Some(viewer);
     }
 

@@ -585,6 +585,7 @@ settings-crosshair = إظهار علامة التصويب
 settings-chat = إظهار الدردشة
 settings-vitals = إظهار الصحة والدرع والذخيرة والأغراض الملتقطة
 settings-vitals-size = حجم الصحة والدرع والذخيرة والأغراض الملتقطة
+settings-free-vitals = إظهار الصحة والدرع والذخيرة والأغراض الملتقطة مع الكاميرا الحرة أيضًا
 settings-scores = إظهار النتائج أعلى اليسار
 settings-score-rows = أقصى عدد من صفوف النتائج
 settings-server-settings = إظهار إعدادات السيرفر أعلى اليمين
@@ -612,6 +613,8 @@ settings-clear-library-text = { $count ->
    *[other] ينسى Lambda Slicer ما وجده في { $count } تسجيل ويعيد فحص مجلدات المكتبة، وقد يستغرق ذلك بعض الوقت. تبقى ملفات تسجيلاتك ومقاطعك وإعداداتك كما هي.
 }
 viewer-zoom = تقريب الصورة
+viewer-free-camera = الكاميرا الحرة
+viewer-free-camera-help = تجوّل في الخريطة بحرية بعيدًا عن اللاعب الذي سجّل المقطع. W وA وS وD للحركة، وSpace للصعود، وCtrl للنزول، وShift للإسراع. اضغط مع الاستمرار على زر الفأرة الأيمن واسحب للنظر حولك.
 viewer-fullscreen = ملء الشاشة
 viewer-leave-fullscreen = إنهاء ملء الشاشة
 viewer-see-through = الرؤية خلف الجدران

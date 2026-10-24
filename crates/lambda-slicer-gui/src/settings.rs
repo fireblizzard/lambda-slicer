@@ -150,6 +150,9 @@ pub struct ViewerSettings {
     /// their size against the game's
     pub vitals: bool,
     pub vitals_size: f32,
+    /// Whether they show with the free camera too, for watching from a
+    /// place of one's own while still seeing the recorder's state
+    pub free_vitals: bool,
     /// Whether the small scoreboard shows at the top left, and its most
     /// rows
     pub scores: bool,
@@ -189,6 +192,7 @@ impl Default for ViewerSettings {
             chat: true,
             vitals: true,
             vitals_size: 0.6,
+            free_vitals: false,
             scores: true,
             score_rows: 4,
             server_settings: true,

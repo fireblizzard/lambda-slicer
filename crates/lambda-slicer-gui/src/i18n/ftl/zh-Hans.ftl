@@ -502,6 +502,7 @@ settings-crosshair = 显示准星
 settings-chat = 显示聊天
 settings-vitals = 显示生命值、护甲、弹药和拾取物品
 settings-vitals-size = 生命值、护甲、弹药和拾取物品的大小
+settings-free-vitals = 自由视角下也显示生命值、护甲、弹药和拾取物品
 settings-scores = 在左上角显示比分
 settings-score-rows = 比分最多显示几行
 settings-server-settings = 在右上角显示服务器设置
@@ -524,6 +525,8 @@ settings-clear-library-text = { $count ->
    *[other] Lambda Slicer 会忘记它在 { $count } 个录像中找到的内容，并重新扫描库文件夹，这可能需要一段时间。你的录像文件、片段和设置都会保持不变。
 }
 viewer-zoom = 放大画面
+viewer-free-camera = 自由视角
+viewer-free-camera-help = 脱离录制玩家，在地图中自由飞行。W、A、S、D 移动，空格键上升，Ctrl 下降，Shift 加速。按住鼠标右键并拖动即可环顾四周。
 viewer-fullscreen = 全屏
 viewer-leave-fullscreen = 退出全屏
 viewer-see-through = 透视墙壁

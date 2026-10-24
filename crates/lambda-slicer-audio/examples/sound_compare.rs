@@ -132,15 +132,13 @@ fn mix_demo(install: &str, demo: &str, rate: u32, start: f64, seconds: f64) -> V
         let at = SourceTime(start + (k * block) as f64 / f64::from(rate));
         let to = SourceTime(at.0 + block as f64 / f64::from(rate));
         playback.advance_to(to).expect("playback");
-        let channels = follow(playback.audio().channels(), playback.scene());
-        let samples = mix(
-            &channels,
-            &sound,
-            &Listener::of(&playback),
-            at,
-            block,
-            &output,
+        let listener = Listener::of(&playback);
+        let channels = follow(
+            playback.audio().channels(),
+            playback.scene(),
+            listener.entity,
         );
+        let samples = mix(&channels, &sound, &listener, at, block, &output);
         out.extend(samples.iter().map(|[l, r]| (l + r) / 2.));
     }
     out

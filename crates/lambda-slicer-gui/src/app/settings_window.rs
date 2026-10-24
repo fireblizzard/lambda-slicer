@@ -659,6 +659,11 @@ impl App {
             });
         });
         layout::row(ui, rtl, |ui| {
+            ui.add_enabled_ui(viewer.vitals, |ui| {
+                ui.checkbox(&mut viewer.free_vitals, t("settings-free-vitals"));
+            });
+        });
+        layout::row(ui, rtl, |ui| {
             ui.checkbox(&mut viewer.scores, t("settings-scores"));
         });
         let width = label_width(ui, catalog, &["settings-score-rows"], rtl);
@@ -997,6 +1002,10 @@ fn changed_settings(current: &Settings, restored: &Settings) -> Vec<&'static str
         (
             view.vitals_size != first.vitals_size,
             "settings-vitals-size",
+        ),
+        (
+            view.free_vitals != first.free_vitals,
+            "settings-free-vitals",
         ),
         (view.scores != first.scores, "settings-scores"),
         (view.score_rows != first.score_rows, "settings-score-rows"),

@@ -550,6 +550,7 @@ settings-crosshair = Rodyti taikiklį
 settings-chat = Rodyti čatą
 settings-vitals = Rodyti gyvybes, šarvus, šovinius ir paimtus daiktus
 settings-vitals-size = Gyvybių, šarvų, šovinių ir paimtų daiktų dydis
+settings-free-vitals = Rodyti gyvybes, šarvus, šovinius ir paimtus daiktus ir su laisva kamera
 settings-scores = Rodyti rezultatus viršuje kairėje
 settings-score-rows = Daugiausia rezultatų eilučių
 settings-server-settings = Rodyti serverio nustatymus viršuje dešinėje
@@ -575,6 +576,8 @@ settings-clear-library-text = { $count ->
    *[other] Lambda Slicer pamirš, ką rado { $count } įrašų, ir iš naujo nuskaitys bibliotekos aplankus, o tai gali šiek tiek užtrukti. Jūsų įrašų failai, klipai ir nustatymai liks tokie, kokie yra.
 }
 viewer-zoom = Priartinti vaizdą
+viewer-free-camera = Laisva kamera
+viewer-free-camera-help = Skraidykite po žemėlapį atskirai nuo įrašą dariusio žaidėjo. W, A, S ir D – judėti, Space – kilti aukštyn, Ctrl – leistis žemyn, Shift – judėti greičiau. Laikykite nuspaudę dešinįjį pelės mygtuką ir tempkite, kad apsidairytumėte.
 viewer-fullscreen = Visas ekranas
 viewer-leave-fullscreen = Išjungti visą ekraną
 viewer-see-through = Matyti pro sienas

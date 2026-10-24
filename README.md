@@ -56,6 +56,7 @@ stuff like a zooming in or seeing players through walls, as long as the demo has
 | Comma / Period | One frame back / forward |
 | Home | Back to the start |
 | Z | Zoom in or out |
+| C | Free camera: fly with W, A, S and D, Space up, Ctrl down, Shift faster, and hold the right mouse button to look around |
 | F, F11 or double-click the picture | Full screen |
 | Ctrl+Left / Ctrl+Right | Previous / next event |
 | I / O | Set the chosen clip's start / end to now |

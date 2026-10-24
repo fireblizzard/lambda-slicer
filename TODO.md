@@ -6,7 +6,7 @@
 - [x] Add a bar at the bottom of the demo player so that you can go to any point of the demo by clicking on it, and it has to be synced with the other playhead.  don't remove the existing playhead below the demo player, it's useful but people are more used to the web browser style of video players, and dragging the current playhead which is not visually touching the demo player feels a bit weird
 - [x] Add another two for rewinding/advancing 10 seconds beside the previous/next frame buttons
 - [x] Add the rest of HUD elements from AG, like the mini scoreboard at the top left, votes, settings, chat, timeouts, pauses, item pickups, damage indicator, and everything else that comes from AG events/usermessages
-- [ ] Add a way to toggle free camera mode, where you get detached from the recorder's camera and can fly around like with noclip by using WASD, Ctrl (down) and Space (up)
+- [x] Add a way to toggle free camera mode, where you get detached from the recorder's camera and can fly around like with noclip by using WASD, Ctrl (down) and Space (up)
 - [x] On the event list on the right there should be an indicator of where you're at, so if the demo is playing, it should keep advancing/panning the event list as events happen, and the last one that happened should be either selected (i'm not completely sure)
 - [x] Add a toggle to zoom in (like default_fov 30) and back to normal under the demo player
 - [x] Railings on crossfire have a very subtle blue colored border, as if the transparency isn't being applied correctly and leaves a small residue of blue when it's touching other colors (like red in this case, from the railing part of the texture)
@@ -59,6 +59,8 @@
 - [x] Extract date from the file name format `mapname-yyyymmdd-hhmmss`, like in `dm_dust2-20261007-212429.dem`. I think it might be a demo written by the BugfixedHL client
 - [x] Show changelevel events under the Match filter in the event list
 - [x] Show player switching to spectator mode under the Match filter in the event list
+- [ ] Add 3rd person camera
+- [ ] Add ability to switch to another player's POV as long as the demo has the info. While it doesn't have it, switch to the recorder POV until we have info again
 
 # Ideas for later
 - [ ] Add a Favourites tab and an Add to favourites or Remove from favourites option to the context menu of a demo. The tab should be right after the Filters button above the table, and for now there will be 2 tabs: All and Favourites. All is the normal table and Favourite will just show the favourited demos. Demo entries in the table should show a yellow star after the name of the demo, in the same column as the name, just at the end of the text

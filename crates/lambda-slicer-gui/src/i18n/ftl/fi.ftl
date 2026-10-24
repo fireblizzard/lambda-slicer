@@ -525,6 +525,7 @@ settings-crosshair = Näytä tähtäin
 settings-chat = Näytä chatti
 settings-vitals = Näytä elämä, panssari, ammukset ja pickupit
 settings-vitals-size = Elämän, panssarin, ammusten ja pickupien koko
+settings-free-vitals = Näytä elämä, panssari, ammukset ja pickupit myös vapaalla kameralla
 settings-scores = Näytä pisteet vasemmassa yläkulmassa
 settings-score-rows = Pisterivejä enintään
 settings-server-settings = Näytä serverin asetukset oikeassa yläkulmassa
@@ -548,6 +549,8 @@ settings-clear-library-text = { $count ->
    *[other] Lambda Slicer unohtaa, mitä se löysi { $count } demosta, ja skannaa kirjaston kansiot uudelleen, mikä voi kestää hetken. Demotiedostosi, klippisi ja asetuksesi pysyvät ennallaan.
 }
 viewer-zoom = Zoomaa lähemmäs
+viewer-free-camera = Vapaa kamera
+viewer-free-camera-help = Lennä vapaasti ympäri karttaa nauhoittaneesta pelaajasta riippumatta. W, A, S ja D liikuttavat, välilyönti nostaa ylös, Ctrl laskee alas ja Shift nopeuttaa. Pidä hiiren oikeaa painiketta pohjassa ja vedä katsoaksesi ympärillesi.
 viewer-fullscreen = Koko näyttö
 viewer-leave-fullscreen = Poistu koko näytön tilasta
 viewer-see-through = Näe seinien läpi

@@ -91,15 +91,9 @@ fn main() {
             };
         }
         let sound = |name: &SoundName| library.sound(name);
-        let channels = follow(channels, playback.scene());
-        samples.extend(mix(
-            &channels,
-            &sound,
-            &Listener::of(&playback),
-            at,
-            block,
-            &output,
-        ));
+        let listener = Listener::of(&playback);
+        let channels = follow(channels, playback.scene(), listener.entity);
+        samples.extend(mix(&channels, &sound, &listener, at, block, &output));
     }
 
     let peak = samples.iter().flatten().fold(0f32, |m, v| m.max(v.abs()));

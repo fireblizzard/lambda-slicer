@@ -68,7 +68,7 @@ location, Show in folder and Close. Escape closes the demo.
 Without the Half-Life folder, the player asks for `hl.exe` or the folder, and everything else keeps
 working. With it, the demo plays with the game's files, and the HUD shows as the settings choose.
 Under the picture are the seek bar and the controls: back to the start, rewind, 10 seconds back,
-one frame back, play, one frame forward, 10 seconds forward, the speed, zoom, see through walls, the
+one frame back, play, one frame forward, 10 seconds forward, the speed, free camera, zoom, see through walls, the
 volume, the picture settings and full screen. The keys are in the [README](../README.md#watching-a-demo).
 
 In full screen the app hides its toolbar, status bar and demo list and asks the window to fill the

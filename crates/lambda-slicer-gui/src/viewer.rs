@@ -36,7 +36,7 @@ use lambda_slicer_playback::PresentedFrame;
 use lambda_slicer_playback::animation::{Flash, Holder};
 use lambda_slicer_playback::controller::{Command, Controller, LoopRange, Reply, Stamp};
 use lambda_slicer_playback::hud::{Countdown, WAITING};
-use lambda_slicer_playback::scene::{self, Entity, EntityId, PlayerView};
+use lambda_slicer_playback::scene::{self, Entity, EntityId, PlayerView, weapon_model_for};
 use lambda_slicer_playback::tempents::Tint;
 use lambda_slicer_playback::time::{Rate, SourceTime};
 use lambda_slicer_playback::trace::Hull;
@@ -59,6 +59,7 @@ use crate::announcements;
 use crate::chat::Chat;
 use crate::crosshair::Crosshairs;
 use crate::decals::DecalCache;
+use crate::free_camera::{FreeCamera, Held};
 use crate::hud_sprites::HudSprites;
 use crate::i18n::Catalog;
 use crate::kill_feed::KillFeed;
@@ -341,6 +342,13 @@ pub struct Viewer {
     unmuted_volume: Option<f32>,
     /// Zoomed in to the settings' zoomed field of view, for the session
     zoomed: bool,
+    /// A camera of the viewer's own, flown apart from the recording
+    /// player's view, for the session
+    free: Option<FreeCamera>,
+    /// Units behind the recording player's view a free camera starts once
+    /// the first frame is in, turned this many degrees round them, for
+    /// checking the picture from the command line
+    pub free_behind: Option<(f32, f32)>,
     /// The view fills the whole screen, which the app follows
     pub fullscreen: bool,
     /// When the pointer last moved over the whole screen view, in egui's
@@ -541,6 +549,8 @@ impl Viewer {
             resume,
             unmuted_volume: None,
             zoomed: false,
+            free: None,
+            free_behind: None,
             fullscreen: false,
             pointer_moved: 0.,
             first_click: None,
@@ -830,11 +840,80 @@ impl Viewer {
             self.sky_loading = Some(sky.to_owned());
         }
 
-        for model in wanted(frame, &self.models) {
+        for model in wanted(frame, &self.models, self.free.is_some()) {
             if let Entry::Vacant(slot) = self.models.entry(model) {
                 let _ = loader.requests.send(Asset::Model(slot.key().clone()));
                 slot.insert(Slot::Loading);
             }
+        }
+    }
+
+    /// Whether the picture is seen from the free camera
+    pub fn free_camera(&self) -> bool {
+        self.free.is_some()
+    }
+
+    /// Leave the recording player's view for a free camera where that view
+    /// is, or go back to it
+    fn toggle_free(&mut self) {
+        self.free = match (&self.free, &self.frame) {
+            (None, Some(frame)) => {
+                let camera = &frame.recorder;
+                Some(FreeCamera::new(camera.origin, camera.angles))
+            }
+            _ => None,
+        };
+    }
+
+    /// Where the picture is seen from and the way it looks, the free
+    /// camera's or the recording player's
+    fn eye(&self, frame: &PresentedFrame) -> ([f32; 3], [f32; 3]) {
+        match &self.free {
+            Some(free) => (free.origin, free.angles),
+            None => (frame.recorder.origin, frame.recorder.angles),
+        }
+    }
+
+    /// Fly the free camera by the keys held, and turn it by a drag with the
+    /// right mouse button on the `view`, asking for the next frame while it
+    /// moves. Keys being typed into a text field are left to it
+    fn fly(&mut self, ctx: &egui::Context, view: &egui::Response) {
+        if let Some((units, degrees)) = self.free_behind
+            && let Some(frame) = &self.frame
+        {
+            let camera = &frame.recorder;
+            let [pitch, yaw, _] = camera.angles;
+            let mut free = FreeCamera::new(camera.origin, [pitch, yaw + degrees, 0.]);
+            free.back_off(units);
+            self.free = Some(free);
+            self.free_behind = None;
+        }
+        let Some(free) = &mut self.free else {
+            return;
+        };
+
+        let typing = ctx.text_edit_focused();
+        let (held, seconds, dragged) = ctx.input(|i| {
+            let key = |k: egui::Key| !typing && i.key_down(k);
+            let held = Held {
+                forward: key(egui::Key::W),
+                back: key(egui::Key::S),
+                left: key(egui::Key::A),
+                right: key(egui::Key::D),
+                up: key(egui::Key::Space),
+                down: !typing && i.modifiers.ctrl,
+                fast: !typing && i.modifiers.shift,
+            };
+            (held, i.stable_dt.min(LONGEST_FLIGHT), i.pointer.delta())
+        });
+        free.fly(held, seconds);
+
+        let turning = view.dragged_by(egui::PointerButton::Secondary);
+        if turning {
+            free.turn([dragged.x, dragged.y]);
+        }
+        if held.moving() || turning {
+            ctx.request_repaint();
         }
     }
 
@@ -851,7 +930,8 @@ impl Viewer {
                 .map_or(ModelLight::UNLIT, ModelLight::from_point)
         };
         // Chrome reflects the view the scene is drawn from
-        let eye = Eye::new(frame.recorder.origin, frame.recorder.angles);
+        let (eye_origin, eye_angles) = self.eye(frame);
+        let eye = Eye::new(eye_origin, eye_angles);
         let mut instances = Vec::new();
         let mut silhouettes = Vec::new();
         let mut sprites = Vec::new();
@@ -887,7 +967,7 @@ impl Viewer {
                 guns.insert(holder, at);
             }
         };
-        for drawn in drawn(frame, &self.models) {
+        for drawn in drawn(frame, &self.models, self.free.is_some()) {
             if let Some(Slot::Sprite(handle)) = self.models.get(&drawn.model) {
                 sprites.push(SpriteInstance {
                     sprite: *handle,
@@ -992,8 +1072,11 @@ impl Viewer {
             }
         }
 
+        // The weapon in view is the recording player's, so a free camera
+        // shows none
         let mut viewmodel = Vec::new();
         if self.settings.viewmodel
+            && self.free.is_none()
             && let Some((_, pose)) = viewmodel_pose(frame)
             && let Some(Slot::Ready(model, handle)) = viewmodel_ref(frame, &self.models)
                 .as_ref()
@@ -1031,7 +1114,7 @@ impl Viewer {
             .as_deref()
             .and_then(|map| self.library.as_ref()?.hull(map));
         if let Some(world) = world {
-            let eye = frame.recorder.origin;
+            let eye = eye_origin;
             sprites.retain(|s| s.mode != RenderMode::Glow || !hidden_glow(&world, eye, s.origin));
         }
 
@@ -1126,7 +1209,7 @@ impl Viewer {
         for e in frame.entities.iter().filter(|e| e.beam) {
             let model = e.model.as_deref().unwrap_or_default();
             if let Some(sprite) = sprite(model, e.frame.max(0.) as usize) {
-                out.push(entity_beam(frame, e, sprite));
+                out.push(entity_beam(frame, e, sprite, self.eye(frame).1));
             }
         }
         for tracer in &frame.beams.tracers {
@@ -1251,7 +1334,7 @@ impl Viewer {
             return false;
         };
         let map = frame.map.as_deref().map(map_name);
-        let loading = wanted(frame, &self.models)
+        let loading = wanted(frame, &self.models, self.free.is_some())
             .into_iter()
             .any(|m| matches!(self.models.get(&m), None | Some(Slot::Loading)));
         // The sky the server names, once it is in or could not be read
@@ -1465,7 +1548,9 @@ impl Viewer {
             None => height,
         };
         let size = egui::vec2(ui.available_width(), height.max(1.));
-        let (rect, clicked) = ui.allocate_exact_size(size, Sense::click());
+        // Dragged with the right button, the view turns a free camera
+        let (rect, clicked) = ui.allocate_exact_size(size, Sense::click_and_drag());
+        self.fly(&ctx, &clicked);
 
         // A click on the view pauses, or plays on the way it went last,
         // rewinding again after a pause while rewinding, unless the rewind
@@ -1526,6 +1611,7 @@ impl Viewer {
                         pixels,
                         view: view(
                             frame,
+                            self.eye(frame),
                             pixels[0] as f32 / pixels[1] as f32,
                             self.fov(),
                             &self.settings,
@@ -1546,6 +1632,7 @@ impl Viewer {
                     }
                     if let Some(library) = &self.library {
                         if self.settings.crosshair
+                            && self.free.is_none()
                             && let Some(weapon) = weapon_in_view(frame)
                         {
                             let fov = frame.recorder.fov;
@@ -1553,9 +1640,11 @@ impl Viewer {
                         }
                         // The game shows no health, armour, ammo, pickups,
                         // damage or weapon menu to a spectator or at
-                        // intermission
+                        // intermission. A free camera has none of its own,
+                        // unless the settings show the recorder's anyway
                         let camera = &frame.recorder;
-                        let shown = !camera.spectating && !camera.intermission;
+                        let free_shows = self.free.is_none() || self.settings.free_vitals;
+                        let shown = !camera.spectating && !camera.intermission && free_shows;
                         if self.settings.vitals && shown {
                             let (vitals, status) = (&mut self.vitals, &frame.status);
                             let size = self.settings.vitals_size;
@@ -1999,6 +2088,19 @@ impl Viewer {
             self.zoomed = !self.zoomed;
         }
 
+        // A camera of its own, flown about the map
+        let shortcut = catalog.text_with("viewer-shortcut", &[("key", FluentValue::from("C"))]);
+        let label = format!("{}\n{shortcut}", catalog.text("viewer-free-camera"));
+        let free = IconButton::new(Icon::Move, &label).selected(self.free.is_some());
+        let response = ui.add(free).on_hover_text(text::help(
+            ui.ctx(),
+            &catalog.text("viewer-free-camera-help"),
+            rtl,
+        ));
+        if response.clicked() {
+            self.toggle_free();
+        }
+
         picture
     }
 
@@ -2145,6 +2247,10 @@ impl Viewer {
             self.zoomed = !self.zoomed;
             ctx.request_repaint();
         }
+        if pressed(egui::Key::C) {
+            self.toggle_free();
+            ctx.request_repaint();
+        }
 
         // F and F11 fill the screen or leave it, and so does Escape when it
         // is not cancelling a scrub
@@ -2159,7 +2265,9 @@ impl Viewer {
             // Back to where the drag began
             self.scrub_cancelled = true;
             Some(Command::EndScrub { cancel: true })
-        } else if (!focused && pressed(egui::Key::Space)) || pressed(egui::Key::L) {
+        } else if (!focused && self.free.is_none() && pressed(egui::Key::Space))
+            || pressed(egui::Key::L)
+        {
             Some(if forward {
                 Command::Pause
             } else {
@@ -2211,6 +2319,7 @@ impl Viewer {
             // Backward playback is heard as nothing
             audible: frame.audible && !self.controller.clock().backward(),
             until: self.controller.until(),
+            ears: self.free.map(|free| (free.origin, free.angles)),
         });
     }
 }
@@ -2236,8 +2345,10 @@ struct Drawn {
 /// Which model each drawn entity uses and how it is posed. Players use the
 /// model their userinfo names, upright as the game draws them. The entity
 /// the recorder views from is left out, and so is the player a spectator
-/// sees through the eyes of
-fn drawn(frame: &PresentedFrame, models: &HashMap<ModelRef, Slot>) -> Vec<Drawn> {
+/// sees through the eyes of, unless a `free` camera shows them. The server
+/// leaves the recorder's own entity at nought, so it stands where the
+/// recorder's own frames say they are
+fn drawn(frame: &PresentedFrame, models: &HashMap<ModelRef, Slot>, free: bool) -> Vec<Drawn> {
     let viewer = frame.recorder.view_entity.unwrap_or(frame.local_entity);
     let observed =
         (frame.recorder.observer_mode == OBS_IN_EYE).then_some(frame.recorder.observer_target);
@@ -2246,12 +2357,10 @@ fn drawn(frame: &PresentedFrame, models: &HashMap<ModelRef, Slot>) -> Vec<Drawn>
     let mut out = Vec::new();
     for e in frame.entities.iter() {
         let number = e.id.number;
-        // Beams are drawn as strips, not as their sprite
-        if e.beam
-            || number == viewer
-            || observed == Some(i64::from(number))
-            || e.effects & NO_DRAW != 0
-        {
+        // Beams are drawn as strips, not as their sprite. The player seen
+        // through is drawn only for a free camera
+        let seen_through = number == viewer || observed == Some(i64::from(number));
+        if e.beam || (seen_through && !free) || e.effects & NO_DRAW != 0 {
             continue;
         }
 
@@ -2277,9 +2386,21 @@ fn drawn(frame: &PresentedFrame, models: &HashMap<ModelRef, Slot>) -> Vec<Drawn>
             distance: g.distance,
             elapsed: g.elapsed,
         });
+        // The recorder's own entity names no weapon, so theirs is the one
+        // in their hand that their weapon in view stands for
+        let own = if number == viewer {
+            frame
+                .recorder
+                .viewmodel
+                .as_deref()
+                .and_then(weapon_model_for)
+        } else {
+            None
+        };
         let weapon = e
             .weapon
             .as_deref()
+            .or(own)
             .filter(|w| is_player && w.ends_with(".mdl"))
             .map(|w| ModelRef::File(w.to_owned()));
         let mode = RenderMode::from_game(e.render_mode);
@@ -2308,7 +2429,11 @@ fn drawn(frame: &PresentedFrame, models: &HashMap<ModelRef, Slot>) -> Vec<Drawn>
                 framerate: f64::from(e.framerate),
                 controllers: e.controllers.map(f64::from),
                 blending: e.blending.map(f64::from),
-                origin: e.origin,
+                origin: if number == viewer {
+                    frame.recorder.player_origin
+                } else {
+                    e.origin
+                },
                 angles: e.angles,
                 player: is_player,
                 gait,
@@ -2321,8 +2446,8 @@ fn drawn(frame: &PresentedFrame, models: &HashMap<ModelRef, Slot>) -> Vec<Drawn>
 /// Every model and sprite `frame` draws, entities, held weapons, the
 /// viewmodel, muzzle flashes, temporary entities and beams, as the models
 /// in `models` say their variations
-fn wanted(frame: &PresentedFrame, models: &HashMap<ModelRef, Slot>) -> Vec<ModelRef> {
-    let drawn = drawn(frame, models)
+fn wanted(frame: &PresentedFrame, models: &HashMap<ModelRef, Slot>, free: bool) -> Vec<ModelRef> {
+    let drawn = drawn(frame, models, free)
         .into_iter()
         .flat_map(|d| std::iter::once(d.model).chain(d.weapon));
     let flashes = frame.flashes.iter().map(|f| flash_sprite(f.sprite));
@@ -2412,7 +2537,12 @@ fn variant(models: &HashMap<ModelRef, Slot>, first: ModelRef, body: i64, skin: i
 /// amount, its sprite frame its frame, and it scrolls at its animation
 /// time's rate. With a body its points are pushed aside by noise made
 /// again each frame, as lightning flickers (`R_DrawSegs`)
-fn entity_beam(frame: &PresentedFrame, e: &Entity, sprite: (SpriteHandle, usize)) -> Streak {
+fn entity_beam(
+    frame: &PresentedFrame,
+    e: &Entity,
+    sprite: (SpriteHandle, usize),
+    eye_angles: [f32; 3],
+) -> Streak {
     // An entity's place by the number in a sequence or skin's low 12 bits
     let place = |field: i64| {
         let number = u16::try_from(field & 0x0fff).ok()?;
@@ -2446,7 +2576,7 @@ fn entity_beam(frame: &PresentedFrame, e: &Entity, sprite: (SpriteHandle, usize)
         seed,
         time: frame.client_time as f32,
     };
-    let points = beam_points(start, end, e.scale, v, &noise, frame.recorder.angles)
+    let points = beam_points(start, end, e.scale, v, &noise, eye_angles)
         .into_iter()
         .map(|(position, v)| StreakPoint { position, v, color })
         .collect();
@@ -2659,6 +2789,10 @@ const SEEK_KNOB: f32 = 6.;
 const RATE_MENU_WIDTH: f32 = 64.;
 const VOLUME_SLIDER_WIDTH: f32 = 64.;
 
+/// The longest a free camera flies in one frame, in seconds, so a frame
+/// that came late never throws it far
+const LONGEST_FLIGHT: f32 = 0.1;
+
 /// Seconds the arrow keys move the playhead, and the skip buttons or the
 /// arrow keys with Shift
 const SEEK_STEP: f64 = 5.;
@@ -2797,11 +2931,17 @@ fn brushes(frame: &PresentedFrame) -> Vec<Brush> {
 /// What the frame is seen from and when, with every light style's
 /// brightness at the client's time, across `fov` or the recorded field of
 /// view when none
-fn view(frame: &PresentedFrame, aspect: f32, fov: Option<f32>, settings: &ViewerSettings) -> View {
+fn view(
+    frame: &PresentedFrame,
+    (eye, angles): ([f32; 3], [f32; 3]),
+    aspect: f32,
+    fov: Option<f32>,
+    settings: &ViewerSettings,
+) -> View {
     View {
-        view_projection: view_projection(frame, aspect, fov),
-        eye: frame.recorder.origin,
-        angles: frame.recorder.angles,
+        view_projection: view_projection(frame, (eye, angles), aspect, fov),
+        eye,
+        angles,
         time: frame.client_time as f32,
         light_styles: light_styles(frame),
         gamma: settings.gamma(),
@@ -2810,7 +2950,12 @@ fn view(frame: &PresentedFrame, aspect: f32, fov: Option<f32>, settings: &Viewer
 
 /// The recorder's view. The recorded field of view is across the screen's
 /// width, as the game's is
-fn view_projection(frame: &PresentedFrame, aspect: f32, fov: Option<f32>) -> Matrix {
+fn view_projection(
+    frame: &PresentedFrame,
+    (origin, angles): ([f32; 3], [f32; 3]),
+    aspect: f32,
+    fov: Option<f32>,
+) -> Matrix {
     let aspect = aspect.max(0.01);
     // A field of view chosen in Settings, else the recorded one
     let fov_x = fov
@@ -2819,8 +2964,8 @@ fn view_projection(frame: &PresentedFrame, aspect: f32, fov: Option<f32>) -> Mat
         .unwrap_or(DEFAULT_FOV);
     let fov_y = 2. * ((fov_x.to_radians() / 2.).tan() / aspect).atan();
     let camera = Camera {
-        origin: frame.recorder.origin,
-        angles: frame.recorder.angles,
+        origin,
+        angles,
         fov_y: fov_y.to_degrees(),
     };
     camera.view_projection(aspect, 4., 8192.)
