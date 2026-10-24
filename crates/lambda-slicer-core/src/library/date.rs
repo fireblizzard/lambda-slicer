@@ -2,7 +2,8 @@
 //!
 //! The header has no date. Adrenaline Gamer and OpenAG name their automatic
 //! recordings `YYYYMMDD_HHMMSS_map.dem` in the recording machine's local
-//! time, which is the best source. Otherwise the file's modification time,
+//! time, and other clients such as BugfixedHL `map-YYYYMMDD-HHMMSS.dem`,
+//! which is the best source. Otherwise the file's modification time,
 //! usually when recording ended, is used in this machine's local time.
 //! Copying usually keeps it, but downloads and archive tools often reset
 //! it, so the source is kept alongside the date
@@ -15,7 +16,7 @@ use serde::Serialize;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DateSource {
-    /// A `YYYYMMDD_HHMMSS` timestamp in the file name
+    /// A `YYYYMMDD_HHMMSS` or `YYYYMMDD-HHMMSS` timestamp in the file name
     FileName,
     /// The file's modification time
     Modified,
@@ -30,7 +31,8 @@ impl DateSource {
     }
 }
 
-/// A `YYYYMMDD_HHMMSS` timestamp anywhere in `name`, with a plausible date
+/// A `YYYYMMDD_HHMMSS` or `YYYYMMDD-HHMMSS` timestamp anywhere in `name`,
+/// with a plausible date
 pub fn from_name(name: &str) -> Option<NaiveDateTime> {
     let bytes = name.as_bytes();
     (0..bytes.len().saturating_sub(14)).find_map(|i| {
@@ -45,7 +47,8 @@ pub fn from_name(name: &str) -> Option<NaiveDateTime> {
         // Not part of a longer run of digits
         let clean_start = i == 0 || !bytes[i - 1].is_ascii_digit();
         let clean_end = bytes.get(i + 15).is_none_or(|b| !b.is_ascii_digit());
-        if !(clean_start && clean_end && window[8] == b'_') {
+        let separated = matches!(window[8], b'_' | b'-');
+        if !(clean_start && clean_end && separated) {
             return None;
         }
         let (y, m, d) = (digits(0..4)?, digits(4..6)?, digits(6..8)?);
@@ -96,6 +99,14 @@ mod tests {
             from_name("kz_20230909_224143.dem").unwrap().to_string(),
             "2023-09-09 22:41:43"
         );
+    }
+
+    #[test]
+    fn names_with_a_dash_between_date_and_time_carry_their_date() {
+        let t = from_name("dm_dust2-20261007-212429.dem").unwrap();
+        assert_eq!(t.to_string(), "2026-10-07 21:24:29");
+        assert!(from_name("dm_dust2-20261307-212429.dem").is_none());
+        assert!(from_name("map-20261007-2124290.dem").is_none());
     }
 
     #[test]
