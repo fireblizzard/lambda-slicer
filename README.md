@@ -21,7 +21,13 @@ and I haven't paid for a signed certificate or anything like that. The code for 
 repository, and if the app tried to do something harmful someone would point it out. So, unless you downloaded
 the app from an unofficial page, you can just hit **More info** and **Run anyway**.
 
-**Linux:** there is no download yet, but you can [build it yourself](#building-it-yourself).
+**Linux, x86-64:** new releases include a `linux-x86_64.tar.gz` on the
+[Releases page](https://github.com/fireblizzard/lambda-slicer/releases). Extract it and run
+`./lambda-slicer-gui`, or run `python3 install.py` inside the extracted folder to install it
+in your application menu with its icon. Do not use `sudo` for the installer. The binaries
+target Ubuntu 24.04 or newer and recent distributions such as CachyOS (glibc 2.39+).
+See [Linux requirements](docs/release.md#linux). Older releases may only have Windows downloads,
+but you can also [build it yourself](#building-it-yourself).
 
 ![The library with its filters](docs/images/library.png)
 
@@ -123,7 +129,8 @@ cargo build --release -p lambda-slicer-gui
 The app is then `target/release/lambda-slicer-gui`.
 
 On Windows `.\scripts\package.ps1` builds the
-same zip as the Releases page. [Development](docs/development.md) covers the checks and tests.
+same zip as the Releases page. On Linux, `python3 scripts/package-linux.py` builds the
+Linux archive, including the desktop installer. [Development](docs/development.md) covers the checks and tests.
 
 ## More
 
@@ -141,4 +148,4 @@ same zip as the Releases page. [Development](docs/development.md) covers the che
 
 Lambda Slicer is licensed under either [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE), at your
 option. The libraries it includes and their licenses are listed in `THIRD-PARTY-NOTICES.txt` in
-the zip.
+the release archive.

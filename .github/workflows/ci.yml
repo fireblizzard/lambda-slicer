@@ -28,24 +28,37 @@ jobs:
       - run: cargo build --release --workspace --locked
 
   package:
-    # The portable Windows zip and its checksum, kept as build artifacts.
-    # Each is uploaded as it is, not zipped again, so the download is the
-    # package itself and is named after it
+    # Archives preserve executable permissions and are uploaded without another zip.
     needs: build
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            extension: zip
+          - os: ubuntu-24.04
+            extension: tar.gz
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - run: rustup show
       - uses: Swatinem/rust-cache@v2
-      - run: ./scripts/package.ps1
+      - if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev pkg-config desktop-file-utils
+      - if: runner.os == 'Windows'
+        run: ./scripts/package.ps1
         shell: pwsh
+      - if: runner.os == 'Linux'
+        run: |
+          python3 scripts/package-linux.py
+          python3 scripts/check-linux-package.py
       - uses: actions/upload-artifact@v7
         with:
-          path: dist/*.zip
+          path: dist/*.${{ matrix.extension }}
           archive: false
           if-no-files-found: error
       - uses: actions/upload-artifact@v7
         with:
-          path: dist/*.zip.sha256
+          path: dist/*.${{ matrix.extension }}.sha256
           archive: false
           if-no-files-found: error

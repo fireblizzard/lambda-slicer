@@ -1,23 +1,31 @@
 name: release
 
-# Pushing a version tag such as v0.2.0 builds the Windows package and
-# publishes it on the repository's Releases page, for anyone to download
+# Version tags build both platforms before one job publishes the release.
 on:
   push:
     tags:
       - 'v*'
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-  release:
-    runs-on: windows-latest
+  package:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            extension: zip
+          - os: ubuntu-24.04
+            extension: tar.gz
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-      - run: rustup show
-      - uses: Swatinem/rust-cache@v2
-
       # The tag has to name the version the app says it is, so the
       # download's name, its VERSION.txt and the release all agree
       - name: Check the tag against the version
@@ -29,24 +37,62 @@ jobs:
               throw "tag $env:GITHUB_REF_NAME does not match version $version in Cargo.toml"
           }
 
+      - run: rustup show
+      - uses: Swatinem/rust-cache@v2
+      - if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev pkg-config desktop-file-utils
       - run: cargo test --workspace --locked
-      - run: ./scripts/package.ps1
+      - if: runner.os == 'Windows'
+        run: ./scripts/package.ps1
         shell: pwsh
+      - if: runner.os == 'Linux'
+        run: |
+          python3 scripts/package-linux.py
+          python3 scripts/check-linux-package.py
+      - uses: actions/upload-artifact@v7
+        with:
+          path: dist/*.${{ matrix.extension }}
+          archive: false
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v7
+        with:
+          path: dist/*.${{ matrix.extension }}.sha256
+          archive: false
+          if-no-files-found: error
 
-      # A version with a suffix, such as v0.2.0-beta.1, is marked as a
-      # pre-release. Running again for the same tag replaces the files
+  publish:
+    needs: package
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: lambda-slicer-*
+          path: dist
+          merge-multiple: true
       - name: Publish the release
-        shell: pwsh
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
-          $tag = $env:GITHUB_REF_NAME
-          $files = (Get-ChildItem dist -File -Filter '*.zip*').FullName
-          gh release view $tag *> $null
-          if ($LASTEXITCODE -eq 0) {
-              gh release upload $tag @files --clobber
-          } else {
-              $prerelease = if ($tag.Contains('-')) { @('--prerelease') } else { @() }
-              gh release create $tag @files --title "Lambda Slicer $tag" --generate-notes @prerelease
-          }
-          if ($LASTEXITCODE -ne 0) { throw 'publishing the release failed' }
+          set -euo pipefail
+          tag="$GITHUB_REF_NAME"
+          version="${tag#v}"
+          files=(
+            "dist/lambda-slicer-$version-windows-x86_64.zip"
+            "dist/lambda-slicer-$version-windows-x86_64.zip.sha256"
+            "dist/lambda-slicer-$version-linux-x86_64.tar.gz"
+            "dist/lambda-slicer-$version-linux-x86_64.tar.gz.sha256"
+          )
+          for file in "${files[@]}"; do test -s "$file"; done
+          (cd dist && sha256sum -c ./*.sha256)
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" "${files[@]}" --clobber
+          else
+            prerelease=()
+            if [[ "$tag" == *-* ]]; then prerelease=(--prerelease); fi
+            gh release create "$tag" "${files[@]}" --verify-tag \
+              --title "Lambda Slicer $tag" --generate-notes "${prerelease[@]}"
+          fi

@@ -11,8 +11,8 @@ and a release build, all `--locked`. `-Linux` repeats clippy, the tests and the 
 WSL, building into the Linux home.
 
 CI (`.github/workflows/ci.yml`) runs the same on `windows-latest` and `ubuntu-latest`, then
-packages on Windows. It keeps the zip and its `.sha256` as build artifacts, each uploaded as it
-is, so downloading the artifact gives the package zip itself rather than a zip inside a zip. The
+packages on Windows and Ubuntu 24.04. It keeps the Windows zip, Linux tar.gz and their `.sha256`
+files as build artifacts, each uploaded as it is, without another zip wrapper. The
 private demo collection and the game stay out of CI. The first run on GitHub, for `00b9dee` on
 2026-10-17, passed on both systems in about 13 minutes
 ([run 39056627064](https://github.com/fireblizzard/lambda-slicer/actions/runs/39056627064)).
@@ -54,7 +54,7 @@ license ([dependency audit](dependency-audit.md)).
 ## Publishing a release
 
 1. Raise the version in `Cargo.toml` and add it to the [release notes](release-notes.md).
-2. Run the [smoke test](#smoke-test) on a zip built from that commit.
+2. Run the [smoke test](#smoke-test) on packages built from that commit, on both platforms.
 3. Push a tag named after the version:
 
 ```powershell
@@ -62,18 +62,56 @@ git tag v0.2.0
 git push origin v0.2.0
 ```
 
-The tag runs `.github/workflows/release.yml`. It checks that the tag matches the version in
-`Cargo.toml`, runs the tests, builds the package with `scripts\package.ps1` and publishes the zip
-and its `.sha256` on the repository's Releases page, titled `Lambda Slicer v0.2.0`, with notes
-listing the changes since the last release.
+The tag runs `.github/workflows/release.yml`. Each platform checks that the tag matches the
+version in `Cargo.toml` and runs the workspace tests. Windows builds with `scripts\package.ps1`;
+Linux builds with `python3 scripts/package-linux.py` on `ubuntu-24.04` and checks the package
+with `python3 scripts/check-linux-package.py`. The Linux runner is pinned so a change to
+`ubuntu-latest` cannot silently raise the release's glibc requirement.
+
+Only after both platforms succeed does one publishing job download all four assets, verify
+their checksums and publish them on the repository's Releases page, titled
+`Lambda Slicer v0.2.0`, with notes listing the changes since the last release. Only that job has
+permission to write releases. Both build jobs retain their packages as workflow artifacts.
 
 - A version with a suffix, such as `v0.2.0-beta.1`, is marked as a pre-release.
 - A tag that doesn't match the version stops the run before anything is built.
 - Running it again for the same tag replaces the release's files.
+- Changes to this workflow take effect for tags pointing to commits containing them. Re-running
+  an older tag uses that tag's workflow, so it does not acquire Linux packaging automatically.
+- ARM64, AppImage, Flatpak, deb and rpm packages are not produced by this workflow.
+
+## Linux package
+
+On Linux x86-64, with Python 3.11+ and the build dependencies below:
+
+```sh
+python3 scripts/package-linux.py
+python3 scripts/check-linux-package.py
+```
+
+The packager uses the pinned Rust toolchain, `--locked` and the explicit
+`x86_64-unknown-linux-gnu` target. It respects Cargo's target directory, including
+`CARGO_TARGET_DIR`. Output is `dist/lambda-slicer-<version>-linux-x86_64.tar.gz` and its
+`.tar.gz.sha256`. The archive contains the GUI and CLI with executable permissions, a Linux
+README, `install.py`, the desktop entry, all icon sizes, both app licenses, build provenance in
+`VERSION.txt`, and third-party notices generated for the Linux target.
+
+The package check verifies the checksum, extracts the actual archive, checks linked libraries
+and executable permissions, runs the CLI, and installs twice into temporary homes, including
+paths with spaces and a percent sign and a custom `XDG_DATA_HOME`. It validates the desktop
+entry with `desktop-file-validate` (installed by CI), checks the icon and notices, and confirms
+the installed CLI still runs after deleting the extracted package. It does not replace the
+manual GUI, audio and game smoke tests.
+
+The published build targets glibc 2.39+ and uses system graphics/audio libraries. It is intended
+for Ubuntu 24.04+, CachyOS and similarly recent distributions, not every Linux installation.
+An archive built locally inherits the build host's library requirements; building on a newer
+distribution does not establish compatibility with Ubuntu 24.04. No game assets or FFmpeg are
+bundled. The package README lists runtime dependencies and installation/removal instructions.
 
 ## Smoke test
 
-To run on the zip before a release, noting the date and anything odd in [engine
+To run on each package before a release, noting the date and anything odd in [engine
 validation](engine-validation.md):
 
 1. Unzip anywhere and start `lambda-slicer-gui.exe`. No console window opens, and Open demo and
@@ -95,6 +133,11 @@ validation](engine-validation.md):
 9. Switch the language to Arabic and to Chinese without restarting. The text shows, and the layout
    mirrors in Arabic.
 
+On Linux, extract the tar.gz and start `./lambda-slicer-gui` for step 1. Also run
+`python3 install.py` without sudo, then launch from the desktop menu and check the sliced-lambda
+icon in the menu and taskbar on KDE/Wayland. Check that launch still works after moving or
+deleting the extracted folder. Use Linux game paths for step 8.
+
 The translations also wait for native speakers to review them ([languages](i18n.md)).
 
 ## What's supported
@@ -115,7 +158,7 @@ The translations also wait for native speakers to review them ([languages](i18n.
 | Windows app | built and checked in screenshots, the smoke test above pending | |
 | Interface languages | complete, checked in screenshots, native review pending | [languages](i18n.md) |
 | Demo player on Windows | supported and measured, the picture compared with the game's in three clips, the sound not yet | [demo player](viewer-profile.md), [comparison](viewer-validation.md) |
-| Linux | builds and tests pass, a real desktop and the game pending | below |
+| Linux | builds and tests pass; CachyOS/VirtualBox desktop testing in progress | below |
 
 ## Linux
 
@@ -130,9 +173,9 @@ files. Every seek and every way of reaching the test moments agreed with playing
 its window opened and played under Xvfb (which needs `libxkbcommon-x11-0` on X11), and its
 pictures drawn in software matched the Windows ones ([demo player](viewer-profile.md), "Linux").
 
-**Not tried yet** on a real Linux desktop: the app's drawing, file dialogs, drag and drop, system
-fonts, sound output, the demo player's speed with a GPU, and playing exported clips in the Linux
-game.
+The app has also been opened on CachyOS in VirtualBox. Desktop icon integration is being checked;
+a full desktop smoke test, including file dialogs, drag and drop, fonts, sound, viewer performance
+and playing exported clips in the Linux game, remains to be recorded.
 
 ### Desktop launcher
 
@@ -142,17 +185,20 @@ SDK's resource compiler itself, and `RC` can point to another. GNU Windows build
 which `WINDRES` can override (use the target's own compiler when cross-compiling). Linux builds
 use neither.
 
-For a launcher on a Linux desktop, after building the release binary, install it with the desktop
-entry and icons from the repository's root:
+The Linux archive includes a per-user installer. From the extracted package:
 
 ```sh
-install -Dm755 target/release/lambda-slicer-gui "$HOME/.local/bin/lambda-slicer-gui"
-install -Dm644 packaging/lambda-slicer.desktop "$HOME/.local/share/applications/lambda-slicer.desktop"
-for size in 16 24 32 48 64 128 256 512 1024; do
-  install -Dm644 "assets/branding/icons/icon-$size.png" "$HOME/.local/share/icons/hicolor/${size}x${size}/apps/lambda-slicer.png"
-done
+python3 install.py
 ```
 
-`$HOME/.local/bin` has to be on the desktop session's `PATH`. The desktop file's name matches the
-app's Wayland ID, so the compositor finds the launcher's icon. Some desktops need a new login to
-show the icon. How the app looks on a Linux desktop hasn't been checked.
+Python 3.10+ is needed only for installation, not to run the binaries directly. Run without
+sudo. Both binaries go in `~/.local/bin`, icons and the launcher under `XDG_DATA_HOME` (default
+`~/.local/share`), and licenses/notices under its `lambda-slicer/release` folder. The installer
+copies files, so the extracted package can then be removed. Re-running it upgrades the app
+without changing settings or the demo library; close the app before upgrading.
+
+The launcher has an absolute, quoted executable path and an absolute icon path. It does not
+depend on the desktop session's `PATH` or icon-theme lookup. Its filename matches the app's
+Wayland ID (`lambda-slicer`). The installer refreshes the desktop database and KDE cache when
+those tools are present. A stale pinned taskbar entry may need to be unpinned and pinned again;
+some desktops need a new login. The embedded window icon alone is insufficient on Wayland.
