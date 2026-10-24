@@ -49,15 +49,15 @@ jobs:
         run: |
           python3 scripts/package-linux.py
           python3 scripts/check-linux-package.py
+      # The package and its checksum go in one wrapped artifact. Uploaded on
+      # its own, the Windows zip would be taken for a wrapped artifact and
+      # unpacked into a folder when the publish job downloads it
       - uses: actions/upload-artifact@v7
         with:
-          path: dist/*.${{ matrix.extension }}
-          archive: false
-          if-no-files-found: error
-      - uses: actions/upload-artifact@v7
-        with:
-          path: dist/*.${{ matrix.extension }}.sha256
-          archive: false
+          name: package-${{ runner.os }}
+          path: |
+            dist/*.${{ matrix.extension }}
+            dist/*.${{ matrix.extension }}.sha256
           if-no-files-found: error
 
   publish:
@@ -68,7 +68,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v8
         with:
-          pattern: lambda-slicer-*
+          pattern: package-*
           path: dist
           merge-multiple: true
       - name: Publish the release
