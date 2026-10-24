@@ -134,10 +134,6 @@ where
 pub struct ViewerSettings {
     /// The Half-Life folder, the one holding `valve`. `--game` comes first
     pub game: Option<PathBuf>,
-    /// The game's executable the folder was found by, which only locates
-    /// it, as the viewer draws and plays demos itself. None when the folder
-    /// was chosen as a folder
-    pub executable: Option<PathBuf>,
     /// Other Half-Life folders searched in turn for what the first lacks,
     /// such as maps or a model, the first first
     pub more_games: Vec<PathBuf>,
@@ -200,7 +196,6 @@ impl Default for ViewerSettings {
         let g = lambda_slicer_render::gamma::Gamma::default();
         Self {
             game: None,
-            executable: None,
             more_games: Vec::new(),
             hd_models: None,
             addon_content: None,
@@ -389,7 +384,6 @@ impl Settings {
             ..Self::default()
         };
         restored.viewer.game = self.viewer.game.clone();
-        restored.viewer.executable = self.viewer.executable.clone();
         restored.viewer.more_games = self.viewer.more_games.clone();
         restored.layout.settings_at = self.layout.settings_at;
         restored
@@ -428,7 +422,6 @@ mod tests {
             demo_name_first: false,
             viewer: ViewerSettings {
                 game: Some(PathBuf::from("F:/Half-Life")),
-                executable: Some(PathBuf::from("F:/Half-Life/hl.exe")),
                 gamma: 2.,
                 brightness: 2.,
                 lightgamma: 2.,
@@ -521,16 +514,16 @@ mod tests {
     }
 
     #[test]
-    fn a_folder_saved_before_the_executable_was_kept_still_loads() {
+    fn settings_that_kept_the_game_program_still_load() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("settings.json");
         let saved = br#"{"locale": "en", "folders": ["F:/demos"], "preroll": 2.0,
-            "viewer": {"game": "F:/Half-Life", "volume": 0.5}}"#;
+            "viewer": {"game": "F:/Half-Life", "executable": "F:/Half-Life/hl.exe",
+            "volume": 0.5}}"#;
         std::fs::write(&path, saved).unwrap();
 
         let loaded = Settings::load_from(&path);
         assert_eq!(loaded.viewer.game, Some(PathBuf::from("F:/Half-Life")));
-        assert_eq!(loaded.viewer.executable, None);
         assert_eq!((loaded.viewer.volume, loaded.preroll), (0.5, 2.));
         assert_eq!(loaded.folders, [PathBuf::from("F:/demos")]);
     }

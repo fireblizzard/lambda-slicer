@@ -10,7 +10,6 @@ use fluent_bundle::FluentValue;
 use lambda_slicer_playback::decals::MAX_DECALS;
 
 use super::App;
-use crate::game_setup;
 use crate::i18n::{Catalog, Locale};
 use crate::layout;
 use crate::library::{self, parse_number};
@@ -265,10 +264,9 @@ impl App {
         }
     }
 
-    /// The Half-Life folder the viewer reads, and on Windows the game's
-    /// executable that finds it, both checked the same way as the setup
-    /// notice's choice. A choice that holds no game is refused with the
-    /// reason, keeping the one before
+    /// The Half-Life folder the viewer reads, checked the same way as the
+    /// setup notice's choice. A choice that holds no game is refused with
+    /// the reason, keeping the one before
     fn installation_settings(&mut self, ui: &mut egui::Ui, rtl: bool) {
         let ctx = ui.ctx().clone();
         let setup_needed = self.install_root().is_none();
@@ -286,8 +284,17 @@ impl App {
             None => self.catalog.text("settings-viewer-game-none"),
         };
         path(ui, &shown, rtl);
+
+        // Highlighted only while the viewer has no game files
+        let variant = if setup_needed {
+            Variant::Primary
+        } else {
+            Variant::Default
+        };
         layout::row(ui, rtl, |ui| {
-            if ui.button(self.t(&ctx, "settings-export-choose")).clicked() {
+            let label = self.t(&ctx, "settings-export-choose");
+            let choose = widgets::Button::new(None, label, variant, rtl);
+            if ui.add(choose).clicked() {
                 let start = self.settings.viewer.game.clone().filter(|g| g.is_dir());
                 let mut dialog = rfd::FileDialog::new();
                 if let Some(start) = start {
@@ -296,56 +303,6 @@ impl App {
                 chosen = dialog.pick_folder();
             }
         });
-
-        // The executable only finds the folder, so a folder that holds the
-        // game needs none, and Linux chooses the folder itself
-        if cfg!(windows) {
-            ui.add_space(SETTING_GAP);
-            labelled(
-                ui,
-                &self.catalog,
-                "settings-executable",
-                Some("settings-executable-hint"),
-                rtl,
-            );
-            let present = self.executable_present();
-            let (line, look) = match (&self.settings.viewer.executable, present) {
-                (Some(e), Some(true)) => (e.display().to_string(), Look::Weak),
-                (Some(e), _) => {
-                    let gone = FluentValue::from(e.display().to_string());
-                    let line = self
-                        .catalog
-                        .text_with("settings-executable-missing", &[("path", gone)]);
-                    (line, Look::Color(theme::WARNING))
-                }
-                (None, _) if setup_needed => (
-                    self.catalog.text("settings-executable-not-set"),
-                    Look::Color(theme::WARNING),
-                ),
-                (None, _) => (
-                    self.catalog.text("settings-executable-optional"),
-                    Look::Weak,
-                ),
-            };
-            let width = Some(ui.available_width());
-            ui.add(egui::Label::new(text::widget_text(&ctx, &line, rtl, width, look)).wrap());
-
-            // Highlighted only while the viewer has no game files
-            let variant = if setup_needed {
-                Variant::Primary
-            } else {
-                Variant::Default
-            };
-            layout::row(ui, rtl, |ui| {
-                let label = self.t(&ctx, "settings-browse");
-                let browse = widgets::Button::new(None, label, variant, rtl);
-                if ui.add(browse).clicked() {
-                    let start = self.settings.viewer.game.clone();
-                    let filter = self.catalog.text("dialog-executables");
-                    chosen = game_setup::pick(start.as_deref(), &filter);
-                }
-            });
-        }
 
         if let Some(chosen) = chosen {
             self.accept_install(&chosen);

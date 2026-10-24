@@ -209,8 +209,6 @@ pub struct App {
     /// folder with the options it is searched with, worked out once for
     /// each, as the game's own are read from the registry and Steam
     content_checked: Option<((Vec<PathBuf>, Overrides), GameFolders)>,
-    /// The same for the game's executable the settings name
-    executable_checked: Option<(PathBuf, bool)>,
 }
 
 /// The app's icon as a texture, for the toolbar
@@ -255,15 +253,6 @@ fn is_demo(path: &Path) -> bool {
 
 impl App {
     pub fn new(settings: Settings, settings_path: Option<PathBuf>, launch: Launch) -> Self {
-        // Settings saved before the executable was kept find it in their
-        // folder, saved with the next change
-        let mut settings = settings;
-        if settings.viewer.executable.is_none()
-            && let Some(root) = &settings.viewer.game
-        {
-            settings.viewer.executable = game_setup::executable_in(root);
-        }
-
         let mut catalog = Catalog::new(settings.locale());
         catalog.pseudo = launch.pseudo;
         let cache_path = launch
@@ -412,7 +401,6 @@ impl App {
             install_checked: None,
             more_checked: None,
             content_checked: None,
-            executable_checked: None,
         }
     }
 
@@ -491,21 +479,6 @@ impl App {
         Some(folders)
     }
 
-    /// Whether the game's executable the settings name is still there,
-    /// read from disk once for each path
-    fn executable_present(&mut self) -> Option<bool> {
-        let executable = self.settings.viewer.executable.clone()?;
-        let checked = matches!(&self.executable_checked, Some((path, _)) if *path == executable);
-        if !checked {
-            let present = executable.is_file();
-            self.executable_checked = Some((executable, present));
-        }
-
-        self.executable_checked
-            .as_ref()
-            .map(|(_, present)| *present)
-    }
-
     /// Why the viewer has no game files, for its setup notice
     fn setup(&self) -> Setup {
         let missing = match &self.install_checked {
@@ -539,16 +512,14 @@ impl App {
     /// otherwise say why, keeping the installation chosen before
     fn accept_install(&mut self, chosen: &Path) {
         match game_setup::accept(chosen) {
-            Ok(found) => {
-                self.settings.viewer.game = Some(found.root);
-                self.settings.viewer.executable = found.executable;
+            Ok(root) => {
+                self.settings.viewer.game = Some(root);
                 self.setup_refusal = None;
                 self.save_settings();
 
                 // Read again even for the same folder, which may only now
                 // hold the game, as when its drive is back
                 self.install_checked = None;
-                self.executable_checked = None;
             }
             Err(refusal) => self.setup_refusal = Some(refusal),
         }

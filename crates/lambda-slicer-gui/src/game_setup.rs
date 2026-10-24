@@ -2,8 +2,8 @@
 //!
 //! The viewer draws and plays demos itself, so `hl.exe` only says where the
 //! installation is. The folder holding it and `valve` is what the viewer
-//! reads. A folder chosen as a folder needs no executable, which is how
-//! Linux and settings saved before the executable was kept find it
+//! reads, and the only one kept. Choosing the folder itself does the same,
+//! which is how Linux finds it
 
 use std::path::{Path, PathBuf};
 
@@ -34,20 +34,6 @@ pub fn looks_installed(root: &Path) -> bool {
     false
 }
 
-/// The executable a saved folder holds, for settings kept before the
-/// executable was
-pub fn executable_in(root: &Path) -> Option<PathBuf> {
-    let executable = root.join(EXECUTABLE);
-    executable.is_file().then_some(executable)
-}
-
-/// An installation a choice names
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Installation {
-    pub root: PathBuf,
-    pub executable: Option<PathBuf>,
-}
-
 /// Why a choice is not an installation
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Refusal {
@@ -75,17 +61,14 @@ impl Refusal {
     }
 }
 
-/// The installation `chosen` names, the game's executable or the folder
-/// holding `valve`. A folder that holds the executable keeps it too
-pub fn accept(chosen: &Path) -> Result<Installation, Refusal> {
+/// The Half-Life folder `chosen` names, the game's executable's folder or
+/// the folder holding `valve` itself
+pub fn accept(chosen: &Path) -> Result<PathBuf, Refusal> {
     if chosen.is_dir() {
         if !looks_installed(chosen) {
             return Err(Refusal::NotInstalled(chosen.to_path_buf()));
         }
-        return Ok(Installation {
-            root: chosen.to_path_buf(),
-            executable: executable_in(chosen),
-        });
+        return Ok(chosen.to_path_buf());
     }
 
     // A shortcut or another program is not the executable, even when it
@@ -105,10 +88,7 @@ pub fn accept(chosen: &Path) -> Result<Installation, Refusal> {
         return Err(Refusal::NotInstalled(root.to_path_buf()));
     }
 
-    Ok(Installation {
-        root: root.to_path_buf(),
-        executable: Some(chosen.to_path_buf()),
-    })
+    Ok(root.to_path_buf())
 }
 
 /// Ask where the installation is, starting in `start`, as the executable on
@@ -147,22 +127,14 @@ mod tests {
         let executable = dir.path().join(EXECUTABLE);
         std::fs::write(&executable, b"").unwrap();
 
-        let found = accept(&executable).unwrap();
-        assert_eq!(found.root, dir.path());
-        assert_eq!(found.executable, Some(executable.clone()));
-
-        // A folder holding the executable keeps it, as saved settings that
-        // name only the folder do
-        let found = accept(dir.path()).unwrap();
-        assert_eq!(found.executable, Some(executable));
+        assert_eq!(accept(&executable).unwrap(), dir.path());
+        assert_eq!(accept(dir.path()).unwrap(), dir.path());
     }
 
     #[test]
     fn a_folder_with_the_game_files_needs_no_executable() {
         let dir = install(&["pak0.pak"]);
-        let found = accept(dir.path()).unwrap();
-        assert_eq!(found.root, dir.path());
-        assert_eq!(found.executable, None);
+        assert_eq!(accept(dir.path()).unwrap(), dir.path());
     }
 
     #[test]
@@ -203,6 +175,6 @@ mod tests {
         let dir = install(&["liblist.gam"]);
         let shouting = dir.path().join(EXECUTABLE.to_uppercase());
         std::fs::write(&shouting, b"").unwrap();
-        assert_eq!(accept(&shouting).unwrap().root, dir.path());
+        assert_eq!(accept(&shouting).unwrap(), dir.path());
     }
 }

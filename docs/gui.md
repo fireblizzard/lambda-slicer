@@ -218,7 +218,7 @@ would refuse are left out and their buttons are off.
 The settings window can be moved anywhere in the app's window, and keeps its place for the next
 run. Every change applies at once. A setting that needs explaining has a `(?)` beside it.
 
-- **General.** The Half-Life folder or `hl.exe`, more Half-Life folders the player looks in, in
+- **General.** The Half-Life folder, more Half-Life folders the player looks in, in
   order, for maps, models and sounds the first one lacks, the game content the player uses (HD
   models, custom addon content and localized content, as the game has them until changed here),
   the language, and how many demos are analysed at once.
