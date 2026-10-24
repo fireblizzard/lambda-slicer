@@ -699,7 +699,10 @@ impl Playback {
             map: state.scene.map.clone(),
             scene_revision: state.scene.revision,
             entities: Arc::new(match &world {
-                Some(world) => scene::in_the_open(state.scene.presented(client_time), world),
+                Some(world) => {
+                    let own = u16::from(state.decoder.player_num) + 1;
+                    scene::in_the_open(state.scene.presented(client_time), world, own)
+                }
                 None => state.scene.presented(client_time),
             }),
             client_time,

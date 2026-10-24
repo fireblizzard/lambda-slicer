@@ -850,13 +850,15 @@ const OPEN_REACH: f32 = 8.;
 /// the world's solid, as a spare corpse is parked outside the map. The game
 /// draws an entity whose box reaches an open part of the map, which its
 /// origin and a point a little way out along each axis stand in for. Brush
-/// entities and beams keep places of their own and are always kept
-pub(crate) fn in_the_open(entities: Vec<Entity>, world: &Hull) -> Vec<Entity> {
+/// entities and beams keep places of their own and are always kept, and so
+/// is the recorder's own entity, `own`, which the server leaves at nought,
+/// often inside the solid, for the viewer to place where the recorder is
+pub(crate) fn in_the_open(entities: Vec<Entity>, world: &Hull, own: u16) -> Vec<Entity> {
     entities
         .into_iter()
         .filter(|e| {
             let brush = e.model.as_deref().is_some_and(|m| m.starts_with('*'));
-            if brush || e.beam {
+            if brush || e.beam || e.id.number == own {
                 return true;
             }
 
@@ -901,18 +903,21 @@ mod tests {
         };
 
         // A body in the solid, one just sunk into the floor, a brush model
-        // whose origin is the map's, and a player in the open
+        // whose origin is the map's, a player in the open, and the
+        // recorder's own entity left in the solid at nought
         let kept = in_the_open(
             vec![
                 at(1, "models/player.mdl", -500.),
                 at(2, "models/w_battery.mdl", -4.),
                 at(3, "*12", -500.),
                 at(4, "models/player.mdl", 36.),
+                at(5, "models/player.mdl", -500.),
             ],
             &world,
+            5,
         );
         let numbers: Vec<u16> = kept.iter().map(|e| e.id.number).collect();
-        assert_eq!(numbers, [2, 3, 4]);
+        assert_eq!(numbers, [2, 3, 4, 5]);
     }
 
     fn track(yaw: f32) -> GaitTrack {
