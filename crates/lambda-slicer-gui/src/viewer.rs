@@ -1730,8 +1730,11 @@ impl Viewer {
                             self.chat.draw(ui, rect, &frame.chat, map, library);
                         }
                     }
+                    // A free camera watches nobody, its names over the players
                     let players = &frame.players;
-                    if let Some(player) = watched(&frame.recorder, frame.local_entity, players) {
+                    if self.free.is_none()
+                        && let Some(player) = watched(&frame.recorder, frame.local_entity, players)
+                    {
                         draw_watched(ui.painter(), rect, player);
                     }
                     if self.time_frame(pixels, drawn) {
