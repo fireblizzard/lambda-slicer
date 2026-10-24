@@ -92,6 +92,46 @@ pub enum Icon {
     Sun,
     /// A label with two lines of writing, for players' names
     Tag,
+    /// A five-pointed star, for favourites
+    Star,
+}
+
+/// The colour of a favourite's star
+pub const STAR: Color32 = Color32::from_rgb(242, 196, 48);
+
+/// The points of a five-pointed star around `center`, `radius` to its tips,
+/// its top point up
+fn star_points(center: Pos2, radius: f32) -> Vec<Pos2> {
+    let mut points = Vec::new();
+    for k in 0..10 {
+        let reach = if k % 2 == 0 { radius } else { radius * 0.45 };
+        let angle = k as f32 * TAU / 10. - TAU / 4.;
+        points.push(center + Vec2::new(angle.cos(), angle.sin()) * reach);
+    }
+    points
+}
+
+/// A filled star of `size` points across, for a favourite, beside its name
+pub fn favourite_star(ui: &mut Ui, size: f32, tip: &str) -> Response {
+    let (rect, response) = ui.allocate_exact_size(Vec2::splat(size), Sense::hover());
+    paint_star(ui.painter(), rect.center(), size / 2., STAR);
+    response.on_hover_text(tip)
+}
+
+/// A filled star of `radius` around `center` in `colour`, its middle and
+/// each point a triangle, as a star is not convex
+pub fn paint_star(painter: &egui::Painter, center: Pos2, radius: f32, colour: Color32) {
+    let points = star_points(center, radius);
+    let mut inner = Vec::new();
+    for k in (1..10).step_by(2) {
+        inner.push(points[k]);
+    }
+    painter.add(Shape::convex_polygon(inner, colour, Stroke::NONE));
+
+    for k in (0..10).step_by(2) {
+        let triangle = vec![points[(k + 9) % 10], points[k], points[k + 1]];
+        painter.add(Shape::convex_polygon(triangle, colour, Stroke::NONE));
+    }
 }
 
 /// The width of an icon's lines
@@ -491,6 +531,10 @@ pub fn paint_icon_facing(
             for (tip, one, other) in heads {
                 painter.add(Shape::line(vec![one, tip, other], stroke));
             }
+        }
+        Icon::Star => {
+            let points = star_points(p(8., 8.5), 6.5 * unit);
+            painter.add(Shape::closed_line(points, stroke));
         }
         Icon::Tag => {
             // A rounded label with a line of writing and a shorter one

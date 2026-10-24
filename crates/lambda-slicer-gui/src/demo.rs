@@ -128,6 +128,9 @@ pub enum Request {
     Notice(String),
     /// A clip finished exporting to this file
     Exported(PathBuf),
+    /// Make the demo at this path, as the library shows it, a favourite or
+    /// no longer one
+    Favourite(String),
 }
 
 /// The inspector's tabs beside the view
@@ -185,6 +188,8 @@ pub struct Surroundings<'a> {
     /// goes under it
     pub narrow: bool,
     pub setup: &'a Setup,
+    /// The demo is a favourite
+    pub favourite: bool,
 }
 
 /// The inspector beside the view at first, and in a window at least
@@ -1649,8 +1654,8 @@ impl DemoView {
         });
     }
 
-    /// Close, show in folder, copy the path and the details, placed from the
-    /// trailing end
+    /// Close, show in folder, copy the path, the details and the favourite's
+    /// star, placed from the trailing end
     fn header_actions(&mut self, ui: &mut Ui, s: &Surroundings) {
         let catalog = s.catalog;
 
@@ -1679,6 +1684,25 @@ impl DemoView {
         egui::Popup::menu(&response)
             .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
             .show(|ui| self.details(ui, s));
+
+        // Filled in the favourite's yellow while the demo is one
+        let id = if s.favourite {
+            "menu-favourite-remove"
+        } else {
+            "menu-favourite-add"
+        };
+        let response = ui.add(IconButton::new(Icon::Star, &catalog.text(id)));
+        if s.favourite {
+            let radius = theme::ICON_SIZE * 0.4;
+            widgets::paint_star(ui.painter(), response.rect.center(), radius, widgets::STAR);
+        }
+        if response.clicked() {
+            let path = match s.file {
+                Some(file) => file.path.clone(),
+                None => self.path.display().to_string(),
+            };
+            self.requests.push(Request::Favourite(path));
+        }
     }
 
     /// The map, date, length and point of view, as far as they are known

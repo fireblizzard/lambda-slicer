@@ -20,6 +20,9 @@ pub struct Settings {
     /// Parallel analyses, 1 to 4
     pub workers: u8,
     pub folders: Vec<PathBuf>,
+    /// The demos marked as favourites, by their path as the library shows
+    /// it
+    pub favourites: Vec<String>,
     /// None uses the platform's cache directory
     pub cache: Option<PathBuf>,
     /// Library columns left out, gauss shots by default
@@ -285,6 +288,7 @@ impl Default for Settings {
             locale: None,
             workers: 1,
             folders: Vec::new(),
+            favourites: Vec::new(),
             cache: None,
             hidden_columns: vec!["gauss".into()],
             start_tab: "demos".into(),
@@ -375,6 +379,7 @@ impl Settings {
     pub fn restored(&self) -> Self {
         let mut restored = Self {
             folders: self.folders.clone(),
+            favourites: self.favourites.clone(),
             cache: self.cache.clone(),
             ..Self::default()
         };
@@ -400,6 +405,7 @@ mod tests {
             locale: Some(Locale::Uk),
             workers: 3,
             folders: vec![PathBuf::from("F:/demos")],
+            favourites: vec!["F:/demos/run_92.dem".into()],
             cache: None,
             hidden_columns: Vec::new(),
             start_tab: "matches".into(),
@@ -479,6 +485,7 @@ mod tests {
             player_lanes: true,
             ..Settings::default()
         };
+        s.favourites = vec!["F:/demos/run_92.dem".into()];
         s.viewer.game = Some(PathBuf::from("F:/Half-Life"));
         s.viewer.more_games = vec![PathBuf::from("G:/Half-Life")];
         s.viewer.decals = 5;
@@ -490,6 +497,7 @@ mod tests {
         assert_eq!(restored.cache, s.cache);
         assert_eq!(restored.viewer.game, s.viewer.game);
         assert_eq!(restored.viewer.more_games, s.viewer.more_games);
+        assert_eq!(restored.favourites, s.favourites);
         assert_eq!(restored.layout.settings_at, s.layout.settings_at);
 
         // Everything else is the default
@@ -498,6 +506,7 @@ mod tests {
         expected.cache = None;
         expected.viewer.game = None;
         expected.viewer.more_games.clear();
+        expected.favourites.clear();
         expected.layout.settings_at = None;
         assert_eq!(expected, Settings::default());
     }

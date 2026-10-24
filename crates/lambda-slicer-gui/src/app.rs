@@ -82,6 +82,8 @@ pub struct Launch {
     pub dates: bool,
     /// Show the library's matches rather than its demos
     pub matches: bool,
+    /// List the favourite demos alone
+    pub favourites: bool,
     /// Export every clip of the demo shown at start
     pub export: bool,
     /// Pseudo-localise every message, to find text that does not fit
@@ -271,6 +273,9 @@ impl App {
         let mut library = cache_path
             .clone()
             .map(|p| LibraryView::new(p, settings.hidden_columns.clone()));
+        if let Some(l) = &mut library {
+            l.favourites = settings.favourites.clone();
+        }
         if let (Some(l), Some(d)) = (&mut library, &launch.demo) {
             l.select_path(d);
         }
@@ -291,6 +296,9 @@ impl App {
                 crate::library::Tab::from_key(&settings.start_tab)
             };
             l.show_tab(tab);
+            if launch.favourites {
+                l.show_favourites();
+            }
         }
 
         if let Some(l) = &mut library
@@ -737,12 +745,22 @@ impl App {
 
         let setup = self.setup();
         let file = self.library.as_ref().and_then(|l| l.selected.as_ref());
+        let path = match (file, &self.demo) {
+            (Some(f), _) => Some(f.path.clone()),
+            (None, Some(d)) => Some(d.path.display().to_string()),
+            (None, None) => None,
+        };
+        let favourite = match (&self.library, path) {
+            (Some(l), Some(path)) => l.favourite(&path),
+            _ => false,
+        };
         let surroundings = Surroundings {
             catalog: &self.catalog,
             rtl,
             file,
             narrow,
             setup: &setup,
+            favourite,
         };
         let mut middle = egui::CentralPanel::default();
         if fullscreen {
@@ -786,6 +804,11 @@ impl App {
                     self.workspace.drawer_open = true;
                 }
                 Request::ShowList => self.workspace.list_hidden = false,
+                Request::Favourite(path) => {
+                    if let Some(l) = &mut self.library {
+                        l.toggle_favourite(&path);
+                    }
+                }
                 Request::Notice(notice) => self.path_notice = Some(notice),
                 Request::Exported(path) => {
                     let in_library = self.settings.folders.iter().any(|f| path.starts_with(f));
@@ -1003,6 +1026,18 @@ impl App {
         self.scan = None;
         self.exported.clear();
         self.scanned_with = Some(self.game_folders());
+
+        // Favourites first, so after an update analyses the library again
+        // they are back before the rest. Only those the scan would find,
+        // as a folder taken out of the library takes its favourites too
+        let mut first = Vec::new();
+        for favourite in &self.settings.favourites {
+            let path = PathBuf::from(favourite);
+            if roots.iter().any(|root| path.starts_with(root)) {
+                first.push(path);
+            }
+        }
+
         let options = ScanOptions {
             roots,
             cache,
@@ -1013,7 +1048,11 @@ impl App {
             floors: self.floor_reader(),
             forget_missing: true,
         };
-        self.scan = Some(ScanJob::start(options, ctx.clone()));
+        let job = ScanJob::start(options, ctx.clone());
+        for path in first {
+            job.prioritize(path);
+        }
+        self.scan = Some(job);
     }
 
     /// Scan the clips exported into the library on their own, once no other
@@ -1581,6 +1620,13 @@ impl eframe::App for App {
         {
             l.columns_changed = false;
             self.settings.hidden_columns = l.hidden.clone();
+            self.save_settings();
+        }
+        if let Some(l) = &mut self.library
+            && l.favourites_changed
+        {
+            l.favourites_changed = false;
+            self.settings.favourites = l.favourites.clone();
             self.save_settings();
         }
         if self.demo.is_some() {

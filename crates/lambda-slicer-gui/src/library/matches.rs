@@ -21,7 +21,8 @@ use lambda_slicer_core::message::Coded;
 
 use super::{
     LIST_LINES, LIST_ROW, LibraryView, PAGE, SORT_MENU_WIDTH, TABLE_ROW, clock, day_cell,
-    direction_button, display_name, number_cell, score_cell, score_of, sort_heading, text_cell,
+    direction_button, display_name, named_cell, number_cell, score_cell, score_of, sort_heading,
+    text_cell,
 };
 use crate::i18n::{Catalog, Ymd};
 use crate::text::{self, Look};
@@ -77,6 +78,11 @@ pub struct MatchList {
     pub pages: HashMap<usize, Vec<MatchRow>>,
     /// The match last opened, by its demo and its place in it
     pub selected: Option<(i64, i64)>,
+    /// The match whose menu was open as the rows were last drawn, kept lit
+    /// as if hovered, and the one found open this frame, by its demo and
+    /// its place in it
+    menu_row: Option<(i64, i64)>,
+    menu_open: Option<(i64, i64)>,
 }
 
 impl Default for MatchList {
@@ -89,6 +95,8 @@ impl Default for MatchList {
             total: 0,
             pages: HashMap::new(),
             selected: None,
+            menu_row: None,
+            menu_open: None,
         }
     }
 }
@@ -304,6 +312,24 @@ impl LibraryView {
         }
     }
 
+    /// The demo's menu on the row of `played`, which shows its demo in its
+    /// folder or makes it a favourite or no longer one, the row lit while
+    /// it is open
+    fn match_menu(
+        &mut self,
+        response: &Response,
+        played: &MatchRow,
+        favourite: bool,
+        catalog: &Catalog,
+        rtl: bool,
+    ) {
+        let choice = super::row_menu(response, &played.path, favourite, catalog, rtl);
+        if choice.open {
+            self.matches.menu_open = Some((played.file_id, played.ordinal));
+        }
+        self.take_choice(choice, &played.path);
+    }
+
     /// Whether `played` is the match last opened, in the demo still open
     fn is_open(&self, played: &MatchRow) -> bool {
         let demo_open = self
@@ -357,11 +383,15 @@ impl LibraryView {
                     let Some(played) = self.match_row(index) else {
                         continue;
                     };
-                    if self.match_list_row(ui, &played, catalog, rtl).clicked() {
+                    let response = self.match_list_row(ui, &played, catalog, rtl);
+                    let favourite = self.favourite(&played.path);
+                    self.match_menu(&response, &played, favourite, catalog, rtl);
+                    if response.clicked() {
                         clicked = Some(played);
                     }
                 }
             });
+        self.matches.menu_row = self.matches.menu_open.take();
 
         if let Some(played) = clicked {
             self.open_match(&played);
@@ -381,6 +411,7 @@ impl LibraryView {
         let size = Vec2::new(ui.available_width(), LIST_ROW);
         let (rect, response) = ui.allocate_exact_size(size, Sense::click());
         let selected = self.is_open(played);
+        let key = (played.file_id, played.ordinal);
         let map = played.map.clone();
         response.widget_info(|| WidgetInfo::selected(Role::Button, true, selected, &map));
 
@@ -401,7 +432,7 @@ impl LibraryView {
             let size = Vec2::new(theme::SELECTED_EDGE, LIST_ROW);
             let edge = Rect::from_min_size(Pos2::new(edge_x, rect.min.y), size);
             painter.rect_filled(edge, 0., theme::ACCENT);
-        } else if response.hovered() {
+        } else if response.hovered() || self.matches.menu_row == Some(key) {
             painter.rect_filled(rect, 0., theme::RAISED);
         }
 
@@ -548,16 +579,22 @@ impl LibraryView {
                             let Some(played) = self.match_row(index) else {
                                 return;
                             };
-                            row.set_hovered(self.cursor == Some(index));
+                            let key = (played.file_id, played.ordinal);
+                            let menu = self.matches.menu_row == Some(key);
+                            row.set_hovered(self.cursor == Some(index) || menu);
+                            let favourite = self.favourite(&played.path);
                             for c in &cols {
-                                row.col(|ui| match_cell(ui, *c, &played, catalog, rtl));
+                                row.col(|ui| match_cell(ui, *c, &played, favourite, catalog, rtl));
                             }
-                            if row.response().clicked() {
+                            let response = row.response();
+                            if response.clicked() {
                                 clicked = Some(index);
                             }
+                            self.match_menu(&response, &played, favourite, catalog, rtl);
                         });
                     });
             });
+        self.matches.menu_row = self.matches.menu_open.take();
 
         if let Some(sort) = sort_by {
             self.sort_matches_by(sort);
@@ -572,8 +609,16 @@ impl LibraryView {
     }
 }
 
-/// One cell of a match's row
-fn match_cell(ui: &mut Ui, col: MatchCol, played: &MatchRow, catalog: &Catalog, rtl: bool) {
+/// One cell of a match's row, its demo's name starred when the demo is a
+/// `favourite`
+fn match_cell(
+    ui: &mut Ui,
+    col: MatchCol,
+    played: &MatchRow,
+    favourite: bool,
+    catalog: &Catalog,
+    rtl: bool,
+) {
     let whole = |n: i64| Some(catalog.number(n as f64, 0));
     match col {
         MatchCol::Demo => {
@@ -581,7 +626,7 @@ fn match_cell(ui: &mut Ui, col: MatchCol, played: &MatchRow, catalog: &Catalog, 
             // clear of the filter pane's edge
             ui.add_space(theme::ICON_SIZE);
             let name = display_name(&played.path);
-            text_cell(ui, &name, text::starts_rtl(&name), Look::Plain).on_hover_text(&played.path);
+            named_cell(ui, &name, &played.path, favourite, catalog);
         }
         MatchCol::Date => {
             let (day, source) = (played.recorded_at.as_deref(), played.date_source.as_deref());

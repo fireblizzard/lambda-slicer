@@ -351,22 +351,62 @@ impl Filters {
     }
 }
 
-/// The menu a right click on a demo's row opens, to show the demo in its
-/// folder. Returns why the folder could not be shown
-fn row_menu(response: &Response, file: &FileRow, catalog: &Catalog, rtl: bool) -> Option<String> {
-    let mut failed = None;
-    response.context_menu(|ui| {
+/// What a demo's menu was asked for
+#[derive(Debug, Default)]
+struct MenuChoice {
+    /// The menu is open, so its row stays lit
+    open: bool,
+    /// Why the demo's folder could not be shown
+    failed: Option<String>,
+    /// Make the demo a favourite, or no longer one
+    favourite: bool,
+}
+
+/// The menu a right click on a demo's row, or one of its matches, opens,
+/// to show the demo at `path` in its folder and to make it a favourite or
+/// no longer one, as `favourite` says it is
+fn row_menu(
+    response: &Response,
+    path: &str,
+    favourite: bool,
+    catalog: &Catalog,
+    rtl: bool,
+) -> MenuChoice {
+    let mut choice = MenuChoice::default();
+    let menu = response.context_menu(|ui| {
         let label = text::widget_text(ui.ctx(), &catalog.text("path-show"), rtl, None, Look::Plain);
         let show = widgets::Button::new(Some(Icon::Folder), label, Variant::Default, rtl);
         if ui.add(show).clicked() {
-            if let Err(e) = crate::platform::show_in_folder(Path::new(&file.path)) {
+            if let Err(e) = crate::platform::show_in_folder(Path::new(path)) {
                 let detail = FluentValue::from(e.to_string());
-                failed = Some(catalog.text_with("path-show-failed", &[("detail", detail)]));
+                let failed = catalog.text_with("path-show-failed", &[("detail", detail)]);
+                choice.failed = Some(failed);
             }
             ui.close();
         }
+
+        let id = if favourite {
+            "menu-favourite-remove"
+        } else {
+            "menu-favourite-add"
+        };
+        let label = text::widget_text(ui.ctx(), &catalog.text(id), rtl, None, Look::Plain);
+        let star = widgets::Button::new(Some(Icon::Star), label, Variant::Default, rtl);
+        if ui.add(star).clicked() {
+            choice.favourite = true;
+            ui.close();
+        }
     });
-    failed
+    choice.open = menu.is_some();
+    choice
+}
+
+/// Which demos the library lists, every one or the favourites alone
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum Scope {
+    #[default]
+    All,
+    Favourites,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -568,6 +608,8 @@ struct Applied {
     sort: Sort,
     descending: bool,
     matches: (MatchSort, bool, Vec<PartStatus>),
+    /// The demos kept to, the favourites while they alone are listed
+    only: Option<Vec<String>>,
 }
 
 pub struct LibraryView {
@@ -597,6 +639,15 @@ pub struct LibraryView {
     /// Column keys left out, and whether that changed this frame
     pub hidden: Vec<String>,
     pub columns_changed: bool,
+    /// The favourite demos by path, whether that changed this frame, and
+    /// whether every demo is listed or the favourites alone
+    pub favourites: Vec<String>,
+    pub favourites_changed: bool,
+    scope: Scope,
+    /// The demo whose menu was open as the rows were last drawn, kept lit
+    /// as if hovered, and the one found open this frame
+    menu_row: Option<i64>,
+    menu_open: Option<i64>,
     /// The filter pane beside the full table is open
     pub filters_open: bool,
     /// The narrow list shows its filters in place of its rows
@@ -624,6 +675,11 @@ impl LibraryView {
         Self {
             hidden,
             columns_changed: false,
+            favourites: Vec::new(),
+            favourites_changed: false,
+            scope: Scope::All,
+            menu_row: None,
+            menu_open: None,
             cache_path,
             cache: None,
             filters: Filters::default(),
@@ -719,7 +775,45 @@ impl LibraryView {
     fn query(&self) -> FileQuery {
         FileQuery {
             every_map: self.every_map,
+            only_paths: self.only(),
             ..self.filters.query(self.sort, self.descending)
+        }
+    }
+
+    /// The demos the library keeps to, the favourites while they alone are
+    /// listed
+    fn only(&self) -> Option<Vec<String>> {
+        (self.scope == Scope::Favourites).then(|| self.favourites.clone())
+    }
+
+    /// List the favourite demos alone
+    pub fn show_favourites(&mut self) {
+        self.scope = Scope::Favourites;
+    }
+
+    /// Whether the demo at `path` is a favourite
+    pub fn favourite(&self, path: &str) -> bool {
+        self.favourites.iter().any(|f| f == path)
+    }
+
+    /// Make the demo at `path` a favourite, or no longer one
+    pub fn toggle_favourite(&mut self, path: &str) {
+        match self.favourites.iter().position(|f| f == path) {
+            Some(at) => {
+                self.favourites.remove(at);
+            }
+            None => self.favourites.push(path.to_string()),
+        }
+        self.favourites_changed = true;
+    }
+
+    /// What the menu of the demo at `path` asked for, done
+    fn take_choice(&mut self, choice: MenuChoice, path: &str) {
+        if let Some(failed) = choice.failed {
+            self.path_notice = Some(failed);
+        }
+        if choice.favourite {
+            self.toggle_favourite(path);
         }
     }
 
@@ -754,6 +848,7 @@ impl LibraryView {
             sort: self.sort,
             descending: self.descending,
             matches: self.matches.order(),
+            only: self.only(),
         };
         let changed = self.applied.as_ref() != Some(&wanted);
         let waited = self.last_refresh.elapsed();
@@ -861,7 +956,8 @@ impl LibraryView {
             ),
         };
         let (shown, total) = (shown as i64, total as i64);
-        if self.active(tab) == 0 || shown == total {
+        let narrowed = self.active(tab) > 0 || self.scope == Scope::Favourites;
+        if !narrowed || shown == total {
             return catalog.text_with(ids.0, &[("count", shown.into())]);
         }
 
@@ -877,7 +973,9 @@ impl LibraryView {
 
             if self.shown_rows(tab) == 0 {
                 let filtered = self.active(tab) > 0;
+                let no_favourites = self.scope == Scope::Favourites && self.favourites.is_empty();
                 let id = match (tab, filtered) {
+                    _ if no_favourites && self.stats.files > 0 => "library-no-favourites",
                     (Tab::Demos, false) => "library-empty",
                     (Tab::Demos, true) => "library-no-matches",
                     (Tab::Matches, _) if self.stats.files == 0 => "library-empty",
@@ -1129,6 +1227,25 @@ impl LibraryView {
                 widgets::badge(ui, active);
             }
 
+            // Every demo, or the favourites alone, whichever tab is open.
+            // Favourites clicked again goes back to every demo, a quick way
+            // back from a look at them
+            let scopes = [
+                (Scope::All, "library-all"),
+                (Scope::Favourites, "library-favourites"),
+            ];
+            for (scope, id) in scopes {
+                let chosen = self.scope == scope;
+                let title = text::widget_text(&ctx, &catalog.text(id), rtl, None, Look::Plain);
+                if ui.add(egui::Button::selectable(chosen, title)).clicked() {
+                    self.scope = match (chosen, scope) {
+                        (true, Scope::Favourites) => Scope::All,
+                        _ => scope,
+                    };
+                    self.cursor = None;
+                }
+            }
+
             ui.label(text::widget_text(&ctx, &count, rtl, None, Look::Weak));
             if self.tab == Tab::Matches {
                 return;
@@ -1288,7 +1405,8 @@ impl LibraryView {
                         };
                         let selected = self.selected.as_ref().is_some_and(|s| s.id == file.id);
                         row.set_selected(selected);
-                        row.set_hovered(self.cursor == Some(index));
+                        let menu = self.menu_row == Some(file.id);
+                        row.set_hovered(self.cursor == Some(index) || menu);
 
                         for c in &cols {
                             row.col(|ui| self.cell(ui, *c, &file, selected, catalog, rtl));
@@ -1297,14 +1415,18 @@ impl LibraryView {
                         if response.clicked() {
                             clicked = Some(index);
                         }
-                        if let Some(failed) = row_menu(&response, &file, catalog, rtl) {
-                            self.path_notice = Some(failed);
+                        let favourite = self.favourite(&file.path);
+                        let choice = row_menu(&response, &file.path, favourite, catalog, rtl);
+                        if choice.open {
+                            self.menu_open = Some(file.id);
                         }
+                        self.take_choice(choice, &file.path);
                     });
                 });
         });
         let overflow = output.content_size.x - output.inner_rect.width();
         self.max_scroll_x = Some(overflow.max(0.));
+        self.menu_row = self.menu_open.take();
 
         if let Some(sort) = sort_by {
             self.sort_by(sort);
@@ -1411,7 +1533,8 @@ impl LibraryView {
                 widgets::tag(ui, &catalog.text("badge-clip"))
                     .on_hover_text(clip_of(origin, catalog));
             }
-            text_cell(ui, &name, text::starts_rtl(&name), Look::Plain).on_hover_text(&file.path);
+            let favourite = self.favourite(&file.path);
+            named_cell(ui, &name, &file.path, favourite, catalog);
         });
     }
 
@@ -1501,14 +1624,18 @@ impl LibraryView {
                         continue;
                     };
                     let response = self.list_row(ui, &file, catalog, rtl);
-                    if let Some(failed) = row_menu(&response, &file, catalog, rtl) {
-                        self.path_notice = Some(failed);
+                    let favourite = self.favourite(&file.path);
+                    let choice = row_menu(&response, &file.path, favourite, catalog, rtl);
+                    if choice.open {
+                        self.menu_open = Some(file.id);
                     }
+                    self.take_choice(choice, &file.path);
                     if response.clicked() {
                         clicked = Some(file);
                     }
                 }
             });
+        self.menu_row = self.menu_open.take();
 
         if let Some(file) = clicked {
             self.selected = Some(file);
@@ -1621,7 +1748,7 @@ impl LibraryView {
             let size = Vec2::new(theme::SELECTED_EDGE, LIST_ROW);
             let edge = Rect::from_min_size(Pos2::new(edge_x, rect.min.y), size);
             painter.rect_filled(edge, 0., theme::ACCENT);
-        } else if response.hovered() {
+        } else if response.hovered() || self.menu_row == Some(file.id) {
             painter.rect_filled(rect, 0., theme::RAISED);
         }
 
@@ -1653,7 +1780,14 @@ impl LibraryView {
             name_offset += size.x + theme::GAP_S;
         }
 
-        let name_room = inner.width() - name_offset;
+        // A favourite's star follows the name, in room kept for it
+        let favourite = self.favourite(&file.path);
+        let star_room = if favourite {
+            STAR_SIZE + theme::GAP_XS
+        } else {
+            0.
+        };
+        let name_room = inner.width() - name_offset - star_room;
         let look = if selected {
             Look::Color(theme::ACCENT)
         } else {
@@ -1662,9 +1796,16 @@ impl LibraryView {
         let name_text = text::widget_text(ui.ctx(), &name, text::starts_rtl(&name), None, look);
         let name_galley =
             name_text.into_galley(ui, Some(TextWrapMode::Truncate), name_room, TextStyle::Body);
-        let name_x = lead(name_offset, name_galley.size().x);
+        let name_width = name_galley.size().x;
+        let name_x = lead(name_offset, name_width);
         let name_at = Pos2::new(name_x, first_line - name_galley.size().y / 2.);
         ui.painter().galley(name_at, name_galley, theme::FOREGROUND);
+        if favourite {
+            let star_offset = name_offset + name_width + theme::GAP_XS;
+            let star_x = lead(star_offset, STAR_SIZE) + STAR_SIZE / 2.;
+            let center = Pos2::new(star_x, first_line);
+            widgets::paint_star(ui.painter(), center, STAR_SIZE / 2., widgets::STAR);
+        }
 
         // The second line, the score on the trailing side
         let score = score_of(file.scoreboard.as_ref(), file.score.as_deref()).map(
@@ -1813,6 +1954,26 @@ fn sort_heading(
             None => response,
         }
     })
+}
+
+/// How wide a favourite's star is, in points
+const STAR_SIZE: f32 = 12.;
+
+/// A demo's `name`, with the whole `path` on hover, followed by a star when
+/// it is a favourite, in the reading order of the row it is in. The name is
+/// cut short to leave the star room
+fn named_cell(ui: &mut Ui, name: &str, path: &str, favourite: bool, catalog: &Catalog) {
+    if !favourite {
+        text_cell(ui, name, text::starts_rtl(name), Look::Plain).on_hover_text(path);
+        return;
+    }
+
+    let room = ui.available_width() - STAR_SIZE - ui.spacing().item_spacing.x;
+    let size = Vec2::new(room.max(0.), ui.available_height());
+    ui.allocate_ui(size, |ui| {
+        text_cell(ui, name, text::starts_rtl(name), Look::Plain).on_hover_text(path);
+    });
+    widgets::favourite_star(ui, STAR_SIZE, &catalog.text("favourite-star"));
 }
 
 /// Text that is cut short with an ellipsis rather than wrapped
@@ -1993,7 +2154,7 @@ mod tests {
             let mut output = ctx.run_ui(input, |ui| {
                 let response = view.list_row(ui, &file, &catalog, false);
                 middle = response.rect.center();
-                row_menu(&response, &file, &catalog, false);
+                row_menu(&response, &file.path, false, &catalog, false);
             });
             output.textures_delta.clear();
             middle

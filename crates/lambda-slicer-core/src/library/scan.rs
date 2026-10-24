@@ -616,3 +616,25 @@ pub fn scan(
 
     Ok(progress)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_path_put_first_comes_before_those_found() {
+        let control = ScanControl::new();
+        control.push(PathBuf::from("found-a.dem"));
+        control.push(PathBuf::from("found-b.dem"));
+        control.prioritize(PathBuf::from("favourite.dem"));
+        control.finish_discovery();
+
+        let mut order = Vec::new();
+        while let Some(path) = control.pop() {
+            order.push(path);
+        }
+
+        let expected = ["favourite.dem", "found-a.dem", "found-b.dem"].map(PathBuf::from);
+        assert_eq!(order, expected);
+    }
+}

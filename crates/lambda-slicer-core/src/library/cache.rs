@@ -455,6 +455,9 @@ pub struct FileQuery {
     pub min_action: Option<f64>,
     /// Lowest accuracy of the recording player, as a fraction
     pub min_accuracy: Option<f64>,
+    /// Only the files at these paths, as [`FileRow::path`] shows them, none
+    /// for every file
+    pub only_paths: Option<Vec<String>>,
     /// Fewest and most players and teams, inclusive
     pub min_players: Option<i64>,
     pub max_players: Option<i64>,
@@ -1086,6 +1089,20 @@ impl Cache {
         if let Some(t) = q.text.as_deref().filter(|t| !t.is_empty()) {
             args.push(Box::new(fold(t)));
             c.push(format!("instr(fold(f.path), ?{}) > 0", args.len()));
+        }
+        if let Some(paths) = &q.only_paths {
+            let mut places = Vec::new();
+            for path in paths {
+                args.push(Box::new(path.clone()));
+                places.push(format!("?{}", args.len()));
+            }
+
+            // No paths at all lists nothing
+            if places.is_empty() {
+                c.push("0".to_string());
+            } else {
+                c.push(format!("f.path IN ({})", places.join(", ")));
+            }
         }
         if let Some(m) = q.map.as_deref().filter(|m| !m.is_empty()) {
             args.push(Box::new(fold(m)));
@@ -1784,6 +1801,13 @@ mod tests {
             ..all.clone()
         };
         assert_eq!(found(&complete), [("a.dem".into(), 1), ("b.dem".into(), 0)]);
+
+        // Only the matches of the files asked for, and none of none
+        let mut only = all.clone();
+        only.files.only_paths = Some(vec!["b.dem".into()]);
+        assert_eq!(found(&only), [("b.dem".into(), 0), ("b.dem".into(), 1)]);
+        only.files.only_paths = Some(Vec::new());
+        assert_eq!(found(&only), []);
 
         let mut boot_camp = all.clone();
         boot_camp.files.map = Some("BOOT".into());
