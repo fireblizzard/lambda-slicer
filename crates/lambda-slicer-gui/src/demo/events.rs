@@ -65,6 +65,10 @@ const HIGHLIGHT_WIDTH: f32 = 220.;
 /// How many ups dragging the least speed moves it for a point
 const UPS_PER_POINT: f64 = 10.;
 
+/// Seconds in a minute and in an hour
+const MINUTE: f32 = 60.;
+const HOUR: f32 = 3600.;
+
 /// How a badge stands out
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Tone {
@@ -594,10 +598,18 @@ impl DemoView {
         let mut clicked = None;
         let mut played = None;
         ui.spacing_mut().item_spacing.y = 0.;
+
+        // Times leave out hours, or minutes too, when no event reaches them
+        let longest = model
+            .events
+            .iter()
+            .map(|e| e.time)
+            .fold(model.end, f32::max);
+        let shared = RowsShare { window, longest };
         let shown = list.show_rows(ui, ROW_HEIGHT, self.rows.len(), |ui, rows| {
             for row in rows {
                 let event = self.rows[row];
-                let response = self.event_row(ui, catalog, rtl, model, event, window);
+                let response = self.event_row(ui, catalog, rtl, model, event, shared);
                 if response.double_clicked() {
                     played = Some(event);
                 } else if response.clicked() {
@@ -660,8 +672,9 @@ impl DemoView {
         rtl: bool,
         model: &Model,
         index: usize,
-        window: Option<(f32, f32)>,
+        shared: RowsShare,
     ) -> Response {
+        let RowsShare { window, longest } = shared;
         let event = &model.events[index];
         let size = Vec2::new(ui.available_width(), ROW_HEIGHT);
         let (rect, response) = ui.allocate_exact_size(size, Sense::click());
@@ -693,7 +706,7 @@ impl DemoView {
         let mut line = RowLine::new(rect.shrink2(Vec2::new(theme::GAP_S, 0.)), rtl);
 
         // The time always reads left to right
-        let time = clock(event.time, true);
+        let time = event_clock(event.time, longest);
         let time = egui::RichText::new(time).monospace().color(theme::FAINT);
         let time = layout_text(ui, time.into(), None);
         let place = line.take_leading(time.size());
@@ -1308,6 +1321,30 @@ fn paint_badge(ui: &Ui, line: &mut RowLine, row: &Response, badge: &Badge, k: us
     }
 }
 
+/// What every row of the event list shares, the highlight chosen and the
+/// longest time of the demo
+#[derive(Clone, Copy)]
+struct RowsShare {
+    window: Option<(f32, f32)>,
+    longest: f32,
+}
+
+/// `time` to the millisecond as the event list shows it. Hours are left
+/// out when the demo's `longest` time is under an hour, and minutes too
+/// when it is under a minute
+fn event_clock(time: f32, longest: f32) -> String {
+    // `clock` writes `HH:MM:SS.mmm`, so leaving out its first fields is enough
+    let full = clock(time, true);
+    let left_out = if longest >= HOUR {
+        0
+    } else if longest >= MINUTE {
+        "HH:".len()
+    } else {
+        "HH:MM:".len()
+    };
+    full[left_out..].to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
@@ -1315,6 +1352,18 @@ mod tests {
     use lambda_slicer_core::analysis::weapons::Action;
 
     use super::*;
+
+    #[test]
+    fn event_times_leave_out_what_the_demo_never_reaches() {
+        // 1:46.817 in demos under a minute, under an hour and longer
+        assert_eq!(event_clock(7.25, 50.), "07.250");
+        assert_eq!(event_clock(106.817, 1200.), "01:46.817");
+        assert_eq!(event_clock(106.817, 4000.), "00:01:46.817");
+
+        // A demo exactly a minute or an hour long reaches it
+        assert_eq!(event_clock(60., 60.), "01:00.000");
+        assert_eq!(event_clock(3600., 3600.), "01:00:00.000");
+    }
 
     /// A demo view whose list shows `count` shots a second apart
     fn view_of_shots(ctx: &egui::Context, count: usize) -> DemoView {
