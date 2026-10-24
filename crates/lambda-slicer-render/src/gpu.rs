@@ -65,7 +65,7 @@ const SHADER: &str = r#"
 const SILHOUETTE_BACK: bool = true;
 struct Uniforms {
     view_projection: mat4x4<f32>,
-    // y time in seconds
+    // y time in seconds, z 1 when everything is fully lit
     params: vec4<f32>,
     styles: array<vec4<f32>, 17>,
     // The game's gamma (Gamma::uniform)
@@ -113,6 +113,16 @@ fn lightmap_light(l: vec3<f32>) -> vec3<f32> {
     let index = min(l * 1020.0 * u.gamma[1].y, vec3<f32>(1023.0));
     return light_table(index / 1023.0) * u.gamma[1].z;
 }
+
+// Whether everything is fully lit, as the game's r_fullbright lights the
+// world
+fn fullbright() -> bool {
+    return u.params.z > 0.5;
+}
+
+// The least light a model takes when everything is fully lit, which keeps
+// some of its shading
+const FULLBRIGHT_MODEL: f32 = 0.75;
 
 // What a model's light, 0 to 1, makes of a texture's colour
 fn model_light(l: vec3<f32>) -> vec3<f32> {
@@ -181,6 +191,10 @@ fn world_fs(v: WorldOut) -> @location(0) vec4<f32> {
         let offset = vec2<f32>(f32(k) * v.style_step, 0.0);
         light = light + textureSample(lightmap, lightmap_sampler, v.lightmap_uv + offset).rgb * style_value(s);
     }
+    // Fully lit, every face shows its texture's own colours
+    if (fullbright()) {
+        light = vec3<f32>(1.0);
+    }
                 // A decal's colour is its own, without the texture table
         let colour = select(tex_gamma(a.rgb), a.rgb, decal);
         let lit = min(colour * lightmap_light(light), vec3<f32>(1.0));
@@ -216,7 +230,11 @@ fn model_fs(v: ModelOut) -> @location(0) vec4<f32> {
     if (a.a < 0.5) {
         discard;
     }
-                        return vec4<f32>(min(tex_gamma(a.rgb) * model_light(v.light), vec3<f32>(1.0)), v.alpha);
+    var light = v.light;
+    if (fullbright()) {
+        light = max(light, vec3<f32>(FULLBRIGHT_MODEL));
+    }
+    return vec4<f32>(min(tex_gamma(a.rgb) * model_light(light), vec3<f32>(1.0)), v.alpha);
 }
 
 // A model behind something nearer, in one colour, its texture's cut-outs
@@ -435,6 +453,9 @@ pub struct View {
     pub light_styles: [f32; 64],
     /// The game's gamma settings
     pub gamma: Gamma,
+    /// Every face fully lit and every model lit well, to see into dark
+    /// places
+    pub fullbright: bool,
 }
 
 /// The render mode the world's shader takes for decals
@@ -1784,7 +1805,7 @@ impl Scene {
         styles[STYLE_SLOTS - 1] = 1.;
         let uniforms = Uniforms {
             view_projection: view.view_projection,
-            params: [0., view.time, 0., 0.],
+            params: [0., view.time, f32::from(u8::from(view.fullbright)), 0.],
             styles,
             gamma: view.gamma.uniform(),
         };
@@ -2265,6 +2286,7 @@ mod tests {
             time: 0.,
             light_styles: [1.; 64],
             gamma: Gamma::default(),
+            fullbright: false,
         }
     }
 

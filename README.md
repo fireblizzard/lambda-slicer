@@ -57,8 +57,9 @@ stuff like a zooming in or seeing players through walls, as long as the demo has
 | Home | Back to the start |
 | Z | Zoom in or out |
 | X | Toggle seeing players through walls |
+| F | Toggle fullbright |
 | C | Free camera: fly with W, A, S and D, Space up, Ctrl down, Shift faster, and hold the right mouse button to look around |
-| F, F11 or double-click the picture | Full screen |
+| F11 or double-click the picture | Full screen |
 | Ctrl+Left / Ctrl+Right | Previous / next event |
 | I / O | Set the chosen clip's start / end to now |
 | Escape | Leave full screen, close the settings, or close the demo |

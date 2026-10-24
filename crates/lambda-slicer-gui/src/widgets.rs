@@ -88,6 +88,8 @@ pub enum Icon {
     Crosshair,
     /// A cross with an arrowhead on each arm, for a camera moved freely
     Move,
+    /// A sun, for lighting everything fully
+    Sun,
 }
 
 /// The width of an icon's lines
@@ -486,6 +488,17 @@ pub fn paint_icon_facing(
             ];
             for (tip, one, other) in heads {
                 painter.add(Shape::line(vec![one, tip, other], stroke));
+            }
+        }
+        Icon::Sun => {
+            // A disc with eight rays round it
+            painter.circle_stroke(p(8., 8.), 3. * unit, stroke);
+            for k in 0..8 {
+                let angle = k as f32 * TAU / 8.;
+                let (sin, cos) = angle.sin_cos();
+                let from = p(8. + 5. * cos, 8. + 5. * sin);
+                let to = p(8. + 7. * cos, 8. + 7. * sin);
+                painter.line_segment([from, to], stroke);
             }
         }
     }

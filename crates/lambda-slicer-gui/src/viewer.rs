@@ -342,6 +342,8 @@ pub struct Viewer {
     unmuted_volume: Option<f32>,
     /// Zoomed in to the settings' zoomed field of view, for the session
     zoomed: bool,
+    /// Everything fully lit, to see into dark places, for the session
+    pub fullbright: bool,
     /// A camera of the viewer's own, flown apart from the recording
     /// player's view, for the session
     free: Option<FreeCamera>,
@@ -549,6 +551,7 @@ impl Viewer {
             resume,
             unmuted_volume: None,
             zoomed: false,
+            fullbright: false,
             free: None,
             free_behind: None,
             fullscreen: false,
@@ -1609,13 +1612,16 @@ impl Viewer {
                     drawn = draw.instances.len() + draw.sprites.len() + draw.viewmodel.len();
                     let callback = Frame {
                         pixels,
-                        view: view(
-                            frame,
-                            self.eye(frame),
-                            pixels[0] as f32 / pixels[1] as f32,
-                            self.fov(),
-                            &self.settings,
-                        ),
+                        view: View {
+                            fullbright: self.fullbright,
+                            ..view(
+                                frame,
+                                self.eye(frame),
+                                pixels[0] as f32 / pixels[1] as f32,
+                                self.fov(),
+                                &self.settings,
+                            )
+                        },
                         draw,
                     };
                     ui.painter()
@@ -2009,7 +2015,7 @@ impl Viewer {
     /// settings were asked for
     fn view_controls(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool) -> bool {
         // The whole screen at the far end, as video players have it
-        let shortcut = catalog.text_with("viewer-shortcut", &[("key", FluentValue::from("F"))]);
+        let shortcut = catalog.text_with("viewer-shortcut", &[("key", FluentValue::from("F11"))]);
         let (icon, id) = if self.fullscreen {
             (Icon::Shrink, "viewer-leave-fullscreen")
         } else {
@@ -2083,6 +2089,22 @@ impl Viewer {
             .on_disabled_hover_text(catalog.text("viewer-needs-files"));
         if response.clicked() {
             self.settings.see_through = !self.settings.see_through;
+        }
+
+        // Everything fully lit, for this session only
+        let shortcut = catalog.text_with("viewer-shortcut", &[("key", FluentValue::from("F"))]);
+        let label = format!("{}\n{shortcut}", catalog.text("viewer-fullbright"));
+        let button = IconButton::new(Icon::Sun, &label).selected(self.fullbright);
+        let response = ui.add_enabled(self.assets, button);
+        let response = response
+            .on_hover_text(text::help(
+                ui.ctx(),
+                &catalog.text("viewer-fullbright-help"),
+                rtl,
+            ))
+            .on_disabled_hover_text(catalog.text("viewer-needs-files"));
+        if response.clicked() {
+            self.fullbright = !self.fullbright;
         }
 
         // A closer look, for this session only
@@ -2260,12 +2282,15 @@ impl Viewer {
             self.settings.see_through = !self.settings.see_through;
             ctx.request_repaint();
         }
+        if pressed(egui::Key::F) && self.assets {
+            self.fullbright = !self.fullbright;
+            ctx.request_repaint();
+        }
 
-        // F and F11 fill the screen or leave it, and so does Escape when it
-        // is not cancelling a scrub
+        // F11 fills the screen or leaves it, and so does Escape when it is
+        // not cancelling a scrub
         let leave = self.fullscreen && !self.controller.scrubbing();
-        if pressed(egui::Key::F) || pressed(egui::Key::F11) || (leave && pressed(egui::Key::Escape))
-        {
+        if pressed(egui::Key::F11) || (leave && pressed(egui::Key::Escape)) {
             self.fullscreen = !self.fullscreen;
             ctx.request_repaint();
         }
@@ -2954,6 +2979,7 @@ fn view(
         time: frame.client_time as f32,
         light_styles: light_styles(frame),
         gamma: settings.gamma(),
+        fullbright: false,
     }
 }
 

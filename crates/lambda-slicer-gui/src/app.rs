@@ -97,6 +97,8 @@ pub struct Launch {
     pub viewer_gamma: Option<lambda_slicer_render::gamma::Gamma>,
     /// Players shown through walls for this run
     pub viewer_see_through: bool,
+    /// Everything lit up once the view opens
+    pub viewer_fullbright: bool,
     /// The view fills the screen once it opens
     pub viewer_fullscreen: bool,
     /// A free camera this many units behind the recording player's view,
@@ -177,6 +179,7 @@ pub struct App {
     viewer_play: Option<f64>,
     viewer_gamma: Option<lambda_slicer_render::gamma::Gamma>,
     viewer_see_through: bool,
+    viewer_fullbright: bool,
     viewer_fullscreen: bool,
     viewer_free: Option<(f32, f32)>,
     /// A setting changed, saved once the pointer is let go
@@ -365,6 +368,7 @@ impl App {
             viewer_play: launch.viewer_play,
             viewer_gamma: launch.viewer_gamma,
             viewer_see_through: launch.viewer_see_through,
+            viewer_fullbright: launch.viewer_fullbright,
             viewer_fullscreen: launch.viewer_fullscreen,
             viewer_free: launch.viewer_free,
             settings_unsaved: false,
@@ -502,6 +506,7 @@ impl App {
             ctx,
         );
         viewer.fullscreen = std::mem::take(&mut self.viewer_fullscreen);
+        viewer.fullbright = std::mem::take(&mut self.viewer_fullbright);
         viewer.free_behind = self.viewer_free.take();
         d.viewer = Some(viewer);
     }
