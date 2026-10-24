@@ -295,6 +295,13 @@ fn main() -> eframe::Result {
             .with_icon(icon),
         ..Default::default()
     };
+    // Vulkan can crash inside an installed driver's GPU discovery, even when
+    // another GPU would render the app. Avoid loading it by default on Windows.
+    #[cfg(target_os = "windows")]
+    if let eframe::egui_wgpu::WgpuSetup::CreateNew(setup) = &mut options.wgpu_options.wgpu_setup {
+        setup.instance_descriptor.backends =
+            eframe::wgpu::Backends::from_env().unwrap_or(eframe::wgpu::Backends::DX12);
+    }
     if viewer_bench.is_some() {
         options.wgpu_options.surface.present_mode = eframe::wgpu::PresentMode::AutoNoVsync;
     }

@@ -3,6 +3,12 @@
 Downloads are on the [Releases page](https://github.com/fireblizzard/lambda-slicer/releases). What
 doesn't work yet is in [known limitations](limitations.md).
 
+## Unreleased
+
+- Windows starts with DirectX 12 by default. This avoids a startup crash observed in Intel's
+  Vulkan driver on a machine with an NVIDIA GPU. Setting `WGPU_BACKEND`
+  still overrides the backend; Linux keeps its existing defaults.
+
 ## 0.2.0, 2026-10-23
 
 ### The demo player's HUD
