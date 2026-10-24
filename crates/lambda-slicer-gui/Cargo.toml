@@ -28,6 +28,9 @@ sys-locale = "0.3.2"
 unic-langid = { version = "0.9.6", features = ["macros"] }
 unicode-bidi = "0.3.18"
 
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_System_Registry"] }
+
 [dev-dependencies]
 fluent-langneg = "0.13.1"
 fluent-syntax = "0.12.0"

@@ -16,6 +16,7 @@ mod settings_window;
 pub use settings_window::SettingsTab;
 
 use crate::clips::{ClipStore, LoadProblem};
+use crate::content::{GameFolders, Overrides};
 use crate::demo::{self, DemoView, InspectorTab, Request, Setup, Surroundings, WorkspaceUi};
 use crate::export::FileNaming;
 use crate::game_setup::{self, Refusal};
@@ -161,10 +162,10 @@ pub struct App {
     exported: Vec<PathBuf>,
     /// The game folder the last scan read maps from, none for a scan
     /// without the game's files, and nothing before the first scan
-    scanned_with: Option<Option<Vec<PathBuf>>>,
+    scanned_with: Option<Option<GameFolders>>,
     /// The floor under players on the maps of a game folder, kept while
     /// the folder stays the same
-    floors: Option<(Vec<PathBuf>, ScanFloors)>,
+    floors: Option<(GameFolders, ScanFloors)>,
     /// A demo opened as a file, shown without a library row, so opening
     /// and analysing one never needs the library cache
     direct: Option<PathBuf>,
@@ -198,6 +199,10 @@ pub struct App {
     /// The other Half-Life folders the settings name, and those of them
     /// that are there, read from disk once for each list
     more_checked: Option<(Vec<PathBuf>, Vec<PathBuf>)>,
+    /// The folders searched and the settings' content options, and each
+    /// folder with the options it is searched with, worked out once for
+    /// each, as the game's own are read from the registry and Steam
+    content_checked: Option<((Vec<PathBuf>, Overrides), GameFolders)>,
     /// The same for the game's executable the settings name
     executable_checked: Option<(PathBuf, bool)>,
 }
@@ -386,6 +391,7 @@ impl App {
             setup_refusal: None,
             install_checked: None,
             more_checked: None,
+            content_checked: None,
             executable_checked: None,
         }
     }
@@ -418,10 +424,29 @@ impl App {
     }
 
     /// Every Half-Life folder the viewer reads the game's files from, in
-    /// the order searched, the one [`Self::install_root`] gives first and
-    /// then those of the settings' other folders that are there, none
+    /// the order searched, each with the content options it is searched
+    /// with, none without the game
+    fn game_folders(&mut self) -> Option<GameFolders> {
+        let folders = self.half_life_folders()?;
+        let viewer = &self.settings.viewer;
+        let overrides = Overrides {
+            hd: viewer.hd_models,
+            addon: viewer.addon_content,
+            localized: viewer.localized_content,
+        };
+        let key = (folders, overrides);
+        let checked = matches!(&self.content_checked, Some((k, _)) if *k == key);
+        if !checked {
+            let searched = crate::content::searched(&key.0, overrides);
+            self.content_checked = Some((key, searched));
+        }
+        self.content_checked.as_ref().map(|(_, s)| s.clone())
+    }
+
+    /// Every Half-Life folder, the one [`Self::install_root`] gives first
+    /// and then those of the settings' other folders that are there, none
     /// without the game
-    fn game_folders(&mut self) -> Option<Vec<PathBuf>> {
+    fn half_life_folders(&mut self) -> Option<Vec<PathBuf>> {
         let first = self.install_root()?;
         let wanted = &self.settings.viewer.more_games;
         let checked = matches!(&self.more_checked, Some((list, _)) if list == wanted);
@@ -1015,7 +1040,7 @@ impl App {
 
     /// The game folders the floor under players is read from, with what
     /// was read, none without the game's files
-    fn game_floors(&mut self) -> Option<(Vec<PathBuf>, Floors)> {
+    fn game_floors(&mut self) -> Option<(GameFolders, Floors)> {
         let floors = self.floor_reader()?.floors;
         Some((self.game_folders()?, floors))
     }

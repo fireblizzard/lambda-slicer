@@ -20,6 +20,7 @@ use std::thread::JoinHandle;
 
 use eframe::egui::{self, Color32, Pos2, Rect, Sense, Ui, Vec2};
 use fluent_bundle::FluentValue;
+use lambda_slicer_assets::search::SearchOptions;
 use lambda_slicer_core::analysis::analyze_demo_with;
 use lambda_slicer_core::analysis::match_events::MatchChange;
 use lambda_slicer_core::analysis::motion::Floors;
@@ -34,6 +35,7 @@ use lambda_slicer_core::timeline::time::DemoTime;
 use crate::app::SettingsTab;
 use crate::chat;
 use crate::clips::{Clip, next_name, parse_time};
+use crate::content::GameFolders;
 use crate::export::{ClipKey, ExportItem, ExportJob, ExportState, FileNaming};
 use crate::i18n::Catalog;
 use crate::kill_analysis::Walls;
@@ -548,7 +550,7 @@ pub struct DemoView {
     loader: Option<Loader>,
     /// The game folder whose maps the analysis read the floor under players
     /// from, none without the game's files
-    floors_from: Option<Vec<PathBuf>>,
+    floors_from: Option<GameFolders>,
     /// The analysis again for other game files, whose events take the
     /// place of those shown once it is in
     reanalysis: Option<Loader>,
@@ -650,7 +652,7 @@ pub struct DemoView {
     /// The demo viewer, when a game folder is known
     pub viewer: Option<crate::viewer::Viewer>,
     /// The game folder the viewer was opened with
-    pub viewer_game: Option<Vec<PathBuf>>,
+    pub viewer_game: Option<GameFolders>,
     /// The demo's length in seconds, as the library knows it
     pub duration: f32,
     /// The clip the viewer loops
@@ -669,7 +671,7 @@ impl DemoView {
     pub fn open(
         path: PathBuf,
         duration: f32,
-        floors: Option<(Vec<PathBuf>, Floors)>,
+        floors: Option<(GameFolders, Floors)>,
         ctx: &egui::Context,
     ) -> Self {
         let (floors_from, floors) = floors.unzip();
@@ -817,7 +819,7 @@ impl DemoView {
 
     /// The game folders whose maps the analysis read the floor under
     /// players from, none without the game's files
-    pub fn floors_from(&self) -> Option<&[PathBuf]> {
+    pub fn floors_from(&self) -> Option<&[(PathBuf, SearchOptions)]> {
         self.floors_from.as_deref()
     }
 
@@ -826,7 +828,7 @@ impl DemoView {
     /// with them. The events shown stay, with the clips, the selection,
     /// the filters and the playhead, until the new analysis takes their
     /// place
-    pub fn reanalyse(&mut self, floors: Option<(Vec<PathBuf>, Floors)>, ctx: &egui::Context) {
+    pub fn reanalyse(&mut self, floors: Option<(GameFolders, Floors)>, ctx: &egui::Context) {
         let (floors_from, floors) = floors.unzip();
         self.floors_from = floors_from;
 

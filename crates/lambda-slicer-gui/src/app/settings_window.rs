@@ -21,7 +21,7 @@ use crate::widgets::{self, Icon, IconButton, Variant};
 
 /// The window's first size, the width of its list of sections, and the
 /// least room a control takes beside its label before going under it
-const WINDOW_SIZE: Vec2 = Vec2::new(600., 460.);
+const WINDOW_SIZE: Vec2 = Vec2::new(600., 690.);
 const SIDEBAR_WIDTH: f32 = 144.;
 const CONTROL_LEAST: f32 = 160.;
 
@@ -372,6 +372,70 @@ impl App {
 
         ui.add_space(SETTING_GAP);
         self.more_games(ui, rtl);
+        ui.add_space(SETTING_GAP);
+        self.game_content(ui, rtl);
+    }
+
+    /// The game's HD models, custom addon content and localized content,
+    /// each shown as the game has it until changed here, which changes it
+    /// for the viewer alone. Back as the game has it, a setting follows the
+    /// game again
+    fn game_content(&mut self, ui: &mut egui::Ui, rtl: bool) {
+        let ctx = ui.ctx().clone();
+        labelled(
+            ui,
+            &self.catalog,
+            "settings-game-content",
+            Some("settings-game-content-hint"),
+            rtl,
+        );
+
+        // Read from the registry and Steam each frame the window is open,
+        // which is cheap, so a change in the game shows here
+        let (hd, addon) = crate::content::switches();
+        let language = self
+            .install_root()
+            .and_then(|root| crate::content::language(&root));
+        let viewer = &mut self.settings.viewer;
+        let rows = [
+            (&mut viewer.hd_models, hd, "settings-hd-models"),
+            (&mut viewer.addon_content, addon, "settings-addon-content"),
+            (
+                &mut viewer.localized_content,
+                true,
+                "settings-localized-content",
+            ),
+        ];
+        let mut changed = false;
+        for (setting, game, id) in rows {
+            let mut on = setting.unwrap_or(game);
+            let label = text::widget_text(&ctx, &self.catalog.text(id), rtl, None, Look::Plain);
+            let hint = self.catalog.text(&format!("{id}-hint"));
+            let response = layout::row(ui, rtl, |ui| {
+                let response = ui.checkbox(&mut on, label);
+                widgets::help(ui, &hint, rtl);
+                response
+            });
+            if response.changed() {
+                *setting = (on != game).then_some(on);
+                changed = true;
+            }
+        }
+        if changed {
+            self.settings_unsaved = true;
+        }
+
+        // Which language that is, as Steam names it
+        let line = match &language {
+            Some(language) => {
+                let language = FluentValue::from(language.clone());
+                self.catalog
+                    .text_with("settings-steam-language", &[("language", language)])
+            }
+            None => self.catalog.text("settings-steam-english"),
+        };
+        let width = Some(ui.available_width());
+        ui.add(egui::Label::new(text::widget_text(&ctx, &line, rtl, width, Look::Weak)).wrap());
     }
 
     /// Other Half-Life folders searched in turn for what the first lacks,
@@ -1053,6 +1117,15 @@ fn changed_settings(current: &Settings, restored: &Settings) -> Vec<&'static str
     let order = |s: &Settings| (s.sort_column.clone(), s.sort_descending);
     let starting = |s: &Settings| (s.start_min_minutes, s.start_min_kills);
     let checks = [
+        (view.hd_models != first.hd_models, "settings-hd-models"),
+        (
+            view.addon_content != first.addon_content,
+            "settings-addon-content",
+        ),
+        (
+            view.localized_content != first.localized_content,
+            "settings-localized-content",
+        ),
         (now.locale != then.locale, "settings-language"),
         (now.workers != then.workers, "settings-workers"),
         (order(now) != order(then), "settings-sort"),

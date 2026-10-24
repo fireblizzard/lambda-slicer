@@ -24,7 +24,7 @@ use eframe::egui::{self, Sense, Ui};
 use eframe::egui_wgpu::{self, CallbackResources, CallbackTrait, RenderState, ScreenDescriptor};
 use eframe::wgpu;
 use lambda_slicer_assets::Limits as AssetLimits;
-use lambda_slicer_assets::search::{SearchOptions, SearchPath};
+use lambda_slicer_assets::search::SearchPath;
 use lambda_slicer_assets::sprite::Sprite;
 use lambda_slicer_assets::wad::Wad;
 use lambda_slicer_assets::xenoxide::studio_pose::BoneTransform;
@@ -57,6 +57,7 @@ use fluent_bundle::types::{FluentNumber, FluentNumberOptions};
 
 use crate::announcements;
 use crate::chat::Chat;
+use crate::content::GameFolders;
 use crate::crosshair::Crosshairs;
 use crate::decals::DecalCache;
 use crate::free_camera::{FreeCamera, Held};
@@ -228,7 +229,7 @@ struct Loader {
 }
 
 impl Loader {
-    fn start(installs: Vec<PathBuf>, game: String, ctx: egui::Context) -> Self {
+    fn start(installs: GameFolders, game: String, ctx: egui::Context) -> Self {
         let (request_tx, request_rx) = mpsc::channel::<Asset>();
         let (loaded_tx, loaded_rx) = mpsc::channel();
         std::thread::Builder::new()
@@ -236,8 +237,7 @@ impl Loader {
             .spawn(move || {
                 let limits = AssetLimits::default();
                 let search =
-                    SearchPath::across(&installs, &game, &SearchOptions::default(), limits)
-                        .map_err(|e| e.to_string());
+                    SearchPath::across(&installs, &game, limits).map_err(|e| e.to_string());
                 for request in request_rx {
                     let loaded = match (&search, request) {
                         (Ok(search), Asset::Map(name)) => {
@@ -443,7 +443,7 @@ impl Viewer {
     /// `carry` says a viewer before it did
     pub fn open(
         render_state: RenderState,
-        install: Option<Vec<PathBuf>>,
+        install: Option<GameFolders>,
         demo: PathBuf,
         duration: f32,
         dev: Dev,
@@ -477,13 +477,7 @@ impl Viewer {
             .as_ref()
             .zip(game.as_ref())
             .and_then(|(install, game)| {
-                let search = SearchPath::across(
-                    install,
-                    game,
-                    &SearchOptions::default(),
-                    AssetLimits::default(),
-                )
-                .ok()?;
+                let search = SearchPath::across(install, game, AssetLimits::default()).ok()?;
                 Some(Arc::new(Library::new(search, AssetLimits::default())))
             });
         let worker = Worker::spawn_with(

@@ -196,8 +196,9 @@ The settings window can be moved anywhere in the app's window, and keeps its pla
 run. Every change applies at once. A setting that needs explaining has a `(?)` beside it.
 
 - **General.** The Half-Life folder or `hl.exe`, more Half-Life folders the player looks in, in
-  order, for maps, models and sounds the first one lacks, the language, and how many demos are
-  analysed at once.
+  order, for maps, models and sounds the first one lacks, the game content the player uses (HD
+  models, custom addon content and localized content, as the game has them until changed here),
+  the language, and how many demos are analysed at once.
 - **Library.** The library folders, leaving out short maps with no kills, where the library is
   kept, Clear library, the order at start and the filters at start.
 - **Demo viewer.** The picture (the game's gamma settings), the view (field of view, zoomed field

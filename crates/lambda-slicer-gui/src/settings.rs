@@ -133,6 +133,11 @@ pub struct ViewerSettings {
     /// Other Half-Life folders searched in turn for what the first lacks,
     /// such as maps or a model, the first first
     pub more_games: Vec<PathBuf>,
+    /// The game's HD models, custom addon content and localized content,
+    /// each turned on or off for the viewer alone, none to follow the game
+    pub hd_models: Option<bool>,
+    pub addon_content: Option<bool>,
+    pub localized_content: Option<bool>,
     /// The game's `gamma`, `brightness`, `texgamma`, `lightgamma` and
     /// `gl_overbright`
     pub gamma: f32,
@@ -184,6 +189,9 @@ impl Default for ViewerSettings {
             game: None,
             executable: None,
             more_games: Vec::new(),
+            hd_models: None,
+            addon_content: None,
+            localized_content: None,
             gamma: g.gamma,
             brightness: g.brightness,
             texgamma: g.texgamma,

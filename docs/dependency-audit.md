@@ -27,6 +27,7 @@ Toolchain: Rust **1.98.1** (`rust-toolchain.toml`), edition 2024. `Cargo.lock` i
 | egui_extras | 0.37.0 | MIT OR Apache-2.0 | virtualized library table |
 | rfd | 0.17.2 | MIT | native file and folder dialogs |
 | chrono (`clock`) | 0.4.45 | MIT OR Apache-2.0 | recording dates in local time |
+| windows-sys (Windows only, `Win32_System_Registry`) | 0.61.2 | MIT OR Apache-2.0 | the game's HD model and addon content options, already built in through other crates |
 | fluent-syntax, intl_pluralrules, fluent-langneg, tempfile (dev) | 0.12.0, 7.0.2, 0.13.1, 3.27.0 | Apache-2.0 OR MIT | catalog and settings tests |
 
 `intl_pluralrules` 7.0.2, which `fluent-bundle` uses for plurals, is replaced through

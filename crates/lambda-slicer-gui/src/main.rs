@@ -58,6 +58,7 @@ mod announcements;
 mod app;
 mod chat;
 mod clips;
+mod content;
 mod crosshair;
 mod decals;
 mod demo;

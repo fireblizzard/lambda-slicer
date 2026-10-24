@@ -33,6 +33,19 @@ For the mod, then its `fallback_dir` if any, then `valve`, each present folder i
 4. `<game>`
 5. `<game>_downloads`
 
+The three options are the game's own. "Allow custom addon content" and "Use high quality models"
+are `addons_folder` and `hdmodels` under the user's `Software\Valve\Half-Life\Settings`, read from
+the registry on Windows and from Steam's `~/.steam/registry.vdf` elsewhere. The language is the
+one Steam runs the game in, `UserConfig` > `language` in `appmanifest_70.acf` in the `steamapps`
+folder holding `common/Half-Life`, and English has no folder of its own. On this machine both
+switches were on and the language English, so `valve_hd`'s rocket and `valve_addon`'s BugfixedHL
+sprites are now used, as the game uses them (2026-10-24).
+
+Settings, under Game content, show the three as the game has them and can turn each on or off for
+the player alone. The registry and Steam's files are only read, never written, so the game keeps
+its own. A setting changed back to the game's follows the game again. With HD models turned off
+there, the rocket at 14:30 of `afafsd.dem` is the old model again.
+
 Within a folder its PAK archives come before its loose files, the highest-numbered `pakN.pak`
 first, as in Quake, whose file system GoldSrc's descends from. This install has no PAK archive,
 so the order inside a folder cannot be checked here.

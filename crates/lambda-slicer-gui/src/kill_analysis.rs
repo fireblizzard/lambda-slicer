@@ -15,10 +15,12 @@ use std::sync::mpsc::{self, Receiver};
 use std::thread::JoinHandle;
 
 use eframe::egui;
+use lambda_slicer_assets::search::SearchOptions;
 use lambda_slicer_core::message::Message;
 use lambda_slicer_playback::MapHulls;
 use lambda_slicer_playback::kill_features::{self, GaussKill, Progress, WallGauss};
 
+use crate::content::GameFolders;
 use crate::timeline::{EventKind, KillKey, Model};
 
 /// How far telling the kills through a wall has got
@@ -97,7 +99,7 @@ pub struct Walls {
     job: Option<WallJob>,
     /// The installation the verdicts are for, none without the game's
     /// files, and nothing until set up
-    set_up_for: Option<Option<Vec<PathBuf>>>,
+    set_up_for: Option<Option<GameFolders>>,
     verdicts: HashMap<KillKey, WallGauss>,
     revision: u64,
     progress: Progress,
@@ -143,11 +145,11 @@ impl Walls {
         &mut self,
         path: &Path,
         model: &Model,
-        install: Option<&[PathBuf]>,
+        install: Option<&[(PathBuf, SearchOptions)]>,
         hulls: impl FnOnce() -> Option<MapHulls>,
         ctx: &egui::Context,
     ) {
-        let install = install.map(<[PathBuf]>::to_vec);
+        let install = install.map(<[(PathBuf, SearchOptions)]>::to_vec);
         if self.set_up_for.as_ref() == Some(&install) {
             return;
         }
@@ -253,7 +255,10 @@ mod tests {
         assert!(walls.get(&key).is_some());
 
         // Other files drop what was told with the old ones
-        let install = [PathBuf::from("C:/games/Half-Life")];
+        let install = [(
+            PathBuf::from("C:/games/Half-Life"),
+            SearchOptions::default(),
+        )];
         walls.update(Path::new("a.dem"), &model, Some(&install), || None, &ctx);
         assert!(walls.revision() > before);
         assert_eq!(walls.get(&key), None);

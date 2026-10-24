@@ -18,10 +18,11 @@ use lambda_slicer_core::library::scan::ScanFloors;
 type Libraries = Mutex<HashMap<String, Option<Arc<Library>>>>;
 
 /// A reader of the floor under players on the maps of the game installed
-/// in the Half-Life folders `installs`, searched in turn, named by those
-/// folders so analyses made with other game files are told apart. One
-/// folder is named as it always was
-pub fn reader(installs: &[PathBuf]) -> ScanFloors {
+/// in the Half-Life folders `installs`, searched in turn with their content
+/// options, named by those folders so analyses made with other game files
+/// are told apart. One folder is named as it always was, and the content
+/// options, which rarely hold maps, leave the name as it is
+pub fn reader(installs: &[(PathBuf, SearchOptions)]) -> ScanFloors {
     let libraries = Libraries::default();
     let roots = installs.to_vec();
 
@@ -31,7 +32,7 @@ pub fn reader(installs: &[PathBuf]) -> ScanFloors {
     });
 
     let mut names = Vec::new();
-    for install in installs {
+    for (install, _) in installs {
         names.push(install.display().to_string());
     }
     ScanFloors {
@@ -42,14 +43,17 @@ pub fn reader(installs: &[PathBuf]) -> ScanFloors {
 
 /// The game files in `game_dir` of the game in the folders `roots`,
 /// searched for once
-fn library_for(known: &Libraries, roots: &[PathBuf], game_dir: &str) -> Option<Arc<Library>> {
+fn library_for(
+    known: &Libraries,
+    roots: &[(PathBuf, SearchOptions)],
+    game_dir: &str,
+) -> Option<Arc<Library>> {
     let mut known = known.lock().unwrap_or_else(|e| e.into_inner());
     if let Some(library) = known.get(game_dir) {
         return library.clone();
     }
 
-    let options = SearchOptions::default();
-    let search = SearchPath::across(roots, game_dir, &options, AssetLimits::default());
+    let search = SearchPath::across(roots, game_dir, AssetLimits::default());
     let library = search
         .ok()
         .map(|search| Arc::new(Library::new(search, AssetLimits::default())));

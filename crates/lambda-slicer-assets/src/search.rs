@@ -219,21 +219,21 @@ impl SearchPath {
         options: &SearchOptions,
         limits: Limits,
     ) -> Result<Self, AssetError> {
-        Self::across(&[install.to_path_buf()], game, options, limits)
+        Self::across(&[(install.to_path_buf(), options.clone())], game, limits)
     }
 
-    /// The search for `game` in each of `installs` in turn, the first of
-    /// which must be readable. A later one that cannot be read, or holds
-    /// an archive that cannot be opened, is left out. Its places are
-    /// labelled with its folder, as the first one's own names are not
+    /// The search for `game` in each of `installs` in turn, each with its
+    /// own content options, the first of which must be readable. A later
+    /// one that cannot be read, or holds an archive that cannot be opened,
+    /// is left out. Its places are labelled with its folder, as the first
+    /// one's own names are not
     pub fn across(
-        installs: &[PathBuf],
+        installs: &[(PathBuf, SearchOptions)],
         game: &str,
-        options: &SearchOptions,
         limits: Limits,
     ) -> Result<Self, AssetError> {
         let mut sources = Vec::new();
-        for (k, install) in installs.iter().enumerate() {
+        for (k, (install, options)) in installs.iter().enumerate() {
             let label = |name: &str| match k {
                 0 => name.to_string(),
                 _ => install.join(name).display().to_string(),
@@ -379,14 +379,11 @@ mod tests {
         file(second.path(), "valve/models/player.mdl", b"second");
         file(second.path(), "ag_downloads/maps/x.bsp", b"second map");
 
-        let installs = [first.path().to_path_buf(), second.path().to_path_buf()];
-        let search = SearchPath::across(
-            &installs,
-            "ag",
-            &SearchOptions::default(),
-            Limits::default(),
-        )
-        .unwrap();
+        let installs = [
+            (first.path().to_path_buf(), SearchOptions::default()),
+            (second.path().to_path_buf(), SearchOptions::default()),
+        ];
+        let search = SearchPath::across(&installs, "ag", Limits::default()).unwrap();
 
         // The first folder's valve comes before the second's ag
         assert_eq!(found(&search, "models/player.mdl").1, b"first");
