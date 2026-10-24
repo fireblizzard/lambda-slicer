@@ -3,13 +3,51 @@
 Downloads are on the [Releases page](https://github.com/fireblizzard/lambda-slicer/releases). What
 doesn't work yet is in [known limitations](limitations.md).
 
-## Unreleased
+## v0.3.0, 2026-10-24
 
-- Windows starts with DirectX 12 by default. This avoids a startup crash observed in Intel's
-  Vulkan driver on a machine with an NVIDIA GPU. Setting `WGPU_BACKEND`
-  still overrides the backend; Linux keeps its existing defaults.
+### Downloads
 
-## 0.2.0, 2026-10-23
+- Linux x86-64 now has its own download on the Releases page: extract it and run
+  `./lambda-slicer-gui`, or run `python3 install.py` to add it to your application menu. It needs
+  Ubuntu 24.04 or a similarly recent distribution.
+- The first start after updating analyses your library again, which takes a while for a big
+  collection.
+
+### Watching demos
+
+- Chapter titles and other text from the game's `titles.txt` now show, such as "ANOMALOUS
+  MATERIALS" at the start of a singleplayer chapter.
+- Windows starts with DirectX 12. This avoids a crash at start on some computers with both Intel
+  and NVIDIA graphics.
+
+### Events
+
+- Right-click an event and choose Copy to copy it as one line of text, such as
+  `01:46.817 | andriu killed -<[ATK]>-naz with rpg_rocket`.
+- Choose several events with Ctrl+click, Shift+click or Ctrl+A. Copy or Ctrl+C copies them all,
+  one per line.
+- With several events chosen, Clip it makes one clip from the first chosen event to the last,
+  with the clip padding before and after.
+- Event times leave out the hours, and the minutes too, when the demo is shorter than that.
+
+### Clips
+
+- Gibs and other debris still flying at a clip's start are left out of the clip instead of
+  stopping the export.
+- Status icons some servers show on the HUD are carried over a clip's start.
+- When a clip can't be made because of something the app doesn't support yet, the message says
+  so plainly, such as "The StatusIcon message isn't supported in clips yet."
+
+### Library
+
+- Dates are also read from file names like `dm_dust2-20261007-212429.dem`.
+
+### Documents
+
+- The README is rewritten for players, and [known limitations](limitations.md) lists what
+  doesn't work yet.
+
+## v0.2.0, 2026-10-23
 
 ### The demo player's HUD
 
@@ -61,7 +99,7 @@ The demo player now shows most of the game's HUD, and Settings can hide most par
 - Each new version is published on the Releases page with its Windows zip.
 - The zip from the automatic builds is no longer packed inside a second zip.
 
-## 0.1.0, 2026-10-22
+## v0.1.0, 2026-10-22
 
 The first release.
 
