@@ -1064,6 +1064,26 @@ fn validate(
     Ok((v, first_unexplained))
 }
 
+/// Whether a restart of `[start, end)` of `source` would be refused, found
+/// by reading the source where it is. The plan and write passes run as an
+/// export's do, writing to a file in `scratch` that is deleted at once.
+/// The source is not copied and the cross-check and final validation are
+/// left out, so the caller checks the source once for all its clips, and an
+/// export that passes this can still fail its validation
+pub fn check_restart(
+    source: &Path,
+    scratch: &Path,
+    start: DemoTime,
+    end: Option<DemoTime>,
+    limits: Limits,
+) -> Result<(), ExportError> {
+    let p = plan(source, start, end, limits)?;
+
+    let mut out = tempfile::tempfile_in(scratch).map_err(io_err(scratch))?;
+    write(source, &mut out, &p, "", limits)?;
+    Ok(())
+}
+
 pub fn run_restart(
     source: &Path,
     dest: &Path,
