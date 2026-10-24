@@ -85,8 +85,12 @@ names, light up everything, see through walls, the volume, the picture settings 
 Light up everything shows the map fully lit, as the game's `r_fullbright` does, and lights models
 to at least three quarters, keeping some of their shading. Player names puts each drawn player's
 name over their head in their team's colour, as the camera sees them, the free camera's too. A
-name behind a wall, the line from the camera stopping more than 8 units short, is left out unless
-players are seen through walls, and a free camera inside a wall hides none. The keys are in the [README](../README.md#watching-a-demo).
+player is looked for at nine points over their body, chest, middle and shins, each in the middle
+and out to either shoulder, and keeps their name while any of them is in view. A point is hidden
+when the line from the camera stops more than 8 units short of it, at the map's walls or at a
+brush entity drawn solid, such as a door or a walkway; a see-through one, such as a grate,
+hides nothing. A hidden player's name is left out unless players are seen through walls, and a
+free camera inside a wall is not hidden by it. The keys are in the [README](../README.md#watching-a-demo).
 
 In full screen the app hides its toolbar, status bar and demo list and asks the window to fill the
 screen. The seek bar and controls show over the bottom of the picture while paused, under the

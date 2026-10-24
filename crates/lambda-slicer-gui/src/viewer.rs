@@ -39,7 +39,7 @@ use lambda_slicer_playback::hud::{Countdown, WAITING};
 use lambda_slicer_playback::scene::{self, Entity, EntityId, PlayerView, weapon_model_for};
 use lambda_slicer_playback::tempents::Tint;
 use lambda_slicer_playback::time::{Rate, SourceTime};
-use lambda_slicer_playback::trace::Hull;
+use lambda_slicer_playback::trace::{Hull, Trace};
 use lambda_slicer_playback::worker::Worker;
 use lambda_slicer_render::Rgba;
 use lambda_slicer_render::camera::{Camera, Matrix};
@@ -917,9 +917,10 @@ impl Viewer {
     }
 
     /// Each player drawn in the picture with its name over its head, as
-    /// the picture's camera sees it, a free camera's too. A name behind a
-    /// wall is left out unless players are seen through walls, and nearer
-    /// names are drawn over farther ones
+    /// the picture's camera sees it, a free camera's too. A player the map
+    /// hides wholly, its walls or its solid brush entities, has no name
+    /// unless players are seen through walls, and nearer names are drawn
+    /// over farther ones
     fn draw_names(
         &self,
         painter: &egui::Painter,
@@ -933,6 +934,8 @@ impl Viewer {
             .map
             .as_deref()
             .and_then(|map| self.library.as_ref()?.hull(map));
+        let (_, right, _) = lambda_slicer_render::camera::angle_vectors(angles);
+        let solid = solid_brushes(frame);
 
         let mut names = Vec::new();
         for drawn in drawn(frame, &self.models, self.free.is_some()) {
@@ -944,8 +947,11 @@ impl Viewer {
             };
             let [x, y, z] = drawn.pose.origin;
             let head = [x, y, z + NAME_ABOVE];
-            let behind_wall = world.as_ref().is_some_and(|w| name_hidden(w, eye, head));
-            if behind_wall && !self.settings.see_through {
+            let hidden = world.as_ref().is_some_and(|w| {
+                let body = body_points(drawn.pose.origin, right);
+                !body.iter().any(|&p| seen(w, &solid, eye, p))
+            });
+            if hidden && !self.settings.see_through {
                 continue;
             }
             let Some(at) = on_screen(&matrix, head, rect) else {
@@ -3266,15 +3272,58 @@ const NAME_ABOVE: f32 = 44.;
 /// size
 const NAME_LINES: f32 = 44.;
 
-/// Whether the world hides a name at `at` from `eye`, the line between
-/// them stopping more than 8 units short, as for a glow. A free camera
-/// inside a wall sees nothing past it, so nothing counts as hidden then
-fn name_hidden(world: &Hull, eye: [f32; 3], at: [f32; 3]) -> bool {
-    let trace = world.trace(eye, at);
-    if trace.start_solid {
+/// How far from a player's origin the points looked for stand, up and down
+/// to the chest and the shins and out to the shoulders, in units
+const BODY_HEIGHT: f32 = 24.;
+const BODY_WIDTH: f32 = 12.;
+
+/// Points over a player standing at `origin`, at the chest, the middle and
+/// the shins, each in the middle and out to either side along the
+/// camera's `right`, so a player partly in view is seen
+fn body_points(origin: [f32; 3], right: [f32; 3]) -> Vec<[f32; 3]> {
+    let mut points = Vec::new();
+    for up in [BODY_HEIGHT, 0., -BODY_HEIGHT] {
+        for side in [0., BODY_WIDTH, -BODY_WIDTH] {
+            let point = [0, 1, 2].map(|k| origin[k] + right[k] * side);
+            points.push([point[0], point[1], point[2] + up]);
+        }
+    }
+    points
+}
+
+/// The brush entities drawn solid, which hide what is behind them, each
+/// as its model's number in the map and where it stands. One drawn
+/// see-through, such as a grate or a railing in alpha mode, hides nothing
+fn solid_brushes(frame: &PresentedFrame) -> Vec<(usize, [f32; 3])> {
+    let mut out = Vec::new();
+    for b in brushes(frame) {
+        if b.model != 0 && b.mode == RenderMode::Normal {
+            out.push((b.model, b.origin));
+        }
+    }
+    out
+}
+
+/// Whether the line from `eye` to `at` reaches it, the world and each of
+/// the `solid` brush entities, unturned, letting it through. A line
+/// stopping 8 units short or less still reaches it, as for a glow. A free
+/// camera inside a wall sees nothing past it, so that wall hides nothing
+fn seen(world: &Hull, solid: &[(usize, [f32; 3])], eye: [f32; 3], at: [f32; 3]) -> bool {
+    let d = [0, 1, 2].map(|k| at[k] - eye[k]);
+    let distance = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt();
+    let blocked = |trace: Trace| !trace.start_solid && (1. - trace.fraction) * distance > 8.;
+
+    if blocked(world.trace(eye, at)) {
         return false;
     }
-    hidden_glow(world, eye, at)
+    for &(model, origin) in solid {
+        let from = [0, 1, 2].map(|k| eye[k] - origin[k]);
+        let to = [0, 1, 2].map(|k| at[k] - origin[k]);
+        if blocked(world.trace_model(model, from, to)) {
+            return false;
+        }
+    }
+    true
 }
 
 /// Where `point` is on the picture in `rect` through `matrix`, none behind
@@ -3347,6 +3396,16 @@ fn draw_map_change(painter: &egui::Painter, rect: egui::Rect, line: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_player_is_looked_for_over_their_whole_body() {
+        // Seen along x, so the camera's right runs along -y
+        let points = body_points([100., 0., 36.], [0., -1., 0.]);
+        assert_eq!(points.len(), 9);
+        assert!(points.contains(&[100., 0., 60.]));
+        assert!(points.contains(&[100., -12., 12.]));
+        assert!(points.contains(&[100., 12., 36.]));
+    }
 
     #[test]
     fn times_show_milliseconds_and_hours_only_past_an_hour() {
