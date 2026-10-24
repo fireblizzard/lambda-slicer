@@ -211,8 +211,8 @@ run. Every change applies at once. A setting that needs explaining has a `(?)` b
   order, for maps, models and sounds the first one lacks, the game content the player uses (HD
   models, custom addon content and localized content, as the game has them until changed here),
   the language, and how many demos are analysed at once.
-- **Library.** The library folders, leaving out short maps with no kills, where the library is
-  kept, Clear library, the order at start and the filters at start.
+- **Library.** The library folders, the tab at start, the order at start, the filters at start,
+  leaving out short maps with no kills, where the library is kept and Clear library.
 - **Demo viewer.** The picture (the game's gamma settings), the view (field of view, zoomed field
   of view, the weapon in view), each part of the HUD, seeing players through walls, how many
   decals stay, and the sound.

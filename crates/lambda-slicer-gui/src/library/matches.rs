@@ -35,6 +35,36 @@ pub enum Tab {
     Matches,
 }
 
+impl Tab {
+    /// Every tab, in the order they are shown
+    pub const ALL: [Tab; 2] = [Tab::Demos, Tab::Matches];
+
+    /// The name kept in settings
+    pub fn key(self) -> &'static str {
+        match self {
+            Tab::Demos => "demos",
+            Tab::Matches => "matches",
+        }
+    }
+
+    /// The tab kept in settings as `key`, the demos for a key this
+    /// version does not know
+    pub fn from_key(key: &str) -> Self {
+        Self::ALL
+            .into_iter()
+            .find(|t| t.key() == key)
+            .unwrap_or_default()
+    }
+
+    /// Its title's message
+    pub fn title(self) -> &'static str {
+        match self {
+            Tab::Demos => "tab-demos",
+            Tab::Matches => "tab-matches",
+        }
+    }
+}
+
 /// The matches' order, their own filter and their loaded pages
 #[derive(Debug)]
 pub struct MatchList {
@@ -220,9 +250,9 @@ impl LibraryView {
         }
     }
 
-    /// Show the matches rather than the demos
-    pub fn show_matches(&mut self) {
-        self.tab = Tab::Matches;
+    /// Show `tab` in the full table
+    pub fn show_tab(&mut self, tab: Tab) {
+        self.tab = tab;
     }
 
     /// The cache query for the filters and the matches' order, a page long

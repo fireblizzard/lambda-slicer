@@ -35,7 +35,8 @@ use crate::widgets::{self, AnalysisState, Icon, IconButton, Variant};
 
 mod matches;
 
-use matches::{MatchList, Tab};
+use matches::MatchList;
+pub use matches::Tab;
 
 /// A date bound with a checkbox to use it, its fields in the locale's order.
 /// The checkbox and the fields wrap together as one group
@@ -1102,10 +1103,10 @@ impl LibraryView {
         let count = self.count_line(self.tab, catalog);
 
         layout::row(ui, rtl, |ui| {
-            let tabs = [(Tab::Demos, "tab-demos"), (Tab::Matches, "tab-matches")];
-            for (tab, id) in tabs {
+            for tab in Tab::ALL {
                 let chosen = self.tab == tab;
-                let title = text::widget_text(&ctx, &catalog.text(id), rtl, None, Look::Plain);
+                let title = catalog.text(tab.title());
+                let title = text::widget_text(&ctx, &title, rtl, None, Look::Plain);
                 if ui.add(egui::Button::selectable(chosen, title)).clicked() && !chosen {
                     self.tab = tab;
                     self.cursor = None;

@@ -553,6 +553,7 @@ impl App {
             self.add_folders(&ctx, folders);
         }
 
+        self.starting_tab(ui, rtl);
         self.starting_order(ui, rtl);
         self.starting_filters(ui, rtl);
         layout::row(ui, rtl, |ui| {
@@ -581,6 +582,40 @@ impl App {
         });
         if clear {
             self.confirm_clear = true;
+        }
+    }
+
+    /// The library tab the app opens on, kept for the next start, as the
+    /// tab shown now is the one last clicked
+    fn starting_tab(&mut self, ui: &mut egui::Ui, rtl: bool) {
+        let ctx = ui.ctx().clone();
+        heading(
+            ui,
+            &self.catalog,
+            "settings-start-tab",
+            Some("settings-start-tab-hint"),
+            rtl,
+            false,
+        );
+
+        let catalog = &self.catalog;
+        let mut tab = library::Tab::from_key(&self.settings.start_tab);
+        let before = tab;
+        layout::row(ui, rtl, |ui| {
+            let title = |t: library::Tab| {
+                text::widget_text(&ctx, &catalog.text(t.title()), rtl, None, Look::Plain)
+            };
+            egui::ComboBox::from_id_salt("starting tab")
+                .selected_text(title(tab))
+                .show_ui(ui, |ui| {
+                    for t in library::Tab::ALL {
+                        ui.selectable_value(&mut tab, t, title(t));
+                    }
+                });
+        });
+        if tab != before {
+            self.settings.start_tab = tab.key().to_string();
+            self.settings_unsaved = true;
         }
     }
 
@@ -1136,6 +1171,7 @@ fn changed_settings(current: &Settings, restored: &Settings) -> Vec<&'static str
         ),
         (now.locale != then.locale, "settings-language"),
         (now.workers != then.workers, "settings-workers"),
+        (now.start_tab != then.start_tab, "settings-start-tab"),
         (order(now) != order(then), "settings-sort"),
         (starting(now) != starting(then), "settings-start-filters"),
         (

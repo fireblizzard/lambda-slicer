@@ -285,9 +285,12 @@ impl App {
             l.filters_open = settings.layout.filters_open;
             l.list_filters_open = settings.layout.list_filters_open;
             l.sort_by_key(&settings.sort_column, settings.sort_descending);
-            if launch.matches {
-                l.show_matches();
-            }
+            let tab = if launch.matches {
+                crate::library::Tab::Matches
+            } else {
+                crate::library::Tab::from_key(&settings.start_tab)
+            };
+            l.show_tab(tab);
         }
 
         if let Some(l) = &mut library

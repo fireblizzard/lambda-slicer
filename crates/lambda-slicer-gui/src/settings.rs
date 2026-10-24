@@ -24,6 +24,8 @@ pub struct Settings {
     pub cache: Option<PathBuf>,
     /// Library columns left out, gauss shots by default
     pub hidden_columns: Vec<String>,
+    /// The library's tab when the app starts, by its key
+    pub start_tab: String,
     /// The library's order when the app starts, by a column's key, newest
     /// or highest first when `sort_descending`
     pub sort_column: String,
@@ -285,6 +287,7 @@ impl Default for Settings {
             folders: Vec::new(),
             cache: None,
             hidden_columns: vec!["gauss".into()],
+            start_tab: "demos".into(),
             sort_column: "modified".into(),
             sort_descending: true,
             start_min_minutes: 0.,
@@ -399,6 +402,7 @@ mod tests {
             folders: vec![PathBuf::from("F:/demos")],
             cache: None,
             hidden_columns: Vec::new(),
+            start_tab: "matches".into(),
             sort_column: "kills".into(),
             sort_descending: false,
             start_min_minutes: 5.,
