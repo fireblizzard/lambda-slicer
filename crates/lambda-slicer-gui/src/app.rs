@@ -1482,6 +1482,16 @@ impl eframe::App for App {
         }
         self.open_viewer(&ctx);
 
+        // Playing comes first, so the list waits to take in a scan's files
+        let playing = self
+            .demo
+            .as_ref()
+            .and_then(|d| d.viewer.as_ref())
+            .is_some_and(crate::viewer::Viewer::is_playing);
+        if let Some(l) = &mut self.library {
+            l.hold = playing;
+        }
+
         // The demo takes in its background work once, before any of it draws
         self.apply_demo_settings();
         if let Some(d) = &mut self.demo {

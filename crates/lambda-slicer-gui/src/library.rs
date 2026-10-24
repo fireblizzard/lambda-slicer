@@ -565,6 +565,9 @@ pub struct LibraryView {
     matches: MatchList,
     /// Where to start watching the selected demo, as a match's row asked
     pub open_at: Option<f32>,
+    /// The demo player is playing, so files a scan stores wait to be
+    /// listed rather than hold up its frames
+    pub hold: bool,
     /// Files matching the filters, and figures over the whole library
     total: u64,
     stats: LibraryStats,
@@ -613,6 +616,7 @@ impl LibraryView {
             tab: Tab::Demos,
             matches: MatchList::default(),
             open_at: None,
+            hold: false,
             total: 0,
             stats: LibraryStats::default(),
             pages: HashMap::new(),
@@ -723,7 +727,9 @@ impl LibraryView {
     /// Count again and drop loaded pages when the filters, the order or the
     /// stored files changed. Stored files refresh at most once per
     /// [`REFRESH`], and a refresh held back is woken for when it is due, as
-    /// nothing else may draw a frame once a scan has finished
+    /// nothing else may draw a frame once a scan has finished. While the
+    /// demo player plays they wait for it to stop, as a big library takes
+    /// long enough to count that its frames would stall
     fn refresh(&mut self, ctx: &egui::Context) {
         let wanted = Applied {
             filters: self.filters.clone(),
@@ -733,8 +739,8 @@ impl LibraryView {
         };
         let changed = self.applied.as_ref() != Some(&wanted);
         let waited = self.last_refresh.elapsed();
-        let due = self.stale && waited >= REFRESH;
-        if self.stale && !due {
+        let due = self.stale && waited >= REFRESH && !self.hold;
+        if self.stale && !due && !self.hold {
             ctx.request_repaint_after(REFRESH - waited);
         }
         if !changed && !due {

@@ -1,5 +1,5 @@
 # Pending features, fixes or improvements
-- [ ] Try to reduce lag when watching a demo while it's scanning folders, prioritize the demo player
+- [x] Try to reduce lag when watching a demo while it's scanning folders, prioritize the demo player
 - [ ] Add a filter for non-bot demos. If we can't determine whether a player is a bot or not, just make it filter out scores where the other player doesn't move in a 1v1
 - [ ] Support WON demos (protocol 5/47)
 	- [x] Singleplayer

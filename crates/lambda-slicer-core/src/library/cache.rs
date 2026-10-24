@@ -240,6 +240,14 @@ CREATE TABLE matches(
 CREATE INDEX matches_file ON matches(file_id);
 ";
 
+/// Indexes for the library's usual list and its figures, which leave out
+/// files analysed with other versions. They are made for a cache of the
+/// same layout too, as they do not change what it holds
+const INDEXES: &str = "
+CREATE INDEX IF NOT EXISTS files_version_modified ON files(version, mtime_ns);
+CREATE INDEX IF NOT EXISTS files_version_action ON files(version, best_window);
+";
+
 /// What the cache knows about a path, enough to decide whether it is current
 #[derive(Clone, Debug, PartialEq)]
 pub struct CachedFile {
@@ -686,6 +694,7 @@ impl Cache {
             tx.execute_batch(TABLES)?;
             tx.pragma_update(None, "user_version", CACHE_SCHEMA)?;
         }
+        tx.execute_batch(INDEXES)?;
         tx.commit()?;
 
         Ok(Self { conn })

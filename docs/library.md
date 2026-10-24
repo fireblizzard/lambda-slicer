@@ -90,7 +90,11 @@ with an en dash so a negative score stays readable.
 The library list reads the same cache a page of 100 rows at a time as rows scroll into view, so
 opening a large library does not load every row. Filters for path text, map, player, weapon used,
 shortest length and spectating count the matches again, and while a scan stores files the list
-refreshes at most once a second. Text filters ignore case by Unicode lowercase, with the Turkish
+refreshes at most once a second. While a demo plays it waits until playing stops, as counting a
+big library would stall the player's frames. On a copy of a 55,120 demo library, a refresh took
+about 0.37 s every second of a rescan, and the player's worst frame was 723 ms. Waiting, and
+indexes on the analysis version with the file date and the action score, brought the worst frame
+to 15 ms. Text filters ignore case by Unicode lowercase, with the Turkish
 `I`, `ı`, `İ` and `i` matching each other. Scans run on their own thread and the window applies at
 most 500 of their events a frame. Closing the window cancels a scan and waits for it.
 
