@@ -158,7 +158,7 @@ The translations also wait for native speakers to review them ([languages](i18n.
 | Windows app | built and checked in screenshots, the smoke test above pending | |
 | Interface languages | complete, checked in screenshots, native review pending | [languages](i18n.md) |
 | Demo player on Windows | supported and measured, the picture compared with the game's in three clips, the sound not yet | [demo player](viewer-profile.md), [comparison](viewer-validation.md) |
-| Linux | builds and tests pass; CachyOS/VirtualBox desktop testing in progress | below |
+| Linux | builds and tests pass, and works on CachyOS | below |
 
 ## Linux
 
@@ -173,9 +173,7 @@ files. Every seek and every way of reaching the test moments agreed with playing
 its window opened and played under Xvfb (which needs `libxkbcommon-x11-0` on X11), and its
 pictures drawn in software matched the Windows ones ([demo player](viewer-profile.md), "Linux").
 
-The app has also been opened on CachyOS in VirtualBox. Desktop icon integration is being checked;
-a full desktop smoke test, including file dialogs, drag and drop, fonts, sound, viewer performance
-and playing exported clips in the Linux game, remains to be recorded.
+The app was tried on CachyOS on 2026-10-24 and works fine.
 
 ### Desktop launcher
 

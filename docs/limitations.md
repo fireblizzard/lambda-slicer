@@ -58,8 +58,8 @@ Not shown or played yet:
 - Recorded voice chat, sentences (speech made of words, like the HEV suit's or soldiers') and
   room echoes.
 - The tripmine's and snark's own effects and the view kicking up when shooting.
-- The weapon's bob and lag as you move. The weapon also sits a little higher and larger than in
-  the game.
+- The weapon's bob as you move. The weapon also sits a little higher and larger than in the
+  game.
 - Models: the glow shell and other render effects, textures recoloured by name (`remap`),
   smooth blending between animations, and mouth movement.
 - Randomly tiled textures and scrolling conveyors.
@@ -79,6 +79,3 @@ and a missing sound is silent.
   and the translations have been AI generated.
 - Arabic text boxes show their text in the order it was typed, not right to left, while you
   edit it.
-- It builds on Linux, its tests pass and the demo player was tried in a virtual window, but it hasn't been
-  tested in a real Linux desktop, so the picture, sound, file dialogs, dropping files and fonts
-  may have problems there.

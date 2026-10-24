@@ -1,76 +1,52 @@
 # Pending features, fixes or improvements
-- [x] Add a HUD for the kill feed like they show ingame at the top right (X killed Y, and the weapon, and with colored names depending on the team or their custom colors (^1 to ^8, and ^0 to stop coloring)
-- [x] Add the name of the player that we're watching, at the bottom
-- [x] Fix gauss charging sound being cut in `aghldmtv_law_vs_cas_cross.dem`.  i can only hear it starting to charge and releasing, but no sound in between
-- [x] Fix gauss shots or aiming being off in `aghldmtv_law_vs_cas_cross.dem`, it seems the player is looking at one place but the shot going much higher at times
-- [x] Add a bar at the bottom of the demo player so that you can go to any point of the demo by clicking on it, and it has to be synced with the other playhead.  don't remove the existing playhead below the demo player, it's useful but people are more used to the web browser style of video players, and dragging the current playhead which is not visually touching the demo player feels a bit weird
-- [x] Add another two for rewinding/advancing 10 seconds beside the previous/next frame buttons
-- [x] Add the rest of HUD elements from AG, like the mini scoreboard at the top left, votes, settings, chat, timeouts, pauses, item pickups, damage indicator, and everything else that comes from AG events/usermessages
-- [x] Add a way to toggle free camera mode, where you get detached from the recorder's camera and can fly around like with noclip by using WASD, Ctrl (down) and Space (up)
-- [x] On the event list on the right there should be an indicator of where you're at, so if the demo is playing, it should keep advancing/panning the event list as events happen, and the last one that happened should be either selected (i'm not completely sure)
-- [x] Add a toggle to zoom in (like default_fov 30) and back to normal under the demo player
-- [x] Railings on crossfire have a very subtle blue colored border, as if the transparency isn't being applied correctly and leaves a small residue of blue when it's touching other colors (like red in this case, from the railing part of the texture)
-- [x] Default pre-clip duration to 4s and post-clip to 1s
-- [x] Fix rescan. The new clips I made were exported to a folder that is in the library, and after I hit rescan and it finished scanning, I sorted by date and I couldn't see the new clips. After restarting Lambda Slicer and sorting by date I could see them finally, but shouldn't need a restart for them to appear in the table
-- [x] Add right clicking on the demo (in the table or on the list at the left after the demo player shows up) with a context menu to Open location, which opens the file explorer with the demo file selected
-- [x] When selecting a highlight like the Golden minute, "Clip it" should set the start/end time to the highlight's instead of the selected event, plus the configured pre-clip and post-clip duration
-- [x] Add crosshair to the demo player, and a setting to disable it
-- [x] Buttons that are bottom left under the demo player should be centered
 - [ ] Try to reduce lag when watching a demo while it's scanning folders, prioritize the demo player
-- [x] Fix library only showing one map on demos with multiple maps, like on `20240120_192554_ag_hidden_lab`, that has `ag_hidden_lab` and `elixir`. it should probably just add a comma, space and the next map name (e.g. `ag_hidden_lab, elixir`) and when filtering by map it should still work when typing part of any of the map names
-- [x] On `20240120_192554_ag_hidden_lab` there's an intermission (map change) at 0:15:10. we should probably render some text saying that the server is changing to X map
-- [x] Fix ladder shadow shown at 0:01:12.609 on `20240120_190919_boot_camp`
-- [x] Fix water rendering shown at 0:01:13.803 on `20240120_190919_boot_camp`. I think it should only render the faces of the water volume that are not hidden by others
-- [x] Fix wrong score on some demos. For example on `somecrossgame`, most of the demo is on the map `crossfire` which ends 93-79, and then there's a little bit of `datacore` that ends 1-0, and the library and the scoreboard (initially, when no events selected) to the right of the demo player are saying 1-0, when it should be 93-79 as that's the significant part of the demo
-- [x] Add a filter for player name in the event list of a demo
-- [x] Add a small button to the event list that stops the player from panning to the playhead so that you can freely scroll without it scrolling back automatically. It should show enabled by default (so autopan to playhead) and get disabled as you start scrolling manually, then clicking on it pans back to where the playhead is
-- [x] Add 8 pixels of margin to the right of the kill feed
-- [x] Add a button in Settings to restore all settings to default, with a confirmation dialog mentioning all the custom settings/values that will revert to default
-- [x] Remove older decals, keep the 100 most recent ones by default, add a setting for that number
-- [x] At least some kills have their speed wrongly marked as going over 1000ups speed
-- [x] Add a setting to start the app with the filter for minimum demo time in the library set to X minutes. It's annoying to set the number every time I launch the app to filter out dumb demos
 - [ ] Add a filter for non-bot demos. If we can't determine whether a player is a bot or not, just make it filter out scores where the other player doesn't move in a 1v1
-- [x] Add a column for the number of players (not spectators) and then a filter for that. Detect when the match begins (after agstart, after the countdown) and count the players at that time. For multimap demos keep the highest count, so if there are 2 matches with 4 and 6 players, show a 6 for that demo. For demos without a match, just get the highest number of players at any point. And for demos where the match was already started before the recording began... have to see how to detect that case, and then just count the non-spectator players at the beginning of the demo in that case
-- [x] Add a column for the number of teams, similar approach as for the number of players column, with its own filter too
-- [x] Add K/D (kills/death ratio) to the scoreboard where we have the kills, death, hs and accuracy%.  if deaths are 0, then do the division with 1
-- [x] Fix explosion sprite showing up too cartoony, like in `20220102_225243_pwrcore` at 00:34.609 or at 00:42.365
-- [x] If no folder or demo has been added yet, highlight those buttons, with a pulsing red border perhaps, until the user adds/opens one. Meant for new users
-- [x] Clean up documents and comments so that they no longer refer to development stages (like "M6" in `vendor/README.md`) or things like that. Also try to simplify jargon in documents, even in the technical ones unless it makes it more confusing or significantly harder to explain. Also update docs/release-notes.md, as some things in there are obsolete. And make README.md a proper document that average players can read, with minimal development/buildding notes, just enough to build the project
 - [ ] Support WON demos (protocol 5/47)
 	- [x] Singleplayer
 	- [ ] Multiplayer
-- [x] Fix CI making an artifact with a nested zip, so there's a zip inside another zip and then the executable is inside that, 2 levels of zipping instead of 1
-- [x] Add a release workflow that builds the artifact from the pushed tag so that users can download the app
-- [x] Add a button to make the demo player fullscreen
 - [ ] Add a speedometer and last jump speed to the demo player, with a setting to make it count only horizontal, only vertical or full 3D (both)
 - [ ] Add flashlight HUD to the demo player
 - [ ] Add a fps counter to the demo player, not at which framerate the demo is being rendered, but what fps the player recording the demo had instead
 - [ ] Add x1.25 and x1.5 replay speed. but the dropdown is getting too crowded, we might have to use a different UI element type
 - [ ] Make holding left click on the demo player speed up the demo twice the current speed (x1 -> x2, x4 -> x8). releasing click makes it go back to normal (whichever replay speed you had set, not necessarily x1)
 - [ ] Make mouse4 navigate back and mouse5 navigate forward. so if you're in the library view and click a demo, it opens the demo view with the player and everything, and pressing mouse4 would close that view and go back to the library where you see the whole table, and mouse5 would get you back to that demo view
-- [x] `homeworld` map is not loading on demo `20210411_175005_homeworld`: `maps/homeworld.bsp · maps/homeworld.bsp is not a map this version reads (InvalidRecordRange { source: SourceLocation { lump: Leaves, element: 2365 }, field: "visibility", first: -8912897, count: 1, available: 46331 })`
-- [x] Handle HudText/titles.txt messages. I think these are the white messages like when you get to the next chapter in Half-Life and it shows the chapter name, or the "Saved..." text
-- [x] Remove hours from the event list unless the demo goes into the hours, and the same for minutes, if the demo is just 50 seconds long we don't need minutes either
-- [x] Add context menu to events to be able to copy the text of the event, so for example a kill becomes `01:46.817 | andriu killed -<[ATK]>-naz with rpg_rocket`
 - [ ] On `afafsd.dem` it's initially a 3v3 but after 05:52.999 a new match starts while the previous one is ongoing, and this new one is a 2v2, so we should really say 4 players for this demo as the only complete match is a 2v2. if there was already an ongoing match when the demo started and that match is a 3v3 and gets to finish, and then there's a full 2v2 match after that in the same demo, then we should still count the 2v2, as it's the complete one.  if there are 2 different complete matches in the demo, then in that case we should count the match with the highest amount of players, so if one is 3v3 and the other 2v2, keep the 3v3 for the players column in the library
 - [ ] Add a setting to adjust the font size for the chat, server settings and kill feed, and make it slightly smaller (like 1 point) by default
 - [ ] Add the ability to export to different video formats that can be uploaded directly to platforms like YouTube or TikTok
 - [ ] Detect flicks and add it as filter for demos and events
-- [x] Extract date from the file name format `mapname-yyyymmdd-hhmmss`, like in `dm_dust2-20261007-212429.dem`. I think it might be a demo written by the BugfixedHL client
-- [x] Show changelevel events under the Match filter in the event list
-- [x] Show player switching to spectator mode under the Match filter in the event list
 - [ ] Add 3rd person camera
 - [ ] Add ability to switch to another player's POV as long as the demo has the info. While it doesn't have it, switch to the recorder POV until we have info again
+- [ ] Show multiple scores for multi-map demos, one for each map that's not ignored
+- [ ] Add weapon bob
+- [ ] Support scrolling textures
+- [ ] Support randomly tiled textures
+- [ ] Support GameTitle message, like the HALF-LIFE logo when you start a new singleplayer game
+- [ ] For events scheduled before the start of a clip, send it again in the clip with the time it had left
+- [ ] Fix walls starting clean on a clip that you play in the game, replay decals at that point
+- [ ] Don't refuse clips, offer to start the clip at the nearest moment that works, like 0.3s earlier
+- [ ] Check the stop button inside the export's own loop, so it stops the export within a moment
+- [ ] Store which part a clip belongs to as well as its times, for demos with multiple server clock restarts (e.g. loads)
+- [ ] Fix gauss balls and glows
+- [ ] Support clips across changelevels or loads
+- [ ] Add particles
+- [ ] Add glow shell
+- [ ] Support `remap` textures
+- [ ] Add blending between animations
+- [ ] Add dynamic lights
+- [ ] Read `sentences.txt` and play the words to hear what the NPCs say
+- [ ] Add aimpunch
+- [ ] Add voice chat audio to hear what players were saying in the demo
+- [ ] Support room echoes
+- [ ] Add tripmine's and snark's effects
+- [ ] Add a Matches tab for the library, which also includes Free play for parts of a demo that are long enough to be worth mentioning even if they were not in a match (agstart). Make this tab the default one for the library
 
 # Ideas for later
 - [ ] Add a Favourites tab and an Add to favourites or Remove from favourites option to the context menu of a demo. The tab should be right after the Filters button above the table, and for now there will be 2 tabs: All and Favourites. All is the normal table and Favourite will just show the favourited demos. Demo entries in the table should show a yellow star after the name of the demo, in the same column as the name, just at the end of the text
 - [ ] Add a crosshair editor in settings that it's then used for the demo viewer
 - [ ] Add a demo viewer setting to customize the sky in the rendered demo. If none is set then just use the one found in the demo
-- [ ] Show multiple scores for multi-map demos, one for each map, maybe with a threshold of 10 to filter out short games that happen before changing the map for the actual match or after it's finished
 - [ ] Add Hide/Unhide to the context menu of a demo, and a "Hidden" tab like All/Favourites but for hidden demos. Hidden demos should not show up when we're in the All tab. They can appear in the Favourites tab if they're favourited, although that'd be weird. And they'll always show up when we're in the Hidden tab as long as the user doesn't unhide them
 - [ ] Add an easy way to clip a demo by map, so if a demo has 3 maps in it, make 3 clips from the beginning of each map until the end of it
 - [ ] Add a button to export the demo info to a text file, with the map, date, player names at the top, then the scoreboard and then the filtered event list
-- [ ] For multimap demos, instead of showing them with all that info in a single row in the library, make sub-rows for each map with their own individual info for thir part of the demo, and when clicking on it, it will show the demo player with the playhead already at the point where the map starts
 - [ ] Add support for HLKZ, showing things like run times in a demo, jump/strafing stats and so on
 - [ ] Add ability to make volumetric triggers to time segments for HLKZ
 - [ ] Support Opposing Force demos
