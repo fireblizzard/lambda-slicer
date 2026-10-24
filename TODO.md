@@ -57,6 +57,8 @@
 - [ ] Add the ability to export to different video formats that can be uploaded directly to platforms like YouTube or TikTok
 - [ ] Detect flicks and add it as filter for demos and events
 - [x] Extract date from the file name format `mapname-yyyymmdd-hhmmss`, like in `dm_dust2-20261007-212429.dem`. I think it might be a demo written by the BugfixedHL client
+- [ ] Show changelevel events under the Match filter in the event list
+- [ ] Show player switching to spectator mode under the Match filter in the event list
 
 # Ideas for later
 - [ ] Add a Favourites tab and an Add to favourites or Remove from favourites option to the context menu of a demo. The tab should be right after the Filters button above the table, and for now there will be 2 tabs: All and Favourites. All is the normal table and Favourite will just show the favourited demos. Demo entries in the table should show a yellow star after the name of the demo, in the same column as the name, just at the end of the text

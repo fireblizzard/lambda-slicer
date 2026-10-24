@@ -11,7 +11,7 @@ mod events;
 mod scores;
 mod track;
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -574,6 +574,11 @@ pub struct DemoView {
     /// The timeline's markers for the view last drawn
     markers: Option<MarkerCache>,
     selected: Option<usize>,
+    /// Events chosen together in the list for copying, with Ctrl or Shift
+    /// held or by Ctrl+A. Selecting an event chooses it alone
+    marked: BTreeSet<usize>,
+    /// The event a Shift click chooses from
+    mark_from: Option<usize>,
     scroll_table: bool,
     /// How many shown events the playhead had passed when the list last
     /// followed it, none while paused
@@ -684,6 +689,8 @@ impl DemoView {
             density: None,
             markers: None,
             selected: None,
+            marked: BTreeSet::new(),
+            mark_from: None,
             scroll_table: false,
             followed: None,
             follow_playhead: true,
@@ -1009,6 +1016,8 @@ impl DemoView {
         };
 
         self.selected = Some(event);
+        self.marked = BTreeSet::from([event]);
+        self.mark_from = Some(event);
         self.highlight_last = false;
         self.scroll_table = !from_list;
 
@@ -1024,14 +1033,38 @@ impl DemoView {
         }
     }
 
-    /// The range clipping the selected event would take, when a start
-    /// there falls in the event's own session. Times restart with some
+    /// The range clipping the selected event would take, or with several
+    /// events chosen, the one from the first of them to the last, whatever
+    /// lies between, padded the same. A start there must fall in the first
+    /// event's session, which the last must share. Times restart with some
     /// sessions, and an export starts at the first group with the time
     fn proposal(&self) -> Option<(f32, f32)> {
         let m = self.model.as_ref()?;
-        let e = m.events.get(self.selected?)?;
-        let range = self.clamped(e.time - self.padding.0, e.time + self.padding.1);
-        self.starts_in(range.0, e.segment).then_some(range)
+        let (first, last) = match self.chosen_span() {
+            Some(span) => span,
+            None => (self.selected?, self.selected?),
+        };
+        let (first, last) = (m.events.get(first)?, m.events.get(last)?);
+        if first.segment != last.segment {
+            return None;
+        }
+
+        let range = self.clamped(first.time - self.padding.0, last.time + self.padding.1);
+        self.starts_in(range.0, first.segment).then_some(range)
+    }
+
+    /// The first and last of several chosen events that show, none with
+    /// fewer than two chosen. Events are kept in time order, so their
+    /// places say which comes first
+    fn chosen_span(&self) -> Option<(usize, usize)> {
+        if self.marked.len() < 2 {
+            return None;
+        }
+
+        let shown = |i: &usize| self.shown_events.get(*i).copied().unwrap_or(false);
+        let first = *self.marked.iter().find(|i| shown(i))?;
+        let last = *self.marked.iter().rev().find(|i| shown(i))?;
+        Some((first, last))
     }
 
     /// What Clip it clips, the highlight when it was chosen after the event
@@ -2274,6 +2307,37 @@ mod tests {
         view.apply(DemoAction::ChooseHighlight(0), &catalog);
         assert_eq!(view.clip_it_range(), Some((36., 71.)));
         view.select(0, true);
+        assert_eq!(view.clip_it_range(), Some((26., 31.)));
+    }
+
+    #[test]
+    fn clip_it_spans_from_the_first_chosen_event_to_the_last() {
+        let group = |time: f32| GroupStart {
+            time,
+            segment: 0,
+            demo_start: false,
+        };
+        let groups = GroupIndex {
+            groups: vec![group(0.), group(50.)],
+            ..Default::default()
+        };
+        let kills = vec![
+            kill(0, 10., None),
+            kill(0, 20., None),
+            kill(0, 30., None),
+            kill(0, 40., None),
+        ];
+        let mut view = view_of(kills, groups);
+        view.refresh_rows();
+        view.padding = (4., 1.);
+
+        // The kill at 30 s between the two chosen is in the clip anyway
+        view.select(0, true);
+        view.marked = BTreeSet::from([1, 3]);
+        assert_eq!(view.clip_it_range(), Some((16., 41.)));
+
+        // Selecting one event chooses it alone again
+        view.select(2, true);
         assert_eq!(view.clip_it_range(), Some((26., 31.)));
     }
 

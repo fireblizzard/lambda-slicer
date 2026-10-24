@@ -644,11 +644,36 @@ impl DemoView {
         }
         self.list_offset = offset;
 
+        // Ctrl adds or takes away a clicked event, and Shift chooses every
+        // shown event from the last one clicked, neither moving the playhead
         if let Some(event) = clicked {
-            self.actions.push(DemoAction::Select {
-                event,
-                from_list: true,
-            });
+            let held = ui.input(|i| i.modifiers);
+            if held.command {
+                self.toggle_mark(event);
+            } else if held.shift {
+                self.mark_through(event);
+            } else {
+                self.actions.push(DemoAction::Select {
+                    event,
+                    from_list: true,
+                });
+            }
+        }
+
+        // Ctrl+A chooses every shown event and Ctrl+C copies those chosen,
+        // unless text is being typed
+        if !text::typing(ui.ctx()) {
+            let all = ui.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, egui::Key::A));
+            if all {
+                self.marked = self.rows.iter().copied().collect();
+                self.highlight_last = false;
+            }
+
+            let copy = ui.input(|i| i.events.iter().any(|e| matches!(e, egui::Event::Copy)));
+            if copy && !self.marked.is_empty() {
+                ui.ctx()
+                    .copy_text(self.copied_marks(catalog, model, longest));
+            }
         }
 
         // The clicked event is chosen before it plays, so a double click
@@ -660,6 +685,53 @@ impl DemoView {
             });
             self.actions.push(DemoAction::PlayEvent(event));
         }
+    }
+
+    /// `event` added to the chosen events, or taken away when it is
+    /// already among them. The first one added with nothing chosen yet
+    /// joins the selected event
+    fn toggle_mark(&mut self, event: usize) {
+        if self.marked.is_empty()
+            && let Some(selected) = self.selected
+        {
+            self.marked.insert(selected);
+        }
+
+        if !self.marked.remove(&event) {
+            self.marked.insert(event);
+        }
+        self.mark_from = Some(event);
+
+        // Clip it now clips the chosen events rather than a highlight
+        self.highlight_last = false;
+    }
+
+    /// Every shown event from the last one clicked through `event`, in the
+    /// list's order, in place of those chosen before
+    fn mark_through(&mut self, event: usize) {
+        let from = self.mark_from.or(self.selected).unwrap_or(event);
+        let row = |e: usize| self.rows.iter().position(|&r| r == e);
+        let (Some(a), Some(b)) = (row(from), row(event)) else {
+            self.toggle_mark(event);
+            return;
+        };
+
+        let (first, last) = (a.min(b), a.max(b));
+        self.marked = self.rows[first..=last].iter().copied().collect();
+        self.highlight_last = false;
+    }
+
+    /// The chosen events that show, one line each in the list's order
+    fn copied_marks(&self, catalog: &Catalog, model: &Model, longest: f32) -> String {
+        let mut lines = Vec::new();
+        for &index in &self.rows {
+            if !self.marked.contains(&index) {
+                continue;
+            }
+            let what = self.what(catalog, index);
+            lines.push(copied(catalog, &model.events[index], &what, longest));
+        }
+        lines.join("\n")
     }
 
     /// One event as its time, its players and what happened, and its badges
@@ -683,9 +755,12 @@ impl DemoView {
         }
 
         let selected = self.selected == Some(index);
+        let marked = self.marked.contains(&index);
         let in_window = window.is_some_and(|(a, b)| event.time >= a && event.time <= b);
         let painter = ui.painter();
-        if selected {
+        if marked && !selected {
+            painter.rect_filled(rect, 0., theme::ACCENT_SOFT);
+        } else if selected {
             painter.rect_filled(rect, 0., theme::ACCENT_SOFT);
             let edge_x = if rtl {
                 rect.max.x - theme::SELECTED_EDGE
@@ -736,8 +811,13 @@ impl DemoView {
             let label = text::widget_text(ui.ctx(), &label, rtl, None, Look::Plain);
             let copy = widgets::Button::new(Some(Icon::Copy), label, Variant::Default, rtl);
             if ui.add(copy).clicked() {
-                let what = self.what(catalog, index);
-                ui.ctx().copy_text(copied(catalog, event, &what, longest));
+                // An event among several chosen copies them all
+                let text = if marked && self.marked.len() > 1 {
+                    self.copied_marks(catalog, model, longest)
+                } else {
+                    copied(catalog, event, &self.what(catalog, index), longest)
+                };
+                ui.ctx().copy_text(text);
                 ui.close();
             }
         });
@@ -998,10 +1078,14 @@ impl DemoView {
             _ => None,
         };
         // Clip it takes the highlight chosen after the event, whatever is
-        // selected
+        // selected, or else the several events chosen
         let clip_blocked = match &blocked {
             _ if self.clips_highlight() => self
                 .clip_it_range()
+                .is_none()
+                .then(|| catalog.text("clips-other-session")),
+            _ if self.chosen_span().is_some() => self
+                .proposal()
                 .is_none()
                 .then(|| catalog.text("clips-other-session")),
             Some(why) => Some(why.clone()),
@@ -1423,6 +1507,7 @@ fn event_clock(time: f32, longest: f32) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeSet;
     use std::path::PathBuf;
 
     use lambda_slicer_core::analysis::weapons::Action;
@@ -1537,6 +1622,63 @@ mod tests {
         }));
         view.rows = (0..count).collect();
         view
+    }
+
+    #[test]
+    fn ctrl_adds_and_takes_away_and_shift_chooses_a_run() {
+        let ctx = egui::Context::default();
+        let mut view = view_of_shots(&ctx, 5);
+        view.selected = Some(1);
+
+        // The first Ctrl click keeps the selected event chosen
+        view.toggle_mark(3);
+        assert_eq!(view.marked, BTreeSet::from([1, 3]));
+        view.toggle_mark(1);
+        assert_eq!(view.marked, BTreeSet::from([3]));
+
+        // Shift runs from the last event clicked, in either direction
+        view.mark_through(0);
+        assert_eq!(view.marked, BTreeSet::from([0, 1]));
+        view.mark_through(4);
+        assert_eq!(view.marked, BTreeSet::from([1, 2, 3, 4]));
+    }
+
+    #[test]
+    fn ctrl_a_chooses_every_shown_event_and_ctrl_c_copies_them_in_order() {
+        let ctx = egui::Context::default();
+        let mut view = view_of_shots(&ctx, 3);
+        let ctrl_a = egui::Event::Key {
+            key: egui::Key::A,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers::COMMAND,
+        };
+        draw_list(&ctx, &mut view, vec![ctrl_a]);
+        assert_eq!(view.marked, BTreeSet::from([0, 1, 2]));
+
+        let catalog = Catalog::new(crate::i18n::Locale::En);
+        let model = view.model.clone().expect("the test gives a model");
+        let input = egui::RawInput {
+            screen_rect: Some(Rect::from_min_size(Pos2::ZERO, egui::vec2(400., 300.))),
+            events: vec![egui::Event::Copy],
+            ..Default::default()
+        };
+        let output = ctx.run_ui(input, |ui| view.events_list(ui, &catalog, false, &model));
+        let copied = output
+            .platform_output
+            .commands
+            .iter()
+            .find_map(|c| match c {
+                egui::OutputCommand::CopyText(text) => Some(text.clone()),
+                _ => None,
+            });
+        let lines = [
+            "00:00.000 | Unknown player · Fire",
+            "00:01.000 | Unknown player · Fire",
+            "00:02.000 | Unknown player · Fire",
+        ];
+        assert_eq!(copied.as_deref(), Some(lines.join("\n").as_str()));
     }
 
     /// One frame of `view`'s list on a small screen, after `events`
