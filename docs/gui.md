@@ -80,10 +80,13 @@ location, Show in folder and Close. Escape closes the demo.
 Without the Half-Life folder, the player asks for `hl.exe` or the folder, and everything else keeps
 working. With it, the demo plays with the game's files, and the HUD shows as the settings choose.
 Under the picture are the seek bar and the controls: back to the start, rewind, 10 seconds back,
-one frame back, play, one frame forward, 10 seconds forward, the speed, free camera, zoom, light up
-everything, see through walls, the volume, the picture settings and full screen. Light up
-everything shows the map fully lit, as the game's `r_fullbright` does, and lights models to at
-least three quarters, keeping some of their shading. The keys are in the [README](../README.md#watching-a-demo).
+one frame back, play, one frame forward, 10 seconds forward, the speed, free camera, zoom, player
+names, light up everything, see through walls, the volume, the picture settings and full screen.
+Light up everything shows the map fully lit, as the game's `r_fullbright` does, and lights models
+to at least three quarters, keeping some of their shading. Player names puts each drawn player's
+name over their head in their team's colour, as the camera sees them, the free camera's too. A
+name behind a wall, the line from the camera stopping more than 8 units short, is left out unless
+players are seen through walls, and a free camera inside a wall hides none. The keys are in the [README](../README.md#watching-a-demo).
 
 In full screen the app hides its toolbar, status bar and demo list and asks the window to fill the
 screen. The seek bar and controls show over the bottom of the picture while paused, under the

@@ -916,6 +916,54 @@ impl Viewer {
         }
     }
 
+    /// Each player drawn in the picture with its name over its head, as
+    /// the picture's camera sees it, a free camera's too. A name behind a
+    /// wall is left out unless players are seen through walls, and nearer
+    /// names are drawn over farther ones
+    fn draw_names(
+        &self,
+        painter: &egui::Painter,
+        rect: egui::Rect,
+        frame: &PresentedFrame,
+        aspect: f32,
+    ) {
+        let (eye, angles) = self.eye(frame);
+        let matrix = view_projection(frame, (eye, angles), aspect, self.fov());
+        let world = frame
+            .map
+            .as_deref()
+            .and_then(|map| self.library.as_ref()?.hull(map));
+
+        let mut names = Vec::new();
+        for drawn in drawn(frame, &self.models, self.free.is_some()) {
+            if !drawn.pose.player {
+                continue;
+            }
+            let Some(player) = frame.players.iter().find(|p| p.entity == drawn.id.number) else {
+                continue;
+            };
+            let [x, y, z] = drawn.pose.origin;
+            let head = [x, y, z + NAME_ABOVE];
+            let behind_wall = world.as_ref().is_some_and(|w| name_hidden(w, eye, head));
+            if behind_wall && !self.settings.see_through {
+                continue;
+            }
+            let Some(at) = on_screen(&matrix, head, rect) else {
+                continue;
+            };
+            let d = [0, 1, 2].map(|k| head[k] - eye[k]);
+            let distance = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt();
+            names.push((distance, at, player));
+        }
+
+        // The farthest first, so nearer names cover them
+        names.sort_by(|a, b| b.0.total_cmp(&a.0));
+        let size = rect.height() / NAME_LINES;
+        for (_, at, player) in names {
+            draw_name_over(painter, at, size, player);
+        }
+    }
+
     /// Everything drawn this frame, models posed and skinned
     fn draw_list(&self) -> DrawList {
         let Some(frame) = &self.frame else {
@@ -1622,6 +1670,10 @@ impl Viewer {
                     };
                     ui.painter()
                         .add(egui_wgpu::Callback::new_paint_callback(rect, callback));
+                    if self.settings.player_names {
+                        let aspect = pixels[0] as f32 / pixels[1] as f32;
+                        self.draw_names(ui.painter(), rect, frame, aspect);
+                    }
                     if let Some(countdown) = &frame.countdown {
                         draw_countdown(ui.painter(), rect, countdown);
                     }
@@ -2087,6 +2139,22 @@ impl Viewer {
             self.settings.see_through = !self.settings.see_through;
         }
 
+        // Players' names over them, a setting the app saves
+        let shortcut = catalog.text_with("viewer-shortcut", &[("key", FluentValue::from("N"))]);
+        let label = format!("{}\n{shortcut}", catalog.text("viewer-player-names"));
+        let button = IconButton::new(Icon::Tag, &label).selected(self.settings.player_names);
+        let response = ui.add_enabled(self.assets, button);
+        let response = response
+            .on_hover_text(text::help(
+                ui.ctx(),
+                &catalog.text("settings-player-names-hint"),
+                rtl,
+            ))
+            .on_disabled_hover_text(catalog.text("viewer-needs-files"));
+        if response.clicked() {
+            self.settings.player_names = !self.settings.player_names;
+        }
+
         // Everything fully lit, for this session only
         let shortcut = catalog.text_with("viewer-shortcut", &[("key", FluentValue::from("F"))]);
         let label = format!("{}\n{shortcut}", catalog.text("viewer-fullbright"));
@@ -2280,6 +2348,10 @@ impl Viewer {
         }
         if pressed(egui::Key::F) && self.assets {
             self.fullbright = !self.fullbright;
+            ctx.request_repaint();
+        }
+        if pressed(egui::Key::N) && self.assets {
+            self.settings.player_names = !self.settings.player_names;
             ctx.request_repaint();
         }
 
@@ -3181,6 +3253,66 @@ fn draw_watched(painter: &egui::Painter, rect: egui::Rect, player: &PlayerView) 
     let band = egui::Rect::from_min_size(at, size).expand2(egui::vec2(line / 2., line / 5.));
     painter.rect_filled(band, theme::RADIUS_SMALL, NAME_BAND);
     painter.galley(at, galley, colour);
+}
+
+/// How far over a player's origin their name is, in units, just over the
+/// head of a player standing
+const NAME_ABOVE: f32 = 44.;
+
+/// How many lines of names the picture's height holds, which sets their
+/// size
+const NAME_LINES: f32 = 44.;
+
+/// Whether the world hides a name at `at` from `eye`, the line between
+/// them stopping more than 8 units short, as for a glow. A free camera
+/// inside a wall sees nothing past it, so nothing counts as hidden then
+fn name_hidden(world: &Hull, eye: [f32; 3], at: [f32; 3]) -> bool {
+    let trace = world.trace(eye, at);
+    if trace.start_solid {
+        return false;
+    }
+    hidden_glow(world, eye, at)
+}
+
+/// Where `point` is on the picture in `rect` through `matrix`, none behind
+/// the camera or off the picture
+fn on_screen(matrix: &Matrix, point: [f32; 3], rect: egui::Rect) -> Option<egui::Pos2> {
+    // Column-major, so each column is weighed by one of the point's parts
+    let mut clip = [0.; 4];
+    let parts = [point[0], point[1], point[2], 1.];
+    for (column, part) in matrix.iter().zip(parts) {
+        for row in 0..4 {
+            clip[row] += column[row] * part;
+        }
+    }
+    if clip[3] <= 0. {
+        return None;
+    }
+
+    let (x, y) = (clip[0] / clip[3], clip[1] / clip[3]);
+    let at = egui::pos2(
+        rect.left() + (x + 1.) / 2. * rect.width(),
+        rect.top() + (1. - y) / 2. * rect.height(),
+    );
+    rect.contains(at).then_some(at)
+}
+
+/// A player's name centred over `at`, in their team's colour on a dark
+/// band as the watched player's name is
+fn draw_name_over(painter: &egui::Painter, at: egui::Pos2, size: f32, player: &PlayerView) {
+    let name = text::without_colours(&player.name);
+    if name.trim().is_empty() {
+        return;
+    }
+
+    let colour = theme::team_colour(player.model.as_deref().unwrap_or_default());
+    let galley = painter.layout_no_wrap(name, egui::FontId::proportional(size), colour);
+    let galley_size = galley.size();
+    let corner = egui::pos2(at.x - galley_size.x / 2., at.y - galley_size.y);
+    let band = egui::Rect::from_min_size(corner, galley_size);
+    let band = band.expand2(egui::vec2(size / 3., size / 8.));
+    painter.rect_filled(band, theme::RADIUS_SMALL, NAME_BAND);
+    painter.galley(corner, galley, colour);
 }
 
 /// The map the server is changing to at `at`, from the intermission until

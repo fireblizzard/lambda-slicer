@@ -177,6 +177,9 @@ pub struct ViewerSettings {
     /// models too, projectiles and items among them
     pub see_through: bool,
     pub see_through_items: bool,
+    /// Each player's name over them, hidden by walls unless players are
+    /// seen through them
+    pub player_names: bool,
     /// The most decals left in play that are shown, the newest. The map's
     /// own are always shown
     pub decals: usize,
@@ -212,6 +215,7 @@ impl Default for ViewerSettings {
             volume: 0.1,
             see_through: false,
             see_through_items: false,
+            player_names: true,
             decals: 100,
         }
     }

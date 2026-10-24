@@ -788,15 +788,22 @@ impl App {
             }
         }
 
-        // The viewer's volume slider and see-through button are settings
+        // The viewer's volume slider and its see-through and names buttons
+        // are settings
         if let Some(v) = self.demo.as_ref().and_then(|d| d.viewer.as_ref()) {
             let saved = &mut self.settings.viewer;
 
             // As the run's flag left it, which is not saved
             let shown = saved.see_through || self.viewer_see_through;
-            if (v.settings.volume, v.settings.see_through) != (saved.volume, shown) {
+            let now = (
+                v.settings.volume,
+                v.settings.see_through,
+                v.settings.player_names,
+            );
+            if now != (saved.volume, shown, saved.player_names) {
                 saved.volume = v.settings.volume;
                 saved.see_through = v.settings.see_through;
+                saved.player_names = v.settings.player_names;
                 self.settings_unsaved = true;
             }
         }

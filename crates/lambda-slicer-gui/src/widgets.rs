@@ -90,6 +90,8 @@ pub enum Icon {
     Move,
     /// A sun, for lighting everything fully
     Sun,
+    /// A label with two lines of writing, for players' names
+    Tag,
 }
 
 /// The width of an icon's lines
@@ -489,6 +491,18 @@ pub fn paint_icon_facing(
             for (tip, one, other) in heads {
                 painter.add(Shape::line(vec![one, tip, other], stroke));
             }
+        }
+        Icon::Tag => {
+            // A rounded label with a line of writing and a shorter one
+            let label = Rect::from_min_max(p(1.5, 3.5), p(14.5, 12.5));
+            painter.rect_stroke(
+                label,
+                CornerRadius::same(2),
+                stroke,
+                egui::StrokeKind::Middle,
+            );
+            painter.line_segment([p(4., 6.5), p(12., 6.5)], stroke);
+            painter.line_segment([p(4., 9.5), p(9., 9.5)], stroke);
         }
         Icon::Sun => {
             // A disc with eight rays round it

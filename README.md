@@ -58,6 +58,7 @@ stuff like a zooming in or seeing players through walls, as long as the demo has
 | Z | Zoom in or out |
 | X | Toggle seeing players through walls |
 | F | Toggle fullbright |
+| N | Toggle player names |
 | C | Free camera: fly with W, A, S and D, Space up, Ctrl down, Shift faster, and hold the right mouse button to look around |
 | F11 or double-click the picture | Full screen |
 | Ctrl+Left / Ctrl+Right | Previous / next event |

@@ -838,6 +838,10 @@ impl App {
             );
             ui.add_enabled(viewer.see_through, items);
         });
+        layout::row(ui, rtl, |ui| {
+            ui.checkbox(&mut viewer.player_names, t("settings-player-names"));
+            widgets::help(ui, &catalog.text("settings-player-names-hint"), rtl);
+        });
 
         // Bullet holes and other marks, the newest kept
         heading(
@@ -1170,6 +1174,10 @@ fn changed_settings(current: &Settings, restored: &Settings) -> Vec<&'static str
         (
             view.see_through_items != first.see_through_items,
             "settings-see-through-items",
+        ),
+        (
+            view.player_names != first.player_names,
+            "settings-player-names",
         ),
         (view.decals != first.decals, "settings-section-decals"),
         (view.volume != first.volume, "viewer-volume"),
