@@ -93,6 +93,28 @@ Class names come from OpenAG `dlls`. Player weapon names:
 | `crossbow` or `bolt`, `rpg` or `rpg_rocket`, `hornetgun` or `hornet` | crossbow, rpg, hivehand |
 | `tau_cannon`, `gluon gun` | gauss, egon (renamed in later versions) |
 
+A `grenade` kill gets its weapon once kills are linked to their shots ([grenades.rs]), by the
+first of three signs that tells, each looking at the 4 seconds before the kill, which cover the hand
+grenade's 3 second fuse and the mp5 grenade's longest flight:
+
+1. The killer's grenade in flight, when it came into view: `models/w_grenade.mdl` for a hand
+   grenade, `models/grenade.mdl` for the mp5's, owned by the killer and bouncing (movetype 10). A
+   hand grenade lying as a pickup has the same model but no owner and tossed movement (6), and is
+   left out. Both kinds in flight at once tell nothing on their own.
+2. The killer's `mp52.sc` launch the kill links to, which makes it the mp5's.
+3. What the killer held: `models/p_grenade.mdl` at any point makes it a hand grenade, and
+   `models/p_9mmAR.mdl` with the killer in view all along makes it the mp5's.
+
+Otherwise it stays plain `grenade`. Over the five test demos' 97 grenade kills, 51 had the mp5's
+grenade in flight and every one of them also linked to a launch, 24 more linked to a launch, 1 had
+a hand grenade in flight, and 21 had neither (2026-10-24). In `20220102_225243_pwrcore.dem` the kill
+at 00:34.144 had the killer's hand grenade in flight, the suicide at 11:00.604 is a hand grenade by
+what lawlly held alone, the grenade out of view, and the kill at 8:28.666 is unknown, its killer and
+grenade out of view. The events list shows `mp5 grenade` or `handgrenade` for them, and the weapon
+counts take them.
+
+[grenades.rs]: ../crates/lambda-slicer-core/src/analysis/grenades.rs
+
 A kill is not a shot, and its time is when the death was announced, not when the weapon was used.
 The death feed goes to every client, so it covers all players, unlike their events. Kills per
 weapon count only kills of other players with a player weapon.

@@ -1,5 +1,6 @@
 //! Development probe that prints how entities of a model are drawn, their
-//! render mode, amount, colour and effect, each time those change
+//! render mode, amount, colour and effect, with their owner, movement and
+//! place, each time those change
 //!
 //! `render_probe DEMO MODEL_TEXT`
 
@@ -15,6 +16,11 @@ const FIELDS: &[&str] = &[
     "rendercolor.b",
     "renderfx",
     "effects",
+    "owner",
+    "movetype",
+    "origin[0]",
+    "origin[1]",
+    "origin[2]",
 ];
 
 fn main() {

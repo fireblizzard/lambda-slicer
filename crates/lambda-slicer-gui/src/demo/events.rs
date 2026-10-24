@@ -871,7 +871,7 @@ impl DemoView {
                     .map_or_else(|| "?".to_string(), text::player_name);
                 (
                     name_colour(features.killer_team.as_deref()),
-                    Some(weapon_name.clone()),
+                    Some(kill_weapon(weapon_name, event.weapon)),
                     victim,
                     name_colour(features.victim_team.as_deref()),
                 )
@@ -1436,7 +1436,8 @@ fn copied(catalog: &Catalog, event: &Event, what: &str, longest: f32) -> String 
             headshot,
             ..
         } => {
-            let killed = kill_sentence(catalog, event, *cause, victim.as_deref(), weapon_name);
+            let weapon = kill_weapon(weapon_name, event.weapon);
+            let killed = kill_sentence(catalog, event, *cause, victim.as_deref(), &weapon);
             if *headshot == Some(true) {
                 format!("{killed} · {}", catalog.text("event-headshot"))
             } else {
@@ -1462,6 +1463,17 @@ fn copied(catalog: &Catalog, event: &Event, what: &str, longest: f32) -> String 
 
 /// A kill as a sentence by its cause. One with no killer named, such as a
 /// fall or a monster, says the victim died
+/// The weapon a kill shows, the name the server sent, except a `grenade`
+/// the analysis told the weapon of, as the mp5's and the hand grenade's
+/// both kill by that name
+fn kill_weapon(weapon_name: &str, weapon: Option<Weapon>) -> String {
+    match (weapon_name, weapon) {
+        ("grenade", Some(Weapon::Mp5)) => "mp5 grenade".to_string(),
+        ("grenade", Some(Weapon::Handgrenade)) => "handgrenade".to_string(),
+        _ => weapon_name.to_string(),
+    }
+}
+
 fn kill_sentence(
     catalog: &Catalog,
     event: &Event,

@@ -7,6 +7,7 @@
 pub mod accuracy;
 pub mod context;
 pub mod events;
+pub mod grenades;
 pub mod highlights;
 pub mod match_events;
 pub mod motion;
@@ -34,7 +35,7 @@ use highlights::{ActionWindow, action_windows, link_kills};
 use parts::{Played, PlayedPart, demo_counted, played_parts};
 use weapons::{Action, ActivityInterval, PROFILE, Weapon, WeaponOccurrence, derive};
 
-pub const ANALYSIS_SCHEMA: u32 = 18;
+pub const ANALYSIS_SCHEMA: u32 = 20;
 
 /// Length of an action window in seconds, and how many are reported
 pub const ACTION_WINDOW: f32 = 60.;
@@ -281,6 +282,16 @@ pub fn analyze_demo_with(
         motion::gravity(&d),
         floors,
     );
+    // A grenade kill's weapon, once kills are linked to the mp5's launches,
+    // counted with that weapon's kills of other players
+    grenades::tell_grenades(&mut kills, &context.held);
+    for k in &kills {
+        let other = k.cause == context::KillCause::PlayerOther;
+        if let (true, Some(w)) = (other && k.weapon_name == "grenade", k.weapon) {
+            summary_of(&mut weapons, w).kills += 1;
+        }
+    }
+    weapons.sort_by_key(|w| w.weapon);
     let action_windows = action_windows(&kills, ACTION_WINDOW, ACTION_WINDOWS);
 
     context.roster.finish();

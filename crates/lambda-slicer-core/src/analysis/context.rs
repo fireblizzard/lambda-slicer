@@ -16,6 +16,7 @@
 use std::collections::BTreeMap;
 
 use super::accuracy::{Blood, Pose, TE_BLOODSPRITE, blood_origin};
+use super::grenades::Held;
 use crate::message::Message as Note;
 use serde::{Deserialize, Serialize};
 
@@ -694,6 +695,8 @@ pub struct Context {
     pub match_events: MatchEvents,
     /// Who plays, and the matches played
     pub roster: Roster,
+    /// What each player held, to tell a grenade's weapon
+    pub held: Held,
 }
 
 impl Context {
@@ -789,6 +792,7 @@ impl Context {
         self.motion.observe(d);
         self.resolve_deaths(loc, d);
         self.record_poses(loc, d);
+        self.held.observe(d, loc.playback_time());
         if let Message::TempEntity { kind, body } = &m.message
             && *kind == TE_BLOODSPRITE
             && let Some(origin) = blood_origin(body)
@@ -816,6 +820,7 @@ impl Context {
             self.places.clear();
             self.match_events.new_session();
             self.roster.new_session(loc.playback_time());
+            self.held.new_session();
             self.scores.clear();
 
             // Every part after the first starts with a change of map
