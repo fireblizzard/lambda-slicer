@@ -40,8 +40,8 @@ pub enum Tab {
 pub struct MatchList {
     pub sort: MatchSort,
     pub descending: bool,
-    /// Only matches recorded from their countdown to their end
-    pub complete_only: bool,
+    /// The statuses left out, none for every match
+    pub hidden: Vec<PartStatus>,
     /// Matches the filters find
     pub total: u64,
     pub pages: HashMap<usize, Vec<MatchRow>>,
@@ -55,7 +55,7 @@ impl Default for MatchList {
         Self {
             sort: MatchSort::Date,
             descending: true,
-            complete_only: false,
+            hidden: Vec::new(),
             total: 0,
             pages: HashMap::new(),
             selected: None,
@@ -65,8 +65,8 @@ impl Default for MatchList {
 
 impl MatchList {
     /// What the count depends on besides the demos' filters
-    pub fn order(&self) -> (MatchSort, bool, bool) {
-        (self.sort, self.descending, self.complete_only)
+    pub fn order(&self) -> (MatchSort, bool, Vec<PartStatus>) {
+        (self.sort, self.descending, self.hidden.clone())
     }
 }
 
@@ -151,8 +151,21 @@ impl MatchCol {
     }
 }
 
+/// The statuses shown once `status`'s box is ticked or cleared, as
+/// `hidden` leaves them out. The last one shown stays, as no match would
+/// be left
+fn status_toggled(hidden: &[PartStatus], status: PartStatus) -> Vec<PartStatus> {
+    let mut out = hidden.to_vec();
+    if let Some(at) = out.iter().position(|s| *s == status) {
+        out.remove(at);
+    } else if out.len() + 1 < PartStatus::ALL.len() {
+        out.push(status);
+    }
+    out
+}
+
 /// The messages naming `status` and saying what it means
-fn status_text(status: PartStatus) -> (&'static str, &'static str) {
+pub(super) fn status_text(status: PartStatus) -> (&'static str, &'static str) {
     match status {
         PartStatus::Complete => ("match-complete", "help-match-complete"),
         PartStatus::JoinedLate => ("match-joined-late", "help-match-joined-late"),
@@ -169,6 +182,44 @@ fn descending_first(sort: MatchSort) -> bool {
 }
 
 impl LibraryView {
+    /// The statuses to show, as a list that opens with a box to tick for
+    /// each and stays open while they are ticked
+    pub(super) fn status_filter(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool) {
+        let ctx = ui.ctx().clone();
+        let t = |id: &str| text::widget_text(&ctx, &catalog.text(id), rtl, None, Look::Plain);
+        let hidden = self.matches.hidden.clone();
+
+        // Every status, or those shown by name
+        let shown = if hidden.is_empty() {
+            catalog.text("filter-status-all")
+        } else {
+            let mut names = Vec::new();
+            for status in PartStatus::ALL {
+                if !hidden.contains(&status) {
+                    names.push(catalog.text(status_text(status).0));
+                }
+            }
+            names.join(", ")
+        };
+
+        let mut toggled = None;
+        egui::ComboBox::from_id_salt("match statuses")
+            .selected_text(text::widget_text(&ctx, &shown, rtl, None, Look::Plain))
+            .width(ui.available_width())
+            .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+            .show_ui(ui, |ui| {
+                for status in PartStatus::ALL {
+                    let mut on = !hidden.contains(&status);
+                    if ui.checkbox(&mut on, t(status_text(status).0)).changed() {
+                        toggled = Some(status);
+                    }
+                }
+            });
+        if let Some(status) = toggled {
+            self.matches.hidden = status_toggled(&hidden, status);
+        }
+    }
+
     /// Show the matches rather than the demos
     pub fn show_matches(&mut self) {
         self.tab = Tab::Matches;
@@ -181,7 +232,7 @@ impl LibraryView {
                 descending: self.matches.descending,
                 ..self.query()
             },
-            complete_only: self.matches.complete_only,
+            hidden: self.matches.hidden.clone(),
             sort: self.matches.sort,
         }
     }
@@ -562,5 +613,21 @@ fn match_details(ui: &mut Ui, played: &MatchRow, catalog: &Catalog, rtl: bool) {
 
     for line in lines {
         text::label(ui, &line, rtl);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_status_box_shows_or_hides_it_and_the_last_one_stays() {
+        use PartStatus::{Complete, CutOff, FreePlay, Interrupted, JoinedLate};
+        assert_eq!(status_toggled(&[], FreePlay), [FreePlay]);
+        assert_eq!(status_toggled(&[FreePlay, CutOff], FreePlay), [CutOff]);
+
+        // Complete alone is shown, and clearing it leaves it shown
+        let others = [JoinedLate, Interrupted, CutOff, FreePlay];
+        assert_eq!(status_toggled(&others, Complete), others);
     }
 }

@@ -19,6 +19,7 @@ use eframe::egui::{
 use egui_extras::{Column, TableBuilder};
 use fluent_bundle::FluentValue;
 use lambda_slicer_core::analysis::context::Scoreboard;
+use lambda_slicer_core::analysis::parts::PartStatus;
 use lambda_slicer_core::analysis::weapons::Weapon;
 use lambda_slicer_core::library::cache::{
     Cache, FileQuery, FileRow, KillQuery, LibraryStats, MatchSort, Sort,
@@ -243,6 +244,22 @@ impl Default for Filters {
             players: (0, MAX_PLAYERS),
             teams: (0, MAX_TEAMS),
         }
+    }
+}
+
+/// The point of view after its `toggle` is clicked, `Playing` or `Mostly`,
+/// while it is `now`. Both on is every demo. Turning one off leaves the
+/// other's demos alone, and the last one on stays on, as nothing would be
+/// left
+fn toggled(now: Spectating, toggle: Spectating) -> Spectating {
+    let other = match toggle {
+        Spectating::Playing => Spectating::Mostly,
+        _ => Spectating::Playing,
+    };
+    match now {
+        Spectating::Any => other,
+        n if n == other => Spectating::Any,
+        n => n,
     }
 }
 
@@ -549,7 +566,7 @@ struct Applied {
     filters: Filters,
     sort: Sort,
     descending: bool,
-    matches: (MatchSort, bool, bool),
+    matches: (MatchSort, bool, Vec<PartStatus>),
 }
 
 pub struct LibraryView {
@@ -815,8 +832,8 @@ impl LibraryView {
 
     /// How many filters are on, with the matches' own on their `tab`
     fn active(&self, tab: Tab) -> usize {
-        let complete_only = tab == Tab::Matches && self.matches.complete_only;
-        self.filters.active() + usize::from(complete_only)
+        let statuses = tab == Tab::Matches && !self.matches.hidden.is_empty();
+        self.filters.active() + usize::from(statuses)
     }
 
     /// How many rows `tab` lists
@@ -886,7 +903,7 @@ impl LibraryView {
                     let reset = widgets::Button::new(None, t("filter-clear"), Variant::Ghost, rtl);
                     if ui.add(reset).clicked() {
                         self.filters = Filters::default();
-                        self.matches.complete_only = false;
+                        self.matches.hidden.clear();
                     }
                 });
             }
@@ -925,23 +942,34 @@ impl LibraryView {
             widgets::help(ui, &catalog.text("help-pov"), rtl);
         });
 
-        let choices = [
-            (Spectating::Any, "pov-any"),
+        // Two toggles, both on for every demo
+        let spectating = self.filters.spectating;
+        let toggles = [
             (Spectating::Playing, "pov-playing"),
             (Spectating::Mostly, "pov-spectating"),
         ];
         layout::row(ui, rtl, |ui| {
             let spacing = ui.spacing().item_spacing.x;
-            let width = (ui.available_width() - spacing * 2.) / 3.;
-            for (choice, id) in choices {
-                let chosen = self.filters.spectating == choice;
-                let button = egui::Button::selectable(chosen, t(id)).min_size(Vec2::new(width, 0.));
+            let width = (ui.available_width() - spacing) / 2.;
+            for (toggle, id) in toggles {
+                let on = spectating == Spectating::Any || spectating == toggle;
+                let button = egui::Button::selectable(on, t(id)).min_size(Vec2::new(width, 0.));
                 if ui.add(button).clicked() {
-                    self.filters.spectating = choice;
+                    self.filters.spectating = toggled(spectating, toggle);
                 }
             }
         });
         ui.add_space(theme::GAP_M);
+
+        // How much of each match was recorded, for the matches alone
+        if tab == Tab::Matches {
+            layout::row(ui, rtl, |ui| {
+                widgets::section_title(ui, &catalog.text("filter-status"), rtl);
+                widgets::help(ui, &catalog.text("help-status-column"), rtl);
+            });
+            self.status_filter(ui, catalog, rtl);
+            ui.add_space(theme::GAP_M);
+        }
 
         // Quality
         widgets::section_title(ui, &catalog.text("filters-quality"), rtl);
@@ -1014,12 +1042,6 @@ impl LibraryView {
             ui.checkbox(&mut self.filters.midair, t("filter-midair"));
             widgets::help(ui, &catalog.text("help-midair-filter"), rtl);
         });
-        if tab == Tab::Matches {
-            layout::row(ui, rtl, |ui| {
-                ui.checkbox(&mut self.matches.complete_only, t("filter-complete"));
-                widgets::help(ui, &catalog.text("help-complete-filter"), rtl);
-            });
-        }
         ui.add_space(theme::GAP_M);
 
         // Recorded, both bounds inclusive
@@ -2022,6 +2044,17 @@ mod tests {
             Some(("50 : 44".into(), 2))
         );
         assert_eq!(compact_score(&board(&[3, -1])), Some(("3 : -1".into(), 0)));
+    }
+
+    #[test]
+    fn point_of_view_toggles_keep_one_on_at_least() {
+        use Spectating::{Any, Mostly, Playing};
+        assert_eq!(toggled(Any, Playing), Mostly);
+        assert_eq!(toggled(Any, Mostly), Playing);
+        assert_eq!(toggled(Mostly, Playing), Any);
+        assert_eq!(toggled(Playing, Mostly), Any);
+        assert_eq!(toggled(Playing, Playing), Playing);
+        assert_eq!(toggled(Mostly, Mostly), Mostly);
     }
 
     #[test]

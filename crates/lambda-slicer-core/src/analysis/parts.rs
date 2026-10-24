@@ -32,6 +32,15 @@ pub enum PartStatus {
 }
 
 impl PartStatus {
+    /// Every status, in the order they are listed
+    pub const ALL: [PartStatus; 5] = [
+        Self::Complete,
+        Self::JoinedLate,
+        Self::Interrupted,
+        Self::CutOff,
+        Self::FreePlay,
+    ];
+
     /// The name the library keeps it by
     pub fn key(self) -> &'static str {
         match self {
@@ -45,14 +54,7 @@ impl PartStatus {
 
     /// The status the library kept by `key`
     pub fn from_key(key: &str) -> Option<Self> {
-        let all = [
-            Self::Complete,
-            Self::JoinedLate,
-            Self::Interrupted,
-            Self::CutOff,
-            Self::FreePlay,
-        ];
-        all.into_iter().find(|s| s.key() == key)
+        Self::ALL.into_iter().find(|s| s.key() == key)
     }
 }
 

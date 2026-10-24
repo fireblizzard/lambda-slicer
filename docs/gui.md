@@ -60,7 +60,9 @@ the match was recorded: Complete, Joined late (already on when the recording beg
 (another match started, the match was called off or the map changed) or Cut off (the recording
 ended first). Five minutes or more with no match on is listed as Free play. The filters work as
 they do for demos, with the map, length, kills, players and teams those of each match and a kill
-filter needing a kill in the match, and Complete matches only keeps just the complete ones.
+filter needing a kill in the match, and the Status filter under Point of view, a list with a box
+to tick for each status, all ticked at first, keeps just the matches whose status is ticked. The
+last status ticked stays ticked, as no match would be left.
 Clicking a match opens its demo at the start of the countdown, or where the recording began for
 a match already on. The list beside the open demo then lists matches too, and picking another
 match of the same demo jumps to it.

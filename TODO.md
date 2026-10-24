@@ -38,10 +38,10 @@
 - [ ] Add voice chat audio to hear what players were saying in the demo
 - [ ] Support room echoes
 - [ ] Add tripmine's and snark's effects
-- [x] Add a Matches tab for the library, which also includes Free play for parts of a demo that are long enough to be worth mentioning even if they were not in a match (agstart). Make this tab the default one for the library
+- [x] Add a Matches tab for the library, which also includes Free play for parts of a demo that are long enough to be worth mentioning even if they were not in a match (agstart)
 - [ ] Add filters for multikills (doublekill, triple, quadra, penta...) in a single shot, like a charged gauss shot through several players or an explosion (grenade, rocket, satchel, tripmine...) killing multiple thanks to the blast radius
 - [ ] Add a badge for killing sprees in the event list. The badge should be on the last kill before they died, or on the last one if they didn't die, with a setting for showing the badge when the streak is X (by default, 20 kills). So with the default setting, a player who does 22 kills and then dies would have a x22 badge on their last kill before dying, but if it was 9 kills instead then there would be no badge. When they die the count resets, so there can be potentially multiple events with this badge for the same player, e.g. if they got to do another 20 kill streak after dying. If the setting is changed while an event list is showing, then it should update immediately to recalculate the badges
-- [ ] Make a filter for explosion kills that happened when the players couldn't see each other. They could be in the PVS still but this is for things like throwing a grenade around a corner and killing someone behind the corner or a wall
+- [ ] Make a filter for explosion kills that happened when the players couldn't see each other. They could be in the PVS still but this is for things like throwing a grenade around a corner and killing someone behind the corner or a wall, like on `20220102_225243_pwrcore` at 00:34.144
 
 # Ideas for later
 - [ ] Add a Favourites tab and an Add to favourites or Remove from favourites option to the context menu of a demo. The tab should be right after the Filters button above the table, and for now there will be 2 tabs: All and Favourites. All is the normal table and Favourite will just show the favourited demos. Demo entries in the table should show a yellow star after the name of the demo, in the same column as the name, just at the end of the text

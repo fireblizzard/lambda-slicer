@@ -75,8 +75,8 @@ stuff like a zooming in or seeing players through walls, as long as the demo has
   it might have a specific naming convention, so you can filter by name "LLHL" for example. Then **sort** the table
   by intensity, or by accuracy, try different things.
 - The **Matches** tab lists every match on its own row, even when a demo has several, with its score,
-  players and whether the whole match was recorded. Tick _Complete matches only_ to skip the ones
-  cut short, and click a match to start watching from its countdown.
+  players and whether the whole match was recorded. Untick statuses in the _Status_ filter to skip the
+  ones cut short, and click a match to start watching from its countdown.
 - Then click on demos and look at the **event list**. It holds every kill, chat message, vote and match event in order, with
   the weapon, headshots, mid-air kills and the players' speeds. The list follows the demo as it plays, and clicking an
   event takes you there. Double clicking an event puts you a few seconds before the actual event, which is better most of

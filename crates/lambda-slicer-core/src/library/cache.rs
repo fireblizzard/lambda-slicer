@@ -510,8 +510,8 @@ pub struct MatchQuery {
     /// players and teams are each match's own, its kill conditions need a
     /// kill in the match, and its paging and order are the matches'
     pub files: FileQuery,
-    /// Only matches recorded from their countdown to their end
-    pub complete_only: bool,
+    /// The statuses left out, none for every match
+    pub hidden: Vec<PartStatus>,
     pub sort: MatchSort,
 }
 
@@ -1198,9 +1198,9 @@ impl Cache {
                 c.push(format!("{test} ?{}", args.len()));
             }
         }
-        if q.complete_only {
-            args.push(Box::new(PartStatus::Complete.key()));
-            c.push(format!("m.status = ?{}", args.len()));
+        for status in &q.hidden {
+            args.push(Box::new(status.key()));
+            c.push(format!("m.status != ?{}", args.len()));
         }
         (c.join(" AND "), args)
     }
@@ -1780,7 +1780,7 @@ mod tests {
         assert_eq!(c.library_stats().unwrap().matches, 4);
 
         let complete = MatchQuery {
-            complete_only: true,
+            hidden: vec![PartStatus::Interrupted, PartStatus::FreePlay],
             ..all.clone()
         };
         assert_eq!(found(&complete), [("a.dem".into(), 1), ("b.dem".into(), 0)]);
