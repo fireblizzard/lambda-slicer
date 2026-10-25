@@ -7,6 +7,7 @@
 //! whose schema differs is rebuilt, and an entry analysed with other versions
 //! is stale
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use rusqlite::functions::FunctionFlags;
@@ -26,7 +27,7 @@ use crate::message::Message;
 use crate::state::{DECODE_REPORT_SCHEMA, DecodeStatus};
 
 /// Layout of the tables below. A different value rebuilds the cache
-pub const CACHE_SCHEMA: i64 = 12;
+pub const CACHE_SCHEMA: i64 = 13;
 
 #[derive(Debug, thiserror::Error)]
 pub enum CacheError {
@@ -180,10 +181,13 @@ CREATE TABLE players(
     slot INTEGER NOT NULL,
     user_id INTEGER NOT NULL,
     incarnation INTEGER NOT NULL,
-    name TEXT NOT NULL
+    name TEXT NOT NULL,
+    steam_id INTEGER,
+    played INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX players_file ON players(file_id);
 CREATE INDEX players_name ON players(name);
+CREATE INDEX players_steam ON players(steam_id, file_id);
 CREATE TABLE weapons(
     file_id INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
     weapon TEXT NOT NULL,
@@ -387,6 +391,21 @@ pub fn fold(text: &str) -> String {
         .collect()
 }
 
+/// A player's name folded for searching, without AG's colour codes, a `^`
+/// and a digit, so `λchilorio` finds `^1λ^3chilorio`
+pub fn fold_name(name: &str) -> String {
+    let mut bare = String::with_capacity(name.len());
+    let mut chars = name.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '^' && chars.peek().is_some_and(char::is_ascii_digit) {
+            chars.next();
+        } else {
+            bare.push(c);
+        }
+    }
+    fold(&bare)
+}
+
 /// Library list order
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Sort {
@@ -456,6 +475,8 @@ pub struct FileQuery {
     pub every_map: bool,
     /// Text in any player's name, ignoring case
     pub player: Option<String>,
+    /// Players who all played in the demo, not only watched, by SteamID
+    pub steam_ids: Vec<i64>,
     /// Shortest duration in seconds, and fewest kills
     pub min_duration: Option<f32>,
     pub min_kills: Option<i64>,
@@ -579,6 +600,16 @@ impl MatchRow {
     pub fn source(&self) -> PathBuf {
         path_from_native(&self.native).unwrap_or_else(|| PathBuf::from(&self.path))
     }
+}
+
+/// A player told apart by their SteamID, across the library
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct PersonRow {
+    pub steam_id: i64,
+    /// Every name they played under, the one used in the most files first
+    pub names: Vec<String>,
+    /// How many files they played in
+    pub demos: i64,
 }
 
 /// A kill within the match `m`, by its session and times
@@ -728,6 +759,12 @@ impl Cache {
             1,
             FunctionFlags::SQLITE_UTF8 | FunctionFlags::SQLITE_DETERMINISTIC,
             |ctx| Ok(ctx.get::<Option<String>>(0)?.map(|t| fold(&t))),
+        )?;
+        conn.create_scalar_function(
+            "fold_name",
+            1,
+            FunctionFlags::SQLITE_UTF8 | FunctionFlags::SQLITE_DETERMINISTIC,
+            |ctx| Ok(ctx.get::<Option<String>>(0)?.map(|t| fold_name(&t))),
         )?;
 
         // Under a write lock, so connections opening a new cache at once
@@ -946,18 +983,30 @@ impl Cache {
         let id = tx.last_insert_rowid();
 
         if let Some(r) = r {
+            // Each name a player used, with their SteamID and whether they
+            // played in that session
+            let mut people = HashMap::new();
+            for person in &r.people {
+                let seat = (person.segment, person.slot, person.incarnation);
+                people.insert(seat, (person.steam_id, person.played));
+            }
             let mut players = tx.prepare(
-                "INSERT INTO players(file_id, segment, slot, user_id, incarnation, name)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                "INSERT INTO players(file_id, segment, slot, user_id, incarnation, name,
+                    steam_id, played)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             )?;
             for p in &r.players {
+                let seat = (p.segment, p.slot, p.incarnation);
+                let (steam_id, played) = people.get(&seat).copied().unwrap_or((None, false));
                 players.execute(params![
                     id,
                     p.segment,
                     p.slot,
                     p.user_id,
                     p.incarnation,
-                    p.name
+                    p.name,
+                    steam_id.map(|s| s as i64),
+                    played,
                 ])?;
             }
 
@@ -1081,6 +1130,60 @@ impl Cache {
         })
     }
 
+    /// Every player with a SteamID who played in a current file, the one in
+    /// the most files first, each with their names
+    pub fn people(&self) -> Result<Vec<PersonRow>, CacheError> {
+        let version = analysis_version();
+        let mut stmt = self.conn.prepare(
+            "SELECT p.steam_id, COUNT(DISTINCT p.file_id)
+             FROM players p JOIN files f ON f.id = p.file_id
+             WHERE f.version = ?1 AND p.played AND p.steam_id IS NOT NULL
+             GROUP BY p.steam_id",
+        )?;
+        let mut people: HashMap<i64, PersonRow> = HashMap::new();
+        let rows = stmt.query_map(params![version], |r| {
+            Ok(PersonRow {
+                steam_id: r.get(0)?,
+                names: Vec::new(),
+                demos: r.get(1)?,
+            })
+        })?;
+        for row in rows {
+            let row = row?;
+            people.insert(row.steam_id, row);
+        }
+
+        // Each name in how many files, and when it was last used
+        let mut stmt = self.conn.prepare(
+            "SELECT p.steam_id, p.name, COUNT(DISTINCT p.file_id), MAX(f.recorded_at)
+             FROM players p JOIN files f ON f.id = p.file_id
+             WHERE f.version = ?1 AND p.played AND p.steam_id IS NOT NULL
+             GROUP BY p.steam_id, p.name",
+        )?;
+        let mut names: HashMap<i64, Vec<(String, i64, Option<String>)>> = HashMap::new();
+        let rows = stmt.query_map(params![version], |r| {
+            Ok((r.get::<_, i64>(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
+        })?;
+        for row in rows {
+            let (steam_id, name, files, latest) = row?;
+            names
+                .entry(steam_id)
+                .or_default()
+                .push((name, files, latest));
+        }
+
+        // The name used in the most files first, the latest of a tie
+        let mut out = Vec::new();
+        for (steam_id, mut person) in people {
+            let mut used = names.remove(&steam_id).unwrap_or_default();
+            used.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| b.2.cmp(&a.2)));
+            person.names = used.into_iter().map(|(name, _, _)| name).collect();
+            out.push(person);
+        }
+        out.sort_by(|a, b| b.demos.cmp(&a.demos).then(a.steam_id.cmp(&b.steam_id)));
+        Ok(out)
+    }
+
     /// How many current files there are and their highest action score,
     /// for showing a filtered count against the whole and scaling intensity
     /// the same whatever is filtered
@@ -1191,12 +1294,16 @@ impl Cache {
             c.push(format!("instr(fold({column}), ?{}) > 0", args.len()));
         }
         if let Some(p) = q.player.as_deref().filter(|p| !p.is_empty()) {
-            args.push(Box::new(fold(p)));
+            args.push(Box::new(fold_name(p)));
             c.push(format!(
                 "EXISTS (SELECT 1 FROM players p WHERE p.file_id = f.id
-                  AND instr(fold(p.name), ?{}) > 0)",
+                  AND instr(fold_name(p.name), ?{}) > 0)",
                 args.len()
             ));
+        }
+        for steam_id in &q.steam_ids {
+            args.push(Box::new(*steam_id));
+            c.push(format!("EXISTS ({})", Self::played_in(args.len(), "1")));
         }
         if let Some(d) = q.min_duration {
             args.push(Box::new(d));
@@ -1266,6 +1373,15 @@ impl Cache {
         (c.join(" AND "), args)
     }
 
+    /// A query for the player whose SteamID is argument `arg` having played
+    /// in the file `f`, in a session meeting `within`
+    fn played_in(arg: usize, within: &str) -> String {
+        format!(
+            "SELECT 1 FROM players p WHERE p.file_id = f.id AND p.steam_id = ?{arg}
+              AND p.played AND {within}"
+        )
+    }
+
     /// The WHERE clause for `q` over `matches` aliased `m` joined to their
     /// `files` aliased `f`, with its arguments
     fn match_conditions(q: &MatchQuery) -> (String, Vec<Box<dyn ToSql>>) {
@@ -1279,6 +1395,7 @@ impl Cache {
         files.min_teams = None;
         files.max_teams = None;
         files.min_spree = None;
+        files.steam_ids.clear();
         let (conditions, mut args) = Self::conditions_with_kills(&files, KILL_IN_MATCH);
         let mut c = vec![conditions];
 
@@ -1300,6 +1417,13 @@ impl Cache {
                 args.push(Box::new(n));
                 c.push(format!("{test} ?{}", args.len()));
             }
+        }
+
+        // A player plays in a match when they played on its map
+        for steam_id in &f.steam_ids {
+            args.push(Box::new(*steam_id));
+            let played = Self::played_in(args.len(), "p.segment = m.segment");
+            c.push(format!("EXISTS ({played})"));
         }
 
         // A spree counts in the match it ended in
@@ -2062,5 +2186,122 @@ mod tests {
         let mut spree = all.clone();
         spree.files.min_spree = Some(4);
         assert_eq!(best(&spree), [("a.dem".into(), 1, Some(2), Some(5))]);
+    }
+
+    const NAZ: i64 = 76_561_198_012_844_340;
+    const WORRY: i64 = 76_561_198_027_094_322;
+
+    /// `name` in `segment` of the file at `path`, with `steam_id`, playing
+    /// or only watching
+    fn seat(c: &Cache, path: &str, segment: u32, name: &str, steam_id: i64, played: bool) {
+        c.conn
+            .execute(
+                "INSERT INTO players(file_id, segment, slot, user_id, incarnation, name, steam_id,
+                    played)
+                 SELECT id, ?2, 0, 0, 0, ?3, ?4, ?5 FROM files WHERE path = ?1",
+                params![path, segment, name, steam_id, played],
+            )
+            .unwrap();
+    }
+
+    #[test]
+    fn demos_are_found_by_every_player_chosen_who_played() {
+        let c = cache(&[
+            ("a.dem", None, None),
+            ("b.dem", None, None),
+            ("c.dem", None, None),
+        ]);
+        seat(&c, "a.dem", 0, "naz", NAZ, true);
+        seat(&c, "a.dem", 0, "Worry", WORRY, true);
+        seat(&c, "b.dem", 0, "naz", NAZ, true);
+        seat(&c, "b.dem", 0, "Worry", WORRY, false);
+        seat(&c, "c.dem", 0, "Worry", WORRY, true);
+        let names = |steam_ids: Vec<i64>| -> Vec<String> {
+            let q = FileQuery {
+                steam_ids,
+                limit: 10,
+                ..FileQuery::default()
+            };
+            c.query(&q).unwrap().into_iter().map(|f| f.path).collect()
+        };
+
+        // Worry only watched b.dem
+        assert_eq!(names(vec![NAZ, WORRY]), ["a.dem"]);
+        assert_eq!(names(vec![NAZ]), ["a.dem", "b.dem"]);
+        assert_eq!(names(vec![WORRY]), ["a.dem", "c.dem"]);
+    }
+
+    #[test]
+    fn a_match_has_the_players_who_played_on_its_map() {
+        let c = cache(&[("a.dem", None, None)]);
+        for (ordinal, segment) in [(0, 0), (1, 1)] {
+            c.conn
+                .execute(
+                    "INSERT INTO matches(file_id, ordinal, segment, status, opens_at, start, end,
+                        length, map, players, teams, kills)
+                     SELECT id, ?1, ?2, 'complete', 0, 0, 100, 100, 'boot_camp', 2, 0, 3
+                     FROM files WHERE path = 'a.dem'",
+                    params![ordinal, segment],
+                )
+                .unwrap();
+        }
+        seat(&c, "a.dem", 0, "naz", NAZ, true);
+        seat(&c, "a.dem", 0, "Worry", WORRY, true);
+        seat(&c, "a.dem", 1, "Worry", WORRY, true);
+
+        let q = MatchQuery {
+            files: FileQuery {
+                steam_ids: vec![NAZ, WORRY],
+                limit: 10,
+                ..FileQuery::default()
+            },
+            ..MatchQuery::default()
+        };
+        let rows = c.query_matches(&q).unwrap();
+        assert_eq!(c.count_matches(&q).unwrap(), 1);
+        assert_eq!(rows[0].ordinal, 0);
+    }
+
+    #[test]
+    fn a_name_is_found_without_its_colour_codes() {
+        let c = cache(&[("a.dem", None, None), ("b.dem", None, None)]);
+        seat(&c, "a.dem", 0, "^1λ^3chilorio", NAZ, true);
+        seat(&c, "b.dem", 0, "naz", NAZ, true);
+        let names = |player: &str| -> Vec<String> {
+            let q = FileQuery {
+                player: Some(player.into()),
+                limit: 10,
+                ..FileQuery::default()
+            };
+            c.query(&q).unwrap().into_iter().map(|f| f.path).collect()
+        };
+
+        assert_eq!(names("λchilorio"), ["a.dem"]);
+        assert_eq!(names("ΛCHIL"), ["a.dem"]);
+        assert_eq!(names("^1λ"), ["a.dem"]);
+    }
+
+    #[test]
+    fn people_are_named_by_the_name_they_used_most() {
+        let c = cache(&[
+            ("a.dem", None, None),
+            ("b.dem", None, None),
+            ("c.dem", None, None),
+        ]);
+        seat(&c, "a.dem", 0, "-<[ATK]>- naz", NAZ, true);
+        seat(&c, "b.dem", 0, "-<[ATK]>-naz", NAZ, true);
+        seat(&c, "c.dem", 0, "-<[ATK]>-naz", NAZ, true);
+        seat(&c, "c.dem", 0, "Worry", WORRY, false);
+
+        // Someone who only watched is nobody to choose
+        let people = c.people().unwrap();
+        assert_eq!(
+            people,
+            [PersonRow {
+                steam_id: NAZ,
+                names: vec!["-<[ATK]>-naz".into(), "-<[ATK]>- naz".into()],
+                demos: 3,
+            }]
+        );
     }
 }

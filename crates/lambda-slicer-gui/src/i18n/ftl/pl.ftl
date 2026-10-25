@@ -102,6 +102,15 @@ path-show-failed = Nie udało się otworzyć folderu ({ $detail }). Skopiuj loka
 filter-search = Szukaj w nazwach plików i folderów
 filter-map = Mapa
 filter-player = Gracz
+help-player-filter = Wpisz część nazwy, aby znaleźć dema, w których ktoś jej użył. Wybierz gracza z listy, aby znaleźć dema, w których grał pod dowolną nazwą, rozpoznawany po SteamID. Wszyscy wybrani gracze muszą grać, a nie tylko oglądać. Boty i niektóre starsze dema nie mają SteamID, więc takich graczy da się znaleźć tylko po nazwie.
+player-remove = Usuń z filtra
+player-also = także { $names }
+player-demos = { $count ->
+    [one] { $count } demo
+    [few] { $count } dema
+    [many] { $count } dem
+   *[other] { $count } dema
+}
 filter-weapon-any = Dowolna broń
 filter-min-minutes = Co najmniej (minuty)
 filter-min-kills = Co najmniej (zabójstwa)

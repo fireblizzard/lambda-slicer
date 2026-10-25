@@ -15,6 +15,10 @@
 //! server sent them before. Such a session's game is taken for a match
 //! already on from its first kill, and kept only when it plays out to the
 //! intermission
+//!
+//! Each player's SteamID comes from the `*sid` their userinfo carries, which
+//! bots and some older demos lack. Someone counted as playing at any moment
+//! played in that session, not only watched
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -24,6 +28,12 @@ use crate::state::{Decoder, userinfo_value};
 
 /// The userinfo key a spectator proxy carries
 const PROXY_KEY: &[u8] = b"*hltv";
+
+/// The userinfo key with a player's SteamID, as a 64-bit number
+const STEAM_ID_KEY: &[u8] = b"*sid";
+
+/// The lowest 64-bit SteamID of a person's account
+const STEAM_ID_LEAST: u64 = 76_561_197_960_265_728;
 
 /// The count `Countdown` shows while it waits for players
 const WAITING: i8 = 50;
@@ -82,6 +92,25 @@ pub struct Moment {
     pub counted: Counted,
 }
 
+/// A player of one session, by their slot and incarnation in it
+pub type Seat = (u32, u8, u32);
+
+/// What is known of a player of one session
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Seen {
+    pub steam_id: Option<u64>,
+    /// Counted as playing at some moment, not only watching
+    pub played: bool,
+}
+
+/// The SteamID in `info`, none without one or with one that is no
+/// person's account
+pub fn steam_id(info: &[u8]) -> Option<u64> {
+    let value = userinfo_value(info, STEAM_ID_KEY)?;
+    let id: u64 = std::str::from_utf8(&value).ok()?.parse().ok()?;
+    (id >= STEAM_ID_LEAST).then_some(id)
+}
+
 /// Who plays and which matches were played, followed through the decode
 #[derive(Debug, Default)]
 pub struct Roster {
@@ -107,13 +136,24 @@ pub struct Roster {
     pub history: Vec<Moment>,
     /// The most players and teams at any moment
     pub any_moment: Counted,
+    /// Every player seen, with their SteamID and whether they played
+    pub seen: BTreeMap<Seat, Seen>,
 }
 
 /// The players and teams in `d`'s slots now, with `teams` by entity. In a
 /// game with teams only those on one play, as a player still coming in or
 /// left out of the teams has none
 fn count(d: &Decoder, spectators: &BTreeSet<u8>, teams: &BTreeMap<u8, String>) -> Counted {
-    let (mut players, mut on_teams) = (0, 0);
+    playing(d, spectators, teams).1
+}
+
+/// The slots of the players [`count`] counts, and the count
+fn playing(
+    d: &Decoder,
+    spectators: &BTreeSet<u8>,
+    teams: &BTreeMap<u8, String>,
+) -> (Vec<u8>, Counted) {
+    let (mut players, mut on_teams) = (Vec::new(), Vec::new());
     let mut names: BTreeSet<String> = BTreeSet::new();
     for (&slot, player) in &d.players {
         let entity = slot.wrapping_add(1);
@@ -122,17 +162,19 @@ fn count(d: &Decoder, spectators: &BTreeSet<u8>, teams: &BTreeMap<u8, String>) -
             continue;
         }
 
-        players += 1;
+        players.push(slot);
         if let Some(team) = teams.get(&entity).filter(|t| !t.is_empty()) {
-            on_teams += 1;
+            on_teams.push(slot);
             names.insert(team.to_lowercase());
         }
     }
 
-    Counted {
-        players: if names.is_empty() { players } else { on_teams },
+    let slots = if names.is_empty() { players } else { on_teams };
+    let counted = Counted {
+        players: slots.len() as u32,
         teams: names.len() as u32,
-    }
+    };
+    (slots, counted)
 }
 
 impl Roster {
@@ -283,8 +325,20 @@ impl Roster {
     /// Who plays may have changed at `time`, as a player came, went or was
     /// renamed
     pub fn changed(&mut self, d: &Decoder, time: f32, teams: &BTreeMap<u8, String>) {
-        let now = count(d, &self.spectators, teams);
+        let (slots, now) = playing(d, &self.spectators, teams);
         self.any_moment = self.any_moment.most(now);
+
+        // Everyone in the slots, and who of them plays
+        for (&slot, player) in &d.players {
+            let seat = (d.segment, slot, player.incarnation);
+            let seen = self.seen.entry(seat).or_default();
+            if let Some(id) = steam_id(&player.info) {
+                seen.steam_id = Some(id);
+            }
+            if slots.contains(&slot) {
+                seen.played = true;
+            }
+        }
 
         let last = self.history.last();
         if last.is_none_or(|m| m.segment != d.segment || m.counted != now) {
@@ -388,6 +442,17 @@ mod tests {
         roster.intermission(120.);
         roster.finish();
         assert_eq!(roster.matches.len(), 1);
+    }
+
+    #[test]
+    fn a_steam_id_is_read_only_when_it_is_a_persons_account() {
+        let info = br"\name\-<[ATK]>-naz\*sid\76561198012844340\model\blue";
+        assert_eq!(steam_id(info), Some(76_561_198_012_844_340));
+
+        // Cut short, a short number, or none at all, as for a bot
+        assert_eq!(steam_id(br"\name\x\*sid\76561"), None);
+        assert_eq!(steam_id(br"\name\x\*sid\912063200"), None);
+        assert_eq!(steam_id(br"\name\Bot 8720\model\gordon"), None);
     }
 
     #[test]

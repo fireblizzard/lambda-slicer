@@ -64,6 +64,15 @@ anyone, the one chosen clicked again turning it off, and opening a demo then tur
 refinement in its events. Spree of at least keeps demos where a player killed that many in a row,
 0 for any.
 
+Player finds demos where anyone used a name with the typed text in it. While it has focus it also
+offers the library's players who used such a name, those in the most demos first, each under the
+name they used most with a couple of their other names and how many demos they played in. Picking
+one, with a click or the arrow keys and Enter, adds them as a button above the field, and the list
+keeps the demos they played in under any name, as their SteamID tells them apart. Several players
+picked must all have played, not only watched, and on the Matches tab played on the match's map.
+Their button takes them off again. Bots and some older demos have no SteamID, so those players can
+only be found by name.
+
 Right-clicking a demo offers Show in folder, Add to favourites or Remove from favourites, and Hide
 or Unhide, its row lit while the menu is open. A match's row offers the same for the match's demo. A favourite has a yellow star after its name, in the table, the list
 beside an open demo and the Matches tab, and the star beside an open demo's Details button makes it

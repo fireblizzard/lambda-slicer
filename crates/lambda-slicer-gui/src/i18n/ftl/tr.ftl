@@ -78,6 +78,13 @@ path-show-failed = Klasör açılamadı ({ $detail }). Bunun yerine dosya konumu
 filter-search = Dosya adlarında ve klasörlerde ara
 filter-map = Harita
 filter-player = Oyuncu
+help-player-filter = Herhangi birinin kullandığı bir adın geçtiği demoları bulmak için adın bir kısmını yazın. Bir oyuncunun hangi adla olursa olsun oynadığı demoları bulmak için listeden onu seçin; oyuncular SteamID’lerine göre ayırt edilir. Seçilen oyuncuların hepsi yalnızca izlememiş, oynamış olmalı. Botların ve bazı eski demoların SteamID’si yoktur, bu yüzden bu oyuncular yalnızca adlarıyla bulunabilir.
+player-remove = Filtreden çıkar
+player-also = ayrıca { $names }
+player-demos = { $count ->
+    [one] { $count } demo
+   *[other] { $count } demo
+}
 filter-weapon-any = Herhangi bir silah
 filter-min-minutes = En az (dakika)
 filter-min-kills = En az (öldürme)

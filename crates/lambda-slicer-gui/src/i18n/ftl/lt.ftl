@@ -102,6 +102,15 @@ path-show-failed = Nepavyko atidaryti aplanko ({ $detail }). Nukopijuokite failo
 filter-search = Ieškoti failų pavadinimuose ir aplankuose
 filter-map = Žemėlapis
 filter-player = Žaidėjas
+help-player-filter = Įveskite vardo dalį, kad rastumėte įrašus, kuriuose kas nors jį naudojo. Pasirinkite žaidėją iš sąrašo, kad rastumėte įrašus, kuriuose jis žaidė bet kokiu vardu, atpažįstamas pagal SteamID. Visi pasirinkti žaidėjai turi būti žaidę, ne tik stebėję. Botai ir kai kurie senesni įrašai neturi SteamID, todėl tokius žaidėjus galima rasti tik pagal vardą.
+player-remove = Pašalinti iš filtro
+player-also = taip pat { $names }
+player-demos = { $count ->
+    [one] { $count } įrašas
+    [few] { $count } įrašai
+    [many] { $count } įrašo
+   *[other] { $count } įrašų
+}
 filter-weapon-any = Bet kuris ginklas
 filter-min-minutes = Bent (minučių)
 filter-min-kills = Bent (nužudymų)

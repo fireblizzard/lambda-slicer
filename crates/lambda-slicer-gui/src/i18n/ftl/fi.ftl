@@ -90,6 +90,13 @@ path-show-failed = Kansiota ei voitu avata ({ $detail }). Kopioi tiedoston sijai
 filter-search = Hae tiedostojen ja kansioiden nimistä
 filter-map = Kartta
 filter-player = Pelaaja
+help-player-filter = Kirjoita osa nimestä löytääksesi demot, joissa joku käytti sitä. Valitse pelaaja listasta löytääksesi demot, joissa hän pelasi millä tahansa nimellä, tunnistettuna SteamID:n perusteella. Kaikkien valittujen pelaajien täytyy olla pelanneet, ei vain katsoneet. Boteilla ja joillakin vanhemmilla demoilla ei ole SteamID:tä, joten nämä pelaajat löytyvät vain nimellä.
+player-remove = Poista suodattimesta
+player-also = myös { $names }
+player-demos = { $count ->
+    [one] { $count } demo
+   *[other] { $count } demoa
+}
 filter-weapon-any = Mikä tahansa ase
 filter-min-minutes = Vähintään (minuuttia)
 filter-min-kills = Vähintään (tappoa)

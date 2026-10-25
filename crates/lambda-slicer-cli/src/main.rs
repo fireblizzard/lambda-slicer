@@ -198,6 +198,10 @@ enum Command {
         /// A player name containing this text
         #[arg(long)]
         player: Option<String>,
+        /// A player who played, by SteamID, such as 76561198012844340.
+        /// Repeated, every one of them
+        #[arg(long = "steam-id")]
+        steam_ids: Vec<i64>,
         /// Spectating at least this fraction of playback, 0 to 1
         #[arg(long)]
         min_spectating: Option<f64>,
@@ -566,6 +570,7 @@ fn run() -> Result<ExitCode> {
             to,
             map,
             player,
+            steam_ids,
             min_spectating,
             max_spectating,
             weapon_used,
@@ -597,6 +602,7 @@ fn run() -> Result<ExitCode> {
             let query = FileQuery {
                 map,
                 player,
+                steam_ids,
                 min_spectating,
                 max_spectating,
                 weapon_used,

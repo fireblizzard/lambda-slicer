@@ -35,7 +35,7 @@ file. It uses WAL so workers read while the writer stores.
 | Table | Holds |
 |---|---|
 | `files` | path as text and in its native bytes, size, modification time, identity, quick and full hashes, analysis version, status, error text with its code and arguments ([messages](messages.md)), recording date and its source, final score, header facts, recording kind, recorder, playback and spectating fraction, shot, unknown-shot and kill counts, best action score, coverage JSON |
-| `players` | every player identity seen, once per name |
+| `players` | every player identity seen, once per name, with their SteamID and whether they played rather than only watched |
 | `weapons` | shots, kills, records and intervals per weapon |
 | `kills` | each kill with its weapon string, profile weapon, linked shot weapon, cause, names, airborne flags, horizontal speeds, distance and flight time |
 | `windows` | the best action windows with their sides and weapons |
@@ -57,7 +57,8 @@ and check them against the source, independently of the cache.
 
 `query` lists current files matching every condition given, ordered by path:
 
-- `--map TEXT`, `--player TEXT` (any name the player used)
+- `--map TEXT`, `--player TEXT` (any name the player used), `--steam-id ID` (a player who played,
+  by SteamID, repeated for several who all played)
 - `--min-spectating F`, `--max-spectating F` (fraction of playback, 0 to 1)
 - `--weapon-used NAME` (at least one shot, profile name)
 - `--kill-weapon NAME`, `--victim-airborne`, `--killer-airborne`, `--min-speed U`. A file

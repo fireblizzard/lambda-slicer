@@ -40,7 +40,7 @@
 - [ ] Add tripmine's and snark's effects
 - [x] Add a Matches tab for the library, which also includes Free play for parts of a demo that are long enough to be worth mentioning even if they were not in a match (agstart)
 - [x] Add filters for multikills (doublekill, triple, quadra, penta...) in a single shot, like a charged gauss shot through several players or an explosion (grenade, rocket, satchel, tripmine...) killing multiple thanks to the blast radius
-- [x] Add a badge for killing sprees in the event list. The badge should be on the last kill before they died, or on the last one if they didn't die, with a setting for showing the badge when the streak is X (by default, 20 kills). So with the default setting, a player who does 22 kills and then dies would have a x22 badge on their last kill before dying, but if it was 9 kills instead then there would be no badge. When they die the count resets, so there can be potentially multiple events with this badge for the same player, e.g. if they got to do another 20 kill streak after dying. If the setting is changed while an event list is showing, then it should update immediately to recalculate the badges
+- [x] Add a badge for killing sprees in the event list. The badge should be on the last kill before they died, or on the last one if they didn't die, with a setting for showing the badge when the streak is X (by default, 10 kills). So with the default setting, a player who does 22 kills and then dies would have a x22 badge on their last kill before dying, but if it was 9 kills instead then there would be no badge. When they die the count resets, so there can be potentially multiple events with this badge for the same player, e.g. if they got to do another 10 kill streak after dying. If the setting is changed while an event list is showing, then it should update immediately to recalculate the badges
 - [ ] Make a filter for explosion kills that happened when the players couldn't see each other. They could be in the PVS still but this is for things like throwing a grenade around a corner and killing someone behind the corner or a wall, like on `20220102_225243_pwrcore` at 00:34.144
 - [x] Add a Favourites tab and an Add to favourites or Remove from favourites option to the context menu of a demo. The tab should be right after the Filters button above the table, and for now there will be 2 tabs: All and Favourites. All is the normal table and Favourite will just show the favourited demos. Demo entries in the table should show a yellow star after the name of the demo, in the same column as the name, just at the end of the text
 - [x] Add Hide/Unhide to the context menu of a demo, and a "Hidden" tab like All/Favourites but for hidden demos. Hidden demos should not show up when we're in the All tab. They can appear in the Favourites tab if they're favourited, although that'd be weird. And they'll always show up when we're in the Hidden tab as long as the user doesn't unhide them
@@ -49,6 +49,7 @@
 - [ ] Show ping and loss on the scoreboard in the upper right panel
 - [ ] Add library filter for moments where a player is going at 1000 ups (customizable speed) for longer than 10s (customizable duration)
 - [ ] Add support for HLKZ, showing things like run times in a demo, jump/strafing stats and so on
+- [x] Find demos of players by name or SteamID
 
 # Ideas for later
 - [ ] Add a crosshair editor in settings that it's then used for the demo viewer
@@ -58,7 +59,6 @@
 - [ ] Add ability to make volumetric triggers to time segments for HLKZ
 - [ ] Support Opposing Force demos
 - [ ] Support Blue Shift demos
-- [ ] Find demos of players by name or SteamID
 - [ ] Find chat messages across the whole library, like words or parts of a message, with filters like sender and map
 - [ ] Improve the match highlights (top moments), accounting for things that require skill like complicated kills, headshots, stunts, trickshots, etc.
 - [ ] Add support for Xash3D

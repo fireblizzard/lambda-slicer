@@ -22,7 +22,7 @@ use lambda_slicer_core::analysis::context::Scoreboard;
 use lambda_slicer_core::analysis::parts::PartStatus;
 use lambda_slicer_core::analysis::weapons::Weapon;
 use lambda_slicer_core::library::cache::{
-    Cache, FileQuery, FileRow, KillQuery, LibraryStats, MatchSort, Sort,
+    Cache, FileQuery, FileRow, KillQuery, LibraryStats, MatchSort, PersonRow, Sort,
 };
 use lambda_slicer_core::message::{Coded, Message};
 use lambda_slicer_core::timeline::time::DemoTime;
@@ -35,9 +35,11 @@ use crate::theme;
 use crate::widgets::{self, AnalysisState, Icon, IconButton, Variant};
 
 mod matches;
+mod players;
 
 use matches::MatchList;
 pub use matches::Tab;
+use players::Chosen;
 
 /// A date bound with a checkbox to use it, its fields in the locale's order.
 /// The checkbox and the fields wrap together as one group
@@ -207,7 +209,10 @@ pub enum Spectating {
 pub struct Filters {
     pub text: String,
     pub map: String,
+    /// Text in any name a player used
     pub player: String,
+    /// Players who must all have played, picked by their SteamID
+    pub players_chosen: Vec<Chosen>,
     pub weapon: Option<Weapon>,
     pub min_minutes: f32,
     /// Fewest kills, 0 for any
@@ -239,6 +244,7 @@ impl Default for Filters {
             text: String::new(),
             map: String::new(),
             player: String::new(),
+            players_chosen: Vec::new(),
             weapon: None,
             min_minutes: 0.,
             min_kills: 0,
@@ -305,6 +311,7 @@ impl Filters {
         }
 
         let others = [
+            !self.players_chosen.is_empty(),
             self.weapon.is_some(),
             self.min_minutes > 0.,
             self.min_kills > 0,
@@ -340,6 +347,7 @@ impl Filters {
             text: text(&self.text),
             map: text(&self.map),
             player: text(&self.player),
+            steam_ids: self.players_chosen.iter().map(|c| c.steam_id).collect(),
             weapon_used: self.weapon.map(|w| w.name().to_string()),
             min_duration: (self.min_minutes > 0.).then_some(self.min_minutes * 60.),
             min_kills: (self.min_kills > 0).then_some(i64::from(self.min_kills)),
@@ -751,6 +759,13 @@ pub struct LibraryView {
     last_rtl: Option<bool>,
     /// Why a demo's folder could not be shown, for the app to tell
     pub path_notice: Option<String>,
+    /// The library's players for the Player filter to offer, none until
+    /// first needed or after a scan stored more demos
+    people: Option<Vec<PersonRow>>,
+    /// The player offered that Enter picks, and that some were offered as
+    /// the field was last drawn
+    highlighted: usize,
+    offering: bool,
 }
 
 impl LibraryView {
@@ -792,6 +807,9 @@ impl LibraryView {
             max_scroll_x: None,
             reach_leading: false,
             last_rtl: None,
+            people: None,
+            highlighted: 0,
+            offering: false,
         }
     }
 
@@ -986,6 +1004,9 @@ impl LibraryView {
         if !changed && !due {
             return;
         }
+        if due {
+            self.people = None;
+        }
 
         let query = self.query();
         let count = self.cache().map(|c| c.count(&query));
@@ -1137,17 +1158,15 @@ impl LibraryView {
             }
         });
 
-        let fields = [
-            (&mut self.filters.text, "filter-search"),
-            (&mut self.filters.player, "filter-player"),
-            (&mut self.filters.map, "filter-map"),
-        ];
-        for (value, hint) in fields {
-            let field = egui::TextEdit::singleline(value)
-                .hint_text(t(hint))
-                .desired_width(f32::INFINITY);
-            ui.add(field);
-        }
+        let search = egui::TextEdit::singleline(&mut self.filters.text)
+            .hint_text(t("filter-search"))
+            .desired_width(f32::INFINITY);
+        ui.add(search);
+        self.player_field(ui, catalog, rtl);
+        let map = egui::TextEdit::singleline(&mut self.filters.map)
+            .hint_text(t("filter-map"))
+            .desired_width(f32::INFINITY);
+        ui.add(map);
 
         let weapon = self
             .filters

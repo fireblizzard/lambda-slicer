@@ -91,6 +91,13 @@ path-show-failed = The folder could not be opened ({ $detail }). Copy the file l
 filter-search = Search file names and folders
 filter-map = Map
 filter-player = Player
+help-player-filter = Type part of a name to find demos where anyone used it. Pick a player from the list to find the demos they played in under any name, told apart by their SteamID. Players picked must all have played, not only watched. Bots and some older demos have no SteamID, so those players can only be found by name.
+player-remove = Take off the filter
+player-also = also { $names }
+player-demos = { $count ->
+    [one] { $count } demo
+   *[other] { $count } demos
+}
 filter-weapon-any = Any weapon
 filter-min-minutes = At least (minutes)
 filter-min-kills = At least (kills)

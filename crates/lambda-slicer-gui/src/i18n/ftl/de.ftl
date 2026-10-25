@@ -90,6 +90,13 @@ path-show-failed = Der Ordner ließ sich nicht öffnen ({ $detail }). Kopiere st
 filter-search = Dateinamen und Ordner durchsuchen
 filter-map = Map
 filter-player = Spieler
+help-player-filter = Tippe einen Teil eines Namens ein, um Demos zu finden, in denen jemand ihn benutzt hat. Wähle einen Spieler aus der Liste, um die Demos zu finden, in denen er unter irgendeinem Namen gespielt hat, erkannt an seiner SteamID. Alle gewählten Spieler müssen mitgespielt und nicht nur zugeschaut haben. Bots und manche ältere Demos haben keine SteamID, daher findet man diese Spieler nur über den Namen.
+player-remove = Aus dem Filter nehmen
+player-also = auch { $names }
+player-demos = { $count ->
+    [one] { $count } Demo
+   *[other] { $count } Demos
+}
 filter-weapon-any = Beliebige Waffe
 filter-min-minutes = Mindestens (Minuten)
 filter-min-kills = Mindestens (Abschüsse)

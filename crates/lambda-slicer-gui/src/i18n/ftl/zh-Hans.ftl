@@ -76,6 +76,12 @@ path-show-failed = 无法打开文件夹（{ $detail }）。请改为复制文�
 filter-search = 搜索文件名和文件夹
 filter-map = 地图
 filter-player = 玩家
+help-player-filter = 输入名字的一部分，查找有人用过这个名字的录像。从列表中选择一名玩家，查找他以任何名字参与游戏的录像，按 SteamID 区分玩家。选择的玩家必须都参与了游戏，而不只是观战。机器人和一些较早的录像没有 SteamID，所以这些玩家只能按名字查找。
+player-remove = 从筛选中移除
+player-also = 也叫 { $names }
+player-demos = { $count ->
+   *[other] { $count } 个录像
+}
 filter-weapon-any = 任意武器
 filter-min-minutes = 至少（分钟）
 filter-min-kills = 至少（击杀）

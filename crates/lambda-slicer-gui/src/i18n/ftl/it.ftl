@@ -96,6 +96,14 @@ path-show-failed = Impossibile aprire la cartella ({ $detail }). Copia invece la
 filter-search = Cerca nei nomi dei file e nelle cartelle
 filter-map = Mappa
 filter-player = Giocatore
+help-player-filter = Scrivi parte di un nome per trovare le demo in cui qualcuno l’ha usato. Scegli un giocatore dall’elenco per trovare le demo in cui ha giocato con qualsiasi nome, riconosciuto dal suo SteamID. I giocatori scelti devono aver giocato tutti, non solo guardato. I bot e alcune demo più vecchie non hanno lo SteamID, quindi quei giocatori si trovano solo per nome.
+player-remove = Togli dal filtro
+player-also = anche { $names }
+player-demos = { $count ->
+    [one] { $count } demo
+    [many] { $count } di demo
+   *[other] { $count } demo
+}
 filter-weapon-any = Qualsiasi arma
 filter-min-minutes = Almeno (minuti)
 filter-min-kills = Almeno (uccisioni)

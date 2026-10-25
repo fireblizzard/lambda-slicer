@@ -983,6 +983,7 @@ mod tests {
             decode_error: None,
             recorder: None,
             players: Vec::new(),
+            people: Vec::new(),
             max_clients: 2,
             events: 0,
             weapons: Vec::new(),

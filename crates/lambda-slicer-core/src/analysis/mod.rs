@@ -53,6 +53,18 @@ pub struct ActionCount {
     pub attributed: usize,
 }
 
+/// A player of one session, by their slot and incarnation in it, with the
+/// SteamID that tells them apart across demos
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+pub struct Person {
+    pub segment: u32,
+    pub slot: u8,
+    pub incarnation: u32,
+    pub steam_id: Option<u64>,
+    /// Played at some moment, rather than only watched
+    pub played: bool,
+}
+
 /// Shots per weapon, and the raw records behind every action
 #[derive(Clone, Debug, Serialize)]
 pub struct WeaponSummary {
@@ -77,6 +89,8 @@ pub struct AnalysisReport {
     pub recorder: Option<PlayerIdentity>,
     /// Every player seen, once per name they used
     pub players: Vec<PlayerIdentity>,
+    /// Every player of each session once, whatever their names
+    pub people: Vec<Person>,
     pub max_clients: u8,
     /// Recorded events of any kind
     pub events: usize,
@@ -123,6 +137,21 @@ pub struct AnalysisReport {
     /// The playback entry's frame groups, for snapping a clip's range
     #[serde(skip)]
     pub groups: GroupIndex,
+}
+
+/// Every player `roster` saw, in the order of their sessions and slots
+fn people(roster: &roster::Roster) -> Vec<Person> {
+    let mut out = Vec::new();
+    for (&(segment, slot, incarnation), seen) in &roster.seen {
+        out.push(Person {
+            segment,
+            slot,
+            incarnation,
+            steam_id: seen.steam_id,
+            played: seen.played,
+        });
+    }
+    out
 }
 
 fn summary_of(weapons: &mut Vec<WeaponSummary>, weapon: Weapon) -> &mut WeaponSummary {
@@ -314,6 +343,7 @@ pub fn analyze_demo_with(
         decode_error: report.error,
         recorder,
         players,
+        people: people(&context.roster),
         max_clients: report.max_clients,
         events: events.len(),
         weapons,
