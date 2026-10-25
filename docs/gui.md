@@ -167,8 +167,8 @@ Choosing a player leaves the free camera. Their view stands over their model's o
 crouched, and looks the way their model faces, its pitch three times the model's lean the other
 way, as the server leans it a third. Their own model is left out, the weapon in their hand shows as
 the one in view, idle, and their shots' flashes and beams come from it. The crosshair is that
-weapon's and the field of view is the one chosen in Settings, or 90°. The health, armour and ammo
-aren't shown, as the demo only has the recorder's, and the sound is heard from where the player
+weapon's and the field of view is the one chosen in Settings, or 90°. The health, armour, ammo
+and flashlight aren't shown, as the demo only has the recorder's, and the sound is heard from where the player
 is. While the demo doesn't have the player, because the server didn't send them, the picture is the
 recorder's view with a note saying so, and goes back to the player once they are in it again.
 Choosing a kill in the events list or on the timeline watches it through the killer's eyes when

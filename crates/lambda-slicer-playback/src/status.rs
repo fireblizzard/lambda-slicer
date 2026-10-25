@@ -5,6 +5,14 @@
 //! `Health` is a byte and `Battery` a short. `WeaponList` names each weapon
 //! with its ammo types, `CurWeapon` says which weapon is out and what its
 //! magazine holds, and `AmmoX` how much of an ammo type is carried.
+//! `Flashlight` says whether the flashlight is on and how much battery it
+//! has left, and `FlashBat` the battery alone, as a share of 100. The
+//! client turns it off at each `ResetHUD`, as the server turns it off at a
+//! respawn without saying so (HLSDK's `CHudFlashlight`). A demo recorded
+//! with the flashlight already on never says it was turned on, so it also
+//! shows on while the recorder's own entity has the flashlight's light.
+//! The HUD shows it only with the suit
+//!
 //! `HideWeapon` hides parts of the HUD by its flags. A reading remembers
 //! when it last changed, as the client brightens a number that changes and
 //! fades it back over the next seconds
@@ -19,11 +27,26 @@ use std::collections::BTreeMap;
 
 use crate::time::SourceTime;
 
-/// `HideWeapon`'s flags that hide the weapon's ammo, everything, and the
-/// health and armour (`HIDEHUD_WEAPONS`, `HIDEHUD_ALL`, `HIDEHUD_HEALTH`)
+/// `HideWeapon`'s flags that hide the weapon's ammo, the flashlight,
+/// everything, and the health and armour (`HIDEHUD_WEAPONS`,
+/// `HIDEHUD_FLASHLIGHT`, `HIDEHUD_ALL`, `HIDEHUD_HEALTH`)
 const HIDE_WEAPONS: u8 = 1;
+const HIDE_FLASHLIGHT: u8 = 2;
 const HIDE_ALL: u8 = 4;
 const HIDE_HEALTH: u8 = 8;
+
+/// The weapon bit of the suit, without which the HUD shows no flashlight
+/// (`WEAPON_SUIT`)
+const SUIT: u32 = 1 << 31;
+
+/// The effect the server gives a player whose flashlight is on
+/// (`EF_DIMLIGHT`)
+pub(crate) const FLASHLIGHT_EFFECT: i64 = 8;
+
+/// A full battery. A demo recorded partway through a game may never say
+/// how much is left, so it starts full, as it is after each spawn until
+/// the flashlight is used
+const FULL_BATTERY: i32 = 100;
 
 /// A magazine of this means the weapon has none
 const NO_MAGAZINE: i8 = -1;
@@ -75,12 +98,30 @@ pub struct WeaponStatus {
     pub changed: SourceTime,
 }
 
+/// The flashlight, whether it is on and the share of 100 its battery has
+/// left
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Flashlight {
+    pub on: bool,
+    pub battery: i32,
+}
+
+impl Default for Flashlight {
+    fn default() -> Self {
+        Flashlight {
+            on: false,
+            battery: FULL_BATTERY,
+        }
+    }
+}
+
 /// What the HUD shows at a moment
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Shown {
     pub health: Option<Reading>,
     pub armour: Option<Reading>,
     pub weapon: Option<WeaponStatus>,
+    pub flashlight: Option<Flashlight>,
 }
 
 /// What was picked up, as its message gave it
@@ -152,6 +193,7 @@ pub struct Status {
     /// What was picked up by place, when it goes, and the next place
     pickups: BTreeMap<usize, (Picked, SourceTime)>,
     next_place: usize,
+    flashlight: Flashlight,
 }
 
 /// A string ending at its first nought, and what follows it
@@ -190,6 +232,20 @@ impl Status {
                 }
             }
             "HideWeapon" => self.hide = body.first().copied().unwrap_or(0),
+            "Flashlight" => {
+                if let Some(&[on, battery]) = body.get(..2) {
+                    self.flashlight = Flashlight {
+                        on: on != 0,
+                        battery: i32::from(battery),
+                    };
+                }
+            }
+            "FlashBat" => {
+                if let Some(&battery) = body.first() {
+                    self.flashlight.battery = i32::from(battery);
+                }
+            }
+            "ResetHUD" => self.flashlight.on = false,
             "WeaponList" => self.weapon_list(body),
             "CurWeapon" => self.current_weapon(body, time),
             "AmmoX" => {
@@ -427,8 +483,10 @@ impl Status {
         self.hide & (HIDE_HEALTH | HIDE_ALL) != 0
     }
 
-    /// What the HUD shows, less what `HideWeapon` hides
-    pub fn shown(&self) -> Shown {
+    /// What the HUD shows with the weapons `owned`, a bit for each weapon's
+    /// id and the suit's, the flashlight on too when `lit`, less what
+    /// `HideWeapon` hides
+    pub fn shown(&self, owned: u32, lit: bool) -> Shown {
         if self.hide & HIDE_ALL != 0 {
             return Shown::default();
         }
@@ -439,10 +497,21 @@ impl Status {
             .current
             .filter(|_| !hide_weapon)
             .and_then(|(id, magazine)| self.weapon_status(id, magazine));
+        let has_suit = owned & SUIT != 0;
+        let flashlight = if has_suit && self.hide & HIDE_FLASHLIGHT == 0 {
+            let on = self.flashlight.on || lit;
+            Some(Flashlight {
+                on,
+                ..self.flashlight
+            })
+        } else {
+            None
+        };
         Shown {
             health: self.health.filter(|_| !hide_health),
             armour: self.armour.filter(|_| !hide_health),
             weapon,
+            flashlight,
         }
     }
 
@@ -485,13 +554,42 @@ mod tests {
         s.message("Health", &[100], SourceTime(2.));
         s.message("Battery", &[30, 0], SourceTime(3.));
 
-        let shown = s.shown();
+        let shown = s.shown(0, false);
         assert_eq!(shown.health.unwrap().changed, SourceTime(1.));
         assert_eq!(shown.armour.unwrap().value, 30);
 
         // Hidden by `HideWeapon`
         s.message("HideWeapon", &[HIDE_HEALTH], SourceTime(4.));
-        assert_eq!(s.shown().health, None);
+        assert_eq!(s.shown(0, false).health, None);
+    }
+
+    #[test]
+    fn the_flashlight_shows_with_the_suit_and_goes_off_at_a_respawn() {
+        let mut s = Status::default();
+        assert_eq!(s.shown(0, false).flashlight, None);
+        let full = Flashlight {
+            on: false,
+            battery: FULL_BATTERY,
+        };
+        assert_eq!(s.shown(SUIT, false).flashlight, Some(full));
+
+        s.message("Flashlight", &[1, 90], SourceTime(1.));
+        s.message("FlashBat", &[85], SourceTime(2.));
+        let on = Flashlight {
+            on: true,
+            battery: 85,
+        };
+        assert_eq!(s.shown(SUIT, false).flashlight, Some(on));
+
+        s.message("ResetHUD", &[], SourceTime(3.));
+        assert!(!s.shown(SUIT, false).flashlight.unwrap().on);
+
+        // Already on as the demo starts, which only the recorder's light says
+        assert!(s.shown(SUIT, true).flashlight.unwrap().on);
+
+        // Hidden by `HideWeapon`
+        s.message("HideWeapon", &[HIDE_FLASHLIGHT], SourceTime(4.));
+        assert_eq!(s.shown(SUIT, false).flashlight, None);
     }
 
     #[test]
@@ -511,7 +609,7 @@ mod tests {
         s.message("AmmoX", &[2, 2], SourceTime(0.));
         s.message("CurWeapon", &[1, 4, 37], SourceTime(5.));
 
-        let weapon = s.shown().weapon.unwrap();
+        let weapon = s.shown(0, false).weapon.unwrap();
         assert_eq!(weapon.name, "weapon_9mmAR");
         assert_eq!(
             (weapon.magazine, weapon.ammo, weapon.ammo2),
@@ -521,11 +619,11 @@ mod tests {
 
         // A weapon carried but not out leaves the one out
         s.message("CurWeapon", &[0, 1, 255], SourceTime(6.));
-        assert_eq!(s.shown().weapon.unwrap().name, "weapon_9mmAR");
+        assert_eq!(s.shown(0, false).weapon.unwrap().name, "weapon_9mmAR");
 
         // The crowbar has no ammo to show
         s.message("CurWeapon", &[1, 1, 255], SourceTime(7.));
-        assert_eq!(s.shown().weapon, None);
+        assert_eq!(s.shown(0, false).weapon, None);
     }
 
     #[test]

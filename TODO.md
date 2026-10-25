@@ -5,7 +5,7 @@
 	- [x] Singleplayer
 	- [ ] Multiplayer
 - [x] Add a speedometer and last jump speed to the demo player, with a setting to make it count only horizontal, only vertical or full 3D (both)
-- [ ] Add flashlight HUD to the demo player
+- [x] Add flashlight HUD to the demo player
 - [x] Add a fps counter to the demo player, not at which framerate the demo is being rendered, but what fps the player recording the demo had instead
 - [x] Add x1.25 and x1.5 replay speed. but the dropdown is getting too crowded, we might have to use a different UI element type
 - [x] Make holding left click on the demo player speed up the demo twice the current speed (x1 -> x2, x4 -> x8). releasing click makes it go back to normal (whichever replay speed you had set, not necessarily x1)

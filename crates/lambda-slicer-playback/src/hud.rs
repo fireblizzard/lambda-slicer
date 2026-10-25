@@ -331,9 +331,11 @@ impl Hud {
         shown.chat.into()
     }
 
-    /// The recording player's health, armour and ammo as the HUD shows them
-    pub fn status(&self) -> status::Shown {
-        self.status.shown()
+    /// The recording player's health, armour, ammo and flashlight as the
+    /// HUD shows them, with the weapons of `camera` and the flashlight on
+    /// too when `lit`
+    pub fn status(&self, camera: &Camera, lit: bool) -> status::Shown {
+        self.status.shown(camera.weapons, lit)
     }
 
     /// Where the recording player was hit from and what hurts them at `at`,

@@ -11,6 +11,11 @@
 //! weapon's own sprite list. A second kind of ammo stands a row higher.
 //! Numbers have three digits' room, leading zeros left blank.
 //!
+//! The flashlight stands at the top right, half its width from the edge
+//! and 16 rows down, filled from the right as far as its battery goes,
+//! with the beam after it while it is on. It is brighter while on, and red
+//! under a fifth of its battery (`CHudFlashlight`).
+//!
 //! What was picked up stands at the right, each in its place 50 rows above
 //! the one below, a weapon's height and a little more. The game puts the lowest 72 rows above the bottom, where
 //! it can cover the ammo, so here it stands a tenth of the height under the
@@ -41,7 +46,9 @@
 use eframe::egui::{self, Color32, Pos2, Rect, TextureHandle, Vec2};
 use lambda_slicer_audio::library::Library;
 use lambda_slicer_playback::damage::{DamageShown, Side};
-use lambda_slicer_playback::status::{Pickup, PickupShown, Reading, Shown, WeaponStatus};
+use lambda_slicer_playback::status::{
+    Flashlight, Pickup, PickupShown, Reading, Shown, WeaponStatus,
+};
 use lambda_slicer_playback::time::SourceTime;
 
 use crate::hud_sprites::{HUD_LIST, HudSprites};
@@ -89,6 +96,13 @@ const PICKUP_COUNT_GAP: f32 = 10.;
 const PICKUP_FADE: f32 = 80.;
 const PICKUP_TEXT_SIZE: f32 = 13.;
 pub(crate) const NO_AMMO_COLOUR: Color32 = Color32::from_rgb(255, 16, 16);
+
+/// The flashlight's brightness while on, the battery that turns it red,
+/// and its rows from the top, the sheet's 32 row icons standing half their
+/// height down
+const FLASHLIGHT_ON: f32 = 225.;
+const FLASHLIGHT_LOW: i32 = 20;
+const FLASHLIGHT_TOP: f32 = 16.;
 
 /// The sheet whose four frames mark a hit's side, above, right, below and
 /// left (`PAIN_NAME`)
@@ -194,6 +208,20 @@ impl<'a> Painter<'a> {
         self.painter.image(icon.id(), place, uv, tint);
     }
 
+    /// `icon` added at `x`, `y` in `tint`, the columns from `from` of its
+    /// width on, as a share of it, standing where they would whole, the
+    /// ones before left out
+    fn draw_right_of(&self, icon: &TextureHandle, x: f32, y: f32, tint: Color32, from: f32) {
+        let size = icon.size_vec2();
+        let left = size.x * from;
+        let place = Rect::from_min_size(
+            self.at(x + left, y),
+            Vec2::new(size.x - left, size.y) * self.scale,
+        );
+        let uv = Rect::from_min_max(Pos2::new(from, 0.), Pos2::new(1., 1.));
+        self.painter.image(icon.id(), place, uv, tint);
+    }
+
     /// A bar `width` by `height` added at `x`, `y` in `tint` (`FillRGBA`)
     pub(crate) fn bar(&self, x: f32, y: f32, width: f32, height: f32, tint: Color32) {
         let place = Rect::from_min_size(self.at(x, y), Vec2::new(width, height) * self.scale);
@@ -259,6 +287,9 @@ pub fn draw(
     }
     if let Some(weapon) = &shown.weapon {
         draw_ammo(&mut p, weapon, digit, row, width, at);
+    }
+    if let Some(flashlight) = &shown.flashlight {
+        draw_flashlight(&mut p, flashlight, width);
     }
 }
 
@@ -470,9 +501,59 @@ fn draw_ammo(
     }
 }
 
+/// The flashlight filled as far as its battery goes, and the beam while
+/// it is on, at the top right
+fn draw_flashlight(p: &mut Painter, flashlight: &Flashlight, width: f32) {
+    let brightness = if flashlight.on { FLASHLIGHT_ON } else { LEAST };
+    let colour = if flashlight.battery < FLASHLIGHT_LOW {
+        NO_AMMO_COLOUR
+    } else {
+        HUD_COLOR
+    };
+    let tint = scaled(colour, brightness);
+    let (Some(empty), Some(full)) = (
+        p.icon(HUD_LIST, "flash_empty"),
+        p.icon(HUD_LIST, "flash_full"),
+    ) else {
+        return;
+    };
+
+    // The beam stands right after the casing
+    let icon_width = full.size_vec2().x;
+    let x = width - icon_width - icon_width / 2.;
+    p.draw(&empty, x, FLASHLIGHT_TOP, tint, 0.);
+    if flashlight.on
+        && let Some(beam) = p.icon(HUD_LIST, "flash_beam")
+    {
+        p.draw(&beam, width - icon_width / 2., FLASHLIGHT_TOP, tint, 0.);
+    }
+
+    // The full casing cut from the left by the battery used, in whole
+    // columns as the game cuts it
+    let used = battery_used(icon_width, flashlight.battery);
+    if used < icon_width {
+        p.draw_right_of(&full, x, FLASHLIGHT_TOP, tint, used / icon_width);
+    }
+}
+
+/// How many of the `width` columns of the full casing the `battery` used
+/// leaves out, in whole columns
+fn battery_used(width: f32, battery: i32) -> f32 {
+    let left = battery.clamp(0, 100) as f32 / 100.;
+    (width * (1. - left)).floor()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_flashlight_empties_from_the_left_in_whole_columns() {
+        assert_eq!(battery_used(32., 100), 0.);
+        assert_eq!(battery_used(32., 50), 16.);
+        assert_eq!(battery_used(32., 99), 0.);
+        assert_eq!(battery_used(32., 0), 32.);
+    }
 
     #[test]
     fn numbers_leave_leading_places_blank_and_draw_nought() {

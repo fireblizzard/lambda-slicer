@@ -697,6 +697,18 @@ impl Playback {
             .cloned()
             .collect();
 
+        let own = u16::from(state.decoder.player_num) + 1;
+        let entities = match &world {
+            Some(world) => scene::in_the_open(state.scene.presented(client_time), world, own),
+            None => state.scene.presented(client_time),
+        };
+        let mut lit = false;
+        for e in &entities {
+            if e.id.number == own && e.effects & status::FLASHLIGHT_EFFECT != 0 {
+                lit = true;
+            }
+        }
+
         PresentedFrame {
             demo: self.path.clone(),
             stamp,
@@ -705,13 +717,7 @@ impl Playback {
             server_time: ServerTime(f32::from_bits(state.decoder.time_bits)),
             map: state.scene.map.clone(),
             scene_revision: state.scene.revision,
-            entities: Arc::new(match &world {
-                Some(world) => {
-                    let own = u16::from(state.decoder.player_num) + 1;
-                    scene::in_the_open(state.scene.presented(client_time), world, own)
-                }
-                None => state.scene.presented(client_time),
-            }),
+            entities: Arc::new(entities),
             client_time,
             recorder: state.scene.camera.clone(),
             movement: state.scene.movement.clone(),
@@ -726,7 +732,7 @@ impl Playback {
             stopped: state.stopped.clone(),
             indexed,
             players: scene::players(&state.decoder),
-            local_entity: u16::from(state.decoder.player_num) + 1,
+            local_entity: own,
             flashes: state
                 .animations
                 .flashes()
@@ -741,7 +747,7 @@ impl Playback {
             death_notices: state.hud.death_notices(at),
             chat: state.hud.chat(at),
             announced: state.hud.announced(at),
-            status: state.hud.status(),
+            status: state.hud.status(&state.scene.camera, lit),
             pickups: state.hud.pickups(at),
             damage: state.hud.damage(at),
             hud_messages: state.hud.messages(at),
