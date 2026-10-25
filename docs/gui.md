@@ -284,6 +284,11 @@ dismissed.
   00:04:48.000. Ranges an export would refuse say why in orange: an end past the recording, a
   range with nothing in it, a start on the very first frame or while a map loads, or a range with
   a map change inside it. Refusals that need the whole demo read come from the export itself.
+  When an export refuses a clip for the moment it starts, such as an effect the clip can't carry
+  over still under way there, or for packets the game dropped a moment into it, it tries starts up
+  to 5 seconds earlier and later, nearest first and earlier before later, a later one keeping at
+  least half the clip. The card then offers the nearest that works, such as 0.3 s earlier, with
+  Start there and export, which moves the clip's start there and exports it again.
 - **Parts.** A level or map change, or a reconnect, starts a new part of the demo. A clip can start
   in any part once its map has loaded. Where a part's times repeat an earlier one's, a clip's start
   would land in the earlier part, so the app offers no clip there.

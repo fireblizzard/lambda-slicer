@@ -10,6 +10,10 @@
 //! started. A job dropped with its demo view is cancelled the same way and
 //! not waited for.
 //!
+//! A clip refused for where it starts, such as an effect under way there,
+//! then has starts a little earlier and later tried, and the nearest that
+//! works is offered with the refusal.
+//!
 //! Each clip's range and file name are taken when the job starts, so editing
 //! a clip later never makes its result look like an export of the new range
 
@@ -25,7 +29,7 @@ use lambda_slicer_core::slice::ExportError;
 use lambda_slicer_core::slice::naming::{
     clip_file_name, free_path, named_clip_file_name, playdemo,
 };
-use lambda_slicer_core::slice::restart::run_restart_until;
+use lambda_slicer_core::slice::restart::{nearest_start, run_restart_until};
 use lambda_slicer_core::timeline::time::DemoTime;
 
 use crate::clips::Clip;
@@ -82,12 +86,22 @@ pub struct Exported {
     pub compared: u64,
 }
 
+/// Why an export failed, and for a clip refused for where it starts the
+/// nearest start that works, if one was found
+#[derive(Clone, Debug, PartialEq)]
+pub struct Failure {
+    pub message: Message,
+    pub nearest: Option<DemoTime>,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum ExportState {
     Waiting,
     Running,
+    /// Refused for where it starts, and looking for a start that works
+    Searching,
     Done(Exported),
-    Failed(Message),
+    Failed(Failure),
     Cancelled,
     /// Left out of an export of every clip, as it cannot be exported
     Skipped(Message),
@@ -95,7 +109,8 @@ pub enum ExportState {
 
 enum Event {
     Started(u64),
-    Finished(u64, Result<Exported, Message>),
+    Searching(u64),
+    Finished(u64, Result<Exported, Failure>),
     Cancelled(u64),
 }
 
@@ -146,11 +161,39 @@ impl ExportJob {
                             path: r.published.path,
                             compared: r.validation.compared_snapshots,
                         }),
-                        Ok(Err(e)) => Err(e.message()),
-                        Err(_) => Err(ExportError::Unsupported(
-                            "the export stopped unexpectedly".into(),
-                        )
-                        .message()),
+                        Ok(Err(e)) if e.depends_on_start() => {
+                            let _ = tx.send(Event::Searching(item.id));
+                            ctx.request_repaint();
+                            let scratch = std::env::temp_dir();
+                            let search =
+                                || nearest_start(&source, &scratch, start, end, limits, stop);
+                            let nearest = match std::panic::catch_unwind(
+                                std::panic::AssertUnwindSafe(search),
+                            ) {
+                                Ok(Err(ExportError::Stopped)) => {
+                                    let _ = tx.send(Event::Cancelled(item.id));
+                                    ctx.request_repaint();
+                                    continue;
+                                }
+                                Ok(Ok(nearest)) => nearest,
+                                _ => None,
+                            };
+                            Err(Failure {
+                                message: e.message(),
+                                nearest,
+                            })
+                        }
+                        Ok(Err(e)) => Err(Failure {
+                            message: e.message(),
+                            nearest: None,
+                        }),
+                        Err(_) => Err(Failure {
+                            message: ExportError::Unsupported(
+                                "the export stopped unexpectedly".into(),
+                            )
+                            .message(),
+                            nearest: None,
+                        }),
                     };
                     let _ = tx.send(Event::Finished(item.id, result));
                     ctx.request_repaint();
@@ -175,11 +218,12 @@ impl ExportJob {
         while let Ok(event) = self.rx.try_recv() {
             match event {
                 Event::Started(id) => update(id, ExportState::Running),
+                Event::Searching(id) => update(id, ExportState::Searching),
                 Event::Finished(id, result) => {
                     self.open -= 1;
                     let state = match result {
                         Ok(e) => ExportState::Done(e),
-                        Err(m) => ExportState::Failed(m),
+                        Err(f) => ExportState::Failed(f),
                     };
                     update(id, state);
                 }

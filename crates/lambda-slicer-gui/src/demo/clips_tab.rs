@@ -51,6 +51,8 @@ enum CardAction {
     Play,
     /// Loop the clip, or stop looping it
     Loop(bool),
+    /// Move the clip's start to the nearest that works, and export it
+    StartAt(DemoTime),
 }
 
 impl DemoView {
@@ -88,6 +90,11 @@ impl DemoView {
                         Some(CardAction::Export) => request = Some(ExportRequest::One(i)),
                         Some(CardAction::Play) => self.play_clip(i),
                         Some(CardAction::Loop(on)) => self.loop_clip(i, on),
+                        Some(CardAction::StartAt(t)) => {
+                            self.clips[i].start = t;
+                            self.clips_changed = true;
+                            request = Some(ExportRequest::One(i));
+                        }
                         None => {}
                     }
                     ui.add_space(CARD_GAP);
@@ -212,7 +219,9 @@ impl DemoView {
                 self.card_name(ui, catalog, rtl, i);
                 self.card_times(ui, catalog, rtl, i);
                 action = self.card_buttons(ui, catalog, rtl, i);
-                self.card_outcome(ui, catalog, rtl, i);
+                if let Some(start_at) = self.card_outcome(ui, catalog, rtl, i) {
+                    action = Some(start_at);
+                }
             });
         });
         if card.response.clicked() {
@@ -376,8 +385,16 @@ impl DemoView {
         action
     }
 
-    /// Why the clip cannot be exported, and how its latest export went
-    fn card_outcome(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool, i: usize) {
+    /// Why the clip cannot be exported, and how its latest export went.
+    /// Returns a move of its start to the nearest that works when that was
+    /// asked for
+    fn card_outcome(
+        &mut self,
+        ui: &mut Ui,
+        catalog: &Catalog,
+        rtl: bool,
+        i: usize,
+    ) -> Option<CardAction> {
         let clip = self.clips[i].clone();
         let width = Some(ui.available_width());
         let warning = Look::Color(theme::WARNING);
@@ -388,15 +405,12 @@ impl DemoView {
             ui.add(egui::Label::new(line).wrap());
         }
 
-        let Some(id) = self.clip_ids.get(i) else {
-            return;
-        };
-        let Some((range, state)) = self.exports.get(id).cloned() else {
-            return;
-        };
+        let id = self.clip_ids.get(i)?;
+        let (range, state) = self.exports.get(id).cloned()?;
 
         // A file of the range the clip had before it was edited says so
-        if range != (clip.start, clip.end) {
+        let edited = range != (clip.start, clip.end);
+        if edited {
             let args = [
                 ("start", FluentValue::from(range.0.to_string())),
                 ("end", FluentValue::from(range.1.to_string())),
@@ -406,6 +420,15 @@ impl DemoView {
             ui.add(egui::Label::new(line).wrap());
         }
         export_state(ui, catalog, rtl, &state);
+
+        // A start that works is offered for the clip as it was exported
+        let ExportState::Failed(failure) = &state else {
+            return None;
+        };
+        if edited {
+            return None;
+        }
+        nearest_start(ui, catalog, rtl, range.0, failure.nearest)
     }
 
     /// A clip's start or end as text, read back when typing ends. Text that
@@ -554,6 +577,45 @@ impl DemoView {
     }
 }
 
+/// The nearest start that works for a clip refused at `refused`, and a
+/// button to move the clip there and export it, which returns the move
+/// when pressed. A clip refused for any other reason shows nothing
+fn nearest_start(
+    ui: &mut Ui,
+    catalog: &Catalog,
+    rtl: bool,
+    refused: DemoTime,
+    nearest: Option<DemoTime>,
+) -> Option<CardAction> {
+    let nearest = nearest?;
+    let width = Some(ui.available_width());
+
+    let moved = nearest.secs_f64() - refused.secs_f64();
+    let id = if moved < 0. {
+        "export-nearest-earlier"
+    } else {
+        "export-nearest-later"
+    };
+    let args = [
+        ("time", FluentValue::from(nearest.to_string())),
+        ("seconds", FluentValue::from(catalog.number(moved.abs(), 1))),
+    ];
+    let offer = catalog.text_with(id, &args);
+    let offer = text::widget_text(ui.ctx(), &offer, rtl, width, Look::Plain);
+    ui.add(egui::Label::new(offer).wrap());
+
+    let mut action = None;
+    layout::row(ui, rtl, |ui| {
+        let label = catalog.text("export-start-there");
+        let label = text::widget_text(ui.ctx(), &label, rtl, None, Look::Plain);
+        let button = widgets::Button::new(Some(Icon::Download), label, Variant::Default, rtl);
+        if ui.add(button).clicked() {
+            action = Some(CardAction::StartAt(nearest));
+        }
+    });
+    action
+}
+
 /// How a clip's export went, and for a saved file how to play it
 fn export_state(ui: &mut Ui, catalog: &Catalog, rtl: bool, state: &ExportState) {
     let ctx = ui.ctx().clone();
@@ -572,8 +634,14 @@ fn export_state(ui: &mut Ui, catalog: &Catalog, rtl: bool, state: &ExportState) 
                 line(ui, &catalog.text("export-running"), Look::Plain);
             });
         }
+        ExportState::Searching => {
+            layout::row(ui, rtl, |ui| {
+                ui.spinner();
+                line(ui, &catalog.text("export-searching"), Look::Plain);
+            });
+        }
         ExportState::Cancelled => line(ui, &catalog.text("export-cancelled"), Look::Weak),
-        ExportState::Failed(m) => line(ui, &catalog.message(m), warning),
+        ExportState::Failed(f) => line(ui, &catalog.message(&f.message), warning),
         ExportState::Skipped(m) => {
             let reason = FluentValue::from(catalog.message(m));
             line(

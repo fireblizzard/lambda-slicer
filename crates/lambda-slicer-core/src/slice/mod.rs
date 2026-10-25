@@ -77,6 +77,26 @@ pub enum ExportError {
     Stopped,
 }
 
+impl ExportError {
+    /// Whether a start a little earlier or later may not be refused. The
+    /// refusal comes from where the clip starts, such as an effect under way
+    /// there, or from packets the client dropped or state that cannot be
+    /// trusted, which a later start may leave out
+    pub fn depends_on_start(&self) -> bool {
+        matches!(
+            self,
+            ExportError::StartDuringLoading
+                | ExportError::ClientDroppedPackets(_)
+                | ExportError::UnprovenState(_)
+                | ExportError::StartAtFirstGroup
+                | ExportError::MissingDeltaBase(_)
+                | ExportError::UnknownPersistentMessage(_)
+                | ExportError::ActiveEffect(_)
+                | ExportError::UnrepresentableTimeField(_)
+        )
+    }
+}
+
 /// Fails once `stop` is set, so an export under way ends within a moment
 pub(crate) fn check_stop(stop: &AtomicBool) -> Result<(), ExportError> {
     if stop.load(Ordering::Relaxed) {

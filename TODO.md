@@ -23,7 +23,7 @@
 - [ ] Support GameTitle message, like the HALF-LIFE logo when you start a new singleplayer game
 - [ ] For events scheduled before the start of a clip, send it again in the clip with the time it had left
 - [ ] Fix walls starting clean on a clip that you play in the game, replay decals at that point
-- [ ] Don't refuse clips, offer to start the clip at the nearest moment that works, like 0.3s earlier
+- [x] Don't refuse clips, offer to start the clip at the nearest moment that works, like 0.3s earlier
 - [x] Check the stop button inside the export's own loop, so it stops the export within a moment
 - [ ] Store which part a clip belongs to as well as its times, for demos with multiple server clock restarts (e.g. loads)
 - [ ] Fix gauss balls and glows

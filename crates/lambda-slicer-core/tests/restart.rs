@@ -16,7 +16,7 @@ use lambda_slicer_core::protocol::bitwrite::BitWriter;
 use lambda_slicer_core::protocol::delta::Value;
 use lambda_slicer_core::protocol::messages::svc;
 use lambda_slicer_core::slice::ExportError;
-use lambda_slicer_core::slice::restart::{run_restart, run_restart_until};
+use lambda_slicer_core::slice::restart::{nearest_start, run_restart, run_restart_until};
 use lambda_slicer_core::state::{DecodeOptions, DecodeStatus, decode_demo};
 use lambda_slicer_core::timeline::time::DemoTime;
 
@@ -678,6 +678,23 @@ fn an_unknown_event_script_before_the_start_is_refused() {
         matches!(&err, ExportError::ActiveEffect(m) if m.contains("mystery")),
         "{err}"
     );
+}
+
+#[test]
+fn a_start_refused_for_an_effect_just_before_it_finds_the_nearest_that_works() {
+    // An unknown event at group 28 refuses every start after it
+    let mut rec = Recording::steady(60, 1);
+    rec.records.push((28, event(7, 0, 0)));
+    let err = slice(&rec, 30, Some(40)).unwrap_err();
+    assert!(err.depends_on_start(), "{err}");
+
+    // Starting at the event's own group keeps it in the clip
+    let dir = tempfile::tempdir().unwrap();
+    let src = write(dir.path(), "src.dem", &rec.bytes());
+    let never = AtomicBool::new(false);
+    let nearest = nearest_start(&src, dir.path(), at(30), at(40), Limits::default(), &never);
+    assert_eq!(nearest.unwrap(), Some(at(28)));
+    slice(&rec, 28, Some(40)).unwrap();
 }
 
 /// Registers `Vote` as user message 70 with a 4-byte body, then sends one

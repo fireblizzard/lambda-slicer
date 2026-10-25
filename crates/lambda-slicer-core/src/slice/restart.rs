@@ -51,6 +51,17 @@ use crate::validate::structural::{InspectStatus, inspect};
 /// up to 62 packets back
 const BOOTSTRAP_WINDOW: u32 = 62;
 
+/// How far from a refused start other starts are tried, in seconds, the
+/// nearest first. A later start keeps at least half the clip
+const SEARCH_STEPS: [f64; 7] = [0.1, 0.25, 0.5, 1., 2., 3., 5.];
+
+/// How many starts are checked at once, as each reads the demo through
+const CHECKS_AT_ONCE: usize = 4;
+
+/// How many times the gap between the refused start and the nearest that
+/// works is narrowed, each a quarter of the last
+const NARROWINGS: usize = 2;
+
 #[derive(Clone, Debug, Serialize)]
 pub struct RestartValidation {
     /// Kept packets whose decoded output state was compared with the source
@@ -1091,11 +1102,128 @@ pub fn check_restart(
     limits: Limits,
 ) -> Result<(), ExportError> {
     let never = AtomicBool::new(false);
-    let p = plan(source, start, end, limits, &never)?;
-
-    let mut out = tempfile::tempfile_in(scratch).map_err(io_err(scratch))?;
-    write(source, &mut out, &p, "", limits, &never)?;
+    check(source, scratch, start, end, limits, &never)?;
     Ok(())
+}
+
+/// [`check_restart`] that gives up once `stop` is set, returning the time
+/// the clip would start at, the first frame group's at or after `start`
+fn check(
+    source: &Path,
+    scratch: &Path,
+    start: DemoTime,
+    end: Option<DemoTime>,
+    limits: Limits,
+    stop: &AtomicBool,
+) -> Result<f32, ExportError> {
+    let p = plan(source, start, end, limits, stop)?;
+    let mut out = tempfile::tempfile_in(scratch).map_err(io_err(scratch))?;
+    write(source, &mut out, &p, "", limits, stop)?;
+    Ok(p.first_time)
+}
+
+/// Each of `starts` checked at once as [`check`] does, with the time it
+/// would start at, none for one that is refused
+fn check_all(
+    source: &Path,
+    scratch: &Path,
+    starts: &[DemoTime],
+    end: DemoTime,
+    limits: Limits,
+    stop: &AtomicBool,
+) -> Result<Vec<Option<f32>>, ExportError> {
+    let results: Vec<Result<f32, ExportError>> = std::thread::scope(|s| {
+        let mut checks = Vec::new();
+        for &start in starts {
+            checks.push(s.spawn(move || check(source, scratch, start, Some(end), limits, stop)));
+        }
+        let mut results = Vec::new();
+        for c in checks {
+            let failed = Err(ExportError::Unsupported(
+                "the check stopped unexpectedly".into(),
+            ));
+            results.push(c.join().unwrap_or(failed));
+        }
+        results
+    });
+
+    let mut out = Vec::new();
+    for result in results {
+        match result {
+            Ok(first) => out.push(Some(first)),
+            Err(ExportError::Stopped) => return Err(ExportError::Stopped),
+            Err(_) => out.push(None),
+        }
+    }
+    Ok(out)
+}
+
+/// The start nearest `start` that a clip of `source` ending at `end` can
+/// have, for a start refused for where it is
+/// ([`ExportError::depends_on_start`]). Starts a little earlier and later
+/// are tried, nearest first and earlier before later, then the gap between
+/// `start` and the nearest that works is narrowed. Returns the time that
+/// start begins at, none when no start within 5 seconds works. Gives up
+/// once `stop` is set. A start found passes the same check as
+/// [`check_restart`], so its export can still fail its validation
+pub fn nearest_start(
+    source: &Path,
+    scratch: &Path,
+    start: DemoTime,
+    end: DemoTime,
+    limits: Limits,
+    stop: &AtomicBool,
+) -> Result<Option<DemoTime>, ExportError> {
+    let at = |offset: f64| DemoTime::from_micros(start.micros() + (offset * 1e6).round() as i64);
+    let half = (end.secs_f64() - start.secs_f64()) / 2.;
+
+    let mut offsets = Vec::new();
+    for step in SEARCH_STEPS {
+        if start.secs_f64() - step >= 0. {
+            offsets.push(-step);
+        }
+        if step <= half {
+            offsets.push(step);
+        }
+    }
+
+    // A batch is nearer than the next, and in order within itself, so the
+    // first start that works is the nearest
+    let mut found = None;
+    for batch in offsets.chunks(CHECKS_AT_ONCE) {
+        let starts: Vec<DemoTime> = batch.iter().map(|&o| at(o)).collect();
+        let checked = check_all(source, scratch, &starts, end, limits, stop)?;
+        if let Some(i) = checked.iter().position(Option::is_some) {
+            found = Some((batch[i], checked[i]));
+            break;
+        }
+    }
+    let Some((mut works, mut first)) = found else {
+        return Ok(None);
+    };
+
+    // The three quarter points between the refused start and the one that
+    // works, from the refused end, the first that works the new nearest
+    let mut refused = 0.;
+    for _ in 0..NARROWINGS {
+        let points: Vec<f64> = (1..4)
+            .map(|k| refused + (works - refused) * f64::from(k) / 4.)
+            .collect();
+        let starts: Vec<DemoTime> = points.iter().map(|&o| at(o)).collect();
+        let checked = check_all(source, scratch, &starts, end, limits, stop)?;
+        match checked.iter().position(Option::is_some) {
+            Some(i) => {
+                if i > 0 {
+                    refused = points[i - 1];
+                }
+                works = points[i];
+                first = checked[i];
+            }
+            None => refused = points[2],
+        }
+    }
+
+    Ok(first.and_then(DemoTime::from_f32))
 }
 
 pub fn run_restart(
