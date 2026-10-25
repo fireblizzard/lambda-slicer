@@ -472,6 +472,7 @@ settings-clip-padding = Klip payı
 settings-preroll = Olaydan önceki saniye
 settings-postroll = Olaydan sonraki saniye
 export-start-first-group = Bir klip kaydın en başından başlayamaz. Biraz daha sonradan başlatın.
+export-stopped = Dışa aktarma durduruldu, bu yüzden klip kaydedilmedi.
 export-start-during-loading = Başlangıç, oyun hâlâ bir harita yüklerken. Biraz daha sonradan başlatın.
 
 export-all = Tüm klipleri dışa aktar

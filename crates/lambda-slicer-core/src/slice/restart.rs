@@ -22,13 +22,14 @@ use std::fs::File;
 use std::io::{BufReader, BufWriter, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 
 use serde::Serialize;
 
-use super::ExportError;
 use super::ongoing::{Ongoing, PendingSounds};
 use super::output::{Counting, Published, io_err, publish_new, to_i32};
 use super::persistent::Persistent;
+use super::{ExportError, check_stop};
 use crate::container::{
     DemoReader, Frame, FrameBody, HEADER_DIR_OFFSET_FIELD, Limits, NetworkFrame, encode_directory,
     encode_frame, encode_header, tag,
@@ -43,7 +44,7 @@ use crate::protocol::messages::Message;
 use crate::protocol::profile;
 use crate::state::{Decoder, FrameLocation, Snapshot};
 use crate::timeline::time::DemoTime;
-use crate::validate::crosscheck::{Outcome, crosscheck_demo};
+use crate::validate::crosscheck::{Outcome, crosscheck_demo_until};
 use crate::validate::structural::{InspectStatus, inspect};
 
 /// Pre-start frames kept as bootstrap candidates. The client accepts bases
@@ -207,6 +208,7 @@ fn plan(
     start: DemoTime,
     end: Option<DemoTime>,
     limits: Limits,
+    stop: &AtomicBool,
 ) -> Result<Plan, ExportError> {
     let mut reader = open(path, limits)?;
     let mut d = Decoder::new();
@@ -239,6 +241,7 @@ fn plan(
     let mut past_end = false;
 
     for item in reader.frames(1)? {
+        check_stop(stop)?;
         let lf = item?;
         let f = &lf.frame;
         let t = DemoTime::from_f32(f.time()).unwrap_or(DemoTime::ZERO);
@@ -599,6 +602,7 @@ fn write(
     p: &Plan,
     origin: &str,
     limits: Limits,
+    stop: &AtomicBool,
 ) -> Result<Written, ExportError> {
     let mut reader = open(path, limits)?;
     let mut d = Decoder::new();
@@ -762,6 +766,7 @@ fn write(
     let persistent_records = u64::from(!p.persistent.is_empty()) + hud_group as u64;
     let mut network_records = p.bootstrap.len() as u64 + persistent_records;
     for item in reader.frames(1)? {
+        check_stop(stop)?;
         let lf = item?;
         if lf.ordinal < p.first_ordinal {
             continue;
@@ -974,6 +979,7 @@ fn validate(
     p: &Plan,
     approximations: &[Approximation],
     limits: Limits,
+    stop: &AtomicBool,
 ) -> Result<(RestartValidation, Option<String>), ExportError> {
     let mut first_unexplained: Option<String> = None;
     let mut src = open(source, limits)?;
@@ -1018,6 +1024,7 @@ fn validate(
         other_differences: 0,
     };
     for item in src.frames(1)? {
+        check_stop(stop)?;
         let lf = item?;
         if lf.ordinal >= p.end_ordinal {
             break;
@@ -1083,10 +1090,11 @@ pub fn check_restart(
     end: Option<DemoTime>,
     limits: Limits,
 ) -> Result<(), ExportError> {
-    let p = plan(source, start, end, limits)?;
+    let never = AtomicBool::new(false);
+    let p = plan(source, start, end, limits, &never)?;
 
     let mut out = tempfile::tempfile_in(scratch).map_err(io_err(scratch))?;
-    write(source, &mut out, &p, "", limits)?;
+    write(source, &mut out, &p, "", limits, &never)?;
     Ok(())
 }
 
@@ -1096,6 +1104,20 @@ pub fn run_restart(
     start: DemoTime,
     end: Option<DemoTime>,
     limits: Limits,
+) -> Result<RestartReport, ExportError> {
+    run_restart_until(source, dest, start, end, limits, &AtomicBool::new(false))
+}
+
+/// [`run_restart`] that gives up with [`ExportError::Stopped`] within a
+/// moment of `stop` being set, as every pass checks it between records.
+/// Nothing is left behind, as with any other failure
+pub fn run_restart_until(
+    source: &Path,
+    dest: &Path,
+    start: DemoTime,
+    end: Option<DemoTime>,
+    limits: Limits,
+    stop: &AtomicBool,
 ) -> Result<RestartReport, ExportError> {
     // Every pass reads the hashed snapshot, never the source path again, so
     // the name the clip is marked with is taken now
@@ -1110,13 +1132,15 @@ pub fn run_restart(
         source,
         dest,
         |_, snapshot, out| {
-            let check = crosscheck_demo(snapshot, limits);
+            check_stop(stop)?;
+            let check = crosscheck_demo_until(snapshot, limits, stop);
+            check_stop(stop)?;
             if check.outcome == Outcome::Failed {
                 return Err(ExportError::SourceFailedCrossCheck);
             }
 
-            let p = plan(snapshot, start, end, limits)?;
-            let written = write(snapshot, out, &p, &origin, limits)?;
+            let p = plan(snapshot, start, end, limits, stop)?;
+            let written = write(snapshot, out, &p, &origin, limits, stop)?;
             *planned.borrow_mut() = Some((snapshot.to_path_buf(), p, written));
             Ok(())
         },
@@ -1135,7 +1159,8 @@ pub fn run_restart(
             let Some((snapshot, p, written)) = planned.as_ref() else {
                 return Err(ExportError::Validation("no plan".into()));
             };
-            let (v, first) = validate(snapshot, tmp, p, &written.stats.approximations, limits)?;
+            let approximations = &written.stats.approximations;
+            let (v, first) = validate(snapshot, tmp, p, approximations, limits, stop)?;
             if v.other_differences > 0 {
                 return Err(ExportError::Validation(format!(
                     "{} decoded fields differ from the source, first {}",

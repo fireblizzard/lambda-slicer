@@ -521,6 +521,7 @@ settings-clip-padding = Klipo paraštė
 settings-preroll = Sekundės prieš įvykį
 settings-postroll = Sekundės po įvykio
 export-start-first-group = Klipas negali prasidėti pačioje įrašo pradžioje. Pradėkite šiek tiek vėliau.
+export-stopped = Eksportas sustabdytas, todėl klipas neišsaugotas.
 export-start-during-loading = Pradžia patenka į žemėlapio įkėlimą. Pradėkite šiek tiek vėliau.
 
 export-all = Eksportuoti visus klipus

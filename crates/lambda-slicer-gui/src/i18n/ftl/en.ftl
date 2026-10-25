@@ -488,6 +488,7 @@ settings-clip-padding = Clip padding
 settings-preroll = Seconds before the event
 settings-postroll = Seconds after the event
 export-start-first-group = A clip can't start at the very beginning of the recording. Start a moment later.
+export-stopped = The export was stopped, so no clip was written.
 export-start-during-loading = The start is while the game is still loading a map. Start a moment later.
 
 export-all = Export all clips

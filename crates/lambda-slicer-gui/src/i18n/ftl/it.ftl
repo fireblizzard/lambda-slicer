@@ -507,6 +507,7 @@ settings-clip-padding = Margine delle clip
 settings-preroll = Secondi prima dell’evento
 settings-postroll = Secondi dopo l’evento
 export-start-first-group = Una clip non può iniziare proprio all’inizio della registrazione. Inizia un po’ più tardi.
+export-stopped = L’esportazione è stata fermata, quindi non è stata salvata nessuna clip.
 export-start-during-loading = L’inizio cade mentre il gioco sta ancora caricando una mappa. Inizia un po’ più tardi.
 
 export-all = Esporta tutte le clip

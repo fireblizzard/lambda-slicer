@@ -97,6 +97,7 @@ pub const CODES: &[&str] = &[
     "export-source-failed-crosscheck",
     "export-start-during-loading",
     "export-start-first-group",
+    "export-stopped",
     "export-unknown-persistent-message",
     "export-unproven-state",
     "export-unrepresentable-time-field",

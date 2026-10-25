@@ -521,6 +521,7 @@ settings-clip-padding = Запас вокруг клипа
 settings-preroll = Секунд до события
 settings-postroll = Секунд после события
 export-start-first-group = Клип не может начинаться с самого начала записи. Начните чуть позже.
+export-stopped = Экспорт остановлен, поэтому клип не сохранён.
 export-start-during-loading = Начало приходится на загрузку карты. Начните чуть позже.
 
 export-all = Экспортировать все клипы

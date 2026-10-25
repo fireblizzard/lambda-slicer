@@ -3,6 +3,7 @@
 mod common;
 
 use std::path::{Path, PathBuf};
+use std::sync::atomic::AtomicBool;
 
 use common::stream::{
     CLIENT, ENTITY, EVENT_RESOURCE, SOUND_RESOURCE, delta, full_packet, setup_on, setup_with, time,
@@ -15,7 +16,7 @@ use lambda_slicer_core::protocol::bitwrite::BitWriter;
 use lambda_slicer_core::protocol::delta::Value;
 use lambda_slicer_core::protocol::messages::svc;
 use lambda_slicer_core::slice::ExportError;
-use lambda_slicer_core::slice::restart::run_restart;
+use lambda_slicer_core::slice::restart::{run_restart, run_restart_until};
 use lambda_slicer_core::state::{DecodeOptions, DecodeStatus, decode_demo};
 use lambda_slicer_core::timeline::time::DemoTime;
 
@@ -285,6 +286,22 @@ fn a_clip_is_marked_with_the_demo_it_came_from() {
     assert_eq!(playback.description(), "Playback");
     assert_eq!(playback.clip_of().as_deref(), Some("src"));
     assert_eq!(reader.directory[0].clip_of(), None);
+}
+
+#[test]
+fn a_stopped_export_leaves_nothing_behind() {
+    let rec = Recording::steady(60, 1);
+    let dir = tempfile::tempdir().unwrap();
+    let src = write(dir.path(), "src.dem", &rec.bytes());
+    let out = dir.path().join("out.dem");
+
+    let stop = AtomicBool::new(true);
+    let stopped = run_restart_until(&src, &out, at(30), Some(at(50)), Limits::default(), &stop);
+    assert!(matches!(stopped, Err(ExportError::Stopped)));
+
+    // Neither the clip nor the copies it was made from are left
+    let left: Vec<_> = std::fs::read_dir(dir.path()).unwrap().collect();
+    assert_eq!(left.len(), 1);
 }
 
 #[test]

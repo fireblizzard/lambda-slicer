@@ -292,9 +292,9 @@ would refuse are left out and their buttons are off.
 - **Safety.** Nothing is ever replaced. The export writes a temporary file beside the destination,
   checks it, and gives it its final name only if no file took that name meanwhile. The clip says
   Saved only after that. A failure leaves no file and says why in orange.
-- **Progress.** The clip under way shows a spinner and the rest wait. Stop exporting skips the
-  clips not yet started, and the one under way runs to its end. Closing the demo stops an export
-  the same way.
+- **Progress.** The clip under way shows a spinner and the rest wait. Stop exporting stops the
+  clip under way at once, leaving no file, and skips the clips not yet started. Closing the demo
+  stops an export the same way.
 - **Result.** The saved path and how many moments of the clip were checked against the original.
   Inside a mod folder, the nearest folder above with a `liblist.gam`, it also shows the console
   command that plays the clip, such as `playdemo clips/mymatch__Clip_1`, with a Copy button.

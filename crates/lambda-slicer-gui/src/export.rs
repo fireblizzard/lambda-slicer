@@ -5,9 +5,10 @@
 //! and never replaces one. Each clip's file is named after its times, or
 //! after its own name when the settings ask, and the number that keeps it
 //! apart from a file already there is chosen just before its export, so
-//! clips of one job never take the same name. Cancelling skips
-//! the clips not yet started, as a clip under way runs to its end. A job
-//! dropped with its demo view is cancelled the same way and not waited for.
+//! clips of one job never take the same name. Cancelling stops the clip
+//! under way within a moment, leaving no file, and skips the clips not yet
+//! started. A job dropped with its demo view is cancelled the same way and
+//! not waited for.
 //!
 //! Each clip's range and file name are taken when the job starts, so editing
 //! a clip later never makes its result look like an export of the new range
@@ -24,7 +25,7 @@ use lambda_slicer_core::slice::ExportError;
 use lambda_slicer_core::slice::naming::{
     clip_file_name, free_path, named_clip_file_name, playdemo,
 };
-use lambda_slicer_core::slice::restart::run_restart;
+use lambda_slicer_core::slice::restart::run_restart_until;
 use lambda_slicer_core::timeline::time::DemoTime;
 
 use crate::clips::Clip;
@@ -131,8 +132,15 @@ impl ExportJob {
                     ctx.request_repaint();
                     let dest = free_path(&folder, &item.file_name);
                     // A panic fails this clip, not the job
-                    let run = || run_restart(&source, &dest, start, Some(end), Limits::default());
+                    let limits = Limits::default();
+                    let stop = &*thread_cancel;
+                    let run = || run_restart_until(&source, &dest, start, Some(end), limits, stop);
                     let result = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(run)) {
+                        Ok(Err(ExportError::Stopped)) => {
+                            let _ = tx.send(Event::Cancelled(item.id));
+                            ctx.request_repaint();
+                            continue;
+                        }
                         Ok(Ok(r)) => Ok(Exported {
                             playdemo: playdemo(&r.published.path),
                             path: r.published.path,
@@ -152,7 +160,7 @@ impl ExportJob {
         Self { cancel, rx, open }
     }
 
-    /// Skip the clips not yet started
+    /// Stop the clip under way and skip those not yet started
     pub fn cancel(&self) {
         self.cancel.store(true, Ordering::Relaxed);
     }

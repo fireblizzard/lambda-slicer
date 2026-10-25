@@ -490,6 +490,7 @@ settings-clip-padding = Klipin marginaali
 settings-preroll = Sekuntia ennen tapahtumaa
 settings-postroll = Sekuntia tapahtuman jälkeen
 export-start-first-group = Klippi ei voi alkaa tallenteen aivan alusta. Aloita hieman myöhemmin.
+export-stopped = Vienti pysäytettiin, joten klippiä ei tallennettu.
 export-start-during-loading = Alku osuu kartan lataukseen. Aloita hieman myöhemmin.
 
 export-all = Vie kaikki klipit

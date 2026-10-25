@@ -13,6 +13,7 @@ pub mod range;
 pub mod restart;
 
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::container::ContainerError;
 use crate::message::{Arg, Coded};
@@ -72,6 +73,16 @@ pub enum ExportError {
     ActiveEffect(String),
     #[error("a bootstrap time field cannot be sent faithfully: {0}")]
     UnrepresentableTimeField(String),
+    #[error("the export was stopped")]
+    Stopped,
+}
+
+/// Fails once `stop` is set, so an export under way ends within a moment
+pub(crate) fn check_stop(stop: &AtomicBool) -> Result<(), ExportError> {
+    if stop.load(Ordering::Relaxed) {
+        return Err(ExportError::Stopped);
+    }
+    Ok(())
 }
 
 impl Coded for ExportError {
@@ -99,6 +110,7 @@ impl Coded for ExportError {
             ExportError::UnknownPersistentMessage(_) => "export-unknown-persistent-message",
             ExportError::ActiveEffect(_) => "export-active-effect",
             ExportError::UnrepresentableTimeField(_) => "export-unrepresentable-time-field",
+            ExportError::Stopped => "export-stopped",
         }
     }
 
@@ -131,7 +143,8 @@ impl Coded for ExportError {
             ExportError::EmptyRange
             | ExportError::SourceFailedCrossCheck
             | ExportError::StartDuringLoading
-            | ExportError::StartAtFirstGroup => Vec::new(),
+            | ExportError::StartAtFirstGroup
+            | ExportError::Stopped => Vec::new(),
         }
     }
 }

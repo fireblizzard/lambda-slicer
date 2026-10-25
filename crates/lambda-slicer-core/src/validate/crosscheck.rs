@@ -11,6 +11,7 @@ use std::fs::File;
 use std::io::BufReader;
 use std::path::Path;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use serde::Serialize;
 
@@ -625,6 +626,12 @@ impl Checks {
 
 /// Decode `path` and run all cross-checks
 pub fn crosscheck_demo(path: &Path, limits: Limits) -> CrossCheckReport {
+    crosscheck_demo_until(path, limits, &AtomicBool::new(false))
+}
+
+/// [`crosscheck_demo`] that stops between records once `stop` is set. The
+/// report it then gives fails, with a decode error that says so
+pub fn crosscheck_demo_until(path: &Path, limits: Limits, stop: &AtomicBool) -> CrossCheckReport {
     let mut report = CrossCheckReport {
         schema: CROSSCHECK_SCHEMA,
         path: path.display().to_string(),
@@ -685,6 +692,10 @@ pub fn crosscheck_demo(path: &Path, limits: Limits) -> CrossCheckReport {
         };
 
         for item in frames {
+            if stop.load(Ordering::Relaxed) {
+                report.decode_error = Some("stopped".into());
+                break 'entries;
+            }
             let lf = match item {
                 Ok(lf) => lf,
                 Err(e) => {

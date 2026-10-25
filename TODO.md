@@ -24,7 +24,7 @@
 - [ ] For events scheduled before the start of a clip, send it again in the clip with the time it had left
 - [ ] Fix walls starting clean on a clip that you play in the game, replay decals at that point
 - [ ] Don't refuse clips, offer to start the clip at the nearest moment that works, like 0.3s earlier
-- [ ] Check the stop button inside the export's own loop, so it stops the export within a moment
+- [x] Check the stop button inside the export's own loop, so it stops the export within a moment
 - [ ] Store which part a clip belongs to as well as its times, for demos with multiple server clock restarts (e.g. loads)
 - [ ] Fix gauss balls and glows
 - [ ] Support clips across changelevels or loads
@@ -62,4 +62,4 @@
 - [ ] Find chat messages across the whole library, like words or parts of a message, with filters like sender and map
 - [ ] Improve the match highlights (top moments), accounting for things that require skill like complicated kills, headshots, stunts, trickshots, etc.
 - [ ] Add support for Xash3D
-- [ ] Add entity view mode for the demo player which can work with or without freecam, so you click on a door to check its properties, or you're able to see (and click) invisible entities like triggers, NPC nodes, and so on. This mode would disable the 
+- [ ] Add entity view mode for the demo player which can work with or without freecam, so you click on a door to check its properties, or you're able to see (and click) invisible entities like triggers, NPC nodes, and so on.

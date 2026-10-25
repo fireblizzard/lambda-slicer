@@ -562,6 +562,7 @@ settings-clip-padding = هامش المقاطع
 settings-preroll = ثوانٍ قبل الحدث
 settings-postroll = ثوانٍ بعد الحدث
 export-start-first-group = لا يمكن أن يبدأ المقطع من بداية التسجيل تمامًا. ابدأ بعدها بقليل.
+export-stopped = أُوقف التصدير، فلم يُحفظ أي مقطع.
 export-start-during-loading = البداية أثناء تحميل اللعبة لخريطة. ابدأ بعدها بقليل.
 
 export-all = تصدير كل المقاطع

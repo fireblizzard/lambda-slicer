@@ -511,6 +511,7 @@ settings-clip-padding = Marge des clips
 settings-preroll = Secondes avant l’événement
 settings-postroll = Secondes après l’événement
 export-start-first-group = Un clip ne peut pas commencer tout au début de l’enregistrement. Commence un peu plus tard.
+export-stopped = L’export a été arrêté, donc aucun clip n’a été enregistré.
 export-start-during-loading = Le début tombe pendant le chargement d’une carte. Commence un peu plus tard.
 
 export-all = Exporter tous les clips

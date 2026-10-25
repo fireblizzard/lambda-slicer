@@ -460,6 +460,7 @@ settings-clip-padding = 片段余量
 settings-preroll = 事件前的秒数
 settings-postroll = 事件后的秒数
 export-start-first-group = 片段不能从录像的最开头开始。请稍后一点开始。
+export-stopped = 导出已停止，因此未保存片段。
 export-start-during-loading = 起点位于游戏仍在加载地图时。请稍后一点开始。
 
 export-all = 导出全部片段

@@ -490,6 +490,7 @@ settings-clip-padding = Puffer um Clips
 settings-preroll = Sekunden vor dem Ereignis
 settings-postroll = Sekunden nach dem Ereignis
 export-start-first-group = Ein Clip kann nicht ganz am Anfang der Aufnahme beginnen. Beginne etwas später.
+export-stopped = Der Export wurde gestoppt, daher wurde kein Clip gespeichert.
 export-start-during-loading = Der Anfang fällt in das Laden einer Map. Beginne etwas später.
 
 export-all = Alle Clips exportieren

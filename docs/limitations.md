@@ -41,7 +41,6 @@ Other things:
   is lost. It's usually a sound or effect a few milliseconds long.
 - Each frame of a demo carries a little data from the game's client, which
   a clip copies as it is. AG's plays correctly, but another client's might not.
-- Stopping an export skips the clips not started yet, but the one under way runs to its end.
 - After a map change or reconnect, a demo's clock can start over, so two parts
   share the same times. Clips can't tell them apart, so the app offers no clip in a later part
   whose times repeat an earlier one's.
