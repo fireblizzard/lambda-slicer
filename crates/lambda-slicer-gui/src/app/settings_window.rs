@@ -1107,6 +1107,7 @@ impl App {
 
         // The inspector forgets the width and the divider it was dragged to
         self.workspace.list_hidden = restored.layout.list_hidden;
+        self.workspace.event_details_hidden = restored.layout.event_details_hidden;
         self.workspace.inspector_width = None;
         self.workspace.scores_share = None;
         self.workspace.restored += 1;

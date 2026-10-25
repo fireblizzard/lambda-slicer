@@ -78,12 +78,13 @@ library again they are back first.
 
 The **Matches** tab beside Demos lists every match of the demos instead, one a row, so a demo of
 two matches has two rows ([how matches are found](analysis-profile.md#matches)). Its columns are
-the demo, date, map, status, length, score, players, teams and kills. The status says how much of
+the demo, date, map, status, length, score, players, teams, kills, the best multikill and the
+longest killing spree that ended in the match. The status says how much of
 the match was recorded: Complete, Joined late (already on when the recording began), Interrupted
 (another match started, the match was called off or the map changed) or Cut off (the recording
 ended first). Five minutes or more with no match on is listed as Free play. The filters work as
-they do for demos, with the map, length, kills, players and teams those of each match and a kill
-filter needing a kill in the match, and the Status filter under Point of view, a list with a box
+they do for demos, with the map, length, kills, players, teams and spree those of each match and
+a kill filter needing a kill in the match, and the Status filter under Point of view, a list with a box
 to tick for each status, all ticked at first, keeps just the matches whose status is ticked. The
 last status ticked stays ticked, as no match would be left.
 Clicking a match opens its demo at the start of the countdown, or where the recording began for

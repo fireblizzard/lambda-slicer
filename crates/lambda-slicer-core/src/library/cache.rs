@@ -506,6 +506,8 @@ pub enum MatchSort {
     Kills,
     Length,
     Status,
+    Multikill,
+    Spree,
 }
 
 impl MatchSort {
@@ -519,6 +521,8 @@ impl MatchSort {
             MatchSort::Kills => "m.kills",
             MatchSort::Length => "m.length",
             MatchSort::Status => "m.status",
+            MatchSort::Multikill => "best_multikill",
+            MatchSort::Spree => "best_spree",
             MatchSort::Score => {
                 "CASE WHEN json_valid(m.score_json)
                  THEN json_extract(m.score_json, '$.sides[0].frags') END"
@@ -557,6 +561,10 @@ pub struct MatchRow {
     pub players: i64,
     pub teams: i64,
     pub kills: i64,
+    /// The most players one shot killed in it, and the longest killing
+    /// spree that ended in it, none without kills
+    pub best_multikill: Option<i64>,
+    pub best_spree: Option<i64>,
     /// The score at its last kill, such as `88 – 74`
     pub score: Option<String>,
     #[serde(skip)]
@@ -575,6 +583,11 @@ impl MatchRow {
 
 /// A kill within the match `m`, by its session and times
 const KILL_IN_MATCH: &str = "k.segment = m.segment AND k.time >= m.start AND k.time <= m.end";
+
+/// The highest `column` of the kills within the match `m`
+fn best_in_match(column: &str) -> String {
+    format!("(SELECT MAX(k.{column}) FROM kills k WHERE k.file_id = m.file_id AND {KILL_IN_MATCH})")
+}
 
 #[derive(Clone, Debug, Serialize)]
 pub struct KillRow {
@@ -1265,6 +1278,7 @@ impl Cache {
         files.max_players = None;
         files.min_teams = None;
         files.max_teams = None;
+        files.min_spree = None;
         let (conditions, mut args) = Self::conditions_with_kills(&files, KILL_IN_MATCH);
         let mut c = vec![conditions];
 
@@ -1286,6 +1300,13 @@ impl Cache {
                 args.push(Box::new(n));
                 c.push(format!("{test} ?{}", args.len()));
             }
+        }
+
+        // A spree counts in the match it ended in
+        if let Some(s) = f.min_spree {
+            args.push(Box::new(s));
+            let spree = best_in_match("spree");
+            c.push(format!("{spree} >= ?{}", args.len()));
         }
         for status in &q.hidden {
             args.push(Box::new(status.key()));
@@ -1316,11 +1337,13 @@ impl Cache {
         let offset = args.len();
         let direction = if q.files.descending { "DESC" } else { "ASC" };
         let order = q.sort.column();
+        let multikill = best_in_match("at_once");
+        let spree = best_in_match("spree");
 
         let sql = format!(
             "SELECT f.id, f.path, f.path_blob, f.recorded_at, f.date_source, m.ordinal,
                 m.status, m.opens_at, m.length, m.map, m.players, m.teams, m.kills, m.score,
-                m.score_json
+                m.score_json, {multikill} AS best_multikill, {spree} AS best_spree
              FROM matches m JOIN files f ON f.id = m.file_id WHERE {conditions}
              ORDER BY {order} {direction} NULLS LAST, f.path, m.ordinal
              LIMIT ?{limit} OFFSET ?{offset}"
@@ -1343,6 +1366,8 @@ impl Cache {
                 players: r.get(10)?,
                 teams: r.get(11)?,
                 kills: r.get(12)?,
+                best_multikill: r.get(15)?,
+                best_spree: r.get(16)?,
                 score: r.get(13)?,
                 scoreboard: r
                     .get::<_, Option<String>>(14)?
@@ -1970,5 +1995,72 @@ mod tests {
         longest.sort = MatchSort::Length;
         longest.files.descending = true;
         assert_eq!(found(&longest)[0], ("a.dem".into(), 1));
+    }
+
+    #[test]
+    fn a_match_has_its_own_best_multikill_and_spree() {
+        let c = cache(&[("a.dem", None, None), ("b.dem", None, None)]);
+        let parts = [
+            ("a.dem", 0, 0., 99.),
+            ("a.dem", 1, 100., 200.),
+            ("b.dem", 0, 0., 200.),
+        ];
+        for (path, ordinal, start, end) in parts {
+            c.conn
+                .execute(
+                    "INSERT INTO matches(file_id, ordinal, segment, status, opens_at, start, end,
+                        length, map, players, teams, kills)
+                     SELECT id, ?1, 0, 'complete', ?2, ?2, ?3, ?3 - ?2, 'boot_camp', 4, 2, 3
+                     FROM files WHERE path = ?4",
+                    params![ordinal, start, end, path],
+                )
+                .unwrap();
+        }
+
+        // A triple kill and a spree of 2 in the first match, a double kill
+        // and a spree of 5 in the second, and no kills in b.dem
+        let kills = [(10., 3, 0), (20., 1, 2), (150., 2, 5)];
+        for (n, (time, at_once, spree)) in kills.into_iter().enumerate() {
+            c.conn
+                .execute(
+                    "INSERT INTO kills(file_id, kill_id, segment, time, weapon, cause, at_once,
+                        spree)
+                     SELECT id, ?1, 0, ?2, 'rpg_rocket', 'player_weapon', ?3, ?4
+                     FROM files WHERE path = 'a.dem'",
+                    params![n as i64, time, at_once, spree],
+                )
+                .unwrap();
+        }
+        let all = MatchQuery {
+            files: FileQuery {
+                limit: 10,
+                ..FileQuery::default()
+            },
+            ..MatchQuery::default()
+        };
+        let best = |q: &MatchQuery| -> Vec<(String, i64, Option<i64>, Option<i64>)> {
+            let rows = c.query_matches(q).unwrap();
+            assert_eq!(c.count_matches(q).unwrap(), rows.len() as u64);
+            rows.into_iter()
+                .map(|r| (r.path, r.ordinal, r.best_multikill, r.best_spree))
+                .collect()
+        };
+
+        let mut by_multikill = all.clone();
+        by_multikill.sort = MatchSort::Multikill;
+        by_multikill.files.descending = true;
+        assert_eq!(
+            best(&by_multikill),
+            [
+                ("a.dem".into(), 0, Some(3), Some(2)),
+                ("a.dem".into(), 1, Some(2), Some(5)),
+                ("b.dem".into(), 0, None, None),
+            ]
+        );
+
+        // The spree filter takes the spree that ended in each match
+        let mut spree = all.clone();
+        spree.files.min_spree = Some(4);
+        assert_eq!(best(&spree), [("a.dem".into(), 1, Some(2), Some(5))]);
     }
 }

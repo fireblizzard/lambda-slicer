@@ -119,10 +119,12 @@ enum MatchCol {
     Players,
     Teams,
     Kills,
+    Multikill,
+    Spree,
 }
 
 impl MatchCol {
-    const ALL: [MatchCol; 9] = [
+    const ALL: [MatchCol; 11] = [
         MatchCol::Demo,
         MatchCol::Date,
         MatchCol::Map,
@@ -132,6 +134,8 @@ impl MatchCol {
         MatchCol::Players,
         MatchCol::Teams,
         MatchCol::Kills,
+        MatchCol::Multikill,
+        MatchCol::Spree,
     ];
 
     fn title(self) -> &'static str {
@@ -145,6 +149,8 @@ impl MatchCol {
             MatchCol::Players => "column-players",
             MatchCol::Teams => "column-teams",
             MatchCol::Kills => "column-kills",
+            MatchCol::Multikill => "column-multikill",
+            MatchCol::Spree => "column-spree",
         }
     }
 
@@ -155,6 +161,8 @@ impl MatchCol {
             MatchCol::Status => Some("help-status-column"),
             MatchCol::Players => Some("help-match-players"),
             MatchCol::Teams => Some("help-match-teams"),
+            MatchCol::Multikill => Some("help-match-multikill"),
+            MatchCol::Spree => Some("help-match-spree"),
             _ => None,
         }
     }
@@ -170,6 +178,8 @@ impl MatchCol {
             MatchCol::Players => MatchSort::Players,
             MatchCol::Teams => MatchSort::Teams,
             MatchCol::Kills => MatchSort::Kills,
+            MatchCol::Multikill => MatchSort::Multikill,
+            MatchCol::Spree => MatchSort::Spree,
         }
     }
 
@@ -184,6 +194,7 @@ impl MatchCol {
             MatchCol::Length => (80., 64.),
             MatchCol::Score => (128., 64.),
             MatchCol::Players | MatchCol::Teams | MatchCol::Kills => (64., 48.),
+            MatchCol::Multikill | MatchCol::Spree => (72., 48.),
         };
         Column::initial(width).at_least(least).clip(true)
     }
@@ -653,6 +664,16 @@ fn match_cell(
         }
         MatchCol::Kills => {
             number_cell(ui, whole(played.kills), catalog, rtl);
+        }
+
+        // One kill at once or in a row is no multikill or spree, a dash
+        MatchCol::Multikill => {
+            let best = played.best_multikill.filter(|n| *n >= 2);
+            number_cell(ui, best.and_then(whole), catalog, rtl);
+        }
+        MatchCol::Spree => {
+            let best = played.best_spree.filter(|n| *n >= 2);
+            number_cell(ui, best.and_then(whole), catalog, rtl);
         }
     }
 }

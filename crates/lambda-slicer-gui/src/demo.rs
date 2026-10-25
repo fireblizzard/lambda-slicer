@@ -254,6 +254,8 @@ pub struct WorkspaceUi {
     pub scores_share: Option<f32>,
     /// The event filters are open, rather than folded to their summary
     pub event_filters_open: bool,
+    /// The selected kill's details are folded away under the events
+    pub event_details_hidden: bool,
     /// The inspector's width beside the view as last drawn, none before it
     /// was, and its first width before any drag, as the window's width suits
     pub inspector_width: Option<f32>,
@@ -2241,7 +2243,8 @@ impl DemoView {
         match workspace.inspector_tab {
             InspectorTab::Events => {
                 let filters_open = &mut workspace.event_filters_open;
-                self.events_tab(ui, catalog, rtl, filters_open);
+                let details_hidden = &mut workspace.event_details_hidden;
+                self.events_tab(ui, catalog, rtl, filters_open, details_hidden);
             }
             InspectorTab::Clips => self.clips_tab(ui, catalog, rtl),
         }

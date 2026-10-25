@@ -404,6 +404,7 @@ impl App {
                 inspector_width: settings_layout.inspector_width,
                 scores_share: settings_layout.scores_share,
                 list_hidden: settings_layout.list_hidden,
+                event_details_hidden: settings_layout.event_details_hidden,
                 ..WorkspaceUi::default()
             },
             setup_refusal: None,
@@ -908,6 +909,7 @@ impl App {
             layout.list_filters_open = l.list_filters_open;
         }
         layout.list_hidden = self.workspace.list_hidden;
+        layout.event_details_hidden = self.workspace.event_details_hidden;
         layout.scores_share = self.workspace.scores_share;
 
         // The inspector's width only once dragged away from its first one

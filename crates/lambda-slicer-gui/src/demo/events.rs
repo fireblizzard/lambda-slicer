@@ -184,6 +184,7 @@ impl DemoView {
         catalog: &Catalog,
         rtl: bool,
         filters_open: &mut bool,
+        details_hidden: &mut bool,
     ) {
         let Some(model) = self.model.clone() else {
             return;
@@ -198,7 +199,7 @@ impl DemoView {
             .frame(footer)
             .resizable(false)
             .show(ui, |ui| {
-                self.events_footer(ui, catalog, rtl, &model, details)
+                self.events_footer(ui, catalog, rtl, &model, details, details_hidden)
             });
 
         // Why events stop early is never folded away
@@ -1187,9 +1188,10 @@ impl DemoView {
         badges
     }
 
-    /// The selected kill's movement when `details` has room for it and why
-    /// the selected event cannot be played, over the buttons through the
-    /// events, to play the selected one and to clip it
+    /// The selected kill's movement when `details` has room for it and it
+    /// isn't `hidden`, and why the selected event cannot be played, over the
+    /// buttons through the events, to fold the movement away, to play the
+    /// selected one and to clip it
     fn events_footer(
         &mut self,
         ui: &mut Ui,
@@ -1197,24 +1199,28 @@ impl DemoView {
         rtl: bool,
         model: &Model,
         details: bool,
+        hidden: &mut bool,
     ) {
         let selected = self.selected.filter(|&i| i < model.events.len());
         let shown = selected.filter(|&i| self.shown_events.get(i).copied().unwrap_or(false));
         let unreachable = selected.is_some_and(|e| !self.reachable(e));
 
         // The full movement on a click, not only behind a badge's hover
-        let width = Some(ui.available_width());
+        let mut lines = Vec::new();
         if details
             && let Some(event) = shown
             && let EventKind::Kill { features, .. } = &model.events[event].kind
         {
-            let mut lines = motion_lines(catalog, features);
+            lines = motion_lines(catalog, features);
             if features.gauss {
                 lines.push(wall_tip(catalog, self.walls.get(&features.key)));
             }
-            for line in lines {
+        }
+        let width = Some(ui.available_width());
+        if !*hidden {
+            for line in &lines {
                 let look = Look::Color(theme::MUTED);
-                let line = text::widget_text(ui.ctx(), &line, rtl, width, look);
+                let line = text::widget_text(ui.ctx(), line, rtl, width, look);
                 ui.add(egui::Label::new(line).wrap());
             }
         }
@@ -1249,6 +1255,15 @@ impl DemoView {
 
         layout::row(ui, rtl, |ui| {
             self.event_nav(ui, catalog, model);
+
+            // Lit while the details show, and only while there are some
+            if !lines.is_empty() {
+                let label = catalog.text("event-details");
+                let button = IconButton::new(Icon::Info, &label).selected(!*hidden);
+                if ui.add(button).clicked() {
+                    *hidden = !*hidden;
+                }
+            }
 
             layout::trailing(ui, rtl, |ui| {
                 let clip = catalog.text("clip-it");

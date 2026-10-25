@@ -78,6 +78,8 @@ pub struct LayoutSettings {
     pub list_filters_open: bool,
     /// The demo list was hidden beside an open demo
     pub list_hidden: bool,
+    /// The selected kill's details were folded away under the events
+    pub event_details_hidden: bool,
     /// The width the inspector was dragged to, none for its first width
     pub inspector_width: Option<f32>,
     /// The share of the inspector's height the divider under the scoreboard
@@ -93,6 +95,7 @@ impl Default for LayoutSettings {
             filters_open: true,
             list_filters_open: false,
             list_hidden: false,
+            event_details_hidden: false,
             inspector_width: None,
             scores_share: None,
             settings_at: None,
