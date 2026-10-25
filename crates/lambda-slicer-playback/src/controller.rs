@@ -52,6 +52,9 @@ pub enum Command {
     /// Move this many record groups, forward when positive. Pauses
     StepGroup(i64),
     SetRate(Rate),
+    /// Play twice as fast as the rate while a boost is held, or at the rate
+    /// again
+    Boost(bool),
     SetLoop(Option<LoopRange>),
     SetCamera(CameraMode),
     /// Seek to `from` and play, pausing at `to`, as playing an event from
@@ -285,6 +288,10 @@ impl Controller {
             }
             Command::SetRate(rate) => {
                 self.clock.set_rate(rate, wall);
+                None
+            }
+            Command::Boost(boosted) => {
+                self.clock.set_boosted(boosted, wall);
                 None
             }
             Command::SetLoop(range) => {

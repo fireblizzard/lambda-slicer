@@ -42,7 +42,7 @@ use lambda_slicer_playback::scene::{
     self, Entity, EntityId, PlayerView, view_model_for, weapon_model_for,
 };
 use lambda_slicer_playback::tempents::{DynamicLight, Tint};
-use lambda_slicer_playback::time::{Rate, SourceTime};
+use lambda_slicer_playback::time::{BOOST, RATES, Rate, SourceTime};
 use lambda_slicer_playback::trace::{Hull, Trace};
 use lambda_slicer_playback::worker::Worker;
 use lambda_slicer_render::Rgba;
@@ -396,6 +396,8 @@ pub struct Viewer {
     /// Where the playhead was at the last single click on the view, for a
     /// double click to go back to
     first_click: Option<f64>,
+    /// The left button held down on the view
+    press: Option<Press>,
     render_state: RenderState,
     controller: Controller,
     worker: Worker,
@@ -596,6 +598,7 @@ impl Viewer {
             fullscreen: false,
             pointer_moved: 0.,
             first_click: None,
+            press: None,
             render_state,
             controller,
             worker,
@@ -1857,6 +1860,68 @@ impl Viewer {
         self.drawn_at = None;
     }
 
+    /// Playing on the way it went last, rewinding again after a pause while
+    /// rewinding, unless the rewind reached the start
+    fn play_on(&self) -> Command {
+        let at_start = self.controller.time(self.wall()).0 <= 0.;
+        if self.controller.clock().backward() && !at_start {
+            Command::PlayBackward
+        } else {
+            Command::Play
+        }
+    }
+
+    /// Holding the left button on `view` plays twice as fast until it is
+    /// let go, playing a paused demo for as long. Returns true as a hold is
+    /// let go, which is then no click
+    fn hold(&mut self, ctx: &egui::Context, view: &egui::Response) -> bool {
+        let down = view.is_pointer_button_down_on() && ctx.input(|i| i.pointer.primary_down());
+        let time = ctx.input(|i| i.time);
+
+        let Some(press) = self.press else {
+            if down {
+                self.press = Some(Press {
+                    since: time,
+                    boost: None,
+                });
+                ctx.request_repaint_after_secs(HOLD_TO_BOOST as f32);
+            }
+            return false;
+        };
+
+        // Let go
+        if !down {
+            self.press = None;
+            let Some(boost) = press.boost else {
+                return false;
+            };
+            self.command(Command::Boost(false));
+            if boost.resumed {
+                self.command(Command::Pause);
+            }
+            ctx.request_repaint();
+            return true;
+        }
+
+        // Held long enough
+        let held = time - press.since;
+        if press.boost.is_none() && held >= HOLD_TO_BOOST {
+            let resumed = !self.controller.clock().playing();
+            if resumed {
+                self.command(self.play_on());
+            }
+            self.command(Command::Boost(true));
+            self.press = Some(Press {
+                boost: Some(Boost { resumed }),
+                ..press
+            });
+            ctx.request_repaint();
+        } else if press.boost.is_none() {
+            ctx.request_repaint_after_secs((HOLD_TO_BOOST - held) as f32);
+        }
+        false
+    }
+
     /// The view in `height` points, or in a bench run all the space left
     /// above the transport, with what it could not read and why playback
     /// stopped over its corner
@@ -1882,18 +1947,7 @@ impl Viewer {
         // The wheel over the picture goes to the previous or next player,
         // one a frame however far it turns
         if clicked.hovered() {
-            let turned = ctx.input_mut(|i| {
-                let mut turned = 0.;
-                for event in &i.events {
-                    if let egui::Event::MouseWheel { delta, .. } = event {
-                        turned += delta.y;
-                    }
-                }
-                if turned != 0. {
-                    i.smooth_scroll_delta = egui::Vec2::ZERO;
-                }
-                turned
-            });
+            let turned = wheel_turned(&ctx);
             if turned != 0. {
                 let step = if turned > 0. { -1 } else { 1 };
                 self.step_pov(step);
@@ -1901,19 +1955,16 @@ impl Viewer {
             }
         }
 
+        let let_go = self.hold(&ctx, &clicked);
+
         // A click on the view pauses, or plays on the way it went last,
-        // rewinding again after a pause while rewinding, unless the rewind
-        // reached the start
-        if clicked.clicked() {
-            let clock = self.controller.clock();
+        // unless it let go of a hold
+        if clicked.clicked() && !let_go {
             let now = self.controller.time(self.wall()).0;
-            let at_start = now <= 0.;
-            let command = if clock.playing() {
+            let command = if self.controller.clock().playing() {
                 Command::Pause
-            } else if clock.backward() && !at_start {
-                Command::PlayBackward
             } else {
-                Command::Play
+                self.play_on()
             };
             let pause = matches!(command, Command::Pause);
             self.command(command);
@@ -2360,7 +2411,7 @@ impl Viewer {
             Command::SeekTo(SourceTime(now + SKIP_STEP)),
         );
 
-        self.rate_menu(ui, catalog, rtl);
+        self.rate_stepper(ui, catalog, rtl);
         play.rect.center().x
     }
 
@@ -2455,39 +2506,64 @@ impl Viewer {
         ui.label(job).rect.width()
     }
 
-    fn rate_menu(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool) {
-        let rate_label = |rate: Rate| {
-            let digits = match rate {
-                Rate::Quarter => 2,
-                Rate::Half => 1,
-                _ => 0,
-            };
-            let options = FluentNumberOptions {
-                minimum_fraction_digits: Some(digits),
-                ..Default::default()
-            };
-            let value = FluentValue::Number(FluentNumber::new(rate.factor(), options));
-            catalog.text_with("viewer-rate", &[("rate", value)])
+    /// The speed between a slower and a faster button, close together, the
+    /// wheel over it stepping too and a click on it going back to the
+    /// demo's own speed. While a hold plays faster, it shows that speed in
+    /// the accent
+    fn rate_stepper(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool) {
+        let clock = self.controller.clock();
+        let rate = clock.rate();
+        let with_key = |id: &str, key: &str| {
+            let key = FluentValue::from(key.to_owned());
+            let shortcut = catalog.text_with("viewer-shortcut", &[("key", key)]);
+            format!("{}\n{shortcut}", catalog.text(id))
         };
 
-        let current = self.controller.clock().rate();
-        let mut chosen = current;
-        let selected = text::widget_text(ui.ctx(), &rate_label(current), rtl, None, Look::Plain);
-        egui::ComboBox::from_id_salt("viewer-rate")
-            .width(RATE_MENU_WIDTH)
-            .selected_text(selected)
-            .show_ui(ui, |ui| {
-                for rate in [
-                    Rate::Quarter,
-                    Rate::Half,
-                    Rate::Normal,
-                    Rate::Double,
-                    Rate::Quadruple,
-                ] {
-                    ui.selectable_value(&mut chosen, rate, rate_label(rate));
+        let chosen = ui.scope(|ui| {
+            ui.spacing_mut().item_spacing.x = 0.;
+            ui.spacing_mut().button_padding.x = 0.;
+            let mut chosen = None;
+
+            let slower = with_key("viewer-slower", "-");
+            let button = IconButton::new(Icon::Minus, &slower).narrow();
+            if ui.add_enabled(rate.slower().is_some(), button).clicked() {
+                chosen = rate.slower();
+            }
+
+            let look = if clock.boosted() {
+                Look::Color(theme::ACCENT)
+            } else {
+                Look::Plain
+            };
+            let shown = rate_label(catalog, clock.speed());
+            let shown = text::widget_text(ui.ctx(), &shown, rtl, None, look);
+            let size = egui::vec2(rate_width(ui, catalog), ui.spacing().interact_size.y);
+            let speed = ui
+                .add_sized(size, egui::Button::new(shown).frame(false))
+                .on_hover_text(catalog.text("viewer-rate-normal"));
+            if speed.clicked() {
+                chosen = Some(Rate::NORMAL);
+            }
+            if speed.hovered() {
+                let turned = wheel_turned(ui.ctx());
+                if turned > 0. {
+                    chosen = rate.faster();
+                } else if turned < 0. {
+                    chosen = rate.slower();
                 }
-            });
-        if chosen != current {
+            }
+
+            let faster = with_key("viewer-faster", "+");
+            let button = IconButton::new(Icon::Plus, &faster).narrow();
+            if ui.add_enabled(rate.faster().is_some(), button).clicked() {
+                chosen = rate.faster();
+            }
+            chosen
+        });
+
+        if let Some(chosen) = chosen.inner
+            && chosen != rate
+        {
             self.command(Command::SetRate(chosen));
         }
     }
@@ -2856,6 +2932,12 @@ impl Viewer {
             Some(Command::Pause)
         } else if !focused && pressed(egui::Key::Home) {
             Some(Command::SeekTo(SourceTime::ZERO))
+        } else if pressed(egui::Key::Minus) {
+            let rate = self.controller.clock().rate();
+            rate.slower().map(Command::SetRate)
+        } else if pressed(egui::Key::Plus) || pressed(egui::Key::Equals) {
+            let rate = self.controller.clock().rate();
+            rate.faster().map(Command::SetRate)
         } else if pressed(egui::Key::Comma) {
             Some(Command::StepGroup(-1))
         } else if pressed(egui::Key::Period) {
@@ -2901,6 +2983,71 @@ impl Viewer {
             ears,
         });
     }
+}
+
+/// A speed as the player shows it, with only the decimals it has
+fn rate_label(catalog: &Catalog, factor: f64) -> String {
+    let mut digits = 0;
+    let mut scaled = factor;
+    while digits < 2 && (scaled - scaled.round()).abs() > 1e-9 {
+        digits += 1;
+        scaled *= 10.;
+    }
+
+    let options = FluentNumberOptions {
+        minimum_fraction_digits: Some(digits),
+        ..Default::default()
+    };
+    let value = FluentValue::Number(FluentNumber::new(factor, options));
+    catalog.text_with("viewer-rate", &[("rate", value)])
+}
+
+/// Room for the widest speed the player shows, a held one included, so
+/// the buttons beside it stay put as it changes
+fn rate_width(ui: &Ui, catalog: &Catalog) -> f32 {
+    let font = egui::TextStyle::Button.resolve(ui.style());
+    let mut widest: f32 = 0.;
+    for factor in RATES {
+        for speed in [factor, factor * BOOST] {
+            let label = rate_label(catalog, speed);
+            let galley =
+                ui.fonts_mut(|f| f.layout_no_wrap(label, font.clone(), egui::Color32::PLACEHOLDER));
+            widest = widest.max(galley.size().x);
+        }
+    }
+    widest + 2. * RATE_PADDING
+}
+
+/// How far the mouse wheel turned this frame, up positive, taken so it
+/// scrolls nothing else
+fn wheel_turned(ctx: &egui::Context) -> f32 {
+    ctx.input_mut(|i| {
+        let mut turned = 0.;
+        for event in &i.events {
+            if let egui::Event::MouseWheel { delta, .. } = event {
+                turned += delta.y;
+            }
+        }
+        if turned != 0. {
+            i.smooth_scroll_delta = egui::Vec2::ZERO;
+        }
+        turned
+    })
+}
+
+/// The left button held down on the view, since when in egui's seconds,
+/// and the boost it started once held long enough
+#[derive(Clone, Copy, Debug)]
+struct Press {
+    since: f64,
+    boost: Option<Boost>,
+}
+
+/// A hold playing faster, and whether it set a paused demo playing, to
+/// pause again when let go
+#[derive(Clone, Copy, Debug)]
+struct Boost {
+    resumed: bool,
 }
 
 /// The keys that follow the session's best players, in score order
@@ -3447,9 +3594,13 @@ const SEEK_TRACK: f32 = 4.;
 const SEEK_TRACK_ACTIVE: f32 = 6.;
 const SEEK_KNOB: f32 = 6.;
 
-/// The rate menu's width and the volume slider's
-const RATE_MENU_WIDTH: f32 = 64.;
+/// Room either side of the speed between its buttons, and the volume
+/// slider's width
+const RATE_PADDING: f32 = 2.;
 const VOLUME_SLIDER_WIDTH: f32 = 64.;
+
+/// Seconds the left button is held on the view before it plays faster
+const HOLD_TO_BOOST: f64 = 0.3;
 
 /// The longest a free camera flies in one frame, in seconds, so a frame
 /// that came late never throws it far
@@ -4314,7 +4465,7 @@ mod tests {
     fn playback(playing: bool, backward: bool, stop_at: Option<f64>) -> Playback {
         Playback {
             time: 400.,
-            rate: Rate::Half,
+            rate: Rate::of(0.5).unwrap(),
             backward,
             playing,
             stop_at,

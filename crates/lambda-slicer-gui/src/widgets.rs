@@ -75,8 +75,9 @@ pub enum Icon {
     Next,
     /// An outlined triangle, for playing something once
     Play,
-    /// A plus, for adding
+    /// A plus, for adding or for more, and a minus, for less
     Plus,
+    Minus,
     /// An arrow down onto a line, for exporting
     Download,
     /// Two arrows chasing each other round, for looping
@@ -481,6 +482,9 @@ pub fn paint_icon_facing(
             painter.line_segment([p(8., 3.), p(8., 13.)], stroke);
             painter.line_segment([p(3., 8.), p(13., 8.)], stroke);
         }
+        Icon::Minus => {
+            painter.line_segment([p(3., 8.), p(13., 8.)], stroke);
+        }
         Icon::Download => {
             painter.line_segment([p(8., 2.), p(8., 10.)], stroke);
             painter.add(Shape::line(
@@ -582,6 +586,7 @@ pub struct IconButton<'a> {
     label: &'a str,
     selected: bool,
     mirror: bool,
+    narrow: bool,
 }
 
 impl<'a> IconButton<'a> {
@@ -591,7 +596,14 @@ impl<'a> IconButton<'a> {
             label,
             selected: false,
             mirror: false,
+            narrow: false,
         }
+    }
+
+    /// Only as wide as its glyph, for a button beside what it changes
+    pub fn narrow(mut self) -> Self {
+        self.narrow = true;
+        self
     }
 
     /// Shown as a toggle that is on when `selected`
@@ -610,7 +622,12 @@ impl<'a> IconButton<'a> {
 
 impl Widget for IconButton<'_> {
     fn ui(self, ui: &mut Ui) -> Response {
-        let size = Vec2::splat(theme::CONTROL_HEIGHT);
+        let width = if self.narrow {
+            theme::ICON_SIZE + 2.
+        } else {
+            theme::CONTROL_HEIGHT
+        };
+        let size = Vec2::new(width, theme::CONTROL_HEIGHT);
         let (rect, response) = ui.allocate_exact_size(size, Sense::click());
         let enabled = ui.is_enabled();
         response

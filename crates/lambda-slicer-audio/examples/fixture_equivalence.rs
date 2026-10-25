@@ -432,7 +432,8 @@ fn looped(demo: &Demo, store: &Shared, at: SourceTime) -> Result<Vec<String>, St
         if request.stamp.revision != revision {
             revision = request.stamp.revision;
             round += 1;
-            let rate = [Rate::Normal, Rate::Double, Rate::Half][(round - 1).min(2)];
+            let rates = [1., 2., 0.5].map(|r| Rate::of(r).expect("offered"));
+            let rate = rates[(round - 1).min(2)];
             c.command(Command::SetRate(rate), wall);
             let (state, frame) = observe(&mut p, t);
             let want = demo.reference(t)?;

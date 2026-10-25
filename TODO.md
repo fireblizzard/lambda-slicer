@@ -7,8 +7,8 @@
 - [x] Add a speedometer and last jump speed to the demo player, with a setting to make it count only horizontal, only vertical or full 3D (both)
 - [ ] Add flashlight HUD to the demo player
 - [ ] Add a fps counter to the demo player, not at which framerate the demo is being rendered, but what fps the player recording the demo had instead
-- [ ] Add x1.25 and x1.5 replay speed. but the dropdown is getting too crowded, we might have to use a different UI element type
-- [ ] Make holding left click on the demo player speed up the demo twice the current speed (x1 -> x2, x4 -> x8). releasing click makes it go back to normal (whichever replay speed you had set, not necessarily x1)
+- [x] Add x1.25 and x1.5 replay speed. but the dropdown is getting too crowded, we might have to use a different UI element type
+- [x] Make holding left click on the demo player speed up the demo twice the current speed (x1 -> x2, x4 -> x8). releasing click makes it go back to normal (whichever replay speed you had set, not necessarily x1)
 - [x] Make mouse4 navigate back and mouse5 navigate forward. so if you're in the library view and click a demo, it opens the demo view with the player and everything, and pressing mouse4 would close that view and go back to the library where you see the whole table, and mouse5 would get you back to that demo view
 - [x] On `afafsd.dem` it's initially a 3v3 but after 05:52.999 a new match starts while the previous one is ongoing, and this new one is a 2v2, so we should really say 4 players for this demo as the only complete match is a 2v2. if there was already an ongoing match when the demo started and that match is a 3v3 and gets to finish, and then there's a full 2v2 match after that in the same demo, then we should still count the 2v2, as it's the complete one.  if there are 2 different complete matches in the demo, then in that case we should count the match with the highest amount of players, so if one is 3v3 and the other 2v2, keep the 3v3 for the players column in the library
 - [ ] Add a setting to adjust the font size for the chat, server settings and kill feed, and make it slightly smaller (like 1 point) by default

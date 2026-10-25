@@ -54,6 +54,8 @@ stuff like a zooming in or seeing players through walls, as long as the demo has
 | Left / Right | 5 seconds back / forward |
 | Shift+Left / Shift+Right | 10 seconds back / forward |
 | Comma / Period | One frame back / forward |
+| Minus / Plus | Slower / faster, from 0.01× to 100× |
+| Hold left click on the picture | Twice as fast while held |
 | Home | Back to the start |
 | Z | Zoom in or out |
 | X | Toggle seeing players through walls |

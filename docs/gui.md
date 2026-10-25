@@ -125,6 +125,9 @@ working. With it, the demo plays with the game's files, and the HUD shows as the
 Under the picture are the seek bar and the controls: back to the start, rewind, 10 seconds back,
 one frame back, play, one frame forward, 10 seconds forward, the speed, free camera, zoom, player
 names, light up everything, see through walls, the volume, the picture settings and full screen.
+The speed goes from 0.01× to 100×, one step at a time with its minus and plus buttons, the − and
++ keys or the mouse wheel over it, and clicking it goes back to 1×. Holding the left button on the
+picture plays twice as fast until you let go, from a pause too, which then pauses again.
 Light up everything shows the map fully lit, as the game's `r_fullbright` does, and lights models
 to at least three quarters, keeping some of their shading. Player names puts each drawn player's
 name over their head in their team's colour, as the camera sees them, the free camera's too. A

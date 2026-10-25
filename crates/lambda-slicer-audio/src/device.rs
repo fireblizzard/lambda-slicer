@@ -456,7 +456,7 @@ fn run(
             if f.until.is_some_and(|until| from.0 >= until.0) {
                 return None;
             }
-            let speed = f.clock.rate().factor();
+            let speed = f.clock.speed();
             let to = SourceTime(from.0 + block as f64 * speed / f64::from(rate));
             let playback = advance(&mut own, &f.demo, &library, to, interrupt.clone())?;
             let output = Output {

@@ -42,37 +42,64 @@ pub struct Position {
     pub time: SourceTime,
 }
 
-/// The speeds playback offers, forward or backward
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum Rate {
-    Quarter,
-    Half,
-    #[default]
-    Normal,
-    Double,
-    Quadruple,
+/// The speeds playback offers, forward or backward, slowest first
+pub const RATES: [f64; 15] = [
+    0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 1., 1.25, 1.5, 2., 3., 5., 10., 50., 100.,
+];
+
+/// One of the speeds in [`RATES`], by its place there
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Rate(usize);
+
+impl Default for Rate {
+    fn default() -> Self {
+        Self::NORMAL
+    }
 }
 
 impl Rate {
+    /// The demo's own speed
+    pub const NORMAL: Self = Self(6);
+
+    /// The speed offered that is `factor` times the demo's own, if any
+    pub fn of(factor: f64) -> Option<Self> {
+        let place = RATES.iter().position(|&r| r == factor)?;
+        Some(Self(place))
+    }
+
     pub fn factor(self) -> f64 {
-        match self {
-            Rate::Quarter => 0.25,
-            Rate::Half => 0.5,
-            Rate::Normal => 1.,
-            Rate::Double => 2.,
-            Rate::Quadruple => 4.,
+        RATES[self.0]
+    }
+
+    /// The next speed down, none below the slowest
+    pub fn slower(self) -> Option<Self> {
+        let place = self.0.checked_sub(1)?;
+        Some(Self(place))
+    }
+
+    /// The next speed up, none above the fastest
+    pub fn faster(self) -> Option<Self> {
+        if self.0 + 1 < RATES.len() {
+            Some(Self(self.0 + 1))
+        } else {
+            None
         }
     }
 }
 
+/// How much faster than its rate a held boost plays
+pub const BOOST: f64 = 2.;
+
 /// Source time as a function of wall time. While playing, source time runs
-/// from an anchor at the chosen rate, forward or backward, never below 0.
-/// Paused, it stays where it stopped. Every change re-anchors, so a new
-/// rate or direction never moves the playhead
+/// from an anchor at the chosen rate, [`BOOST`] times that while boosted,
+/// forward or backward, never below 0. Paused, it stays where it stopped.
+/// Every change re-anchors, so a new rate or direction never moves the
+/// playhead
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Clock {
     playing: bool,
     rate: Rate,
+    boosted: bool,
     backward: bool,
     anchor_wall: f64,
     anchor_source: SourceTime,
@@ -82,7 +109,8 @@ impl Default for Clock {
     fn default() -> Self {
         Self {
             playing: false,
-            rate: Rate::Normal,
+            rate: Rate::NORMAL,
+            boosted: false,
             backward: false,
             anchor_wall: 0.,
             anchor_source: SourceTime::ZERO,
@@ -99,6 +127,20 @@ impl Clock {
         self.rate
     }
 
+    /// Playing faster than its rate for as long as it is held
+    pub fn boosted(&self) -> bool {
+        self.boosted
+    }
+
+    /// Source seconds a wall second plays while playing
+    pub fn speed(&self) -> f64 {
+        if self.boosted {
+            self.rate.factor() * BOOST
+        } else {
+            self.rate.factor()
+        }
+    }
+
     /// Running toward the start
     pub fn backward(&self) -> bool {
         self.backward
@@ -112,7 +154,7 @@ impl Clock {
 
         let elapsed = (wall - self.anchor_wall).max(0.);
         let sign = if self.backward { -1. } else { 1. };
-        SourceTime((self.anchor_source.0 + sign * elapsed * self.rate.factor()).max(0.))
+        SourceTime((self.anchor_source.0 + sign * elapsed * self.speed()).max(0.))
     }
 
     fn anchor(&mut self, wall: f64, source: SourceTime) {
@@ -136,6 +178,13 @@ impl Clock {
         let now = self.at(wall);
         self.anchor(wall, now);
         self.rate = rate;
+    }
+
+    /// Play [`BOOST`] times faster than the rate, or at the rate again
+    pub fn set_boosted(&mut self, boosted: bool, wall: f64) {
+        let now = self.at(wall);
+        self.anchor(wall, now);
+        self.boosted = boosted;
     }
 
     /// Run toward the start, or forward again
@@ -162,12 +211,12 @@ mod tests {
 
         clock.play(10.);
         assert_eq!(clock.at(12.), SourceTime(2.));
-        clock.set_rate(Rate::Quadruple, 12.);
+        clock.set_rate(Rate::of(5.).unwrap(), 12.);
         assert_eq!(clock.at(12.), SourceTime(2.));
-        assert_eq!(clock.at(13.), SourceTime(6.));
+        assert_eq!(clock.at(13.), SourceTime(7.));
 
         clock.pause(13.5);
-        assert_eq!(clock.at(100.), SourceTime(8.));
+        assert_eq!(clock.at(100.), SourceTime(9.5));
         clock.set(SourceTime(1.), 101.);
         assert_eq!(clock.at(200.), SourceTime(1.));
 
@@ -183,10 +232,33 @@ mod tests {
         clock.play(0.);
         clock.set_backward(true, 1.);
         assert_eq!(clock.at(1.), SourceTime(4.));
-        clock.set_rate(Rate::Double, 1.);
+        clock.set_rate(Rate::of(2.).unwrap(), 1.);
         assert_eq!(clock.at(2.), SourceTime(2.));
         assert_eq!(clock.at(10.), SourceTime::ZERO);
         clock.set_backward(false, 2.);
         assert_eq!(clock.at(2.5), SourceTime(3.));
+    }
+
+    #[test]
+    fn a_boost_doubles_the_rate_while_it_lasts() {
+        let mut clock = Clock::default();
+        clock.set_rate(Rate::of(5.).unwrap(), 0.);
+        clock.play(0.);
+        clock.set_boosted(true, 1.);
+        assert_eq!(clock.at(1.), SourceTime(5.));
+        assert_eq!(clock.at(2.), SourceTime(15.));
+        clock.set_boosted(false, 2.);
+        assert_eq!(clock.at(3.), SourceTime(20.));
+        assert_eq!(clock.rate(), Rate::of(5.).unwrap());
+    }
+
+    #[test]
+    fn the_speeds_step_one_at_a_time_and_stop_at_either_end() {
+        assert_eq!(Rate::default().factor(), 1.);
+        assert_eq!(Rate::NORMAL.faster().map(Rate::factor), Some(1.25));
+        assert_eq!(Rate::NORMAL.slower().map(Rate::factor), Some(0.75));
+        assert_eq!(Rate::of(0.01).unwrap().slower(), None);
+        assert_eq!(Rate::of(100.).unwrap().faster(), None);
+        assert_eq!(Rate::of(4.), None);
     }
 }
