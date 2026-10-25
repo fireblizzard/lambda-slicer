@@ -607,6 +607,7 @@ fn run() -> Result<ExitCode> {
                     midair: false,
                     min_speed,
                     headshot,
+                    min_at_once: None,
                 },
                 min_action,
                 min_accuracy: min_accuracy.map(|p| p / 100.),

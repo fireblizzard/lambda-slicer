@@ -28,6 +28,7 @@ use lambda_slicer_core::message::{Coded, Message};
 use lambda_slicer_core::timeline::time::DemoTime;
 
 use crate::i18n::{Catalog, DateOrder, Ymd};
+use crate::kill_filters::{MULTIKILLS, multikill_name};
 use crate::layout;
 use crate::text::{self, Look};
 use crate::theme;
@@ -219,6 +220,11 @@ pub struct Filters {
     pub headshot: bool,
     /// Only demos with a kill where the killer or the victim was in the air
     pub midair: bool,
+    /// Only demos with a shot that killed at least this many, by anyone
+    pub multikill: Option<u32>,
+    /// Only demos with a killing spree of at least this many kills, by
+    /// anyone, 0 for any
+    pub min_spree: u32,
     /// Lowest accuracy of the recording player in percent, 0 for any
     pub min_accuracy: f32,
     /// Fewest and most players and teams, inclusive. The whole range is
@@ -241,6 +247,8 @@ impl Default for Filters {
             to: None,
             headshot: false,
             midair: false,
+            multikill: None,
+            min_spree: 0,
             min_accuracy: 0.,
             players: (0, MAX_PLAYERS),
             teams: (0, MAX_TEAMS),
@@ -303,6 +311,8 @@ impl Filters {
             self.spectating != Spectating::Any,
             self.headshot,
             self.midair,
+            self.multikill.is_some(),
+            self.min_spree > 0,
             self.min_accuracy > 0.,
             self.players != (0, MAX_PLAYERS),
             self.teams != (0, MAX_TEAMS),
@@ -336,11 +346,13 @@ impl Filters {
             min_spectating: (self.spectating == Spectating::Mostly).then_some(0.5000001),
             max_spectating: (self.spectating == Spectating::Playing).then_some(0.5),
             min_accuracy: (self.min_accuracy > 0.).then_some(f64::from(self.min_accuracy) / 100.),
+            min_spree: (self.min_spree > 0).then_some(self.min_spree),
             from_date: self.from.map(Ymd::iso),
             to_date: self.to.map(Ymd::iso),
             kills: KillQuery {
                 headshot: self.headshot,
                 midair: self.midair,
+                min_at_once: self.multikill,
                 ..Default::default()
             },
             sort,
@@ -444,6 +456,10 @@ enum Col {
     Gauss,
     Kills,
     Headshots,
+    /// The most players one shot killed, and the longest killing spree, by
+    /// anyone
+    Multikill,
+    Spree,
     Accuracy,
     Action,
     Spectating,
@@ -453,7 +469,7 @@ enum Col {
 }
 
 impl Col {
-    const ALL: [Col; 14] = [
+    const ALL: [Col; 16] = [
         Col::Name,
         Col::Date,
         Col::FileDate,
@@ -465,6 +481,8 @@ impl Col {
         Col::Gauss,
         Col::Kills,
         Col::Headshots,
+        Col::Multikill,
+        Col::Spree,
         Col::Accuracy,
         Col::Action,
         Col::Spectating,
@@ -483,6 +501,8 @@ impl Col {
             Col::Gauss => "gauss",
             Col::Kills => "kills",
             Col::Headshots => "headshots",
+            Col::Multikill => "multikill",
+            Col::Spree => "spree",
             Col::Accuracy => "accuracy",
             Col::Action => "action",
             Col::Spectating => "spectating",
@@ -502,6 +522,8 @@ impl Col {
             Col::Gauss => "column-gauss",
             Col::Kills => "column-kills",
             Col::Headshots => "column-headshots",
+            Col::Multikill => "column-multikill",
+            Col::Spree => "column-spree",
             Col::Accuracy => "column-accuracy",
             Col::Action => "column-action",
             Col::Spectating => "column-spectating",
@@ -516,6 +538,8 @@ impl Col {
             Col::Date => Some("help-date-column"),
             Col::FileDate => Some("help-file-date"),
             Col::Headshots => Some("help-headshots-column"),
+            Col::Multikill => Some("help-multikill-column"),
+            Col::Spree => Some("help-spree-column"),
             Col::Accuracy => Some("help-accuracy"),
             Col::Players => Some("help-players-column"),
             Col::Teams => Some("help-teams-column"),
@@ -534,6 +558,8 @@ impl Col {
             Col::Gauss => Sort::Gauss,
             Col::Kills => Sort::Kills,
             Col::Headshots => Sort::Headshots,
+            Col::Multikill => Sort::Multikill,
+            Col::Spree => Sort::Spree,
             Col::Accuracy => Sort::Accuracy,
             Col::Action => Sort::Action,
             Col::Spectating => Sort::Spectating,
@@ -553,6 +579,7 @@ impl Col {
             Col::Score => (128., 64.),
             Col::Gauss | Col::Kills => (64., 48.),
             Col::Headshots => (56., 48.),
+            Col::Multikill | Col::Spree => (72., 48.),
             Col::Accuracy => (80., 56.),
             Col::Action => (144., 96.),
             Col::Spectating => (96., 64.),
@@ -1243,6 +1270,38 @@ impl LibraryView {
             ui.checkbox(&mut self.filters.midair, t("filter-midair"));
             widgets::help(ui, &catalog.text("help-midair-filter"), rtl);
         });
+
+        // A multikill from a double kill up, the one chosen clicked again
+        // turning it off
+        layout::row(ui, rtl, |ui| {
+            ui.label(t("refine-multikill"));
+            widgets::help(ui, &catalog.text("help-multikill"), rtl);
+        });
+        layout::wrapping_row(ui, rtl, |ui| {
+            for count in MULTIKILLS {
+                let on = self.filters.multikill == Some(count);
+                let name = multikill_name(catalog, count);
+                let name = text::widget_text(ui.ctx(), &name, rtl, None, Look::Plain);
+                if ui.add(egui::Button::selectable(on, name)).clicked() {
+                    self.filters.multikill = if on { None } else { Some(count) };
+                }
+            }
+        });
+
+        let spree = &mut self.filters.min_spree;
+        layout::row(ui, rtl, |ui| {
+            ui.label(t("filter-min-spree"));
+            widgets::help(ui, &catalog.text("help-spree-filter"), rtl);
+            layout::trailing(ui, rtl, |ui| {
+                ui.add(
+                    egui::DragValue::new(spree)
+                        .range(0..=MAX_KILLS)
+                        .speed(KILLS_STEP)
+                        .custom_formatter(|v, _| catalog.number(v, 0))
+                        .custom_parser(parse_number),
+                );
+            });
+        });
         ui.add_space(theme::GAP_M);
 
         // Recorded, both bounds inclusive
@@ -1601,6 +1660,10 @@ impl LibraryView {
                     Col::Gauss => file.gauss.or(analysed.then_some(0)).map(whole),
                     Col::Kills => file.kills.map(whole),
                     Col::Headshots => file.headshots.map(whole),
+                    // One kill at once or in a row is no multikill or
+                    // spree, a dash
+                    Col::Multikill => file.best_multikill.filter(|n| *n >= 2).map(whole),
+                    Col::Spree => file.best_spree.filter(|n| *n >= 2).map(whole),
                     Col::Accuracy => file.accuracy.map(percent),
                     Col::Players => file.players.map(whole),
                     Col::Teams => file.teams.map(whole),
@@ -2224,6 +2287,8 @@ mod tests {
             accuracy: None,
             players: None,
             teams: None,
+            best_multikill: None,
+            best_spree: None,
             best_window: None,
             matching_kills: Vec::new(),
             native: Vec::new(),

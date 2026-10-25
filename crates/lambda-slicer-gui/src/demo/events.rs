@@ -20,7 +20,9 @@ use super::compact::{clock, side_colour};
 use super::{DemoAction, DemoView, Pointing, Request, Shown, WINDOW_TINT, fold_triangle, track};
 use crate::i18n::Catalog;
 use crate::kill_analysis::WallStatus;
-use crate::kill_filters::{self, AirBadge, MidairMode, SpeedBadge, SpeedSubject};
+use crate::kill_filters::{
+    self, AirBadge, MULTIKILLS, MidairMode, SpeedBadge, SpeedSubject, multikill_name,
+};
 use crate::layout;
 use crate::library::WEAPONS;
 use crate::text::{self, Look};
@@ -143,25 +145,6 @@ impl RowLine {
         let top = self.rect.center().y - size.y / 2.;
         Rect::from_min_size(Pos2::new(left, top), size)
     }
-}
-
-/// The multikills the refinement offers, a double kill to a penta kill
-const MULTIKILLS: [u32; 4] = [2, 3, 4, 5];
-
-/// What a shot that killed `count` players is called, double kill to penta
-/// kill, then how many it killed
-fn multikill_name(catalog: &Catalog, count: u32) -> String {
-    let id = match count {
-        2 => "badge-double-kill",
-        3 => "badge-triple-kill",
-        4 => "badge-quadra-kill",
-        5 => "badge-penta-kill",
-        _ => {
-            let count = FluentValue::from(i64::from(count));
-            return catalog.text_with("badge-multikill", &[("count", count)]);
-        }
-    };
-    catalog.text(id)
 }
 
 /// Each kind of event, whether `shown` shows it and its name
@@ -1129,9 +1112,8 @@ impl DemoView {
         }
 
         // A spree shows from the length the settings ask for
-        if let Some(&count) = model.sprees.get(&index)
-            && count >= self.spree_least
-        {
+        let count = features.spree;
+        if count >= 2 && count >= self.spree_least {
             let count = FluentValue::from(i64::from(count));
             let args = [("count", count)];
             badges.push(Badge {
@@ -1715,6 +1697,7 @@ mod tests {
             gauss: false,
             gauss_kill: None,
             at_once: 1,
+            spree: 0,
         };
 
         Event {

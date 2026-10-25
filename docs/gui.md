@@ -36,8 +36,10 @@ included, and the status bar shows the progress. Its problem list says why a fil
 read. Dropped files are checked by their header, and anything else is named as not a demo.
 
 The table lists the [library](library.md): status, name, recording date, file date, map, length,
-final score, players, teams, kills, gauss shots, the recorder's headshots and accuracy, intensity
-and the share spent spectating. Columns chooses which show, as does a right-click on a heading, and
+final score, players, teams, kills, gauss shots, the recorder's headshots, the best multikill and
+the longest killing spree by anyone, the recorder's accuracy, intensity and the share spent
+spectating. Multikill counts the most players one shot killed and Spree the most kills a player
+made in a row without dying, a dash for neither, both found as the events list finds them. Columns chooses which show, as does a right-click on a heading, and
 the choice is kept. Clicking a heading sorts by it. Rows load a page at a time.
 
 - **Date** is read from the file name when it has one like `20230910_214553`, as automatic
@@ -56,7 +58,11 @@ the choice is kept. Clicking a heading sorts by it. Rows load a page at a time.
 
 Filters opens the filter pane: file name and folder, player, map, weapon, point of view (playing
 or spectating), minimum length and kills, players and teams, minimum accuracy, headshot kills,
-midair kills and recording dates. The `(?)` beside a filter explains how it's worked out.
+midair kills, multikills, killing sprees and recording dates. The `(?)` beside a filter explains
+how it's worked out. Multikill keeps demos with a double, triple, quadra or penta kill or more, by
+anyone, the one chosen clicked again turning it off, and opening a demo then turns on the same
+refinement in its events. Spree of at least keeps demos where a player killed that many in a row,
+0 for any.
 
 Right-clicking a demo offers Show in folder, Add to favourites or Remove from favourites, and Hide
 or Unhide, its row lit while the menu is open. A match's row offers the same for the match's demo. A favourite has a yellow star after its name, in the table, the list

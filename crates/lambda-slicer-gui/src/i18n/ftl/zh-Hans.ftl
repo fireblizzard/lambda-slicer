@@ -79,6 +79,7 @@ filter-player = 玩家
 filter-weapon-any = 任意武器
 filter-min-minutes = 至少（分钟）
 filter-min-kills = 至少（击杀）
+filter-min-spree = 连杀至少（击杀）
 filter-players = 玩家数
 filter-teams = 队伍数
 filter-spectating-any = 游戏或观战
@@ -394,6 +395,8 @@ legend-death = 死亡
 legend-switch = 切换武器
 
 column-headshots = 爆头
+column-multikill = 多杀
+column-spree = 连杀
 filter-headshots = 爆头击杀
 filter-midair = 空中击杀
 event-headshot = 爆头
@@ -411,11 +414,14 @@ help-kd = 每次死亡对应的击杀数，即击杀数除以死亡数。从未�
 
 help-headshots = 爆头击杀，根据受害者的死亡动作判断。爆炸不计入。只显示录制者的爆头，因为其他玩家常在录像视野之外击杀。在一对一中也显示对手的爆头，因为对手的击杀都是针对录制者。
 help-headshots-column = 录制者的爆头击杀，根据受害者的死亡动作判断。爆炸不计入。其他玩家的击杀不计入，因为它们常发生在录像视野之外。
+help-multikill-column = 录像中任何人一枪击杀的最多玩家数，比如三杀就是 3。
+help-spree-column = 录像中任何人最长的连杀：一名玩家在不死亡的情况下连续击杀的最多次数。
 help-date-column = 比赛录制的时间。如果文件名里有像 20230910_214553 这样的日期（游戏自动录制的录像就是这样），就从文件名读取。否则就是文件日期，复制或下载可能会改变它。
 help-file-date = 文件保存的时间。对于导出的片段，就是导出的时间。
 help-accuracy = 命中射击所占比例，根据命中在瞄准线上留下的血迹判断，并扣除偶然重合。包括格洛克、蟒蛇、MP5 子弹、霰弹枪、开镜十字弩和高斯光束的直接命中。爆炸和高斯反射不留血迹，不计入。只显示录制者的命中率，且至少 50 次射击后才显示。
 help-headshot-filter = 至少有一次录像中可见的爆头击杀的录像，任何玩家均可。
 help-midair-filter = 至少有一次击杀时击杀者或受害者在空中、离地面至少 50 单位的录像。未选择 Half-Life 文件夹时，普通跳跃也算。
+help-spree-filter = 有玩家在不死亡的情况下连续击杀至少这么多次的录像。以任何方式死亡都会结束连杀，地图结束或玩家离开也会。误杀队友不计入。
 help-accuracy-filter = 录制者命中率至少达到该比例的录像。
 
 clips-new = 新建片段

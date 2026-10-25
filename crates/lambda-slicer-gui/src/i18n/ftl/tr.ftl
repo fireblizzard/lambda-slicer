@@ -81,6 +81,7 @@ filter-player = Oyuncu
 filter-weapon-any = Herhangi bir silah
 filter-min-minutes = En az (dakika)
 filter-min-kills = En az (öldürme)
+filter-min-spree = Seri en az (öldürme)
 filter-players = Oyuncular
 filter-teams = Takımlar
 filter-spectating-any = Oynayan ya da izleyen
@@ -405,6 +406,8 @@ legend-death = Ölüm
 legend-switch = Silah değişimi
 
 column-headshots = Kafa vuruşları
+column-multikill = Çoklu öldürme
+column-spree = Seri
 filter-headshots = Kafadan öldürmeler
 filter-midair = Midair öldürmeler
 event-headshot = kafadan
@@ -422,11 +425,14 @@ help-kd = Ölüm başına frag, yani fraglar bölü ölümler. Hiç ölmeyen bir
 
 help-headshots = Kafaya isabetle yapılan öldürmeler; kurbanın ölüm animasyonundan anlaşılır. Patlamalar sayılmaz. Yalnızca kaydedenin öldürmeleri gösterilir, çünkü diğer oyuncular çoğu zaman kaydın göremediği yerlerde öldürür. Düelloda rakibinkiler de gösterilir, çünkü rakibin tüm öldürmeleri kaydedene karşıdır.
 help-headshots-column = Kaydedenin kafaya isabetle yaptığı öldürmeler; kurbanın ölüm animasyonundan anlaşılır. Patlamalar sayılmaz. Diğer oyuncuların öldürmeleri sayılmaz, çünkü çoğu zaman kaydın göremediği yerlerde olur.
+help-multikill-column = Demoda herhangi birinin tek atışta öldürdüğü en fazla oyuncu sayısı; örneğin üçlü öldürmede 3.
+help-spree-column = Demodaki en uzun öldürme serisi, kim yaptıysa: bir oyuncunun ölmeden üst üste yaptığı en fazla öldürme.
 help-date-column = Maçın kaydedildiği zaman. Dosya adında 20230910_214553 gibi bir tarih varsa, oyunun kendiliğinden yaptığı kayıtlarda olduğu gibi, tarih dosya adından alınır. Yoksa dosya tarihidir; kopyalama ya da indirme bunu değiştirebilir.
 help-file-date = Dosyanın kaydedildiği zaman. Dışa aktarılan bir klipte bu, dışa aktarıldığı zamandır.
 help-accuracy = İsabet eden atışların oranı; bir isabetin nişan hattında bıraktığı kana göre, rastlantısal eşleşmeler çıkarılarak hesaplanır. Glock, python, MP5 mermileri, pompalı, dürbünlü arbalet ve gauss ışınının doğrudan isabetleri sayılır. Patlamalar ve gauss sekmeleri kan bırakmaz, sayılmaz. Yalnızca kaydeden için, en az 50 atıştan sonra gösterilir.
 help-headshot-filter = Herhangi bir oyuncunun, kayıtta görülen en az bir kafadan öldürmesi olan demolar.
 help-midair-filter = Öldürenin ya da kurbanın havada, yerden en az 50 birim yukarıda olduğu en az bir öldürme bulunan demolar. Half-Life klasörü seçilmemişse sıradan bir zıplama da sayılır.
+help-spree-filter = Bir oyuncunun ölmeden üst üste en az bu kadar öldürme yaptığı demolar. Herhangi bir şekilde ölmek seriyi bitirir; haritanın bitmesi ya da oyuncunun oyundan çıkması da öyle. Takım öldürmeleri sayılmaz.
 help-accuracy-filter = Kaydedenin atışlarının en az bu kadarını isabet ettirdiği demolar.
 
 clips-new = Yeni klip

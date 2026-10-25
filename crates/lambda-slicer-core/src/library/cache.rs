@@ -19,13 +19,14 @@ use crate::analysis::context::{
     MapScore, Scoreboard, every_map, map_list, map_scores, short_map_name,
 };
 use crate::analysis::parts::PartStatus;
+use crate::analysis::streaks::{kills_at_once, spree_ends};
 use crate::analysis::weapons::{Actor, PROFILE};
 use crate::analysis::{ANALYSIS_SCHEMA, AnalysisReport};
 use crate::message::Message;
 use crate::state::{DECODE_REPORT_SCHEMA, DecodeStatus};
 
 /// Layout of the tables below. A different value rebuilds the cache
-pub const CACHE_SCHEMA: i64 = 11;
+pub const CACHE_SCHEMA: i64 = 12;
 
 #[derive(Debug, thiserror::Error)]
 pub enum CacheError {
@@ -157,6 +158,8 @@ CREATE TABLE files(
     unknown_shots INTEGER,
     kills INTEGER,
     headshots INTEGER,
+    best_multikill INTEGER,
+    best_spree INTEGER,
     players INTEGER,
     teams INTEGER,
     accuracy REAL,
@@ -208,7 +211,9 @@ CREATE TABLE kills(
     victim_speed REAL,
     distance REAL,
     shot_flight REAL,
-    headshot INTEGER
+    headshot INTEGER,
+    at_once INTEGER NOT NULL DEFAULT 1,
+    spree INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX kills_file ON kills(file_id, time);
 CREATE INDEX kills_weapon ON kills(weapon, file_id);
@@ -355,6 +360,8 @@ pub struct KillQuery {
     pub min_speed: Option<f32>,
     /// A kill by a hit to the head
     pub headshot: bool,
+    /// A kill by a shot that killed at least this many players
+    pub min_at_once: Option<u32>,
 }
 
 impl KillQuery {
@@ -365,6 +372,7 @@ impl KillQuery {
             && !self.midair
             && self.min_speed.is_none()
             && !self.headshot
+            && self.min_at_once.is_none()
     }
 }
 
@@ -402,6 +410,10 @@ pub enum Sort {
     /// How many players and teams the demo's matches had
     Players,
     Teams,
+    /// The most players one shot killed, and the longest killing spree,
+    /// by anyone
+    Multikill,
+    Spree,
 }
 
 impl Sort {
@@ -421,6 +433,8 @@ impl Sort {
             Sort::Modified => "f.mtime_ns",
             Sort::Players => "f.players",
             Sort::Teams => "f.teams",
+            Sort::Multikill => "f.best_multikill",
+            Sort::Spree => "f.best_spree",
             // Nothing for a stored score that is not valid JSON, so it sorts
             // with the files that have no score
             Sort::Score => {
@@ -458,6 +472,8 @@ pub struct FileQuery {
     pub min_action: Option<f64>,
     /// Lowest accuracy of the recording player, as a fraction
     pub min_accuracy: Option<f64>,
+    /// A killing spree of at least this many kills, by anyone
+    pub min_spree: Option<u32>,
     /// Only the files at these paths, as [`FileRow::path`] shows them, none
     /// for every file
     pub only_paths: Option<Vec<String>>,
@@ -625,6 +641,10 @@ pub struct FileRow {
     /// How many players and teams the demo's matches had
     pub players: Option<i64>,
     pub teams: Option<i64>,
+    /// The most players one shot killed, and the longest killing spree,
+    /// by anyone
+    pub best_multikill: Option<i64>,
+    pub best_spree: Option<i64>,
     pub best_window: Option<f64>,
     /// The kills that matched the kill conditions, when there were any
     pub matching_kills: Vec<KillRow>,
@@ -842,6 +862,12 @@ impl Cache {
             )
         });
         let scores_json = scores.map(|s| serde_json::to_string(&s).unwrap_or_default());
+
+        // How many each kill's shot killed and the spree it ends, for the
+        // kill filters and the best of each for the table
+        let kills = r.map_or(&[][..], |r| &r.kills[..]);
+        let at_once = kills_at_once(kills);
+        let sprees = spree_ends(kills);
         let scanned_at = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |d| d.as_secs() as i64);
@@ -854,10 +880,11 @@ impl Cache {
                 demo_protocol, network_protocol, duration, recording_kind, max_clients, recorder,
                 playback, spectator_fraction, shots, unknown_shots, kills, best_window,
                 coverage_json, recorded_at, date_source, score, score_json, headshots, accuracy,
-                scanned_at, floors, clip_of, all_maps, players, teams, map_scores_json)
+                scanned_at, floors, clip_of, all_maps, players, teams, map_scores_json,
+                best_multikill, best_spree)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16,
                 ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30, ?31,
-                ?32, ?33, ?34, ?35, ?36, ?37, ?38, ?39, ?40)",
+                ?32, ?33, ?34, ?35, ?36, ?37, ?38, ?39, ?40, ?41, ?42)",
             params![
                 display,
                 native_bytes(e.path),
@@ -899,6 +926,8 @@ impl Cache {
                 r.map(|r| r.counted.players),
                 r.map(|r| r.counted.teams),
                 scores_json,
+                at_once.iter().max(),
+                sprees.iter().max(),
             ],
         )?;
         let id = tx.last_insert_rowid();
@@ -937,9 +966,9 @@ impl Cache {
             let mut kills = tx.prepare(
                 "INSERT INTO kills(file_id, kill_id, segment, time, weapon, weapon_profile,
                     shot_weapon, cause, killer, victim, killer_airborne, victim_airborne,
-                    killer_speed, victim_speed, distance, shot_flight, headshot)
+                    killer_speed, victim_speed, distance, shot_flight, headshot, at_once, spree)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16,
-                    ?17)",
+                    ?17, ?18, ?19)",
             )?;
             for (n, k) in r.kills.iter().enumerate() {
                 let c = k.context.as_ref();
@@ -961,6 +990,8 @@ impl Cache {
                     c.and_then(|c| c.distance),
                     c.and_then(|c| c.shot.as_ref().map(|s| s.flight)),
                     k.headshot,
+                    at_once[n],
+                    sprees[n],
                 ])?;
             }
 
@@ -1091,6 +1122,10 @@ impl Cache {
                 args.len()
             ));
         }
+        if let Some(n) = q.min_at_once {
+            args.push(Box::new(n));
+            c.push(format!("k.at_once >= ?{}", args.len()));
+        }
         c.join(" AND ")
     }
 
@@ -1189,6 +1224,10 @@ impl Cache {
         if let Some(a) = q.min_accuracy {
             args.push(Box::new(a));
             c.push(format!("f.accuracy >= ?{}", args.len()));
+        }
+        if let Some(s) = q.min_spree {
+            args.push(Box::new(s));
+            c.push(format!("f.best_spree >= ?{}", args.len()));
         }
 
         // Players and teams within their bounds
@@ -1350,7 +1389,8 @@ impl Cache {
                 (SELECT w.shots FROM weapons w WHERE w.file_id = f.id AND w.weapon = 'gauss')
                     AS gauss,
                 f.recorded_at, f.date_source, f.score, f.headshots, f.accuracy, f.path_blob,
-                f.score_json, f.mtime_ns, f.clip_of, f.players, f.teams, f.map_scores_json
+                f.score_json, f.mtime_ns, f.clip_of, f.players, f.teams, f.map_scores_json,
+                f.best_multikill, f.best_spree
              FROM files f WHERE {conditions}
              ORDER BY {order} {direction} NULLS LAST, f.path
              LIMIT ?{limit} OFFSET ?{offset}"
@@ -1378,6 +1418,8 @@ impl Cache {
                 accuracy: r.get(19)?,
                 players: r.get(24)?,
                 teams: r.get(25)?,
+                best_multikill: r.get(27)?,
+                best_spree: r.get(28)?,
                 map_scores: r
                     .get::<_, Option<String>>(26)?
                     .and_then(|json| serde_json::from_str(&json).ok())
@@ -1583,6 +1625,74 @@ mod tests {
         };
         let names: Vec<String> = c.query(&q).unwrap().into_iter().map(|f| f.path).collect();
         assert_eq!(names, ["killer.dem", "victim.dem"]);
+    }
+
+    #[test]
+    fn multikills_and_sprees_find_and_sort_demos() {
+        let c = cache(&[
+            ("double.dem", None, None),
+            ("triple.dem", None, None),
+            ("single.dem", None, None),
+        ]);
+
+        // Each demo's best shot and spree, and a kill of its best shot
+        for (name, at_once, spree) in [
+            ("double.dem", 2, 12),
+            ("triple.dem", 3, 4),
+            ("single.dem", 1, 0),
+        ] {
+            c.conn
+                .execute(
+                    "UPDATE files SET best_multikill = ?2, best_spree = ?3 WHERE path = ?1",
+                    params![name, at_once, spree],
+                )
+                .unwrap();
+            c.conn
+                .execute(
+                    "INSERT INTO kills(file_id, kill_id, segment, time, weapon, cause, at_once)
+                     SELECT id, 0, 0, 1.0, 'rpg_rocket', 'player_weapon', ?2
+                     FROM files WHERE path = ?1",
+                    params![name, at_once],
+                )
+                .unwrap();
+        }
+        let names = |q: &FileQuery| -> Vec<String> {
+            c.query(q).unwrap().into_iter().map(|f| f.path).collect()
+        };
+
+        let multikill = |n| FileQuery {
+            kills: KillQuery {
+                min_at_once: Some(n),
+                ..KillQuery::default()
+            },
+            limit: 10,
+            ..FileQuery::default()
+        };
+        assert_eq!(names(&multikill(2)), ["double.dem", "triple.dem"]);
+        assert_eq!(names(&multikill(3)), ["triple.dem"]);
+
+        let spree = FileQuery {
+            min_spree: Some(10),
+            limit: 10,
+            ..FileQuery::default()
+        };
+        assert_eq!(names(&spree), ["double.dem"]);
+
+        // The best first, as the table sorts a column of figures
+        let sorted = |sort| FileQuery {
+            sort,
+            descending: true,
+            limit: 10,
+            ..FileQuery::default()
+        };
+        assert_eq!(
+            names(&sorted(Sort::Multikill)),
+            ["triple.dem", "double.dem", "single.dem"]
+        );
+        assert_eq!(
+            names(&sorted(Sort::Spree)),
+            ["double.dem", "triple.dem", "single.dem"]
+        );
     }
 
     #[test]

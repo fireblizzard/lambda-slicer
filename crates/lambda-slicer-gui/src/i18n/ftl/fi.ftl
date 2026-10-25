@@ -93,6 +93,7 @@ filter-player = Pelaaja
 filter-weapon-any = Mikä tahansa ase
 filter-min-minutes = Vähintään (minuuttia)
 filter-min-kills = Vähintään (tappoa)
+filter-min-spree = Putki vähintään (tappoa)
 filter-players = Pelaajat
 filter-teams = Joukkueet
 filter-spectating-any = Pelaten tai katsojana
@@ -423,6 +424,8 @@ legend-death = Kuolema
 legend-switch = Aseen vaihto
 
 column-headshots = Päälaukaukset
+column-multikill = Monitappo
+column-spree = Putki
 filter-headshots = Päälaukaustapot
 filter-midair = Midair-tapot
 event-headshot = päälaukaus
@@ -440,11 +443,14 @@ help-kd = Fragit kuolemaa kohden eli fragit jaettuna kuolemilla. Jos pelaaja ei 
 
 help-headshots = Tapot osumalla päähän, tunnistettu uhrin kuolinanimaatiosta. Räjähdykset eivät lasketa. Vain tallentajan tapot näytetään, koska muut pelaajat tappavat usein tallennuksen näkymän ulkopuolella. Kaksintaistelussa näytetään myös vastustajan tapot, koska ne kaikki kohdistuvat tallentajaan.
 help-headshots-column = Tallentajan tapot osumalla päähän, tunnistettu uhrin kuolinanimaatiosta. Räjähdykset eivät lasketa. Muiden pelaajien tappoja ei lasketa, koska ne tapahtuvat usein tallennuksen näkymän ulkopuolella.
+help-multikill-column = Suurin määrä pelaajia, jonka joku tappoi demossa yhdellä laukauksella, esimerkiksi 3 triplatapossa.
+help-spree-column = Demon pisin tappoputki, kenen tahansa: eniten tappoja, jotka pelaaja teki putkeen kuolematta.
 help-date-column = Milloin ottelu tallennettiin. Päiväys luetaan tiedoston nimestä, kun nimessä on päiväys kuten 20230910_214553, niin kuin pelin itse tekemissä tallenteissa. Muuten se on tiedoston päiväys, jonka kopiointi tai lataus voi muuttaa.
 help-file-date = Milloin tiedosto tallennettiin. Viedyn klipin kohdalla se on hetki, jolloin klippi vietiin.
 help-accuracy = Osuneiden laukausten osuus, päätelty verestä, jonka osuma jättää tähtäyslinjalle, vähennettynä sattumanvaraisilla osumilla. Mukana ovat glock, python, MP5:n luodit, haulikko, tähtäimellä ammuttu varsijousi ja gauss-säteen suorat osumat. Räjähdykset ja gaussin heijastukset eivät jätä verta eivätkä lasketa. Näytetään vain tallentajalle ja vasta vähintään 50 laukauksen jälkeen.
 help-headshot-filter = Demot, joissa on vähintään yksi tallennuksessa näkyvä päälaukaustappo, kenen tahansa.
 help-midair-filter = Demot, joissa on vähintään yksi tappo, jonka hetkellä tappaja tai uhri oli ilmassa vähintään 50 yksikön korkeudella maasta. Ilman valittua Half-Life-kansiota myös pelkkä hyppy lasketaan.
+help-spree-filter = Demot, joissa pelaaja tappoi vähintään näin monta putkeen kuolematta. Kuolema millä tahansa tavalla katkaisee putken, samoin kartan loppuminen tai pelaajan poistuminen. Tiimitappoja ei lasketa.
 help-accuracy-filter = Demot, joissa tallentaja osui vähintään tähän osuuteen laukauksistaan.
 
 clips-new = Uusi klippi

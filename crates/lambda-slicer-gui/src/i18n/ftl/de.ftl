@@ -93,6 +93,7 @@ filter-player = Spieler
 filter-weapon-any = Beliebige Waffe
 filter-min-minutes = Mindestens (Minuten)
 filter-min-kills = Mindestens (Abschüsse)
+filter-min-spree = Killstreak von mindestens (Abschüsse)
 filter-players = Spieler
 filter-teams = Teams
 filter-spectating-any = Spielend oder zuschauend
@@ -423,6 +424,8 @@ legend-death = Tod
 legend-switch = Waffenwechsel
 
 column-headshots = Kopfschüsse
+column-multikill = Multikill
+column-spree = Killstreak
 filter-headshots = Abschüsse per Kopfschuss
 filter-midair = Midair-Abschüsse
 event-headshot = Kopfschuss
@@ -440,11 +443,14 @@ help-kd = Frags pro Tod, also die Frags geteilt durch die Tode. Wer nie gestorbe
 
 help-headshots = Abschüsse durch einen Treffer am Kopf, erkannt an der Todesanimation des Opfers. Explosionen zählen nicht. Gezeigt werden nur die der aufnehmenden Person, weil andere Spieler oft außerhalb ihres Blickfelds abschießen. Im Duell auch die des Gegners, da alle seine Abschüsse die aufnehmende Person treffen.
 help-headshots-column = Abschüsse der aufnehmenden Person durch einen Treffer am Kopf, erkannt an der Todesanimation des Opfers. Explosionen zählen nicht. Abschüsse anderer Spieler zählen nicht, weil sie oft außerhalb des Blickfelds der Aufnahme geschehen.
+help-multikill-column = Die meisten Spieler, die jemand in der Demo mit einem einzigen Schuss getötet hat, etwa 3 bei einem Triplekill.
+help-spree-column = Die längste Killstreak der Demo, egal von wem: die meisten Abschüsse, die ein Spieler am Stück gemacht hat, ohne zu sterben.
 help-date-column = Wann das Match aufgenommen wurde. Das Datum kommt aus dem Dateinamen, wenn der Name ein Datum wie 20230910_214553 enthält, wie bei den Aufnahmen, die das Spiel von selbst macht. Sonst ist es das Dateidatum, das sich beim Kopieren oder Herunterladen ändern kann.
 help-file-date = Wann die Datei gespeichert wurde. Bei einem exportierten Clip ist das der Zeitpunkt des Exports.
 help-accuracy = Der Anteil der Schüsse, die trafen, anhand des Bluts, das ein Treffer entlang der Schusslinie hinterlässt, abzüglich zufälliger Übereinstimmungen. Er umfasst Glock, Python, MP5-Kugeln, Schrotflinte, Armbrust mit Zoom und direkte Treffer des Gauss-Strahls. Explosionen und Gauss-Reflexionen hinterlassen kein Blut und zählen nicht. Nur für die aufnehmende Person und erst ab 50 Schüssen.
 help-headshot-filter = Demos mit mindestens einem Kopfschuss-Abschuss, den die Aufnahme zeigt, von beliebigen Spielern.
 help-midair-filter = Demos mit mindestens einem Abschuss, bei dem der Schütze oder das Opfer in der Luft war, mindestens 50 Units über dem Boden. Ohne gewählten Half-Life-Ordner zählt auch ein einfacher Sprung.
+help-spree-filter = Demos, in denen ein Spieler mindestens so viele Abschüsse am Stück gemacht hat, ohne zu sterben. Jeder Tod beendet die Killstreak, egal wie, genauso wie das Ende der Map oder wenn der Spieler das Spiel verlässt. Teamkills zählen nicht.
 help-accuracy-filter = Demos, in denen die aufnehmende Person mindestens diesen Anteil ihrer Schüsse traf.
 
 clips-new = Neuer Clip

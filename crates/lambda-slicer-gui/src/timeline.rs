@@ -6,7 +6,7 @@
 //! visible part of a lane is found by binary search and can be grouped into
 //! bins at wide zoom. The full report is dropped once this is built
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 
 use lambda_slicer_core::analysis::AnalysisReport;
 use lambda_slicer_core::analysis::accuracy::ShotOutcome;
@@ -15,6 +15,7 @@ use lambda_slicer_core::analysis::context::{
 };
 use lambda_slicer_core::analysis::match_events::{MatchChange, MatchEvent};
 use lambda_slicer_core::analysis::motion::{MotionEvidence, MotionState};
+use lambda_slicer_core::analysis::streaks::{kills_at_once, spree_ends};
 use lambda_slicer_core::analysis::weapons::{Action, Actor, IntervalEnd, Weapon};
 use lambda_slicer_core::message::Message;
 use lambda_slicer_core::slice::range::GroupIndex;
@@ -198,10 +199,20 @@ pub struct KillFeatures {
     /// How many players the shot that made it killed, this one among them,
     /// 1 for a kill on its own
     pub at_once: u32,
+    /// How many kills the killing spree it ends had, 0 for a kill that
+    /// ends none
+    pub spree: u32,
 }
 
 impl KillFeatures {
-    fn new(kill: &Kill, ordinal: usize, gauss_kill: Option<GaussKill>, at_once: u32) -> Self {
+    /// The features of `kill`, the `ordinal`th of the report's kills, with
+    /// how many its shot killed and the spree it ends
+    fn new(
+        kill: &Kill,
+        ordinal: usize,
+        gauss_kill: Option<GaussKill>,
+        (at_once, spree): (u32, u32),
+    ) -> Self {
         let key = KillKey {
             segment: kill.segment,
             ordinal: u32::try_from(ordinal).unwrap_or(u32::MAX),
@@ -227,46 +238,9 @@ impl KillFeatures {
             gauss: kill.weapon == Some(Weapon::Gauss),
             gauss_kill,
             at_once,
+            spree,
         }
     }
-}
-
-/// The shot that made `kill`, by session, killer, weapon and server frame,
-/// none for a kill no player made of another
-fn shot_of(kill: &Kill) -> Option<(u32, u8, u32, &str, u32)> {
-    let by_player = matches!(
-        kill.cause,
-        KillCause::PlayerWeapon | KillCause::PlayerOther | KillCause::MountedGun
-    );
-    let killer = kill.killer.as_ref().filter(|_| by_player)?;
-    let frame = kill.server_time.to_bits();
-    Some((
-        kill.segment,
-        killer.slot,
-        killer.incarnation,
-        &kill.weapon_name,
-        frame,
-    ))
-}
-
-/// How many players the shot that made each of `kills` killed, in their
-/// order, 1 for a kill on its own. Kills of other players by one killer
-/// with one weapon in the same server frame are one shot, as a blast kills
-/// everyone it reaches at once and a Gauss beam everyone it goes through
-fn kills_at_once(kills: &[Kill]) -> Vec<u32> {
-    let mut counts: HashMap<_, u32> = HashMap::new();
-    for kill in kills {
-        if let Some(shot) = shot_of(kill) {
-            *counts.entry(shot).or_default() += 1;
-        }
-    }
-
-    let mut out = Vec::new();
-    for kill in kills {
-        let count = shot_of(kill).map_or(1, |shot| counts[&shot]);
-        out.push(count);
-    }
-    out
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -319,9 +293,6 @@ pub struct Model {
     pub maps: Vec<SessionMap>,
     /// Each session's players, best scored at its end first
     pub standings: BTreeMap<u32, Vec<Ranked>>,
-    /// Each killing spree's last kill, by its place in `events`, with how
-    /// many kills the spree had
-    pub sprees: BTreeMap<usize, u32>,
 }
 
 /// One player of a session for the viewer to follow, with when they play
@@ -481,6 +452,7 @@ impl Model {
         }
 
         let at_once = kills_at_once(&r.kills);
+        let sprees = spree_ends(&r.kills);
         for (ordinal, k) in r.kills.iter().enumerate() {
             let killer = k.killer.as_ref();
             let lane = match killer {
@@ -502,7 +474,12 @@ impl Model {
                     killer: killer.map(|p| (p.slot, p.incarnation)),
                     victim_player: k.victim.as_ref().map(|p| (p.slot, p.incarnation)),
                     headshot: k.headshot,
-                    features: Box::new(KillFeatures::new(k, ordinal, gauss_kill, at_once[ordinal])),
+                    features: Box::new(KillFeatures::new(
+                        k,
+                        ordinal,
+                        gauss_kill,
+                        (at_once[ordinal], sprees[ordinal]),
+                    )),
                 },
             };
             b.mark(lane, k.time, MarkKind::Kill, k.weapon, event);
@@ -653,7 +630,6 @@ impl Model {
             }
         }
 
-        let sprees = sprees(&events);
         Model {
             lanes: b.lanes,
             events,
@@ -680,68 +656,8 @@ impl Model {
             team_segments,
             maps: r.maps.clone(),
             standings: standings(&r.score_updates, &r.match_events),
-            sprees,
         }
     }
-}
-
-/// The fewest kills a spree has to be kept
-const SPREE_LEAST: u32 = 2;
-
-/// Each killing spree's last kill, by its place among `events`, with how
-/// many kills it had. A player's spree is their kills of other players in
-/// one session without dying, so any death ends it, a suicide too, and so
-/// does the session's end or their leaving. Team kills neither add to it
-/// nor end it, and a single kill is no spree
-fn sprees(events: &[Event]) -> BTreeMap<usize, u32> {
-    let mut segments: Vec<u32> = events.iter().map(|e| e.segment).collect();
-    segments.sort_unstable();
-    segments.dedup();
-
-    let mut out = BTreeMap::new();
-    let mut keep = |(count, last): (u32, usize)| {
-        if count >= SPREE_LEAST {
-            out.insert(last, count);
-        }
-    };
-    for segment in segments {
-        // Each player's kills so far and the place of the last, by slot and
-        // connection, the session's events in time order
-        let mut going: HashMap<(u8, u32), (u32, usize)> = HashMap::new();
-        for (index, event) in events.iter().enumerate() {
-            if event.segment != segment {
-                continue;
-            }
-            let EventKind::Kill {
-                cause,
-                killer,
-                victim_player,
-                ..
-            } = &event.kind
-            else {
-                continue;
-            };
-
-            let by_player = matches!(
-                cause,
-                KillCause::PlayerWeapon | KillCause::PlayerOther | KillCause::MountedGun
-            );
-            if by_player && let Some(killer) = killer {
-                let spree = going.entry(*killer).or_insert((0, index));
-                spree.0 += 1;
-                spree.1 = index;
-            }
-            if let Some(spree) = victim_player.and_then(|v| going.remove(&v)) {
-                keep(spree);
-            }
-        }
-
-        // Sprees still going when the session ends, or their player left
-        for spree in going.into_values() {
-            keep(spree);
-        }
-    }
-    out
 }
 
 /// One connection's part of a session, its last score and when it joined
@@ -1058,33 +974,6 @@ mod tests {
         }
     }
 
-    #[test]
-    fn kills_of_one_shot_count_together() {
-        let by = |time, killer: u8, weapon: &str| Kill {
-            killer: Some(player(killer, 0, "killer")),
-            weapon_name: weapon.into(),
-            ..kill(time, None)
-        };
-        let suicide = Kill {
-            cause: KillCause::Suicide,
-            ..by(5., 0, "rpg_rocket")
-        };
-        let kills = [
-            by(5., 0, "rpg_rocket"),
-            by(5., 0, "rpg_rocket"),
-            suicide,
-            by(5., 0, "gauss"),
-            by(5., 4, "rpg_rocket"),
-            by(6., 0, "rpg_rocket"),
-            by(6., 0, "rpg_rocket"),
-            by(6., 0, "rpg_rocket"),
-        ];
-
-        // The rocket's two kills at 5 seconds, not the killer's own death,
-        // another weapon's or another killer's, and three at 6 seconds
-        assert_eq!(kills_at_once(&kills), [2, 2, 1, 1, 1, 3, 3, 3]);
-    }
-
     fn report(kills: Vec<Kill>) -> AnalysisReport {
         AnalysisReport {
             schema: 0,
@@ -1193,65 +1082,6 @@ mod tests {
         assert_eq!(tick_step(0.3), 0.5);
         assert_eq!(tick_step(7.), 10.);
         assert_eq!(tick_step(5000.), 3600.);
-    }
-
-    /// A kill in `segment` at `time` of `victim` by `killer`, by slot,
-    /// for counting sprees
-    fn spree_kill(segment: u32, time: f32, (killer, victim): (u8, u8), cause: KillCause) -> Event {
-        let features = KillFeatures {
-            key: KillKey {
-                segment,
-                ordinal: time as u32,
-            },
-            killer_motion: None,
-            victim_motion: None,
-            shot: None,
-            victim: None,
-            killer_team: None,
-            victim_team: None,
-            gauss: false,
-            gauss_kill: None,
-            at_once: 1,
-        };
-        Event {
-            segment,
-            time,
-            lane: 0,
-            actor: None,
-            weapon: None,
-            kind: EventKind::Kill {
-                victim: None,
-                weapon_name: "crossbow".into(),
-                cause,
-                killer: Some((killer, 0)),
-                victim_player: Some((victim, 0)),
-                headshot: None,
-                features: Box::new(features),
-            },
-        }
-    }
-
-    #[test]
-    fn a_spree_ends_with_a_death_and_counts_kills_of_others() {
-        let weapon = KillCause::PlayerWeapon;
-        let events = [
-            spree_kill(0, 1., (1, 2), weapon),
-            spree_kill(0, 2., (1, 3), weapon),
-            spree_kill(0, 3., (1, 4), KillCause::Teammate),
-            spree_kill(0, 4., (1, 2), weapon),
-            spree_kill(0, 5., (2, 1), weapon),
-            spree_kill(0, 6., (1, 3), weapon),
-            spree_kill(0, 7., (1, 1), KillCause::Suicide),
-            spree_kill(0, 8., (3, 2), weapon),
-            spree_kill(0, 9., (3, 4), weapon),
-            spree_kill(1, 1., (3, 2), weapon),
-        ];
-
-        // Three kills ended by a death, the team kill not counted, one
-        // kill ended by a suicide and too short, and two kills still going
-        // as the session ends, the next session's starting afresh
-        let found = sprees(&events);
-        assert_eq!(found, BTreeMap::from([(3, 3), (8, 2)]));
     }
 
     #[test]

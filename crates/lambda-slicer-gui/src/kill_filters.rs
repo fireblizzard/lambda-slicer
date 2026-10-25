@@ -7,8 +7,10 @@
 //! Speeds are horizontal, as the library's kill queries measure them. A
 //! kill is through a wall only once reconstructed as one
 
+use fluent_bundle::FluentValue;
 use lambda_slicer_playback::kill_features::WallGauss;
 
+use crate::i18n::Catalog;
 use crate::timeline::{KillFeatures, KillMotion};
 
 /// Whether a kill meets a refinement, as far as can be told
@@ -69,6 +71,25 @@ pub const DEFAULT_MIN_UPS: u32 = 800;
 /// The fewest players a multikill kills with one shot at first, a double
 /// kill
 pub const DEFAULT_AT_ONCE: u32 = 2;
+
+/// The multikills the filters offer, a double kill to a penta kill
+pub const MULTIKILLS: [u32; 4] = [2, 3, 4, 5];
+
+/// What a shot that killed `count` players is called, double kill to penta
+/// kill, then how many it killed
+pub fn multikill_name(catalog: &Catalog, count: u32) -> String {
+    let id = match count {
+        2 => "badge-double-kill",
+        3 => "badge-triple-kill",
+        4 => "badge-quadra-kill",
+        5 => "badge-penta-kill",
+        _ => {
+            let count = FluentValue::from(i64::from(count));
+            return catalog.text_with("badge-multikill", &[("count", count)]);
+        }
+    };
+    catalog.text(id)
+}
 
 /// The refinements of the kills shown, all of them on the same kill
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -303,6 +324,7 @@ mod tests {
             gauss,
             gauss_kill: None,
             at_once: 1,
+            spree: 0,
         }
     }
 

@@ -2471,6 +2471,7 @@ mod tests {
             gauss: true,
             gauss_kill: None,
             at_once: 1,
+            spree: 0,
         };
 
         Event {

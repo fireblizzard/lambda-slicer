@@ -105,6 +105,7 @@ filter-player = Žaidėjas
 filter-weapon-any = Bet kuris ginklas
 filter-min-minutes = Bent (minučių)
 filter-min-kills = Bent (nužudymų)
+filter-min-spree = Serija bent (nužudymų)
 filter-players = Žaidėjai
 filter-teams = Komandos
 filter-spectating-any = Žaidžiant ar stebint
@@ -452,6 +453,8 @@ legend-death = Mirtis
 legend-switch = Ginklo keitimas
 
 column-headshots = Šūviai į galvą
+column-multikill = Multikill
+column-spree = Serija
 filter-headshots = Nužudymai šūviu į galvą
 filter-midair = Midair nužudymai
 event-headshot = į galvą
@@ -469,11 +472,14 @@ help-kd = Fragai vienai mirčiai: fragai, padalyti iš mirčių. Jei žaidėjas 
 
 help-headshots = Nužudymai pataikius į galvą, atpažinti iš aukos mirties animacijos. Sprogimai neskaičiuojami. Rodomi tik įrašančiojo nužudymai, nes kiti žaidėjai dažnai žudo už įrašo matomumo ribų. Dvikovoje rodomi ir priešininko, nes visi jo nužudymai yra įrašančiojo.
 help-headshots-column = Įrašančiojo nužudymai pataikius į galvą, atpažinti iš aukos mirties animacijos. Sprogimai neskaičiuojami. Kitų žaidėjų nužudymai neskaičiuojami, nes dažnai įvyksta už įrašo matomumo ribų.
+help-multikill-column = Daugiausia žaidėjų, kuriuos kas nors įraše nužudė vienu šūviu, pavyzdžiui, 3, jei tai triple kill.
+help-spree-column = Ilgiausia įrašo nužudymų serija, bet kurio žaidėjo: daugiausia nužudymų, kuriuos žaidėjas padarė iš eilės nemirdamas.
 help-date-column = Kada buvo įrašytos rungtynės. Data imama iš failo pavadinimo, kai jame yra data, pvz., 20230910_214553, kaip žaidimo automatiškai daromuose įrašuose. Kitaip tai failo data, kurią kopijavimas ar atsisiuntimas gali pakeisti.
 help-file-date = Kada failas buvo išsaugotas. Eksportuoto klipo atveju tai yra eksportavimo laikas.
 help-accuracy = Pataikiusių šūvių dalis, nustatyta pagal kraują, kurį pataikymas palieka taikymo linijoje, atėmus atsitiktinius sutapimus. Įtraukiami glock, python, MP5 kulkos, šautuvas, arbaletas su taikikliu ir tiesioginiai gauso spindulio pataikymai. Sprogimai ir gauso atšokimai kraujo nepalieka ir neskaičiuojami. Rodoma tik įrašančiajam ir tik po bent 50 šūvių.
 help-headshot-filter = Įrašai, kuriuose yra bent vienas įraše matomas nužudymas į galvą, bet kurio žaidėjo.
 help-midair-filter = Įrašai, kuriuose yra bent vienas nužudymas, kai žudikas arba auka buvo ore, bent 50 vienetų virš žemės. Nepasirinkus Half-Life aplanko, skaičiuojamas ir paprastas šuolis.
+help-spree-filter = Įrašai, kuriuose žaidėjas iš eilės nemirdamas nužudė bent tiek. Bet kokia mirtis nutraukia seriją, kaip ir žemėlapio pabaiga ar žaidėjo išėjimas. Savo komandos žaidėjų nužudymai neskaičiuojami.
 help-accuracy-filter = Įrašai, kuriuose įrašantysis pataikė bent tokią šūvių dalį.
 
 clips-new = Naujas klipas

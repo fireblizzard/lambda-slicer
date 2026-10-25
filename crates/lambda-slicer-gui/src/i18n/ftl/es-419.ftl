@@ -99,6 +99,7 @@ filter-player = Jugador
 filter-weapon-any = Cualquier arma
 filter-min-minutes = Al menos (minutos)
 filter-min-kills = Al menos (bajas)
+filter-min-spree = Racha de al menos (bajas)
 filter-players = Jugadores
 filter-teams = Equipos
 filter-spectating-any = Jugando o de espectador
@@ -443,6 +444,8 @@ legend-death = Muerte
 legend-switch = Cambio de arma
 
 column-headshots = Headshots
+column-multikill = Multikill
+column-spree = Racha
 filter-headshots = Bajas con headshot
 filter-midair = Bajas en midair
 event-headshot = headshot
@@ -460,11 +463,14 @@ help-kd = Bajas por muerte: las bajas divididas entre las muertes. Si un jugador
 
 help-headshots = Bajas por headshot, según la animación de muerte de la víctima. Las explosiones no cuentan. Solo se muestran los headshots de quien grabó, porque los demás jugadores suelen matar fuera de la vista de la grabación. En un duelo también se muestran los del rival, ya que todas sus bajas son sobre quien grabó.
 help-headshots-column = Headshots de quien grabó, según la animación de muerte de la víctima. Las explosiones no cuentan. Los de los demás jugadores no se cuentan, porque suelen ocurrir fuera de la vista de la grabación.
+help-multikill-column = La mayor cantidad de jugadores que alguien mató de un solo disparo en la demo, como 3 en un triple kill.
+help-spree-column = La racha de bajas más larga de la demo, de cualquiera: la mayor cantidad de bajas seguidas que hizo un jugador sin morir.
 help-date-column = Cuándo se grabó la partida. Se toma del nombre del archivo cuando el nombre tiene una fecha como 20230910_214553, como las grabaciones automáticas del juego. Si no, es la fecha del archivo, que puede cambiar al copiarlo o descargarlo.
 help-file-date = Cuándo se guardó el archivo. En un clip exportado, es cuándo se exportó.
 help-accuracy = La parte de los disparos que impactaron, según la sangre que deja un impacto en la línea de tiro, descontando las coincidencias casuales. Incluye la glock, la python, las balas de la MP5, la escopeta, la ballesta con zoom y los impactos directos del rayo de la gauss. Las explosiones y los rebotes de la gauss no dejan sangre y no cuentan. Solo se muestra para quien grabó, después de al menos 50 disparos.
 help-headshot-filter = Demos con al menos un headshot que la grabación vio, de cualquier jugador.
 help-midair-filter = Demos con al menos una baja en la que el asesino o la víctima estaba en el aire, a 50 unidades o más sobre el suelo. Sin la carpeta de Half-Life elegida, también cuenta un salto normal.
+help-spree-filter = Demos en las que un jugador hizo al menos esta cantidad de bajas seguidas sin morir. Morir de cualquier forma termina la racha, y también el fin del mapa o que el jugador se vaya. Los teamkills no cuentan.
 help-accuracy-filter = Demos en las que quien grabó acertó al menos esta parte de sus disparos.
 
 clips-new = Nuevo clip

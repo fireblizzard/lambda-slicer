@@ -105,6 +105,7 @@ filter-player = Gracz
 filter-weapon-any = Dowolna broń
 filter-min-minutes = Co najmniej (minuty)
 filter-min-kills = Co najmniej (zabójstwa)
+filter-min-spree = Seria co najmniej (zabójstwa)
 filter-players = Gracze
 filter-teams = Drużyny
 filter-spectating-any = Gra lub obserwacja
@@ -452,6 +453,8 @@ legend-death = Zgon
 legend-switch = Zmiana broni
 
 column-headshots = Strzały w głowę
+column-multikill = Multikill
+column-spree = Seria
 filter-headshots = Zabójstwa strzałem w głowę
 filter-midair = Zabójstwa midair
 event-headshot = w głowę
@@ -469,11 +472,14 @@ help-kd = Fragi na zgon, czyli fragi podzielone przez zgony. Gracz, który ani r
 
 help-headshots = Zabójstwa trafieniem w głowę, rozpoznane po animacji śmierci ofiary. Wybuchy się nie liczą. Pokazywane są tylko zabójstwa nagrywającego, bo inni gracze często zabijają poza jego polem widzenia. W pojedynku pokazywane są też zabójstwa przeciwnika, bo wszystkie dotyczą nagrywającego.
 help-headshots-column = Zabójstwa nagrywającego trafieniem w głowę, rozpoznane po animacji śmierci ofiary. Wybuchy się nie liczą. Zabójstwa innych graczy nie są liczone, bo często dzieją się poza polem widzenia nagrania.
+help-multikill-column = Najwięcej graczy zabitych przez kogokolwiek jednym strzałem w demie, na przykład 3 przy triple killu.
+help-spree-column = Najdłuższa seria zabójstw w demie, czyjakolwiek: najwięcej zabójstw zdobytych przez gracza z rzędu bez śmierci.
 help-date-column = Kiedy mecz został nagrany. Data jest brana z nazwy pliku, jeśli nazwa zawiera datę taką jak 20230910_214553, tak jak w automatycznych nagraniach gry. W przeciwnym razie to data pliku, którą kopiowanie lub pobieranie może zmienić.
 help-file-date = Kiedy plik został zapisany. W przypadku wyeksportowanego klipu to moment eksportu.
 help-accuracy = Odsetek strzałów, które trafiły, ustalony na podstawie krwi, jaką trafienie zostawia na linii celowania, po odjęciu przypadkowych dopasowań. Obejmuje glocka, pythona, pociski MP5, strzelbę, kuszę z lunetą i bezpośrednie trafienia wiązki gaussa. Wybuchy i odbicia gaussa nie zostawiają krwi i nie są liczone. Pokazywany tylko dla nagrywającego, po co najmniej 50 strzałach.
 help-headshot-filter = Dema z co najmniej jednym zabójstwem w głowę widocznym w nagraniu, przez dowolnego gracza.
 help-midair-filter = Dema z co najmniej jednym zabójstwem, przy którym zabójca lub ofiara byli w powietrzu, co najmniej 50 jednostek nad podłożem. Bez wybranego folderu Half-Life liczy się też zwykły skok.
+help-spree-filter = Dema, w których gracz zdobył co najmniej tyle zabójstw z rzędu bez śmierci. Każda śmierć kończy serię, tak samo jak koniec mapy albo wyjście gracza z gry. Teamkille się nie liczą.
 help-accuracy-filter = Dema, w których nagrywający trafił co najmniej taki odsetek strzałów.
 
 clips-new = Nowy klip

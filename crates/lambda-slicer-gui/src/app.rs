@@ -1571,8 +1571,17 @@ impl eframe::App for App {
                 let mut d = DemoView::open(path.clone(), *duration, floors, &ctx);
                 d.open_window = self.open_window.take();
                 d.open_event = self.open_event.take();
+                // The command line's refinements, or else the library's
+                // multikill filter, which the events then show the same
+                let multikill = self.library.as_ref().and_then(|l| l.filters.multikill);
                 if let Some(filters) = self.open_refine.take() {
                     d.refine(filters);
+                } else if let Some(at_once) = multikill {
+                    d.refine(crate::kill_filters::KillFilters {
+                        multikill: true,
+                        at_once,
+                        ..Default::default()
+                    });
                 }
                 d.filter_player(std::mem::take(&mut self.open_player));
                 if let Some(kinds) = self.open_show.take() {

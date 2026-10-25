@@ -99,6 +99,7 @@ filter-player = Giocatore
 filter-weapon-any = Qualsiasi arma
 filter-min-minutes = Almeno (minuti)
 filter-min-kills = Almeno (uccisioni)
+filter-min-spree = Serie di almeno (uccisioni)
 filter-players = Giocatori
 filter-teams = Squadre
 filter-spectating-any = In gioco o spettatore
@@ -439,6 +440,8 @@ legend-death = Morte
 legend-switch = Cambio d’arma
 
 column-headshots = Colpi alla testa
+column-multikill = Multikill
+column-spree = Serie
 filter-headshots = Uccisioni con colpo alla testa
 filter-midair = Uccisioni in midair
 event-headshot = colpo alla testa
@@ -456,11 +459,14 @@ help-kd = Frag per morte, cioè i frag divisi per le morti. Per chi non è mai m
 
 help-headshots = Uccisioni con un colpo alla testa, riconosciute dall’animazione di morte della vittima. Le esplosioni non contano. Si mostrano solo quelle di chi registra, perché gli altri giocatori uccidono spesso fuori dalla sua vista. In un duello anche quelle dell’avversario, dato che colpiscono tutte chi registra.
 help-headshots-column = Uccisioni di chi registra con un colpo alla testa, riconosciute dall’animazione di morte della vittima. Le esplosioni non contano. Quelle degli altri giocatori non contano, perché avvengono spesso fuori dalla vista della registrazione.
+help-multikill-column = Il maggior numero di giocatori uccisi con un solo colpo nella demo, da chiunque, ad esempio 3 per un triple kill.
+help-spree-column = La serie di uccisioni più lunga della demo, di chiunque: il maggior numero di uccisioni fatte di fila da un giocatore senza morire.
 help-date-column = Quando è stata registrata la partita. La data è presa dal nome del file se il nome contiene una data come 20230910_214553, come nelle registrazioni automatiche del gioco. Altrimenti è la data del file, che copiarlo o scaricarlo può cambiare.
 help-file-date = Quando il file è stato salvato. Per una clip esportata, è quando è stata esportata.
 help-accuracy = La quota di colpi andati a segno, in base al sangue che un colpo lascia lungo la linea di mira, meno le corrispondenze casuali. Comprende glock, python, proiettili dell’MP5, fucile a pompa, balestra con zoom e i colpi diretti del raggio gauss. Esplosioni e rimbalzi del gauss non lasciano sangue e non contano. Mostrata solo per chi registra, dopo almeno 50 colpi.
 help-headshot-filter = Demo con almeno un’uccisione con colpo alla testa visibile nella registrazione, di qualsiasi giocatore.
 help-midair-filter = Demo con almeno un’uccisione in cui il killer o la vittima era in aria, ad almeno 50 unità dal terreno. Senza aver scelto la cartella di Half-Life, conta anche un semplice salto.
+help-spree-filter = Demo in cui un giocatore ha fatto almeno queste uccisioni di fila senza morire. Morire in qualsiasi modo interrompe la serie, così come la fine della mappa o l’uscita del giocatore. I teamkill non contano.
 help-accuracy-filter = Demo in cui chi registra ha colpito almeno questa quota dei suoi colpi.
 
 clips-new = Nuova clip

@@ -94,6 +94,7 @@ filter-player = Player
 filter-weapon-any = Any weapon
 filter-min-minutes = At least (minutes)
 filter-min-kills = At least (kills)
+filter-min-spree = Spree of at least (kills)
 filter-players = Players
 filter-teams = Teams
 filter-spectating-any = Playing or spectating
@@ -421,6 +422,8 @@ legend-death = Death
 legend-switch = Weapon switch
 
 column-headshots = Headshots
+column-multikill = Multikill
+column-spree = Spree
 filter-headshots = Headshot kills
 filter-midair = Midair kills
 event-headshot = headshot
@@ -438,11 +441,14 @@ help-kd = Kills per death, the frags divided by the deaths. A player who never d
 
 help-headshots = Kills by a hit to the head, read from the death animation the victim plays. Explosions don’t count. Only the recording player’s are shown, because other players often kill out of the recording’s view. In a duel the opponent’s are shown too, since all their kills are of the recording player.
 help-headshots-column = The recording player’s kills by a hit to the head, read from the death animation the victim plays. Explosions don’t count. Other players’ kills aren’t counted, because they often happen out of the recording’s view.
+help-multikill-column = The most players one shot killed in the demo, by anyone, such as 3 for a triple kill.
+help-spree-column = The longest killing spree in the demo, by anyone: the most kills a player made in a row without dying.
 help-date-column = When the match was recorded. It's read from the file name when the name has a date like 20230910_214553, as automatic recordings do. Otherwise it's the file date, which copying or downloading can change.
 help-file-date = When the file was saved. For an exported clip, that's when it was exported.
 help-accuracy = The share of shots that hit, from the blood a hit leaves along the aim, minus matches that happen by chance. It covers the glock, python, MP5 bullets, shotgun, zoomed crossbow and the gauss beam’s direct hits. Explosions and gauss reflections leave no blood and aren’t counted. Shown for the recording player only, after at least 50 shots.
 help-headshot-filter = Demos with at least one kill by a hit to the head that the recording saw, by any player.
 help-midair-filter = Demos with at least one kill where the killer or the victim was in the air, at least 50 units above the floor. Without the game folder set, a plain jump counts too.
+help-spree-filter = Demos where a player killed at least this many in a row without dying. Dying in any way ends a spree, and so does the map ending or the player leaving. Team kills don't count.
 help-accuracy-filter = Demos where the recording player hit at least this share of their shots.
 
 clips-new = New clip

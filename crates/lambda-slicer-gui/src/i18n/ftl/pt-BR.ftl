@@ -99,6 +99,7 @@ filter-player = Jogador
 filter-weapon-any = Qualquer arma
 filter-min-minutes = Pelo menos (minutos)
 filter-min-kills = Pelo menos (abates)
+filter-min-spree = Sequência de pelo menos (abates)
 filter-players = Jogadores
 filter-teams = Equipes
 filter-spectating-any = Jogando ou espectando
@@ -443,6 +444,8 @@ legend-death = Morte
 legend-switch = Troca de arma
 
 column-headshots = Headshots
+column-multikill = Multikill
+column-spree = Sequência
 filter-headshots = Abates com headshot
 filter-midair = Abates em midair
 event-headshot = headshot
@@ -460,11 +463,14 @@ help-kd = Abates por morte: os abates divididos pelas mortes. Se o jogador nunca
 
 help-headshots = Abates por headshot, lidos da animação de morte da vítima. Explosões não contam. Só aparecem os headshots de quem gravou, porque os outros jogadores costumam matar fora da visão da gravação. Num duelo aparecem também os do adversário, já que todos os abates dele são em quem gravou.
 help-headshots-column = Headshots de quem gravou, lidos da animação de morte da vítima. Explosões não contam. Os dos outros jogadores não contam, porque costumam acontecer fora da visão da gravação.
+help-multikill-column = O maior número de jogadores que alguém matou com um só tiro na demo, como 3 em um triple kill.
+help-spree-column = A maior sequência de abates da demo, de qualquer jogador: o máximo de abates que um jogador fez seguidos sem morrer.
 help-date-column = Quando a partida foi gravada. Vem do nome do arquivo quando o nome tem uma data como 20230910_214553, como nas gravações automáticas do jogo. Senão, é a data do arquivo, que copiar ou baixar pode alterar.
 help-file-date = Quando o arquivo foi salvo. Num clipe exportado, é quando ele foi exportado.
 help-accuracy = A parte dos disparos que acertaram, pelo sangue que um acerto deixa na linha de mira, descontando coincidências ao acaso. Vale para a glock, a python, as balas da MP5, a escopeta, a besta com zoom e os acertos diretos do raio gauss. Explosões e reflexos do gauss não deixam sangue e não contam. Aparece só para quem gravou, depois de pelo menos 50 disparos.
 help-headshot-filter = Demos com pelo menos um headshot que a gravação viu, de qualquer jogador.
 help-midair-filter = Demos com pelo menos um abate em que o matador ou a vítima estava no ar, a 50 unidades ou mais acima do chão. Sem a pasta do Half-Life escolhida, um simples pulo também conta.
+help-spree-filter = Demos em que um jogador fez pelo menos esse número de abates seguidos sem morrer. Morrer de qualquer jeito encerra a sequência, assim como o fim do mapa ou a saída do jogador. Teamkills não contam.
 help-accuracy-filter = Demos em que quem gravou acertou pelo menos esta parte dos disparos.
 
 clips-new = Novo clipe
