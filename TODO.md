@@ -9,7 +9,7 @@
 - [ ] Add a fps counter to the demo player, not at which framerate the demo is being rendered, but what fps the player recording the demo had instead
 - [ ] Add x1.25 and x1.5 replay speed. but the dropdown is getting too crowded, we might have to use a different UI element type
 - [ ] Make holding left click on the demo player speed up the demo twice the current speed (x1 -> x2, x4 -> x8). releasing click makes it go back to normal (whichever replay speed you had set, not necessarily x1)
-- [ ] Make mouse4 navigate back and mouse5 navigate forward. so if you're in the library view and click a demo, it opens the demo view with the player and everything, and pressing mouse4 would close that view and go back to the library where you see the whole table, and mouse5 would get you back to that demo view
+- [x] Make mouse4 navigate back and mouse5 navigate forward. so if you're in the library view and click a demo, it opens the demo view with the player and everything, and pressing mouse4 would close that view and go back to the library where you see the whole table, and mouse5 would get you back to that demo view
 - [x] On `afafsd.dem` it's initially a 3v3 but after 05:52.999 a new match starts while the previous one is ongoing, and this new one is a 2v2, so we should really say 4 players for this demo as the only complete match is a 2v2. if there was already an ongoing match when the demo started and that match is a 3v3 and gets to finish, and then there's a full 2v2 match after that in the same demo, then we should still count the 2v2, as it's the complete one.  if there are 2 different complete matches in the demo, then in that case we should count the match with the highest amount of players, so if one is 3v3 and the other 2v2, keep the 3v3 for the players column in the library
 - [ ] Add a setting to adjust the font size for the chat, server settings and kill feed, and make it slightly smaller (like 1 point) by default
 - [ ] Add the ability to export to different video formats that can be uploaded directly to platforms like YouTube or TikTok
@@ -48,14 +48,13 @@
 - [ ] Add scoreboard to the demo player, so it shows it inside the viewport when the recorder hit `+showscores`, but have it disabled by default with a setting
 - [ ] Show ping and loss on the scoreboard in the upper right panel
 - [ ] Add library filter for moments where a player is going at 1000 ups (customizable speed) for longer than 10s (customizable duration)
+- [ ] Add support for HLKZ, showing things like run times in a demo, jump/strafing stats and so on
 
 # Ideas for later
-- [ ] Add a Movement tab next to Matches
 - [ ] Add a crosshair editor in settings that it's then used for the demo viewer
 - [ ] Add a demo viewer setting to customize the sky in the rendered demo. If none is set then just use the one found in the demo
 - [ ] Add an easy way to clip a demo by map, so if a demo has 3 maps in it, make 3 clips from the beginning of each map until the end of it
 - [ ] Add a button to export the demo info to a text file, with the map, date, player names at the top, then the scoreboard and then the filtered event list
-- [ ] Add support for HLKZ, showing things like run times in a demo, jump/strafing stats and so on
 - [ ] Add ability to make volumetric triggers to time segments for HLKZ
 - [ ] Support Opposing Force demos
 - [ ] Support Blue Shift demos

@@ -67,6 +67,7 @@ stuff like a zooming in or seeing players through walls, as long as the demo has
 | Ctrl+Left / Ctrl+Right | Previous / next event |
 | I / O | Set the chosen clip's start / end to now |
 | Escape | Leave full screen, close the settings, or close the demo |
+| Mouse 4 / Mouse 5 | Back / forward through the demos and matches you opened, like a web browser |
 | Ctrl+O | Open a demo |
 | Ctrl+Comma | Settings |
 

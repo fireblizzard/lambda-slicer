@@ -103,6 +103,12 @@ the library keeps, so names that aren't valid Unicode open too.
 The header names the demo, its map, date, length and kind, with buttons for the details, Copy file
 location, Show in folder and Close. Escape closes the demo.
 
+Mouse 4 and 5, the mouse's back and forward buttons, go back and forward through the demos and
+matches opened, as a web browser does with pages, the library being the first. Each opens again
+where it was left. Mouse 4 first leaves full screen or closes the settings. Opening something new
+after going back drops the ones ahead. Escape and Close go straight back to the library and keep
+them, so mouse 5 goes forward through them again. The history lasts until the app is closed.
+
 ### The player
 
 Without the Half-Life folder, the player asks for `hl.exe` or the folder, and everything else keeps

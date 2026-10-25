@@ -8,7 +8,7 @@ use eframe::egui::{self, RichText, WidgetText};
 use fluent_bundle::FluentValue;
 use lambda_slicer_core::analysis::motion::Floors;
 use lambda_slicer_core::container::Limits;
-use lambda_slicer_core::library::cache::default_path;
+use lambda_slicer_core::library::cache::{FileRow, default_path};
 use lambda_slicer_core::library::scan::{ScanFloors, ScanOptions};
 
 mod settings_window;
@@ -22,6 +22,7 @@ use crate::demo::{
 };
 use crate::export::FileNaming;
 use crate::game_setup::{self, Refusal};
+use crate::history::History;
 use crate::i18n::{Catalog, Locale};
 use crate::jobs::{Problem, ScanJob};
 use crate::layout;
@@ -121,6 +122,15 @@ pub struct Launch {
     pub section: SettingsTab,
 }
 
+/// A demo opened, by its library row with the match opened in it, or else
+/// by its file
+#[derive(Clone, Debug)]
+struct Place {
+    row: Option<FileRow>,
+    opened_match: Option<(i64, i64)>,
+    direct: Option<PathBuf>,
+}
+
 pub struct App {
     settings: Settings,
     settings_path: Option<PathBuf>,
@@ -179,6 +189,11 @@ pub struct App {
     /// A demo opened as a file, shown without a library row, so opening
     /// and analysing one never needs the library cache
     direct: Option<PathBuf>,
+    /// The demos and matches opened, for mouse 4 and 5 to go back and
+    /// forward through
+    history: History<Place>,
+    /// A demo is being opened by going back or forward, not as a new place
+    travelling: bool,
     /// Files opened or dropped this session, scanned along with the folders
     opened: Vec<PathBuf>,
     /// Dropped items that were not demos or folders
@@ -381,6 +396,8 @@ impl App {
             scanned_with: None,
             floors: None,
             direct: launch.open.iter().find(|p| p.is_file()).cloned(),
+            history: History::default(),
+            travelling: false,
             opened: launch.open,
             rejected: Vec::new(),
             game: launch.game,
@@ -848,12 +865,83 @@ impl App {
         }
     }
 
-    /// Close the open demo, back to the library
+    /// Close the open demo, straight back to the library, keeping the
+    /// places opened for mouse 5 to go forward through again
     fn close_demo(&mut self) {
+        self.history.leave(self.player_time());
+        self.history.home();
+        self.leave_demo();
+    }
+
+    /// Drop the open demo and its selection, showing the library
+    fn leave_demo(&mut self) {
         self.drop_demo();
         self.direct = None;
         if let Some(l) = &mut self.library {
             l.selected = None;
+        }
+    }
+
+    /// Where the open demo's player is, none before it opens
+    fn player_time(&self) -> Option<f32> {
+        let viewer = self.demo.as_ref().and_then(|d| d.viewer.as_ref());
+        viewer.map(crate::viewer::Viewer::time)
+    }
+
+    /// The demo selected or opened as a file, and the match opened in it
+    fn place(&self) -> Place {
+        let row = self.library.as_ref().and_then(|l| l.selected.clone());
+        let opened_match = self.library.as_ref().and_then(|l| l.opened_match());
+        Place {
+            row,
+            opened_match,
+            direct: self.direct.clone(),
+        }
+    }
+
+    /// Go one place back, or forward, opening it where it was left. The
+    /// library is the first place
+    fn travel(&mut self, back: bool) {
+        self.history.leave(self.player_time());
+        let moved = if back {
+            self.history.back()
+        } else {
+            self.history.forward()
+        };
+        if !moved {
+            return;
+        }
+        let Some(visit) = self.history.current().cloned() else {
+            self.leave_demo();
+            return;
+        };
+
+        let Place {
+            row,
+            opened_match,
+            direct,
+        } = visit.place;
+        let path = row.as_ref().map(FileRow::source).or(direct.clone());
+        let open = self.demo.as_ref().map(|d| d.path.clone());
+        if let Some(l) = &mut self.library {
+            match row {
+                Some(row) => l.reselect(row, opened_match),
+                None => l.selected = None,
+            }
+        }
+        self.direct = direct;
+
+        // Another match of the open demo is a jump in its player
+        if path.is_some() && path == open {
+            let viewer = self.demo.as_mut().and_then(|d| d.viewer.as_mut());
+            match (viewer, visit.at) {
+                (Some(viewer), Some(at)) => viewer.seek(at),
+                (None, at) => self.viewer_at = at.map(f64::from),
+                (Some(_), None) => {}
+            }
+        } else {
+            self.travelling = true;
+            self.viewer_at = visit.at.map(f64::from);
         }
     }
 
@@ -897,6 +985,33 @@ impl App {
             self.show_settings = false;
         } else if self.demo.is_some() {
             self.close_demo();
+        }
+    }
+
+    /// Mouse 4 leaves full screen, closes the settings, or else goes back a
+    /// place, and mouse 5 goes forward a place
+    fn mouse_back_forward(&mut self, ctx: &egui::Context) {
+        let (back, forward) = ctx.input(|i| {
+            (
+                i.pointer.button_pressed(egui::PointerButton::Extra1),
+                i.pointer.button_pressed(egui::PointerButton::Extra2),
+            )
+        });
+
+        if back {
+            let viewer = self.demo.as_mut().and_then(|d| d.viewer.as_mut());
+            if let Some(v) = viewer.filter(|v| v.fullscreen) {
+                v.fullscreen = false;
+            } else if self.show_settings {
+                self.show_settings = false;
+            } else {
+                self.travel(true);
+            }
+            ctx.request_repaint();
+        }
+        if forward && !self.show_settings {
+            self.travel(false);
+            ctx.request_repaint();
         }
     }
 
@@ -1551,6 +1666,8 @@ impl eframe::App for App {
         }
         let selected = selected.or_else(|| self.direct.clone().map(|p| (p, 0.)));
         let open_at = self.library.as_mut().and_then(|l| l.open_at.take());
+        let left_at = self.player_time();
+        let mut visited = false;
         match (&selected, &mut self.demo) {
             (Some((path, _)), Some(d)) if *path == d.path => {
                 // Another match of the open demo is watched from its start
@@ -1559,10 +1676,16 @@ impl eframe::App for App {
                         Some(viewer) => viewer.seek(at),
                         None => self.viewer_at = Some(f64::from(at)),
                     }
+                    self.history.leave(left_at);
+                    visited = true;
                 }
             }
             (Some((path, duration)), _) => {
                 self.drop_demo();
+                if !std::mem::take(&mut self.travelling) {
+                    self.history.leave(left_at);
+                    visited = true;
+                }
 
                 // A match's row opens the player where watching it begins
                 if let Some(at) = open_at {
@@ -1595,6 +1718,12 @@ impl eframe::App for App {
                 self.demo = Some(d);
             }
             (None, _) => self.drop_demo(),
+        }
+
+        // A demo or match opened from the library or as a file is a new
+        // place, where it opened
+        if visited {
+            self.history.visit(self.place(), open_at);
         }
         self.open_viewer(&ctx);
 
@@ -1676,6 +1805,7 @@ impl eframe::App for App {
         self.settings_window(&ctx);
         self.problems_window(&ctx);
         self.escape(&ctx);
+        self.mouse_back_forward(&ctx);
         self.keep_layout();
 
         // Saved once nothing is being dragged, so a slider is not written out

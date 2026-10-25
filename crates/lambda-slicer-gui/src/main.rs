@@ -72,6 +72,7 @@ mod export;
 mod floors;
 mod free_camera;
 mod game_setup;
+mod history;
 mod hud_messages;
 mod hud_sprites;
 mod i18n;

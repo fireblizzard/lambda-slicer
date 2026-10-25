@@ -16,7 +16,7 @@ use eframe::egui::{
 };
 use egui_extras::{Column, TableBuilder};
 use lambda_slicer_core::analysis::parts::PartStatus;
-use lambda_slicer_core::library::cache::{FileQuery, MatchQuery, MatchRow, MatchSort};
+use lambda_slicer_core::library::cache::{FileQuery, FileRow, MatchQuery, MatchRow, MatchSort};
 use lambda_slicer_core::message::Coded;
 
 use super::{
@@ -321,6 +321,18 @@ impl LibraryView {
             self.open_at = Some(played.opens_at);
             self.matches.selected = Some((played.file_id, played.ordinal));
         }
+    }
+
+    /// The match last opened, by its demo and its place in it
+    pub fn opened_match(&self) -> Option<(i64, i64)> {
+        self.matches.selected
+    }
+
+    /// Show `row` as the open demo again, with `opened` as the match last
+    /// opened in it
+    pub fn reselect(&mut self, row: FileRow, opened: Option<(i64, i64)>) {
+        self.selected = Some(row);
+        self.matches.selected = opened;
     }
 
     /// The demo's menu on the row of `played`, which shows its demo in its
