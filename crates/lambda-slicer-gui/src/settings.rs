@@ -235,6 +235,8 @@ pub struct ViewerSettings {
     pub speedometer: bool,
     pub jump_speed: bool,
     pub speed_axes: SpeedAxes,
+    /// The frames a second the recorder's game ran at, at the top left
+    pub recorder_fps: bool,
     /// Whether choosing an event leaves the free camera for the view it is
     /// best seen from, rather than keeping the camera where it is
     pub events_leave_free: bool,
@@ -277,6 +279,7 @@ impl Default for ViewerSettings {
             speedometer: false,
             jump_speed: false,
             speed_axes: SpeedAxes::Horizontal,
+            recorder_fps: false,
             events_leave_free: false,
             decals: 100,
         }

@@ -219,7 +219,17 @@ pub struct Camera {
     /// The recorder's velocity as they last left the ground going up, as a
     /// jump does, none before the first of the session
     pub last_jump: Option<[f32; 3]>,
+    /// The recorder's frames a second, their frame times averaged over
+    /// each [`FPS_SPAN`] of them, none before their first
+    pub fps: Option<f32>,
 }
+
+/// How much of the recorder's frame time each fps reading averages, so it
+/// holds still long enough to read, as the game's own counter does
+pub const FPS_SPAN: f32 = 0.5;
+
+/// A frame time this long or longer is a pause or a load, not a frame
+const LONGEST_FRAME: f32 = 1.;
 
 /// A player of the session, with what its userinfo names for drawing it
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -286,6 +296,9 @@ pub struct Scene {
     pub viewmodel: Option<Viewmodel>,
     /// The weapon of the player a spectator watches through the eyes of
     watched_weapon: Option<Arc<str>>,
+    /// The recorder's frame times since the last fps reading, added up, and
+    /// how many
+    frame_times: (f32, u32),
     pub light_styles: BTreeMap<u8, Vec<u8>>,
     /// The sky the server names in its movement variables (`sv_skyname`),
     /// which the game draws whatever the map's worldspawn names
@@ -568,6 +581,20 @@ impl Scene {
             self.camera.last_jump
         };
 
+        // The first frame time read gives a reading at once, and later ones
+        // a new reading every half second of them
+        let frametime = frame.info_frametime();
+        let mut fps = self.camera.fps;
+        if frametime > 0. && frametime < LONGEST_FRAME {
+            let (sum, count) = &mut self.frame_times;
+            *sum += frametime;
+            *count += 1;
+            if fps.is_none() || *sum >= FPS_SPAN {
+                fps = Some(*count as f32 / *sum);
+                self.frame_times = (0., 0);
+            }
+        }
+
         let camera = Camera {
             origin: frame.info_vieworg(),
             player_origin: frame.info_simorg(),
@@ -584,6 +611,7 @@ impl Scene {
             velocity,
             on_ground,
             last_jump,
+            fps,
         };
         if camera != self.camera {
             self.camera = camera;
@@ -984,6 +1012,43 @@ pub(crate) fn in_the_open(entities: Vec<Entity>, world: &Hull, own: u16) -> Vec<
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_recorders_fps_is_read_at_once_then_every_half_second() {
+        let frame = |frametime: f32| {
+            let mut demo_info = [0u8; 436];
+            demo_info[64..68].copy_from_slice(&frametime.to_le_bytes());
+            NetworkFrame {
+                demo_info: Box::new(demo_info),
+                sequence: [0; 7],
+                message: Vec::new(),
+            }
+        };
+        let decoder = Decoder::new();
+        let mut scene = Scene::default();
+        let fps = |scene: &Scene| scene.camera.fps.map(|f| f.round());
+
+        // The first frame gives a reading at once
+        scene.after_network(&decoder, &frame(0.01), SourceTime(0.));
+        assert_eq!(fps(&scene), Some(100.));
+
+        // Faster frames change it only once half a second of them is in
+        for _ in 0..90 {
+            scene.after_network(&decoder, &frame(0.005), SourceTime(0.));
+        }
+        assert_eq!(fps(&scene), Some(100.));
+        for _ in 0..20 {
+            scene.after_network(&decoder, &frame(0.005), SourceTime(0.));
+        }
+        assert_eq!(fps(&scene), Some(200.));
+
+        // A pause or a load is no frame
+        let before = scene.frame_times;
+        scene.after_network(&decoder, &frame(5.), SourceTime(0.));
+        scene.after_network(&decoder, &frame(0.), SourceTime(0.));
+        assert_eq!(scene.frame_times, before);
+        assert_eq!(fps(&scene), Some(200.));
+    }
 
     #[test]
     fn a_model_parked_outside_the_map_is_not_drawn() {

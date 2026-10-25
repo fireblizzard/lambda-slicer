@@ -111,6 +111,10 @@ impl NetworkFrame {
     pub fn info_viewangles(&self) -> [f32; 3] {
         vec3_at(&self.demo_info[..], 16)
     }
+    /// How long the recorder's frame took, in seconds
+    pub fn info_frametime(&self) -> f32 {
+        f32_at(&self.demo_info[..], 64)
+    }
     pub fn info_intermission(&self) -> i32 {
         i32_at(&self.demo_info[..], 72)
     }

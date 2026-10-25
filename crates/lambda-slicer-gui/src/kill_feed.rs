@@ -21,7 +21,7 @@ use lambda_slicer_playback::hud::{DeathNotice, NoticeName};
 use crate::hud_sprites::{HUD_LIST, HudSprites};
 
 /// The game's screen height the HUD is laid out on
-const SCREEN_HEIGHT: f32 = 480.;
+pub(crate) const SCREEN_HEIGHT: f32 = 480.;
 
 /// Where the first line's top stands, how far apart lines stand, the room
 /// between the killer and the icon, and the text's size, in the game's rows

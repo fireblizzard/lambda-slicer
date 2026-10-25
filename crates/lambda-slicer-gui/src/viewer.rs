@@ -2031,6 +2031,11 @@ impl Viewer {
                         let seen_from = self.eye(frame);
                         draw_position(ui.painter(), rect, catalog, seen_from);
                     }
+                    if self.settings.recorder_fps
+                        && let Some(fps) = frame.recorder.fps
+                    {
+                        draw_fps(ui.painter(), rect, catalog, fps);
+                    }
                     if let Some(countdown) = &frame.countdown {
                         draw_countdown(ui.painter(), rect, countdown);
                     }
@@ -4241,6 +4246,11 @@ fn changing_to(sessions: &[SessionMap], at: f64) -> Option<&SessionMap> {
 /// height, clear of the scores above and the chat below
 const POSITION_FROM_TOP: f32 = 0.3;
 
+/// The recorder's fps's size and its room from the top left corner, in
+/// the game's rows, small enough to stay above the small scoreboard
+const FPS_TEXT: f32 = 10.;
+const FPS_MARGIN: f32 = 6.;
+
 /// Where the picture is seen from, `origin`, and the way it looks,
 /// `angles`, in the game's units and degrees, on the left of the picture.
 /// They are what `--viewer-free-at` takes to see the same view again
@@ -4283,6 +4293,21 @@ fn draw_position(
         painter.galley(at, galley, HUD_COLOR);
         at.y += height + size / 3.;
     }
+}
+
+/// The recorder's frames a second in the top left corner, over the small
+/// scoreboard
+fn draw_fps(painter: &egui::Painter, rect: egui::Rect, catalog: &Catalog, fps: f32) {
+    let scale = rect.height() / crate::kill_feed::SCREEN_HEIGHT;
+    let fps = FluentValue::from(fps.round() as i64);
+    let line = catalog.text_with("viewer-fps", &[("fps", fps)]);
+    let font = egui::FontId::proportional(FPS_TEXT * scale);
+    let galley = painter.layout_no_wrap(line, font, HUD_COLOR);
+    let at = egui::pos2(
+        rect.left() + FPS_MARGIN * scale,
+        rect.top() + FPS_MARGIN * scale,
+    );
+    painter.galley(at, galley, HUD_COLOR);
 }
 
 /// Why the view is the recorder's while a player is followed, two lines

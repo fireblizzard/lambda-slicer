@@ -899,6 +899,10 @@ impl App {
             });
         });
         layout::row(ui, rtl, |ui| {
+            ui.checkbox(&mut viewer.recorder_fps, t("settings-recorder-fps"));
+            widgets::help(ui, &catalog.text("settings-recorder-fps-hint"), rtl);
+        });
+        layout::row(ui, rtl, |ui| {
             ui.checkbox(
                 &mut viewer.events_leave_free,
                 t("settings-events-leave-free"),
@@ -1256,6 +1260,10 @@ fn changed_settings(current: &Settings, restored: &Settings) -> Vec<&'static str
         ),
         (view.jump_speed != first.jump_speed, "settings-jump-speed"),
         (view.speed_axes != first.speed_axes, "settings-speed-axes"),
+        (
+            view.recorder_fps != first.recorder_fps,
+            "settings-recorder-fps",
+        ),
         (
             view.events_leave_free != first.events_leave_free,
             "settings-events-leave-free",

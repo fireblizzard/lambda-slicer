@@ -151,7 +151,10 @@ up and down, or both. The recorder's come from the speed their own frames record
 they play. A followed player's are worked out from how far they moved over the last tenth of a
 second or more of updates, and their jump is a rise from level as fast as a jump's, so both show
 with a ~ before them, such as ~465. A move faster than 3500 units a second, as a respawn or a
-teleporter makes, gives no speed, and a free camera shows none. The keys are in the
+teleporter makes, gives no speed, and a free camera shows none. Show the recorder's fps puts the
+frames a second the recorder's game ran at in the top left corner, above the small scoreboard,
+from the frame times their demo recorded, averaged over each half second of them. It's the
+recorder's whatever view is shown, and not how fast the app draws. The keys are in the
 [README](../README.md#watching-a-demo).
 
 The list left of the playback buttons chooses whose eyes to watch through: the recorder first, then
