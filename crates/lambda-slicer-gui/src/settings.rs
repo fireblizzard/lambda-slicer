@@ -137,6 +137,38 @@ where
     Ok(locale)
 }
 
+/// Which way a speed is counted, across the ground, up or down, or both
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SpeedAxes {
+    #[default]
+    Horizontal,
+    Vertical,
+    Both,
+}
+
+impl SpeedAxes {
+    pub const ALL: [SpeedAxes; 3] = [SpeedAxes::Horizontal, SpeedAxes::Vertical, SpeedAxes::Both];
+
+    /// How fast `velocity` goes counted this way, in units a second
+    pub fn speed(self, [x, y, z]: [f32; 3]) -> f32 {
+        match self {
+            SpeedAxes::Horizontal => (x * x + y * y).sqrt(),
+            SpeedAxes::Vertical => z.abs(),
+            SpeedAxes::Both => (x * x + y * y + z * z).sqrt(),
+        }
+    }
+
+    /// The name the settings give it
+    pub fn text_id(self) -> &'static str {
+        match self {
+            SpeedAxes::Horizontal => "settings-speed-horizontal",
+            SpeedAxes::Vertical => "settings-speed-vertical",
+            SpeedAxes::Both => "settings-speed-both",
+        }
+    }
+}
+
 /// How the demo viewer shows and plays a demo
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -195,6 +227,11 @@ pub struct ViewerSettings {
     pub player_names: bool,
     /// Where the picture is seen from and the way it looks, over it
     pub show_position: bool,
+    /// The recorder's speed under the crosshair, and their speed as they
+    /// last jumped under it, each counted along `speed_axes`
+    pub speedometer: bool,
+    pub jump_speed: bool,
+    pub speed_axes: SpeedAxes,
     /// Whether choosing an event leaves the free camera for the view it is
     /// best seen from, rather than keeping the camera where it is
     pub events_leave_free: bool,
@@ -234,6 +271,9 @@ impl Default for ViewerSettings {
             see_through_items: false,
             player_names: true,
             show_position: false,
+            speedometer: false,
+            jump_speed: false,
+            speed_axes: SpeedAxes::Horizontal,
             events_leave_free: false,
             decals: 100,
         }
@@ -547,6 +587,14 @@ mod tests {
         assert_eq!(loaded.viewer.game, Some(PathBuf::from("F:/Half-Life")));
         assert_eq!((loaded.viewer.volume, loaded.preroll), (0.5, 2.));
         assert_eq!(loaded.folders, [PathBuf::from("F:/demos")]);
+    }
+
+    #[test]
+    fn speeds_count_across_the_ground_up_and_down_or_both() {
+        let velocity = [300., 400., -1200.];
+        assert_eq!(SpeedAxes::Horizontal.speed(velocity), 500.);
+        assert_eq!(SpeedAxes::Vertical.speed(velocity), 1200.);
+        assert_eq!(SpeedAxes::Both.speed(velocity), 1300.);
     }
 
     #[test]

@@ -65,6 +65,8 @@ Not shown or played yet:
 
 Known differences from the game:
 
+- Other players' speed and jump speed are estimates from how they move between updates, marked
+  with a ~. Walking up stairs fast or being pushed up can count as a jump.
 - Dynamic lights, such as muzzle flashes and explosions' flashes, light smoothly rather than in
   the game's 16-unit steps, and don't flicker in size. Other players' muzzle flashes light only
   when the demo shows them firing.

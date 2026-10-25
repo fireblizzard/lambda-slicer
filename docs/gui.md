@@ -114,7 +114,16 @@ hides nothing. A hidden player's name is left out unless players are seen throug
 free camera inside a wall is not hidden by it. Show position and view angles, in Settings, puts
 where the picture is seen from and the way it looks on its left, the free camera's when it is on. The
 free camera keeps the field of view chosen in Settings, or 90°, so it never narrows as the recorder
-zooms in with the crossbow or another scope, while Zoom still zooms it. The keys are in the [README](../README.md#watching-a-demo).
+zooms in with the crossbow or another scope, while Zoom still zooms it. Show the speedometer and
+Show the last jump speed, in Settings, each put a speed under the crosshair in the HUD's colour:
+the recorder's speed now, and under it their speed as they last left the ground going up, kept
+until their next jump. Speed counts chooses whether both count movement across the ground,
+up and down, or both. The recorder's come from the speed their own frames recorded, shown while
+they play. A followed player's are worked out from how far they moved over the last tenth of a
+second or more of updates, and their jump is a rise from level as fast as a jump's, so both show
+with a ~ before them, such as ~465. A move faster than 3500 units a second, as a respawn or a
+teleporter makes, gives no speed, and a free camera shows none. The keys are in the
+[README](../README.md#watching-a-demo).
 
 The list left of the playback buttons chooses whose eyes to watch through: the recorder first, then
 the other players of the map shown, best first by their frags at the map's end and fewer deaths

@@ -212,6 +212,13 @@ pub struct Camera {
     /// The weapons the recorder owns, a bit for each weapon's id and the
     /// suit's, from its client data
     pub weapons: u32,
+    /// The recorder's velocity and whether they stand on the ground, as the
+    /// frame recorded them
+    pub velocity: [f32; 3],
+    pub on_ground: bool,
+    /// The recorder's velocity as they last left the ground going up, as a
+    /// jump does, none before the first of the session
+    pub last_jump: Option<[f32; 3]>,
 }
 
 /// A player of the session, with what its userinfo names for drawing it
@@ -307,7 +314,37 @@ pub struct Scene {
     gaits: Table<u16, GaitTrack>,
     /// The last client frame the legs were stepped for
     last_frame: Option<SourceTime>,
+    /// Each player's movement as the snapshots show it, by entity number
+    pub movement: BTreeMap<u16, Movement>,
 }
+
+/// A player's movement worked out from how far they moved between the last
+/// two snapshots, as the demo holds no speed but the recorder's
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Movement {
+    /// Units a second, none while the last two snapshots did not both
+    /// have them in the same life, or they moved too far to have run it
+    pub velocity: Option<[f32; 3]>,
+    /// Their velocity as they last rose from level as a jump does, none
+    /// before the first of the session
+    pub last_jump: Option<[f32; 3]>,
+    /// They were level, or have only begun to rise since, as a speed
+    /// measured over a span rises over a few snapshots
+    from_level: bool,
+}
+
+/// Fastest a player is taken to move between snapshots, past which they
+/// were moved, as by a respawn or a teleporter
+const MOST_SPEED: f32 = 3500.;
+
+/// The shortest span of server time a player's speed is measured over
+const MEASURED_OVER: f64 = 0.1;
+
+/// A rise from level counts as a jump when it is within these, in units a
+/// second up. A jump starts at 268 and slows by gravity, and a stair's
+/// step rises faster
+const LEVEL: f32 = 60.;
+const JUMP_RISE: (f32, f32) = (150., 300.);
 
 /// A slot's current or last life
 #[derive(Clone, Copy, Debug, Default)]
@@ -520,6 +557,17 @@ impl Scene {
             }
             viewmodel = weapon.as_deref().and_then(view_model_for).map(Arc::from);
         }
+        // Leaving the ground going up is a jump, its speed kept until the
+        // next one
+        let velocity = frame.info_simvel();
+        let on_ground = frame.info_onground() != 0;
+        let jumped = self.camera.on_ground && !on_ground && velocity[2] > 0.;
+        let last_jump = if jumped {
+            Some(velocity)
+        } else {
+            self.camera.last_jump
+        };
+
         let camera = Camera {
             origin: frame.info_vieworg(),
             player_origin: frame.info_simorg(),
@@ -533,6 +581,9 @@ impl Scene {
             viewmodel,
             health: client("health").unwrap_or(0),
             weapons: client("weapons").unwrap_or(0) as u32,
+            velocity,
+            on_ground,
+            last_jump,
         };
         if camera != self.camera {
             self.camera = camera;
@@ -561,6 +612,7 @@ impl Scene {
             if self.recent.len() > RECENT {
                 self.recent.pop_front();
             }
+            self.estimate_movement();
             self.changed();
         }
     }
@@ -751,6 +803,55 @@ impl Scene {
         let at = self.recent.len().checked_sub(2)?;
         let (time, entities) = &self.recent[at];
         Some((latest - time, entities.as_slice()))
+    }
+
+    /// Each player's velocity from how far they moved since the latest
+    /// snapshot at least [`MEASURED_OVER`] before the latest, as positions
+    /// sent an eighth of a unit apart make a short span's speed jump about,
+    /// and their last jump, a rise from level as fast as a jump's. A player
+    /// missing from either snapshot has no velocity and keeps their last
+    /// jump
+    fn estimate_movement(&mut self) {
+        let Some((t1, now)) = self.recent.back() else {
+            return;
+        };
+        let earlier = self
+            .recent
+            .iter()
+            .rev()
+            .find(|(t, _)| *t <= t1 - MEASURED_OVER);
+        let Some((t0, before)) = earlier else {
+            return;
+        };
+        let elapsed = (t1 - t0) as f32;
+
+        for e in now.iter() {
+            let number = e.id.number;
+            if !self.is_player(number) {
+                continue;
+            }
+            let previous = self.movement.get(&number).copied().unwrap_or_default();
+            let velocity = before
+                .iter()
+                .find(|old| old.id == e.id)
+                .map(|old| [0, 1, 2].map(|k| (e.origin[k] - old.origin[k]) / elapsed))
+                .filter(|v| (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt() <= MOST_SPEED);
+
+            let up = velocity.map(|v| v[2]);
+            let level = up.is_some_and(|z| z.abs() < LEVEL);
+            let beginning = up.is_some_and(|z| (0. ..JUMP_RISE.0).contains(&z));
+            let rising = up.is_some_and(|z| (JUMP_RISE.0..=JUMP_RISE.1).contains(&z));
+            let jumped = previous.from_level && rising;
+            let last_jump = if jumped { velocity } else { previous.last_jump };
+            self.movement.insert(
+                number,
+                Movement {
+                    velocity,
+                    last_jump,
+                    from_level: level || (previous.from_level && beginning),
+                },
+            );
+        }
     }
 
     fn is_player(&self, number: u16) -> bool {

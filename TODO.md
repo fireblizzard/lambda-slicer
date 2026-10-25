@@ -4,7 +4,7 @@
 - [ ] Support WON demos (protocol 5/47)
 	- [x] Singleplayer
 	- [ ] Multiplayer
-- [ ] Add a speedometer and last jump speed to the demo player, with a setting to make it count only horizontal, only vertical or full 3D (both)
+- [x] Add a speedometer and last jump speed to the demo player, with a setting to make it count only horizontal, only vertical or full 3D (both)
 - [ ] Add flashlight HUD to the demo player
 - [ ] Add a fps counter to the demo player, not at which framerate the demo is being rendered, but what fps the player recording the demo had instead
 - [ ] Add x1.25 and x1.5 replay speed. but the dropdown is getting too crowded, we might have to use a different UI element type
@@ -47,6 +47,7 @@
 - [x] Split the right pane where Events, Clips and Scoreboard is in half, so that we have one upper pane and one lower pane. We'll have the scoreboard showing in the upper pane and we'll remove its tab that it currently has. These 2 panes should be collapsible, so when the upper pane is collapsed the lower pane will take almost all the space (the upper pane still needs a little space to show its own title and to be able to click on it to expand it), and viceversa, so there will always be at least one expanded, cannot have both collapsed; if you have one collapsed and click on the other, it will just become half and half again; if you click on the one that's collapsed, it will expand to half and half; when it's half and half and you click one, it will expand to collapse the other. The lower pane will have the events and clips. The scoreboard should show the final score on the very first frame when we load the demo player but still haven't started playing the video. After that it should just update live with whatever is going on in the demo. It should also show spectators
 - [ ] Add scoreboard to the demo player, so it shows it inside the viewport when the recorder hit `+showscores`, but have it disabled by default with a setting
 - [ ] Show ping and loss on the scoreboard in the upper right panel
+- [ ] Add library filter for moments where a player is going at 1000 ups (customizable speed) for longer than 10s (customizable duration)
 
 # Ideas for later
 - [ ] Add a Movement tab next to Matches

@@ -2046,6 +2046,31 @@ impl Viewer {
                             self.chat.draw(ui, rect, &frame.chat, map, library);
                         }
                     }
+                    // The recorder's speeds as recorded while they play,
+                    // and a followed player's as worked out from how they
+                    // move. A free camera has none
+                    let camera = &frame.recorder;
+                    let playing = !camera.spectating && !camera.intermission;
+                    let speeds = match eyes {
+                        Eyes::Recorder if playing => Some(Speeds {
+                            velocity: Some(camera.velocity),
+                            last_jump: camera.last_jump,
+                            estimated: false,
+                        }),
+                        Eyes::Player(id) => {
+                            let movement = frame.movement.get(&id.number);
+                            movement.map(|m| Speeds {
+                                velocity: m.velocity,
+                                last_jump: m.last_jump,
+                                estimated: true,
+                            })
+                        }
+                        _ => None,
+                    };
+                    if let Some(speeds) = &speeds {
+                        draw_speeds(ui.painter(), rect, catalog, speeds, &self.settings);
+                    }
+
                     // A free camera watches nobody, its names over the players
                     let players = &frame.players;
                     let shown = match eyes {
@@ -4123,6 +4148,71 @@ fn draw_unseen(painter: &egui::Painter, rect: egui::Rect, line: &str) {
     let band = band.expand2(egui::vec2(size / 2., size / 5.));
     painter.rect_filled(band, theme::RADIUS_SMALL, NAME_BAND);
     painter.galley(at, galley, HUD_COLOR);
+}
+
+/// How far under the view's middle the speedometer stands, as a share of
+/// the view's height, and how tall its digits and the jump speed's text
+/// are, as shares too
+const SPEED_BELOW: f32 = 0.16;
+const SPEED_SIZE: f32 = 1. / 20.;
+const JUMP_SIZE: f32 = 1. / 32.;
+
+/// The speeds shown under the crosshair, of the recorder or another player
+struct Speeds {
+    /// None while not known
+    velocity: Option<[f32; 3]>,
+    last_jump: Option<[f32; 3]>,
+    /// Worked out from how the player moved rather than recorded, shown
+    /// with a ~ before
+    estimated: bool,
+}
+
+/// A speed under the crosshair in the HUD's colour, and under it the speed
+/// at the last jump, each as the settings ask, counted along their axes in
+/// whole units a second
+fn draw_speeds(
+    painter: &egui::Painter,
+    rect: egui::Rect,
+    catalog: &Catalog,
+    speeds: &Speeds,
+    settings: &ViewerSettings,
+) {
+    let axes = settings.speed_axes;
+    let shown = |velocity: [f32; 3]| {
+        let speed = axes.speed(velocity).round();
+        if speeds.estimated {
+            format!("~{speed}")
+        } else {
+            speed.to_string()
+        }
+    };
+
+    let mut at = egui::pos2(
+        rect.center().x,
+        rect.center().y + rect.height() * SPEED_BELOW,
+    );
+    if settings.speedometer
+        && let Some(velocity) = speeds.velocity
+    {
+        let font = egui::FontId::proportional(rect.height() * SPEED_SIZE);
+        let drawn = painter.text(
+            at,
+            egui::Align2::CENTER_TOP,
+            shown(velocity),
+            font,
+            HUD_COLOR,
+        );
+        at.y = drawn.bottom();
+    }
+
+    if settings.jump_speed
+        && let Some(jump) = speeds.last_jump
+    {
+        let speed = FluentValue::from(shown(jump));
+        let line = catalog.text_with("viewer-jump-speed", &[("speed", speed)]);
+        let font = egui::FontId::proportional(rect.height() * JUMP_SIZE);
+        painter.text(at, egui::Align2::CENTER_TOP, line, font, HUD_COLOR);
+    }
 }
 
 /// Which map the server is changing to, where AG's countdown stands, on a

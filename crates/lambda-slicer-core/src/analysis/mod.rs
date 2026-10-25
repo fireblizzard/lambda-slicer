@@ -13,6 +13,7 @@ pub mod match_events;
 pub mod motion;
 pub mod parts;
 pub mod roster;
+pub mod streaks;
 pub mod weapons;
 
 use std::path::Path;

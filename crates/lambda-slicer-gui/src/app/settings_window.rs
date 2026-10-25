@@ -14,7 +14,7 @@ use crate::i18n::{Catalog, Locale};
 use crate::layout;
 use crate::library::{self, parse_number};
 use crate::settings::{
-    FOV, MAX_PADDING, MAX_SCORE_ROWS, SPREE_LEAST, SPREE_MOST, Settings, VITALS_SIZE,
+    FOV, MAX_PADDING, MAX_SCORE_ROWS, SPREE_LEAST, SPREE_MOST, Settings, SpeedAxes, VITALS_SIZE,
     ViewerSettings,
 };
 use crate::text::{self, Look};
@@ -876,6 +876,28 @@ impl App {
             ui.checkbox(&mut viewer.show_position, t("settings-show-position"));
             widgets::help(ui, &catalog.text("settings-show-position-hint"), rtl);
         });
+
+        // The speeds, each on its own, counted the same way
+        layout::row(ui, rtl, |ui| {
+            ui.checkbox(&mut viewer.speedometer, t("settings-speedometer"));
+        });
+        layout::row(ui, rtl, |ui| {
+            ui.checkbox(&mut viewer.jump_speed, t("settings-jump-speed"));
+            widgets::help(ui, &catalog.text("settings-jump-speed-hint"), rtl);
+        });
+        layout::row(ui, rtl, |ui| {
+            ui.add_enabled_ui(viewer.speedometer || viewer.jump_speed, |ui| {
+                ui.label(t("settings-speed-axes"));
+                let current = t(viewer.speed_axes.text_id());
+                egui::ComboBox::from_id_salt("speed axes")
+                    .selected_text(current)
+                    .show_ui(ui, |ui| {
+                        for axes in SpeedAxes::ALL {
+                            ui.selectable_value(&mut viewer.speed_axes, axes, t(axes.text_id()));
+                        }
+                    });
+            });
+        });
         layout::row(ui, rtl, |ui| {
             ui.checkbox(
                 &mut viewer.events_leave_free,
@@ -1227,6 +1249,12 @@ fn changed_settings(current: &Settings, restored: &Settings) -> Vec<&'static str
             view.show_position != first.show_position,
             "settings-show-position",
         ),
+        (
+            view.speedometer != first.speedometer,
+            "settings-speedometer",
+        ),
+        (view.jump_speed != first.jump_speed, "settings-jump-speed"),
+        (view.speed_axes != first.speed_axes, "settings-speed-axes"),
         (
             view.events_leave_free != first.events_leave_free,
             "settings-events-leave-free",

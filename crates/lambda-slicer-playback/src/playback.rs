@@ -35,7 +35,7 @@ use crate::events::{ATTN_NORM, Action, ClientEvent, Events, PITCH_NORM, SoundCal
 use crate::gauss;
 use crate::hud::{ChatLine, Countdown, DeathNotice, Hud};
 use crate::hud_messages::{HudMessage, ShownMessage};
-use crate::scene::{self, Camera, Entity, PlayerView, Scene, Viewmodel};
+use crate::scene::{self, Camera, Entity, Movement, PlayerView, Scene, Viewmodel};
 use crate::scores::ScoreRow;
 use crate::source::{Cursor, Group, Source};
 use crate::status;
@@ -66,6 +66,9 @@ pub struct PresentedFrame {
     pub entities: Arc<Vec<Entity>>,
     /// The recorder's view, whatever camera the viewer uses
     pub recorder: Camera,
+    /// Each player's movement worked out from the snapshots, by entity
+    /// number, for players other than the recorder
+    pub movement: BTreeMap<u16, Movement>,
     pub camera: CameraMode,
     pub viewmodel: Option<Viewmodel>,
     pub light_styles: BTreeMap<u8, Vec<u8>>,
@@ -711,6 +714,7 @@ impl Playback {
             }),
             client_time,
             recorder: state.scene.camera.clone(),
+            movement: state.scene.movement.clone(),
             camera,
             viewmodel: state.scene.viewmodel,
             light_styles: state.scene.light_styles.clone(),
