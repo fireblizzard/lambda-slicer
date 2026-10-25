@@ -84,6 +84,7 @@ mod layout;
 mod library;
 mod mini_scores;
 mod platform;
+mod scoreboard;
 mod settings;
 mod text;
 mod theme;

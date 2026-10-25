@@ -45,11 +45,14 @@
 - [x] Add a Favourites tab and an Add to favourites or Remove from favourites option to the context menu of a demo. The tab should be right after the Filters button above the table, and for now there will be 2 tabs: All and Favourites. All is the normal table and Favourite will just show the favourited demos. Demo entries in the table should show a yellow star after the name of the demo, in the same column as the name, just at the end of the text
 - [x] Add Hide/Unhide to the context menu of a demo, and a "Hidden" tab like All/Favourites but for hidden demos. Hidden demos should not show up when we're in the All tab. They can appear in the Favourites tab if they're favourited, although that'd be weird. And they'll always show up when we're in the Hidden tab as long as the user doesn't unhide them
 - [x] Split the right pane where Events, Clips and Scoreboard is in half, so that we have one upper pane and one lower pane. We'll have the scoreboard showing in the upper pane and we'll remove its tab that it currently has. These 2 panes should be collapsible, so when the upper pane is collapsed the lower pane will take almost all the space (the upper pane still needs a little space to show its own title and to be able to click on it to expand it), and viceversa, so there will always be at least one expanded, cannot have both collapsed; if you have one collapsed and click on the other, it will just become half and half again; if you click on the one that's collapsed, it will expand to half and half; when it's half and half and you click one, it will expand to collapse the other. The lower pane will have the events and clips. The scoreboard should show the final score on the very first frame when we load the demo player but still haven't started playing the video. After that it should just update live with whatever is going on in the demo. It should also show spectators
-- [ ] Add scoreboard to the demo player, so it shows it inside the viewport when the recorder hit `+showscores`, but have it disabled by default with a setting
+- [x] Add scoreboard to the demo player, so it shows it inside the viewport when the recorder hit `+showscores`, but have it disabled by default with a setting
 - [ ] Show ping and loss on the scoreboard in the upper right panel
 - [ ] Add library filter for moments where a player is going at 1000 ups (customizable speed) for longer than 10s (customizable duration)
 - [ ] Add support for HLKZ, showing things like run times in a demo, jump/strafing stats and so on
 - [x] Find demos of players by name or SteamID
+- [ ] Add an option to change the HUD color (HP/AP, ammo, item pickups, weapon selection, timer, votes, server settings, custom hudmessages..., equivalent to `hud_color` game cvar) and another to change the text color (chat and kill feed, equivalent to `con_color` game cvar, i think it only applies to the kill feed when it's not teamplay, i'm not sure)
+- [ ] When hovering the seek bar, show a small preview of that moment
+- [ ] When the video player has paused due to reaching the end of the demo, left click on it should restart it (back to 00:00:00.000)
 
 # Ideas for later
 - [ ] Add a crosshair editor in settings that it's then used for the demo viewer
@@ -63,3 +66,4 @@
 - [ ] Improve the match highlights (top moments), accounting for things that require skill like complicated kills, headshots, stunts, trickshots, etc.
 - [ ] Add support for Xash3D
 - [ ] Add entity view mode for the demo player which can work with or without freecam, so you click on a door to check its properties, or you're able to see (and click) invisible entities like triggers, NPC nodes, and so on.
+- [ ] Make a heatmap to see where the player spends more or less time on a map.  should be able to see for each player in a demo map, and then accounting for the whole library through a new Heatmap button left to the settings button (top right)

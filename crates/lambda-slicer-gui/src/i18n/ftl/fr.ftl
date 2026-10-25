@@ -643,6 +643,10 @@ settings-vitals-size = Taille de la vie, de l'armure, des munitions et des objet
 settings-free-vitals = Afficher aussi la vie, l'armure, les munitions et les objets ramassés en caméra libre
 settings-scores = Afficher les scores en haut à gauche
 settings-score-rows = Nombre maximum de lignes de scores
+settings-scoreboard = Afficher le tableau des scores tant que le joueur qui a enregistré maintient sa touche, et en fin de carte
+settings-scoreboard-off = Désactivé
+settings-scoreboard-fullscreen = Seulement en plein écran
+settings-scoreboard-always = Activé
 settings-server-settings = Afficher les réglages du serveur en haut à droite
 settings-text-size = Taille du chat, du kill feed et des réglages du serveur
 settings-hud-messages = Afficher le texte du serveur, comme les chronos de bhop et de KZ
@@ -696,6 +700,13 @@ viewer-map-change = Le serveur passe sur la carte { $map }
 viewer-pov-recorder = { $name } (enregistre)
 viewer-pov-recorder-unnamed = Joueur qui enregistre
 viewer-pov-help = À travers les yeux de qui regarder. ` revient au joueur qui a enregistré la démo, 1 à 9 et 0 choisissent les meilleurs joueurs de cette map selon le score, et la molette de la souris sur l’image ou Pg Préc et Pg Suiv passent au joueur précédent ou suivant.
+viewer-scoreboard-ping-loss = Ping/perte
+viewer-scoreboard-bot = BOT
+viewer-scoreboard-players = { $count ->
+    [one] ({ $count } joueur)
+    [many] ({ $count } de joueurs)
+   *[other] ({ $count } joueurs)
+}
 viewer-pov-unseen = La démo ne montre pas { $name } ici, vous voyez donc la vue du joueur qui a enregistré
 settings-events-leave-free = Quitter la caméra libre en choisissant un événement
 settings-events-leave-free-hint = Une élimination choisie se voit à travers les yeux du tueur, de la victime ou du joueur qui a enregistré. Si c’est désactivé, la caméra libre reste où elle est, et la désactiver passe à cette vue.

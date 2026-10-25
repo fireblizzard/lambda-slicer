@@ -622,6 +622,10 @@ settings-vitals-size = Elämän, panssarin, ammusten ja pickupien koko
 settings-free-vitals = Näytä elämä, panssari, ammukset ja pickupit myös vapaalla kameralla
 settings-scores = Näytä pisteet vasemmassa yläkulmassa
 settings-score-rows = Pisterivejä enintään
+settings-scoreboard = Näytä tulostaulu, kun tallentaja pitää sen näppäintä pohjassa, ja kartan lopussa
+settings-scoreboard-off = Pois
+settings-scoreboard-fullscreen = Vain koko näytössä
+settings-scoreboard-always = Päällä
 settings-server-settings = Näytä serverin asetukset oikeassa yläkulmassa
 settings-text-size = Chatin, killfeedin ja serverin asetusten koko
 settings-hud-messages = Näytä serverin tekstit, kuten bhop- ja KZ-ajastimet
@@ -674,6 +678,12 @@ viewer-map-change = Serveri vaihtaa kartaksi { $map }
 viewer-pov-recorder = { $name } (tallentaja)
 viewer-pov-recorder-unnamed = Tallentaja
 viewer-pov-help = Kenen silmin katsot. ` palaa tallentajaan, näppäimet 1–9 ja 0 valitsevat tämän kartan parhaat pelaajat pisteiden mukaan, ja hiiren rulla kuvan päällä tai Page Up ja Page Down siirtyvät edelliseen tai seuraavaan pelaajaan.
+viewer-scoreboard-ping-loss = Ping/loss
+viewer-scoreboard-bot = BOT
+viewer-scoreboard-players = { $count ->
+    [one] ({ $count } pelaaja)
+   *[other] ({ $count } pelaajaa)
+}
 viewer-pov-unseen = Demo ei näytä pelaajaa { $name } tässä kohdassa, joten näet tallentajan näkymän
 settings-events-leave-free = Poistu vapaasta kamerasta, kun valitset tapahtuman
 settings-events-leave-free-hint = Valittu tappo näytetään tappajan, uhrin tai tallentajan silmin. Kun tämä on pois päältä, vapaa kamera pysyy paikallaan, ja kun kytket sen pois päältä, siirryt tuohon näkymään.

@@ -222,7 +222,12 @@ pub struct Camera {
     /// The recorder's frames a second, their frame times averaged over
     /// each [`FPS_SPAN`] of them, none before their first
     pub fps: Option<f32>,
+    /// Whether the recorder holds the key that shows the scoreboard
+    pub scores_held: bool,
 }
+
+/// The button bit of the key that shows the scoreboard (`IN_SCORE`)
+const IN_SCORE: u16 = 1 << 15;
 
 /// How much of the recorder's frame time each fps reading averages, so it
 /// holds still long enough to read, as the game's own counter does
@@ -612,6 +617,7 @@ impl Scene {
             on_ground,
             last_jump,
             fps,
+            scores_held: frame.info_buttons() & IN_SCORE != 0,
         };
         if camera != self.camera {
             self.camera = camera;

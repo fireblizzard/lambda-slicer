@@ -622,6 +622,10 @@ settings-vitals-size = Größe von Leben, Rüstung, Munition und Pickups
 settings-free-vitals = Leben, Rüstung, Munition und Pickups auch mit der freien Kamera anzeigen
 settings-scores = Punktestand oben links zeigen
 settings-score-rows = Höchstzahl der Zeilen im Punktestand
+settings-scoreboard = Scoreboard zeigen, solange der aufnehmende Spieler die Taste dafür hält, und am Ende der Map
+settings-scoreboard-off = Aus
+settings-scoreboard-fullscreen = Nur im Vollbild
+settings-scoreboard-always = An
 settings-server-settings = Servereinstellungen oben rechts zeigen
 settings-text-size = Größe von Chat, Killfeed und Servereinstellungen
 settings-hud-messages = Text vom Server zeigen, etwa Timer für bhop und KZ
@@ -674,6 +678,12 @@ viewer-map-change = Der Server wechselt die Map zu { $map }
 viewer-pov-recorder = { $name } (Aufnahme)
 viewer-pov-recorder-unnamed = Aufnehmender Spieler
 viewer-pov-help = Durch wessen Augen du zuschaust. ` springt zurück zum aufnehmenden Spieler, 1 bis 9 und 0 wählen die besten Spieler dieser Map nach Punkten, und das Mausrad über dem Bild oder Bild auf und Bild ab wechseln zum vorherigen oder nächsten Spieler.
+viewer-scoreboard-ping-loss = Ping/Loss
+viewer-scoreboard-bot = BOT
+viewer-scoreboard-players = { $count ->
+    [one] ({ $count } Spieler)
+   *[other] ({ $count } Spieler)
+}
 viewer-pov-unseen = Die Demo zeigt { $name } hier nicht, darum siehst du die Sicht des aufnehmenden Spielers
 settings-events-leave-free = Beim Auswählen eines Ereignisses die freie Kamera verlassen
 settings-events-leave-free-hint = Ein ausgewählter Abschuss wird durch die Augen des Schützen, des Opfers oder des aufnehmenden Spielers gezeigt. Ist das aus, bleibt die freie Kamera, wo sie ist, und wenn du sie ausschaltest, kommst du zu dieser Sicht.

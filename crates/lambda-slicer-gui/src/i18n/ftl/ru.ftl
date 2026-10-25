@@ -653,6 +653,10 @@ settings-vitals-size = Размер здоровья, брони, патроно
 settings-free-vitals = Показывать здоровье, броню, патроны и подобранные предметы также в свободной камере
 settings-scores = Показывать счёт слева вверху
 settings-score-rows = Максимум строк в счёте
+settings-scoreboard = Показывать таблицу счёта, пока записывающий держит её клавишу, и в конце карты
+settings-scoreboard-off = Выключена
+settings-scoreboard-fullscreen = Только в полноэкранном режиме
+settings-scoreboard-always = Включена
 settings-server-settings = Показывать настройки сервера справа вверху
 settings-text-size = Размер чата, ленты убийств и настроек сервера
 settings-hud-messages = Показывать текст от сервера, например таймеры bhop и KZ
@@ -707,6 +711,14 @@ viewer-map-change = Сервер меняет карту на { $map }
 viewer-pov-recorder = { $name } (записывал)
 viewer-pov-recorder-unnamed = Записывающий
 viewer-pov-help = Чьими глазами смотреть. ` возвращает к записывающему, клавиши с 1 по 9 и 0 выбирают лучших игроков этой карты по очкам, а колёсико мыши над картинкой или Page Up и Page Down переключают на предыдущего или следующего игрока.
+viewer-scoreboard-ping-loss = Пинг/потери
+viewer-scoreboard-bot = BOT
+viewer-scoreboard-players = { $count ->
+    [one] ({ $count } игрок)
+    [few] ({ $count } игрока)
+    [many] ({ $count } игроков)
+   *[other] ({ $count } игрока)
+}
 viewer-pov-unseen = В демо здесь не видно игрока { $name }, поэтому вы смотрите глазами записывающего
 settings-events-leave-free = Выходить из свободной камеры при выборе события
 settings-events-leave-free-hint = Выбранное убийство показывается глазами убийцы, жертвы или записывающего. Если это выключено, свободная камера остаётся на месте, а когда вы её выключите, вы будете смотреть именно этими глазами.

@@ -14,8 +14,8 @@ use crate::i18n::{Catalog, Locale};
 use crate::layout;
 use crate::library::{self, parse_number};
 use crate::settings::{
-    FOV, MAX_PADDING, MAX_SCORE_ROWS, SPREE_LEAST, SPREE_MOST, Settings, SpeedAxes, TEXT_SIZE,
-    VITALS_SIZE, ViewerSettings,
+    FOV, MAX_PADDING, MAX_SCORE_ROWS, SPREE_LEAST, SPREE_MOST, ScoreboardShown, Settings,
+    SpeedAxes, TEXT_SIZE, VITALS_SIZE, ViewerSettings,
 };
 use crate::text::{self, Look};
 use crate::theme;
@@ -842,6 +842,16 @@ impl App {
             ui.add_enabled(viewer.scores, rows);
         });
         layout::row(ui, rtl, |ui| {
+            ui.label(t("settings-scoreboard"));
+            egui::ComboBox::from_id_salt("scoreboard")
+                .selected_text(t(viewer.scoreboard.text_id()))
+                .show_ui(ui, |ui| {
+                    for shown in ScoreboardShown::ALL {
+                        ui.selectable_value(&mut viewer.scoreboard, shown, t(shown.text_id()));
+                    }
+                });
+        });
+        layout::row(ui, rtl, |ui| {
             ui.checkbox(&mut viewer.server_settings, t("settings-server-settings"));
         });
         layout::row(ui, rtl, |ui| {
@@ -1240,6 +1250,7 @@ fn changed_settings(current: &Settings, restored: &Settings) -> Vec<&'static str
         ),
         (view.scores != first.scores, "settings-scores"),
         (view.score_rows != first.score_rows, "settings-score-rows"),
+        (view.scoreboard != first.scoreboard, "settings-scoreboard"),
         (
             view.server_settings != first.server_settings,
             "settings-server-settings",

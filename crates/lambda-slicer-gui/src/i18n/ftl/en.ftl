@@ -620,6 +620,10 @@ settings-vitals-size = Size of health, armour, ammo and pickups
 settings-free-vitals = Show health, armour, ammo and pickups with the free camera too
 settings-scores = Show the scores at the top left
 settings-score-rows = Most rows of scores
+settings-scoreboard = Show scoreboard while the recorder holds its key, and at intermission
+settings-scoreboard-off = Off
+settings-scoreboard-fullscreen = Only in fullscreen
+settings-scoreboard-always = On
 settings-server-settings = Show the server's settings at the top right
 settings-text-size = Size of the chat, kill feed and server's settings
 settings-hud-messages = Show text from the server, such as bhop and KZ timers
@@ -672,6 +676,12 @@ viewer-map-change = The server is changing the map to { $map }
 viewer-pov-recorder = { $name } (recorder)
 viewer-pov-recorder-unnamed = Recorder
 viewer-pov-help = Whose eyes to watch through. ` goes back to the recorder, 1 to 9 and 0 pick this map's best players by score, and the mouse wheel over the picture or Page Up and Page Down go to the previous or next player.
+viewer-scoreboard-ping-loss = Ping/loss
+viewer-scoreboard-bot = BOT
+viewer-scoreboard-players = { $count ->
+    [one] ({ $count } player)
+   *[other] ({ $count } players)
+}
 viewer-pov-unseen = The demo doesn't show { $name } here, so you're seeing the recorder's view
 settings-events-leave-free = Leave the free camera when choosing an event
 settings-events-leave-free-hint = Choosing a kill shows it through the killer's eyes, or the victim's, or the recorder's. With this off, the free camera stays where it is, and turning it off goes to that view.

@@ -653,6 +653,10 @@ settings-vitals-size = Gyvybių, šarvų, šovinių ir paimtų daiktų dydis
 settings-free-vitals = Rodyti gyvybes, šarvus, šovinius ir paimtus daiktus ir su laisva kamera
 settings-scores = Rodyti rezultatus viršuje kairėje
 settings-score-rows = Daugiausia rezultatų eilučių
+settings-scoreboard = Rodyti rezultatų lentelę, kol įrašantysis laiko jos klavišą, ir žemėlapio pabaigoje
+settings-scoreboard-off = Išjungta
+settings-scoreboard-fullscreen = Tik per visą ekraną
+settings-scoreboard-always = Įjungta
 settings-server-settings = Rodyti serverio nustatymus viršuje dešinėje
 settings-text-size = Čato, kill feed ir serverio nustatymų dydis
 settings-hud-messages = Rodyti serverio tekstą, pvz., bhop ir KZ laikmačius
@@ -707,6 +711,14 @@ viewer-map-change = Serveris keičia žemėlapį į { $map }
 viewer-pov-recorder = { $name } (įrašė)
 viewer-pov-recorder-unnamed = Įrašantysis
 viewer-pov-help = Kieno akimis žiūrėti. ` grąžina prie įrašančiojo, klavišai nuo 1 iki 9 ir 0 parenka geriausius šio žemėlapio žaidėjus pagal taškus, o pelės ratukas virš vaizdo arba Page Up ir Page Down perjungia į ankstesnį ar kitą žaidėją.
+viewer-scoreboard-ping-loss = Pingas/loss
+viewer-scoreboard-bot = BOT
+viewer-scoreboard-players = { $count ->
+    [one] ({ $count } žaidėjas)
+    [few] ({ $count } žaidėjai)
+    [many] ({ $count } žaidėjo)
+   *[other] ({ $count } žaidėjų)
+}
 viewer-pov-unseen = Įraše čia nematyti žaidėjo { $name }, todėl matote įrašančiojo vaizdą
 settings-events-leave-free = Išeiti iš laisvos kameros pasirinkus įvykį
 settings-events-leave-free-hint = Pasirinktas nužudymas rodomas žudiko, aukos arba įrašančiojo akimis. Kai tai išjungta, laisva kamera lieka ten, kur yra, o ją išjungę matysite tomis akimis.

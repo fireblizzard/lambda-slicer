@@ -156,8 +156,16 @@ frames a second the recorder's game ran at in the top left corner, above the sma
 from the frame times their demo recorded, averaged over each half second of them. It's the
 recorder's whatever view is shown, and not how fast the app draws. Size of the chat, kill feed
 and server's settings makes their text smaller or larger than the game's, 92% of it by default,
-as the game's is a little large over a view smaller than its screen. The keys are in the
-[README](../README.md#watching-a-demo).
+as the game's is a little large over a view smaller than its screen. Show scoreboard shows the
+game's scoreboard over the middle of the view while the recorder holds its key, and at intermission
+whoever's view is shown, only in fullscreen by default, always, or never. It's the game's size,
+wider on a wide view, and lists each team with its count of players and its players best first, all
+in its colour and names coloured further as AG's colour codes say, with the server's name at the top
+and the spectators under everyone, the recorder's row lit. Each player's SteamID shows as the game
+writes it, such as 0:1:23456789, or BOT for a bot. Each player's ping and packet loss show as the
+server last sent them, which it only does while the recorder holds the key, and a team's are its
+players' average. A followed player's keys aren't in the demo, so only the recorder's count. The
+keys are in the [README](../README.md#watching-a-demo).
 
 The list left of the playback buttons chooses whose eyes to watch through: the recorder first, then
 the other players of the map shown, best first by their frags at the map's end and fewer deaths

@@ -115,6 +115,10 @@ impl NetworkFrame {
     pub fn info_frametime(&self) -> f32 {
         f32_at(&self.demo_info[..], 64)
     }
+    /// The buttons the recorder held, `usercmd_t`'s `IN_` bits
+    pub fn info_buttons(&self) -> u16 {
+        u16::from_le_bytes([self.demo_info[266], self.demo_info[267]])
+    }
     pub fn info_intermission(&self) -> i32 {
         i32_at(&self.demo_info[..], 72)
     }

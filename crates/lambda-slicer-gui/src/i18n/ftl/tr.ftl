@@ -604,6 +604,10 @@ settings-vitals-size = Can, zırh, mermi ve alınan eşya boyutu
 settings-free-vitals = Serbest kamerada da can, zırh, mermi ve alınan eşyaları göster
 settings-scores = Skorları sol üstte göster
 settings-score-rows = En fazla skor satırı
+settings-scoreboard = Kaydeden kişi skor tablosu tuşunu basılı tutarken ve harita sonunda skor tablosunu göster
+settings-scoreboard-off = Kapalı
+settings-scoreboard-fullscreen = Yalnızca tam ekranda
+settings-scoreboard-always = Açık
 settings-server-settings = Sunucu ayarlarını sağ üstte göster
 settings-text-size = Sohbet, kill feed ve sunucu ayarları boyutu
 settings-hud-messages = Sunucudan gelen yazıları göster, örneğin bhop ve KZ zamanlayıcıları
@@ -656,6 +660,12 @@ viewer-map-change = Sunucu haritayı { $map } olarak değiştiriyor
 viewer-pov-recorder = { $name } (kaydeden)
 viewer-pov-recorder-unnamed = Kaydeden
 viewer-pov-help = Kimin gözünden izleyeceğin. ` kaydedene geri döner, 1-9 ve 0 tuşları bu haritanın en iyi oyuncularını puana göre seçer, görüntünün üzerinde fare tekerleği ya da Page Up ve Page Down önceki veya sonraki oyuncuya geçer.
+viewer-scoreboard-ping-loss = Ping/kayıp
+viewer-scoreboard-bot = BOT
+viewer-scoreboard-players = { $count ->
+    [one] ({ $count } oyuncu)
+   *[other] ({ $count } oyuncu)
+}
 viewer-pov-unseen = Demo burada { $name } oyuncusunu göstermiyor, bu yüzden kaydedenin gözünden izliyorsun
 settings-events-leave-free = Bir olay seçildiğinde serbest kameradan çık
 settings-events-leave-free-hint = Seçilen bir öldürme, öldürenin, kurbanın ya da kaydedenin gözünden gösterilir. Bu kapalıyken serbest kamera olduğu yerde kalır, kapatıldığında ise o görüntüye geçilir.

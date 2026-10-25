@@ -37,7 +37,7 @@ use crate::announcements::{Announced, Announcements};
 use crate::damage::{Damage, DamageShown};
 use crate::hud_messages::{HudMessage, HudMessages, ShownMessage, TE_TEXTMESSAGE};
 use crate::scene::Camera;
-use crate::scores::{ScoreRow, Scores};
+use crate::scores::{Board, ScoreRow, Scores};
 use crate::status::{self, Status};
 use crate::time::SourceTime;
 use crate::weapon_menu::{MenuShown, WeaponMenu};
@@ -147,6 +147,21 @@ pub struct Hud {
     messages: HudMessages,
     /// The weapon menu the recording player opens with their keys
     menu: WeaponMenu,
+    /// Each player's latency in milliseconds and packet loss by entity,
+    /// which the server sends while the scoreboard shows, and the server's
+    /// name
+    pings: BTreeMap<u8, (u32, u32)>,
+    server: String,
+}
+
+/// The slot, latency in milliseconds and packet loss in hundredths of one
+/// of `svc_pings`' entries, 5 bits of slot, 12 of latency and 7 of loss
+/// from the lowest (`SV_EmitPings`)
+fn unpack_ping(packed: u32) -> (u8, u32, u32) {
+    let slot = (packed & 0x1f) as u8;
+    let ping = (packed >> 5) & 0xfff;
+    let loss = (packed >> 17) & 0x7f;
+    (slot, ping, loss)
 }
 
 /// A string ending at its first nought, and what follows it
@@ -170,8 +185,16 @@ impl Hud {
     ) -> Option<&'static str> {
         let (id, body) = match &m.message {
             // A new session starts with nothing on the HUD
-            Message::ServerInfo(_) => {
+            Message::ServerInfo(info) => {
                 *self = Self::default();
+                self.server = c_string(&info.host_name).0;
+                return None;
+            }
+            Message::Pings(pings) => {
+                for &packed in pings {
+                    let (slot, ping, loss) = unpack_ping(packed);
+                    self.pings.insert(slot.wrapping_add(1), (ping, loss));
+                }
                 return None;
             }
             // A singleplayer recording's pauses do not stop the game it
@@ -356,6 +379,13 @@ impl Hud {
     /// The weapon menu with the weapons of `camera`, while it is open
     pub fn weapon_menu(&self, camera: &Camera) -> Option<MenuShown> {
         self.menu.shown(&self.status, camera.weapons)
+    }
+
+    /// The full scoreboard as the game shows it while its key is held, with
+    /// the players `decoder` knows
+    pub fn board(&self, decoder: &Decoder) -> Board {
+        self.scores
+            .board(decoder, &self.teams, &self.pings, &self.server)
     }
 
     /// The text the server placed on the HUD that shows at `at`

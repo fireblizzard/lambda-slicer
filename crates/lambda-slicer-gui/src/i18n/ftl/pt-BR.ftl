@@ -643,6 +643,10 @@ settings-vitals-size = Tamanho da vida, armadura, munição e itens coletados
 settings-free-vitals = Mostrar vida, armadura, munição e itens coletados também na câmera livre
 settings-scores = Mostrar o placar no canto superior esquerdo
 settings-score-rows = Máximo de linhas do placar
+settings-scoreboard = Mostrar o placar enquanto quem gravou segura a tecla dele, e no fim do mapa
+settings-scoreboard-off = Desligado
+settings-scoreboard-fullscreen = Só em tela cheia
+settings-scoreboard-always = Ligado
 settings-server-settings = Mostrar as configurações do servidor no canto superior direito
 settings-text-size = Tamanho do chat, do kill feed e das configurações do servidor
 settings-hud-messages = Mostrar textos do servidor, como os cronômetros de bhop e KZ
@@ -696,6 +700,13 @@ viewer-map-change = O servidor está trocando o mapa para { $map }
 viewer-pov-recorder = { $name } (gravou)
 viewer-pov-recorder-unnamed = Quem gravou
 viewer-pov-help = Pelos olhos de quem assistir. ` volta para quem gravou, 1 a 9 e 0 escolhem os melhores jogadores deste mapa por pontuação, e a rodinha do mouse sobre a imagem ou Page Up e Page Down passam para o jogador anterior ou o próximo.
+viewer-scoreboard-ping-loss = Ping/perda
+viewer-scoreboard-bot = BOT
+viewer-scoreboard-players = { $count ->
+    [one] ({ $count } jogador)
+    [many] ({ $count } de jogadores)
+   *[other] ({ $count } jogadores)
+}
 viewer-pov-unseen = A demo não mostra { $name } aqui, então você está vendo a visão de quem gravou
 settings-events-leave-free = Sair da câmera livre ao escolher um evento
 settings-events-leave-free-hint = Ao escolher um abate, ele aparece pelos olhos do matador, da vítima ou de quem gravou. Com isto desligado, a câmera livre fica onde está, e desligá-la leva a essa visão.

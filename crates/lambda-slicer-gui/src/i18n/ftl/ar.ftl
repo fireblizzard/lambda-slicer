@@ -694,6 +694,10 @@ settings-vitals-size = حجم الصحة والدرع والذخيرة والأ�
 settings-free-vitals = إظهار الصحة والدرع والذخيرة والأغراض الملتقطة مع الكاميرا الحرة أيضًا
 settings-scores = إظهار النتائج أعلى اليسار
 settings-score-rows = أقصى عدد من صفوف النتائج
+settings-scoreboard = إظهار لوحة النتائج ما دام المسجِّل يضغط على مفتاحها، وفي نهاية الخريطة
+settings-scoreboard-off = معطّلة
+settings-scoreboard-fullscreen = في ملء الشاشة فقط
+settings-scoreboard-always = مفعّلة
 settings-server-settings = إظهار إعدادات السيرفر أعلى اليمين
 settings-text-size = حجم الدردشة وقائمة القتلات وإعدادات السيرفر
 settings-hud-messages = إظهار النصوص من السيرفر، مثل مؤقتات bhop و KZ
@@ -750,6 +754,16 @@ viewer-map-change = السيرفر يغيّر الخريطة إلى { $map }
 viewer-pov-recorder = { $name } (المسجِّل)
 viewer-pov-recorder-unnamed = المسجِّل
 viewer-pov-help = بعيني مَن تشاهد. ` يعيدك إلى المسجِّل، و1 إلى 9 و0 تختار أفضل لاعبي هذه الخريطة حسب النقاط، وعجلة الفأرة فوق الصورة أو Page Up وPage Down تنقلك إلى اللاعب السابق أو التالي.
+viewer-scoreboard-ping-loss = البينغ/الفقد
+viewer-scoreboard-bot = BOT
+viewer-scoreboard-players = { $count ->
+    [zero] ({ $count } لاعب)
+    [one] (لاعب واحد)
+    [two] (لاعبان)
+    [few] ({ $count } لاعبين)
+    [many] ({ $count } لاعبًا)
+   *[other] ({ $count } لاعب)
+}
 viewer-pov-unseen = التسجيل لا يُظهر { $name } هنا، لذا ترى المشهد بعيني المسجِّل
 settings-events-leave-free = مغادرة الكاميرا الحرة عند اختيار حدث
 settings-events-leave-free-hint = عملية القتل التي تختارها تُعرض بعيني القاتل أو الضحية أو المسجِّل. عند إطفاء هذا الخيار تبقى الكاميرا الحرة في مكانها، وعند إيقافها تنتقل إلى ذلك المشهد.

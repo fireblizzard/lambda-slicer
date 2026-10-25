@@ -36,7 +36,7 @@ use crate::gauss;
 use crate::hud::{ChatLine, Countdown, DeathNotice, Hud};
 use crate::hud_messages::{HudMessage, ShownMessage};
 use crate::scene::{self, Camera, Entity, Movement, PlayerView, Scene, Viewmodel};
-use crate::scores::ScoreRow;
+use crate::scores::{Board, ScoreRow};
 use crate::source::{Cursor, Group, Source};
 use crate::status;
 use crate::tempents::{DynamicLight, Lookup, TempEntities, TempEntity};
@@ -122,6 +122,8 @@ pub struct PresentedFrame {
     pub weapon_menu: Option<MenuShown>,
     /// The small scoreboard's rows, highest first
     pub scores: Vec<ScoreRow>,
+    /// The full scoreboard, shown while its key is held
+    pub board: Board,
 }
 
 type Lengths = Box<dyn Fn(&SoundName) -> SoundLength + Send>;
@@ -753,6 +755,7 @@ impl Playback {
             hud_messages: state.hud.messages(at),
             weapon_menu: state.hud.weapon_menu(&state.scene.camera),
             scores: state.hud.scores(&state.decoder),
+            board: state.hud.board(&state.decoder),
             temp_entities: state
                 .tempents
                 .entities()

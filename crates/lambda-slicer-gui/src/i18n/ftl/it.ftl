@@ -639,6 +639,10 @@ settings-vitals-size = Dimensione di vita, armatura, munizioni e oggetti raccolt
 settings-free-vitals = Mostra vita, armatura, munizioni e oggetti raccolti anche con la visuale libera
 settings-scores = Mostra i punteggi in alto a sinistra
 settings-score-rows = Numero massimo di righe dei punteggi
+settings-scoreboard = Mostra la classifica mentre chi registra tiene premuto il suo tasto, e a fine mappa
+settings-scoreboard-off = Disattivata
+settings-scoreboard-fullscreen = Solo a schermo intero
+settings-scoreboard-always = Attivata
 settings-server-settings = Mostra le impostazioni del server in alto a destra
 settings-text-size = Dimensione della chat, del kill feed e delle impostazioni del server
 settings-hud-messages = Mostra i testi del server, come i timer di bhop e KZ
@@ -692,6 +696,13 @@ viewer-map-change = Il server sta passando alla mappa { $map }
 viewer-pov-recorder = { $name } (registra)
 viewer-pov-recorder-unnamed = Chi registra
 viewer-pov-help = Con gli occhi di chi guardare. ` torna a chi registra, da 1 a 9 e 0 scelgono i migliori giocatori di questa mappa per punteggio, e la rotellina del mouse sull’immagine o Pag Su e Pag Giù passano al giocatore precedente o successivo.
+viewer-scoreboard-ping-loss = Ping/loss
+viewer-scoreboard-bot = BOT
+viewer-scoreboard-players = { $count ->
+    [one] ({ $count } giocatore)
+    [many] ({ $count } di giocatori)
+   *[other] ({ $count } giocatori)
+}
 viewer-pov-unseen = La demo non mostra { $name } qui, quindi stai vedendo la visuale di chi registra
 settings-events-leave-free = Lascia la visuale libera quando scegli un evento
 settings-events-leave-free-hint = Un’uccisione scelta si vede con gli occhi del killer, della vittima o di chi registra. Con questa opzione spenta, la visuale libera resta dov’è, e quando la disattivi passi a quella vista.

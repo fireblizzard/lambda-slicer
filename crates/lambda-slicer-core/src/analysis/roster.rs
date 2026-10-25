@@ -114,6 +114,13 @@ pub fn steam_id(info: &[u8]) -> Option<u64> {
     (id >= STEAM_ID_LEAST).then_some(id)
 }
 
+/// The SteamID `id` as the game writes it, without its `STEAM_` start,
+/// such as `0:1:23456789`
+pub fn steam_id_text(id: u64) -> String {
+    let account = id.saturating_sub(STEAM_ID_LEAST);
+    format!("0:{}:{}", account & 1, account >> 1)
+}
+
 /// Who plays and which matches were played, followed through the decode
 #[derive(Debug, Default)]
 pub struct Roster {
@@ -466,6 +473,12 @@ mod tests {
         assert_eq!(steam_id(br"\name\x\*sid\76561"), None);
         assert_eq!(steam_id(br"\name\x\*sid\912063200"), None);
         assert_eq!(steam_id(br"\name\Bot 8720\model\gordon"), None);
+    }
+
+    #[test]
+    fn a_steam_id_is_written_as_the_game_writes_it() {
+        assert_eq!(steam_id_text(76_561_198_012_844_340), "0:0:26289306");
+        assert_eq!(steam_id_text(76_561_197_960_265_731), "0:1:1");
     }
 
     #[test]

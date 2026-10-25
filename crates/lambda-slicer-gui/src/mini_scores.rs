@@ -44,7 +44,7 @@ const TEAM_COLOURS: [Color32; 5] = [
 ];
 
 /// The colour of team number `number`, the numbers past four starting over
-fn team_colour(number: u8) -> Color32 {
+pub(crate) fn team_colour(number: u8) -> Color32 {
     TEAM_COLOURS[usize::from(number) % TEAM_COLOURS.len()]
 }
 

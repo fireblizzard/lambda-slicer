@@ -2156,6 +2156,15 @@ impl Viewer {
                         let line = catalog.text_with("viewer-pov-unseen", &[("name", name)]);
                         draw_unseen(ui.painter(), rect, &line);
                     }
+
+                    // The game shows the full scoreboard while its key is
+                    // held and at intermission, over everything else. Only
+                    // the recorder's keys are known
+                    let held = eyes == Eyes::Recorder && frame.recorder.scores_held;
+                    let shows = self.settings.scoreboard.shows(self.fullscreen);
+                    if shows && (held || frame.recorder.intermission) {
+                        crate::scoreboard::draw(ui, rect, catalog, &frame.board);
+                    }
                     if self.time_frame(pixels, drawn) {
                         ctx.send_viewport_cmd(egui::ViewportCommand::Close);
                     }

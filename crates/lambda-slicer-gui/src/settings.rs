@@ -172,6 +172,42 @@ impl SpeedAxes {
     }
 }
 
+/// When the full scoreboard shows over the view
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ScoreboardShown {
+    Off,
+    #[default]
+    Fullscreen,
+    Always,
+}
+
+impl ScoreboardShown {
+    pub const ALL: [ScoreboardShown; 3] = [
+        ScoreboardShown::Off,
+        ScoreboardShown::Fullscreen,
+        ScoreboardShown::Always,
+    ];
+
+    /// Whether the full scoreboard shows, with the view in fullscreen or not
+    pub fn shows(self, fullscreen: bool) -> bool {
+        match self {
+            ScoreboardShown::Off => false,
+            ScoreboardShown::Fullscreen => fullscreen,
+            ScoreboardShown::Always => true,
+        }
+    }
+
+    /// The name the settings give it
+    pub fn text_id(self) -> &'static str {
+        match self {
+            ScoreboardShown::Off => "settings-scoreboard-off",
+            ScoreboardShown::Fullscreen => "settings-scoreboard-fullscreen",
+            ScoreboardShown::Always => "settings-scoreboard-always",
+        }
+    }
+}
+
 /// How the demo viewer shows and plays a demo
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -213,6 +249,9 @@ pub struct ViewerSettings {
     /// rows
     pub scores: bool,
     pub score_rows: usize,
+    /// When the full scoreboard shows over the view while the recorder
+    /// holds its key, and at intermission
+    pub scoreboard: ScoreboardShown,
     /// Whether the server's settings show at the top right when it sends
     /// them
     pub server_settings: bool,
@@ -272,6 +311,7 @@ impl Default for ViewerSettings {
             free_vitals: false,
             scores: true,
             score_rows: 4,
+            scoreboard: ScoreboardShown::Fullscreen,
             server_settings: true,
             text_size: 0.92,
             hud_messages: true,

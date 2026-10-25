@@ -592,6 +592,10 @@ settings-vitals-size = 生命值、护甲、弹药和拾取物品的大小
 settings-free-vitals = 自由视角下也显示生命值、护甲、弹药和拾取物品
 settings-scores = 在左上角显示比分
 settings-score-rows = 比分最多显示几行
+settings-scoreboard = 录制者按住记分板键时以及地图结束时显示记分板
+settings-scoreboard-off = 关
+settings-scoreboard-fullscreen = 仅全屏时
+settings-scoreboard-always = 开
 settings-server-settings = 在右上角显示服务器设置
 settings-text-size = 聊天、击杀信息和服务器设置的大小
 settings-hud-messages = 显示服务器的文字，例如 bhop 和 KZ 计时器
@@ -643,6 +647,11 @@ viewer-map-change = 服务器正在切换地图至 { $map }
 viewer-pov-recorder = { $name }（录制者）
 viewer-pov-recorder-unnamed = 录制者
 viewer-pov-help = 选择通过谁的视角观看。` 回到录制者，1 到 9 和 0 选择本地图得分最高的玩家，在画面上滚动鼠标滚轮或按 Page Up 和 Page Down 可切换到上一个或下一个玩家。
+viewer-scoreboard-ping-loss = 延迟/丢包
+viewer-scoreboard-bot = BOT
+viewer-scoreboard-players = { $count ->
+   *[other] （{ $count } 名玩家）
+}
 viewer-pov-unseen = 录像此处没有显示 { $name }，所以你看到的是录制者的视角
 settings-events-leave-free = 选择事件时退出自由视角
 settings-events-leave-free-hint = 选择一次击杀时，会通过击杀者、受害者或录制者的视角显示。关闭此项时，自由视角会留在原处，关闭自由视角后才切换到那个视角。

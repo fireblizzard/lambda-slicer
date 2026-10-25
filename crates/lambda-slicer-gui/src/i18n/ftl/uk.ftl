@@ -653,6 +653,10 @@ settings-vitals-size = Розмір здоров’я, броні, набоїв 
 settings-free-vitals = Показувати здоров’я, броню, набої та підібрані предмети також у вільній камері
 settings-scores = Показувати рахунок ліворуч угорі
 settings-score-rows = Максимум рядків у рахунку
+settings-scoreboard = Показувати таблицю рахунку, поки автор запису тримає її клавішу, і в кінці мапи
+settings-scoreboard-off = Вимкнено
+settings-scoreboard-fullscreen = Лише на весь екран
+settings-scoreboard-always = Увімкнено
 settings-server-settings = Показувати налаштування сервера праворуч угорі
 settings-text-size = Розмір чату, стрічки вбивств і налаштувань сервера
 settings-hud-messages = Показувати текст від сервера, наприклад таймери bhop і KZ
@@ -707,6 +711,14 @@ viewer-map-change = Сервер змінює мапу на { $map }
 viewer-pov-recorder = { $name } (записував)
 viewer-pov-recorder-unnamed = Автор запису
 viewer-pov-help = Чиїми очима дивитися. ` повертає до автора запису, клавіші з 1 по 9 і 0 обирають найкращих гравців цієї мапи за очками, а коліщатко миші над зображенням або Page Up і Page Down перемикають на попереднього чи наступного гравця.
+viewer-scoreboard-ping-loss = Пінг/втрати
+viewer-scoreboard-bot = BOT
+viewer-scoreboard-players = { $count ->
+    [one] ({ $count } гравець)
+    [few] ({ $count } гравці)
+    [many] ({ $count } гравців)
+   *[other] ({ $count } гравця)
+}
 viewer-pov-unseen = У демо тут не видно гравця { $name }, тому ви дивитеся очима автора запису
 settings-events-leave-free = Виходити з вільної камери під час вибору події
 settings-events-leave-free-hint = Вибране вбивство показується очима вбивці, жертви або автора запису. Якщо це вимкнено, вільна камера лишається на місці, а коли ви її вимкнете, ви дивитиметеся саме цими очима.

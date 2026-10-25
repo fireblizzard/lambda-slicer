@@ -653,6 +653,10 @@ settings-vitals-size = Rozmiar życia, pancerza, amunicji i podniesionych przedm
 settings-free-vitals = Pokazuj życie, pancerz, amunicję i podniesione przedmioty także w wolnej kamerze
 settings-scores = Pokazuj wyniki w lewym górnym rogu
 settings-score-rows = Najwięcej wierszy wyników
+settings-scoreboard = Pokazuj tabelę wyników, gdy nagrywający trzyma jej klawisz, oraz na koniec mapy
+settings-scoreboard-off = Wyłączona
+settings-scoreboard-fullscreen = Tylko na pełnym ekranie
+settings-scoreboard-always = Włączona
 settings-server-settings = Pokazuj ustawienia serwera w prawym górnym rogu
 settings-text-size = Rozmiar czatu, kill feedu i ustawień serwera
 settings-hud-messages = Pokazuj tekst z serwera, np. timery bhop i KZ
@@ -707,6 +711,14 @@ viewer-map-change = Serwer zmienia mapę na { $map }
 viewer-pov-recorder = { $name } (nagrywający)
 viewer-pov-recorder-unnamed = Nagrywający
 viewer-pov-help = Czyimi oczami oglądać. ` wraca do nagrywającego, klawisze od 1 do 9 i 0 wybierają najlepszych graczy tej mapy według wyniku, a kółko myszy nad obrazem albo Page Up i Page Down przełączają na poprzedniego lub następnego gracza.
+viewer-scoreboard-ping-loss = Ping/loss
+viewer-scoreboard-bot = BOT
+viewer-scoreboard-players = { $count ->
+    [one] ({ $count } gracz)
+    [few] ({ $count } gracze)
+    [many] ({ $count } graczy)
+   *[other] ({ $count } gracza)
+}
 viewer-pov-unseen = Demo nie pokazuje tu gracza { $name }, więc patrzysz oczami nagrywającego
 settings-events-leave-free = Wychodź z wolnej kamery przy wyborze zdarzenia
 settings-events-leave-free-hint = Wybrane zabójstwo jest pokazywane oczami zabójcy, ofiary albo nagrywającego. Gdy to jest wyłączone, wolna kamera zostaje tam, gdzie jest, a po jej wyłączeniu patrzysz właśnie tymi oczami.
