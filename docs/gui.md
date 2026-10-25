@@ -199,9 +199,11 @@ when the demo opens, and from the first time the playhead plays or moves the sco
 updated as it plays. Show final scores goes back to the final ones until the playhead moves
 again. Without the game's files there is no playhead, and the scores are at the selected event.
 A player counts as spectating from AG's message that they started until the one that they play
-again, and moves from the tables to the spectators while they watch. Players who left drop out, as on the game's own scoreboard, and a team's `TeamScore`
-overrides its players' sum. The last kill decides the result because players often leave between
-the end of a game and the end of the recording.
+again, and moves from the tables to the spectators while they watch. With the game's files, a
+click on a player's row watches through their eyes, the recorder's row going back to their own
+view, and the row of whoever is watched is marked. Players who left drop out, as on the game's
+own scoreboard, and a team's `TeamScore` overrides its players' sum. The last kill decides the
+result because players often leave between the end of a game and the end of the recording.
 
 HS counts headshot kills and Acc. the share of shots that hit, for the recording player only, as
 other players' often happen out of the recording's view. In a duel the opponent's headshots show

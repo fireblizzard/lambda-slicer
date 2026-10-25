@@ -335,6 +335,7 @@ scores-final = النتائج النهائية عند آخر قتل { $time }
 scores-at = النتائج عند { $time }
 scores-show-final = عرض النتائج النهائية
 scores-spectators = المشاهدون
+scores-follow = انقر لتشاهد بعينيه
 pane-fill = منحه اللوحة الجانبية كاملة
 pane-share = تقاسم اللوحة الجانبية مناصفة
 scores-frags = القتلات

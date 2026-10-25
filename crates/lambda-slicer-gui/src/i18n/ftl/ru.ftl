@@ -302,6 +302,7 @@ scores-final = Итоговый счёт на последнем убийств�
 scores-at = Счёт на { $time }
 scores-show-final = Показать итоговый счёт
 scores-spectators = Наблюдатели
+scores-follow = Нажмите, чтобы смотреть его глазами
 pane-fill = Отдать всю боковую панель
 pane-share = Поделить боковую панель пополам
 scores-frags = Фраги

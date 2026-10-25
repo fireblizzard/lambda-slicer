@@ -296,6 +296,7 @@ scores-final = Scores finaux, à la dernière élimination { $time }
 scores-at = Scores à { $time }
 scores-show-final = Voir les scores finaux
 scores-spectators = Spectateurs
+scores-follow = Cliquez pour regarder à travers ses yeux
 pane-fill = Lui donner tout le panneau latéral
 pane-share = Partager le panneau latéral moitié-moitié
 scores-frags = Frags

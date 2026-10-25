@@ -302,6 +302,7 @@ scores-final = Підсумковий рахунок на останньому �
 scores-at = Рахунок на { $time }
 scores-show-final = Показати підсумковий рахунок
 scores-spectators = Спостерігачі
+scores-follow = Натисніть, щоб дивитися його очима
 pane-fill = Віддати всю бічну панель
 pane-share = Поділити бічну панель навпіл
 scores-frags = Фраги

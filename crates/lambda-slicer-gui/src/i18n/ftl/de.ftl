@@ -279,6 +279,7 @@ scores-final = Endstand beim letzten Abschuss { $time }
 scores-at = Stand bei { $time }
 scores-show-final = Endstand zeigen
 scores-spectators = Zuschauer
+scores-follow = Klicke, um durch seine Augen zuzuschauen
 pane-fill = Ganzen Seitenbereich nutzen
 pane-share = Seitenbereich halb und halb teilen
 scores-frags = Frags

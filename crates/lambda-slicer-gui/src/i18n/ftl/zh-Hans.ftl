@@ -255,6 +255,7 @@ scores-final = 最终比分（最后一次击杀 { $time }）
 scores-at = { $time } 时的比分
 scores-show-final = 显示最终比分
 scores-spectators = 观战者
+scores-follow = 点击通过此玩家的视角观看
 pane-fill = 占满整个侧边栏
 pane-share = 侧边栏上下各占一半
 scores-frags = 击杀

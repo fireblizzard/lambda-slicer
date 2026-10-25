@@ -296,6 +296,7 @@ scores-final = Placar final, no último abate { $time }
 scores-at = Placar em { $time }
 scores-show-final = Ver placar final
 scores-spectators = Espectadores
+scores-follow = Clique para assistir pelos olhos dele
 pane-fill = Dar o painel lateral inteiro para esta parte
 pane-share = Dividir o painel lateral meio a meio
 scores-frags = Abates

@@ -431,7 +431,8 @@ pub struct Standing {
 /// they score or die at any point of that session, so a player still on
 /// nothing early on is shown with zeros, and spectators who never score are
 /// left out. A player who left no longer counts, as on the game's own
-/// scoreboard
+/// scoreboard. A player who comes back later is the same player, so while
+/// someone holds their slot or name they are not shown again with zeros
 pub fn standing_at(
     updates: &[ScoreUpdate],
     team_updates: &[TeamScoreUpdate],
@@ -457,18 +458,31 @@ pub fn standing_at(
         slot: u.player.slot,
         incarnation: u.player.incarnation,
     };
-    let mut players: Vec<(PlayerScore, String)> = keys
-        .iter()
-        .filter_map(|k| {
-            let mut mine = in_segment().filter(|u| key(u) == *k);
-            let first = mine.clone().next()?;
-            match mine.rfind(|u| u.time <= time) {
-                Some(u) if u.left => None,
-                Some(u) => Some((score(u, true), u.team.clone())),
-                None => Some((score(first, false), first.team.clone())),
-            }
-        })
-        .collect();
+    let mut present = Vec::new();
+    let mut not_yet = Vec::new();
+    for k in &keys {
+        let mut mine = in_segment().filter(|u| key(u) == *k);
+        let Some(first) = mine.clone().next() else {
+            continue;
+        };
+        match mine.rfind(|u| u.time <= time) {
+            Some(u) if u.left => {}
+            Some(u) => present.push((score(u, true), u.team.clone())),
+            None => not_yet.push((score(first, false), first.team.clone())),
+        }
+    }
+
+    // One not there yet is left out while their slot or name is taken, as
+    // they are the one there before reconnecting, or after another left
+    for (player, team) in not_yet {
+        let taken = present
+            .iter()
+            .any(|(p, _)| p.slot == player.slot || p.name == player.name);
+        if !taken {
+            present.push((player, team));
+        }
+    }
+    let mut players = present;
     players.sort_by(|a, b| b.0.frags.cmp(&a.0.frags).then(a.0.deaths.cmp(&b.0.deaths)));
 
     let teams: Vec<String> = {
@@ -1280,6 +1294,43 @@ mod tests {
         assert_eq!(standing_at(&updates, &set, 0, 8.).sides[0].frags, 5);
         // Another session has nothing to show
         assert!(standing_at(&updates, &set, 3, 8.).sides.is_empty());
+    }
+
+    #[test]
+    fn a_player_coming_back_is_not_shown_twice_before_they_left() {
+        let again = |time, slot, frags, deaths| ScoreUpdate {
+            player: PlayerIdentity {
+                incarnation: 1,
+                name: "p1".into(),
+                ..update(time, slot, "", 0, 0).player
+            },
+            ..update(time, slot, "blue", frags, deaths)
+        };
+        let gone = ScoreUpdate {
+            left: true,
+            ..update(20., 1, "", 0, 0)
+        };
+        let updates = [
+            update(1., 0, "red", 1, 0),
+            update(1., 1, "blue", 2, 3),
+            gone,
+            again(30., 1, 2, 3),
+            again(40., 1, 3, 3),
+            again(50., 4, 0, 1),
+        ];
+
+        // Before leaving they show once with their score, whichever slot
+        // they come back in, and after coming back once again
+        let returning = |t| -> Vec<i32> {
+            let s = standing_at(&updates, &[], 0, t);
+            let players = s.sides.iter().flat_map(|side| side.players.iter());
+            players
+                .filter(|p| p.name == "p1")
+                .map(|p| p.frags)
+                .collect()
+        };
+        assert_eq!(returning(10.), [2]);
+        assert_eq!(returning(45.), [3]);
     }
 
     #[test]

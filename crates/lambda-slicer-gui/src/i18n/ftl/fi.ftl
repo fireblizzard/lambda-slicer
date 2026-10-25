@@ -279,6 +279,7 @@ scores-final = Lopputulokset viimeisen tapon kohdalla { $time }
 scores-at = Tilanne kohdassa { $time }
 scores-show-final = Näytä lopputulokset
 scores-spectators = Katsojat
+scores-follow = Napsauta, niin katsot pelaajan silmin
 pane-fill = Anna tälle koko sivupaneeli
 pane-share = Jaa sivupaneeli puoliksi
 scores-frags = Fragit

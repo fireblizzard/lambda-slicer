@@ -280,6 +280,7 @@ scores-final = Final scores, at the last kill { $time }
 scores-at = Scores at { $time }
 scores-show-final = Show final scores
 scores-spectators = Spectators
+scores-follow = Click to watch through their eyes
 pane-fill = Give it the whole side panel
 pane-share = Share the side panel half and half
 scores-frags = Frags

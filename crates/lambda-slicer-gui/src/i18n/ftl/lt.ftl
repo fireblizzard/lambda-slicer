@@ -302,6 +302,7 @@ scores-final = Galutiniai rezultatai, ties paskutiniu nužudymu { $time }
 scores-at = Rezultatai ties { $time }
 scores-show-final = Rodyti galutinius rezultatus
 scores-spectators = Stebėtojai
+scores-follow = Spustelėkite, kad žiūrėtumėte jo akimis
 pane-fill = Užimti visą šoninį skydelį
 pane-share = Padalyti šoninį skydelį per pusę
 scores-frags = Fragai

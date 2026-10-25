@@ -296,6 +296,7 @@ scores-final = Puntajes finales, en la última baja { $time }
 scores-at = Puntajes a las { $time }
 scores-show-final = Ver puntajes finales
 scores-spectators = Espectadores
+scores-follow = Haz clic para mirar por sus ojos
 pane-fill = Darle todo el panel lateral
 pane-share = Compartir el panel lateral mitad y mitad
 scores-frags = Bajas

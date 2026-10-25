@@ -954,6 +954,18 @@ impl Viewer {
         self.free = None;
     }
 
+    /// The slot of the player followed, none for the recorder's view
+    pub fn followed_slot(&self) -> Option<u8> {
+        let number = self.pov?.checked_sub(1)?;
+        u8::try_from(number).ok()
+    }
+
+    /// Follow the player in `slot`, chosen beside the viewer, or go back to
+    /// the recorder with none
+    pub fn follow_slot(&mut self, slot: Option<u8>) {
+        self.follow(slot.map(|s| u16::from(s) + 1));
+    }
+
     /// Follow the first of `slots` the demo shows once the playhead has
     /// gone where it was just sent, else the recorder. A free camera stays,
     /// and leaving it goes to that view, unless the settings leave it now

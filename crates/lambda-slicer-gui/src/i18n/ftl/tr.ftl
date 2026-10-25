@@ -264,6 +264,7 @@ scores-final = Son skorlar, son öldürmede { $time }
 scores-at = { $time } anındaki skorlar
 scores-show-final = Son skorları göster
 scores-spectators = İzleyiciler
+scores-follow = Onun gözünden izlemek için tıkla
 pane-fill = Yan panelin tamamını kapla
 pane-share = Yan paneli yarı yarıya paylaş
 scores-frags = Fraglar

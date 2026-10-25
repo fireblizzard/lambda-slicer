@@ -53,6 +53,7 @@ const KD_DECIMALS: usize = 2;
 /// One player's line of a table
 struct PlayerRow {
     name: String,
+    slot: u8,
     recorder: bool,
     frags: i32,
     deaths: i32,
@@ -184,11 +185,24 @@ impl DemoView {
                     ui.add_space(TABLE_GAP);
                 }
 
+                // With a viewer that has the game's files a row clicked
+                // follows its player, the recorder's going back to their
+                // own view
+                let viewer = self.viewer.as_ref().filter(|v| v.has_assets());
+                let following = viewer.map(|v| v.followed_slot());
+                let mut chosen = None;
                 for table in &tables {
-                    side_table(ui, catalog, rtl, table, names);
+                    let clicked = side_table(ui, catalog, rtl, table, (names, following));
+                    chosen = chosen.or(clicked);
                     ui.add_space(TABLE_GAP);
                 }
                 spectator_list(ui, catalog, rtl, &watching, model.recorder);
+
+                if let Some(slot) = chosen
+                    && let Some(viewer) = &mut self.viewer
+                {
+                    viewer.follow_slot(slot);
+                }
             });
         (scrolled.content_size.y - scrolled.inner_rect.height()).max(0.)
     }
@@ -344,6 +358,7 @@ fn score_tables(
             .and_then(|&(shots, hits, chance)| accuracy(shots, hits, chance));
         PlayerRow {
             name: text::player_name(&player.name),
+            slot: player.slot,
             recorder: own,
             frags: player.frags,
             deaths: player.deaths,
@@ -431,7 +446,17 @@ fn totals(ui: &mut Ui, rtl: bool, tables: &[SideTable]) {
 
 /// A side's title, then its players under a heading of what each column
 /// holds
-fn side_table(ui: &mut Ui, catalog: &Catalog, rtl: bool, table: &SideTable, names: f32) {
+/// The table of one side, its names' column `names` wide. With `following`,
+/// the slot of the player the viewer follows or none for the recorder,
+/// each row is a button that follows its player, the one followed marked.
+/// Returns the row clicked, by its player's slot or none for the recorder
+fn side_table(
+    ui: &mut Ui,
+    catalog: &Catalog,
+    rtl: bool,
+    table: &SideTable,
+    (names, following): (f32, Option<Option<u8>>),
+) -> Option<Option<u8>> {
     if let Some(title) = &table.title {
         let line = format!("{title}  {}", table.frags);
         let look = Look::Color(table.colour);
@@ -493,6 +518,7 @@ fn side_table(ui: &mut Ui, catalog: &Catalog, rtl: bool, table: &SideTable, name
         }
     }
 
+    let mut clicked = None;
     for player in &table.players {
         let accuracy = player.accuracy.map_or_else(
             || UNKNOWN.to_string(),
@@ -512,6 +538,23 @@ fn side_table(ui: &mut Ui, catalog: &Catalog, rtl: bool, table: &SideTable, name
             player.deaths.to_string(),
             player.frags.to_string(),
         ];
+        // The row followed and the row under the pointer are marked under
+        // their text, so it is painted first
+        let own = if player.recorder {
+            None
+        } else {
+            Some(player.slot)
+        };
+        let next = Rect::from_min_size(ui.cursor().min, Vec2::new(row_width, ROW_HEIGHT));
+        let fill = match following {
+            Some(followed) if followed == own => Some(theme::ACCENT_SOFT),
+            Some(_) if ui.rect_contains_pointer(next) => Some(theme::RAISED),
+            _ => None,
+        };
+        if let Some(fill) = fill {
+            ui.painter().rect_filled(next, theme::RADIUS_SMALL, fill);
+        }
+
         let (row, cells) = table_row(
             ui,
             rtl,
@@ -522,15 +565,33 @@ fn side_table(ui: &mut Ui, catalog: &Catalog, rtl: bool, table: &SideTable, name
             theme::FOREGROUND,
         );
 
+        // The recorder's name says who they are, and a row of a viewer
+        // follows its player
+        let id = ui.scope_id().with(("score row", player.slot));
+        let sense = if following.is_some() {
+            Sense::click()
+        } else {
+            Sense::hover()
+        };
+        let mut response = ui.interact(row, id, sense);
         if player.recorder {
             let name = FluentValue::from(player.name.clone());
             let mine = catalog.text_with("lane-recorder", &[("name", name)]);
-            let id = ui.scope_id().with(("recorder row", player.name.as_str()));
             let name_cell = row_name_cell(row, rtl, &cells);
-            ui.interact(name_cell, id, Sense::hover())
-                .on_hover_text(mine);
+            if ui.rect_contains_pointer(name_cell) {
+                response = response.on_hover_text(mine);
+            }
+        }
+        if following.is_some() {
+            response = response
+                .on_hover_cursor(egui::CursorIcon::PointingHand)
+                .on_hover_text(catalog.text("scores-follow"));
+        }
+        if response.clicked() {
+            clicked = Some(own);
         }
     }
+    clicked
 }
 
 /// How wide the names' column must be for every player's whole name in
