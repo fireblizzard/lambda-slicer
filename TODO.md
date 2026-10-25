@@ -18,7 +18,7 @@
 - [x] Add ability to switch to another player's POV as long as the demo has the info. While it doesn't have it, switch to the recorder POV until we have info again. Also clicking on an event should put you in the killer's POV if there's one, otherwise in the victim's POV is there's one, otherwise just go to recorder's POV for that event even if it's unrelated to the recorder (so like current behaviour, no change there)
 - [x] Show multiple scores for multi-map demos, one for each map that's not ignored
 - [ ] Add weapon bob
-- [ ] Support scrolling textures
+- [x] Support scrolling textures
 - [ ] Support randomly tiled textures
 - [ ] Support GameTitle message, like the HALF-LIFE logo when you start a new singleplayer game
 - [ ] For events scheduled before the start of a clip, send it again in the clip with the time it had left

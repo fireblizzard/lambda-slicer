@@ -420,11 +420,12 @@ game ([comparison](viewer-validation.md)):
 | Light styles | up to four lightmaps a face, each weighed by its style's brightness at the client's time. A pattern steps ten times a second, `a` to `z` meaning 0 to 550 where 256 is the lightmap as stored. A style no message set is 256 |
 | Unlit faces | full brightness, as the game draws a face without light data |
 | Animated textures | `+0` to `+9` chains at ten frames a second, and the `+a` to `+j` chain while a brush entity's frame is not 0 |
+| Conveyors | a brush entity's faces whose texture's name starts with `scroll` slide along the texture's s axis by the time, at the speed the entity's render colour holds, green and blue a 16th of a unit a second over the texture's width, against the axis unless red is set (`DrawGLPolyScroll`). Checked on screen on `vengeance`'s `func_conveyor` panels |
 | Water | `!` and turbulent faces unlit, their texture coordinates warped by eight texels in a sine of the other coordinate and the time, at 64 texels a repeat |
 | Sky | the sky the server's movement variables name (`sv_skyname`), and until it names one the `worldspawn` `skyname`, `desert` by default, from `gfx/env/<name>{rt,lf,bk,ft,up,dn}.tga` in the sky box's layout, drawn wherever nothing else was. Confirmed against the game, where the two differ, in `ls_9e_cross` ([viewer validation](viewer-validation.md)) |
 
-Not drawn yet: visibility and frustum culling (the whole world is drawn every frame), random tiling
-textures (`-0` names) and scrolling conveyors.
+Not drawn yet: visibility and frustum culling (the whole world is drawn every frame) and random
+tiling textures (`-0` names).
 
 ### Models
 

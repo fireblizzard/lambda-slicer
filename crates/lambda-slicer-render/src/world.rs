@@ -30,6 +30,9 @@ pub const FULL_BRIGHT: u8 = 64;
 pub mod flags {
     /// A turbulent face, its coordinates in texels
     pub const WARP: u32 = 1;
+    /// A conveyor's face, its texture sliding as its brush entity's render
+    /// colour says
+    pub const SCROLL: u32 = 2;
 }
 
 #[repr(C)]
@@ -255,6 +258,9 @@ struct Polygon {
     /// Facing the side the face is drawn on
     normal: [f32; 3],
     warp: bool,
+    /// A brush entity's face whose texture's name starts with `scroll`,
+    /// which slides as a conveyor
+    scroll: bool,
     /// Drawn from below too, as a water entity's surface is
     two_sided: bool,
 }
@@ -407,6 +413,7 @@ pub fn build(bsp: &BspDocument, wad_texture: &mut dyn FnMut(&str) -> Option<Rgba
                 continue;
             }
             let warp = name.starts_with('!') || info.flags & 1 != 0;
+            let scroll = model_index > 0 && name.to_ascii_lowercase().starts_with("scroll");
 
             let points: Vec<[f32; 3]> = (0..face.surface_edge_count.max(0) as usize)
                 .filter_map(|i| {
@@ -481,6 +488,7 @@ pub fn build(bsp: &BspDocument, wad_texture: &mut dyn FnMut(&str) -> Option<Rgba
                 axes,
                 normal,
                 warp,
+                scroll,
                 two_sided: water_entity,
             });
         }
@@ -534,6 +542,7 @@ pub fn build(bsp: &BspDocument, wad_texture: &mut dyn FnMut(&str) -> Option<Rgba
             axes,
             normal,
             warp,
+            scroll,
             two_sided,
         } = polygon;
         let base = out_vertices.len() as u32;
@@ -571,7 +580,11 @@ pub fn build(bsp: &BspDocument, wad_texture: &mut dyn FnMut(&str) -> Option<Rgba
                 lightmap_uv,
                 style_step,
                 styles: light.styles,
-                flags: if *warp { flags::WARP } else { 0 },
+                flags: match (*warp, *scroll) {
+                    (true, _) => flags::WARP,
+                    (false, true) => flags::SCROLL,
+                    (false, false) => 0,
+                },
             });
         }
         // The other way round as well for a face seen from both sides, as

@@ -61,7 +61,7 @@ Not shown or played yet:
   game.
 - Models: the glow shell and other render effects, textures recoloured by name (`remap`),
   smooth blending between animations, and mouth movement.
-- Randomly tiled textures and scrolling conveyors.
+- Randomly tiled textures.
 
 Known differences from the game:
 

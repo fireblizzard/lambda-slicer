@@ -118,6 +118,21 @@ fn lightmap_light(l: vec3<f32>) -> vec3<f32> {
     return light_table(index / 1023.0) * u.gamma[1].z;
 }
 
+// How far along its s axis a conveyor's texture has slid by the time, as a
+// share of the texture's width. Its brush entity's render colour holds the
+// speed, green and blue a 16th of a unit a second, and red set runs it the
+// other way (`DrawGLPolyScroll`)
+fn scroll_offset() -> f32 {
+    let c = round(object.color.rgb * 255.0);
+    var speed = (c.g * 256.0 + c.b) / 16.0;
+    if (c.r != 0.0) {
+        speed = -speed;
+    }
+    let rate = abs(speed) / f32(textureDimensions(albedo).x);
+    let way = select(1.0, -1.0, speed >= 0.0);
+    return fract(u.params.y * way * rate);
+}
+
 // Whether everything is fully lit, as the game's r_fullbright lights the
 // world
 fn fullbright() -> bool {
@@ -197,6 +212,9 @@ fn world_fs(v: WorldOut) -> @location(0) vec4<f32> {
             v.uv.x + 8.0 * sin(v.uv.y * 0.125 + t),
             v.uv.y + 8.0 * sin(v.uv.x * 0.125 + t),
         ) / 64.0;
+    }
+    if ((v.flags & 2u) != 0u) {
+        uv.x = uv.x + scroll_offset();
     }
     let a = textureSample(albedo, albedo_sampler, uv);
     let mode = u32(object.mode.x);
