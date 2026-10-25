@@ -22,7 +22,7 @@ use lambda_slicer_core::analysis::context::Scoreboard;
 use lambda_slicer_core::analysis::parts::PartStatus;
 use lambda_slicer_core::analysis::weapons::Weapon;
 use lambda_slicer_core::library::cache::{
-    Cache, FileQuery, FileRow, KillQuery, LibraryStats, MatchSort, PersonRow, Sort,
+    Bots, Cache, FileQuery, FileRow, KillQuery, LibraryStats, MatchSort, PersonRow, Sort,
 };
 use lambda_slicer_core::message::{Coded, Message};
 use lambda_slicer_core::timeline::time::DemoTime;
@@ -236,6 +236,8 @@ pub struct Filters {
     /// any
     pub players: (u32, u32),
     pub teams: (u32, u32),
+    /// How many of the players may have been bots
+    pub bots: Bots,
 }
 
 impl Default for Filters {
@@ -258,6 +260,7 @@ impl Default for Filters {
             min_accuracy: 0.,
             players: (0, MAX_PLAYERS),
             teams: (0, MAX_TEAMS),
+            bots: Bots::Any,
         }
     }
 }
@@ -323,6 +326,7 @@ impl Filters {
             self.min_accuracy > 0.,
             self.players != (0, MAX_PLAYERS),
             self.teams != (0, MAX_TEAMS),
+            self.bots != Bots::Any,
             self.from.is_some(),
             self.to.is_some(),
         ];
@@ -344,6 +348,7 @@ impl Filters {
             max_players,
             min_teams,
             max_teams,
+            bots: self.bots,
             text: text(&self.text),
             map: text(&self.map),
             player: text(&self.player),
@@ -1266,6 +1271,28 @@ impl LibraryView {
                 });
             });
         }
+
+        // Bots, from any to none, the one on lit
+        layout::row(ui, rtl, |ui| {
+            ui.label(t("filter-bots"));
+            widgets::help(ui, &catalog.text("help-bots-filter"), rtl);
+        });
+        let choices = [
+            (Bots::Any, "bots-any"),
+            (Bots::Few, "bots-few"),
+            (Bots::None, "bots-none"),
+        ];
+        layout::row(ui, rtl, |ui| {
+            let spacing = ui.spacing().item_spacing.x;
+            let width = (ui.available_width() - 2. * spacing) / 3.;
+            for (bots, id) in choices {
+                let on = self.filters.bots == bots;
+                let button = egui::Button::selectable(on, t(id)).min_size(Vec2::new(width, 0.));
+                if ui.add(button).clicked() {
+                    self.filters.bots = bots;
+                }
+            }
+        });
 
         let accuracy_help = catalog.text("help-accuracy-filter");
         let min_accuracy = &mut self.filters.min_accuracy;

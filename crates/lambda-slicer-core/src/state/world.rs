@@ -96,6 +96,9 @@ pub struct PlayerInfo {
     /// Increments when the slot's user id changes or after the slot was
     /// vacated, so a reused slot is a different player
     pub incarnation: u32,
+    /// A bot, as its userinfo says with `*bot`, or as the server sent no
+    /// CD key hash for it, which only a bot lacks
+    pub bot: bool,
 }
 
 /// Who a player was at one moment. Name is the name at that moment, so
@@ -887,8 +890,11 @@ impl Decoder {
                 slot,
                 user_id,
                 info,
-                ..
-            } => self.update_player(*slot, *user_id, info, location),
+                hash,
+            } => {
+                let bot = *hash == [0; 16] || userinfo_value(info, b"*bot").is_some();
+                self.update_player(*slot, *user_id, info, bot, location);
+            }
             Message::SpawnBaseline(b) => {
                 let mut baselines = HashMap::new();
                 for e in &b.entities {
@@ -1036,7 +1042,14 @@ impl Decoder {
         Ok(())
     }
 
-    fn update_player(&mut self, slot: u8, user_id: u32, info: &[u8], location: FrameLocation) {
+    fn update_player(
+        &mut self,
+        slot: u8,
+        user_id: u32,
+        info: &[u8],
+        bot: bool,
+        location: FrameLocation,
+    ) {
         let name = userinfo_value(info, b"name").map(|n| String::from_utf8_lossy(&n).into_owned());
 
         // The server clears a dropped client's userinfo
@@ -1075,6 +1088,7 @@ impl Decoder {
             info: info.to_vec(),
             name,
             incarnation,
+            bot,
         };
         if let Some(kind) = kind {
             let player = self.identity(&info);

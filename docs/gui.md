@@ -57,12 +57,16 @@ the choice is kept. Clicking a heading sorts by it. Rows load a page at a time.
   ([analysis](analysis-profile.md)).
 
 Filters opens the filter pane: file name and folder, player, map, weapon, point of view (playing
-or spectating), minimum length and kills, players and teams, minimum accuracy, headshot kills,
+or spectating), minimum length and kills, players and teams, bots, minimum accuracy, headshot kills,
 midair kills, multikills, killing sprees and recording dates. The `(?)` beside a filter explains
 how it's worked out. Multikill keeps demos with a double, triple, quadra or penta kill or more, by
 anyone, the one chosen clicked again turning it off, and opening a demo then turns on the same
 refinement in its events. Spree of at least keeps demos where a player killed that many in a row,
-0 for any.
+0 for any. Bots Few keeps only demos and matches with fewer bots than people playing, and None
+only those with no bots at all, counting the most bots and players in at once as Players does. So
+Few leaves out a 1v1 against a bot but keeps a server of 20 people with 3 bots filling in. A
+bot is a player the game marks as one, or one without a CD key, and a bot that never joined in,
+such as one left off the teams, doesn't count.
 
 Player finds demos where anyone used a name with the typed text in it. While it has focus it also
 offers the library's players who used such a name, those in the most demos first, each under the

@@ -38,11 +38,13 @@ const STEAM_ID_LEAST: u64 = 76_561_197_960_265_728;
 /// The count `Countdown` shows while it waits for players
 const WAITING: i8 = 50;
 
-/// How many players and teams there were
+/// How many players and teams there were, and how many of the players
+/// were bots
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
 pub struct Counted {
     pub players: u32,
     pub teams: u32,
+    pub bots: u32,
 }
 
 impl Counted {
@@ -51,6 +53,7 @@ impl Counted {
         Self {
             players: self.players.max(other.players),
             teams: self.teams.max(other.teams),
+            bots: self.bots.max(other.bots),
         }
     }
 }
@@ -170,9 +173,16 @@ fn playing(
     }
 
     let slots = if names.is_empty() { players } else { on_teams };
+    let mut bots = 0;
+    for slot in &slots {
+        if d.players.get(slot).is_some_and(|p| p.bot) {
+            bots += 1;
+        }
+    }
     let counted = Counted {
         players: slots.len() as u32,
         teams: names.len() as u32,
+        bots,
     };
     (slots, counted)
 }
@@ -360,16 +370,19 @@ mod tests {
         let a = Counted {
             players: 8,
             teams: 2,
+            bots: 1,
         };
         let b = Counted {
             players: 4,
             teams: 4,
+            bots: 3,
         };
         assert_eq!(
             a.most(b),
             Counted {
                 players: 8,
-                teams: 4
+                teams: 4,
+                bots: 3,
             }
         );
     }

@@ -427,6 +427,7 @@ mod tests {
             info: info.to_vec(),
             name: name.to_owned(),
             incarnation: 0,
+            bot: false,
         };
         d.players.insert(0, player(0, name, br"\name\p"));
         d.players

@@ -15,7 +15,7 @@ use lambda_slicer_core::analysis::{AnalysisReport, analyze_demo};
 use lambda_slicer_core::container::Limits;
 use lambda_slicer_core::fixtures::{MANIFEST_ENV, check_fixture, load_manifest};
 use lambda_slicer_core::library::cache::{
-    Cache, FileQuery, FileRow, KillQuery, WindowRow, default_path as library_cache_path,
+    Bots, Cache, FileQuery, FileRow, KillQuery, WindowRow, default_path as library_cache_path,
 };
 use lambda_slicer_core::library::fingerprint::full_fingerprint;
 use lambda_slicer_core::library::scan::{
@@ -202,6 +202,9 @@ enum Command {
         /// Repeated, every one of them
         #[arg(long = "steam-id")]
         steam_ids: Vec<i64>,
+        /// How many of the players may have been bots
+        #[arg(long, value_enum, default_value_t = BotsArg::Any)]
+        bots: BotsArg,
         /// Spectating at least this fraction of playback, 0 to 1
         #[arg(long)]
         min_spectating: Option<f64>,
@@ -243,6 +246,25 @@ enum Command {
         #[arg(long)]
         json: Option<PathBuf>,
     },
+}
+
+/// How many of a demo's players may have been bots
+#[derive(Clone, Copy, ValueEnum)]
+enum BotsArg {
+    Any,
+    /// Fewer bots than people, so fewer than half the players
+    Few,
+    None,
+}
+
+impl From<BotsArg> for Bots {
+    fn from(b: BotsArg) -> Self {
+        match b {
+            BotsArg::Any => Bots::Any,
+            BotsArg::Few => Bots::Few,
+            BotsArg::None => Bots::None,
+        }
+    }
 }
 
 #[derive(Clone, Copy, ValueEnum)]
@@ -571,6 +593,7 @@ fn run() -> Result<ExitCode> {
             map,
             player,
             steam_ids,
+            bots,
             min_spectating,
             max_spectating,
             weapon_used,
@@ -603,6 +626,7 @@ fn run() -> Result<ExitCode> {
                 map,
                 player,
                 steam_ids,
+                bots: bots.into(),
                 min_spectating,
                 max_spectating,
                 weapon_used,

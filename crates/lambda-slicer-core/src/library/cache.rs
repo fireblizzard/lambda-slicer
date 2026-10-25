@@ -27,7 +27,7 @@ use crate::message::Message;
 use crate::state::{DECODE_REPORT_SCHEMA, DecodeStatus};
 
 /// Layout of the tables below. A different value rebuilds the cache
-pub const CACHE_SCHEMA: i64 = 13;
+pub const CACHE_SCHEMA: i64 = 14;
 
 #[derive(Debug, thiserror::Error)]
 pub enum CacheError {
@@ -163,6 +163,7 @@ CREATE TABLE files(
     best_spree INTEGER,
     players INTEGER,
     teams INTEGER,
+    bots INTEGER,
     accuracy REAL,
     best_window REAL,
     coverage_json TEXT,
@@ -245,6 +246,7 @@ CREATE TABLE matches(
     map TEXT NOT NULL,
     players INTEGER NOT NULL,
     teams INTEGER NOT NULL,
+    bots INTEGER NOT NULL DEFAULT 0,
     kills INTEGER NOT NULL,
     score TEXT,
     score_json TEXT
@@ -464,6 +466,31 @@ impl Sort {
     }
 }
 
+/// How many of a demo's or match's players may have been bots, counted
+/// when the most were in at once
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Bots {
+    #[default]
+    Any,
+    /// Fewer bots than people, so fewer than half the players
+    Few,
+    None,
+}
+
+impl Bots {
+    /// The condition on the players and bots in `table`, aliased as the
+    /// files or matches are, none for any. Nobody counted is no bots
+    fn condition(self, table: &str) -> Option<String> {
+        match self {
+            Bots::Any => None,
+            Bots::Few => Some(format!(
+                "COALESCE({table}.bots, 0) * 2 < MAX(COALESCE({table}.players, 0), 1)"
+            )),
+            Bots::None => Some(format!("COALESCE({table}.bots, 0) = 0")),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct FileQuery {
     /// Text anywhere in the path, ignoring case as [`fold`] does
@@ -505,6 +532,7 @@ pub struct FileQuery {
     pub max_players: Option<i64>,
     pub min_teams: Option<i64>,
     pub max_teams: Option<i64>,
+    pub bots: Bots,
     pub sort: Sort,
     pub descending: bool,
     /// Rows to skip and rows to return, for paging
@@ -931,10 +959,10 @@ impl Cache {
                 playback, spectator_fraction, shots, unknown_shots, kills, best_window,
                 coverage_json, recorded_at, date_source, score, score_json, headshots, accuracy,
                 scanned_at, floors, clip_of, all_maps, players, teams, map_scores_json,
-                best_multikill, best_spree)
+                best_multikill, best_spree, bots)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16,
                 ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30, ?31,
-                ?32, ?33, ?34, ?35, ?36, ?37, ?38, ?39, ?40, ?41, ?42)",
+                ?32, ?33, ?34, ?35, ?36, ?37, ?38, ?39, ?40, ?41, ?42, ?43)",
             params![
                 display,
                 native_bytes(e.path),
@@ -978,6 +1006,7 @@ impl Cache {
                 scores_json,
                 at_once.iter().max(),
                 sprees.iter().max(),
+                r.map(|r| r.counted.bots),
             ],
         )?;
         let id = tx.last_insert_rowid();
@@ -1076,8 +1105,8 @@ impl Cache {
 
             let mut matches = tx.prepare(
                 "INSERT INTO matches(file_id, ordinal, segment, status, opens_at, start, end,
-                    length, map, players, teams, kills, score, score_json)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+                    length, map, players, teams, kills, score, score_json, bots)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
             )?;
             for (n, p) in r.parts.iter().enumerate() {
                 let score = Some(p.scoreboard.summary(3)).filter(|s| !s.is_empty());
@@ -1096,6 +1125,7 @@ impl Cache {
                     p.kills,
                     score,
                     serde_json::to_string(&p.scoreboard).unwrap_or_default(),
+                    p.counted.bots,
                 ])?;
             }
         }
@@ -1363,6 +1393,9 @@ impl Cache {
                 c.push(format!("{test} ?{}", args.len()));
             }
         }
+        if let Some(bots) = q.bots.condition("f") {
+            c.push(bots);
+        }
         if !q.kills.is_empty() {
             let kill_sql = Self::kill_conditions(&q.kills, &mut args);
             c.push(format!(
@@ -1396,6 +1429,7 @@ impl Cache {
         files.max_teams = None;
         files.min_spree = None;
         files.steam_ids.clear();
+        files.bots = Bots::Any;
         let (conditions, mut args) = Self::conditions_with_kills(&files, KILL_IN_MATCH);
         let mut c = vec![conditions];
 
@@ -1417,6 +1451,10 @@ impl Cache {
                 args.push(Box::new(n));
                 c.push(format!("{test} ?{}", args.len()));
             }
+        }
+
+        if let Some(bots) = f.bots.condition("m") {
+            c.push(bots);
         }
 
         // A player plays in a match when they played on its map
@@ -1959,6 +1997,76 @@ mod tests {
             ..FileQuery::default()
         };
         assert_eq!(names(two_teams_up_to_eight), ["duel.dem"]);
+    }
+
+    #[test]
+    fn demos_and_matches_are_found_by_how_many_bots_played() {
+        let c = cache(&[
+            ("duel.dem", None, None),
+            ("ffa.dem", None, None),
+            ("practice.dem", None, None),
+        ]);
+
+        // A duel of two people, free play of 20 people with 3 bots kept in
+        // for when the server empties, and a duel against a bot
+        let stored = [
+            ("duel.dem", 2, 0),
+            ("ffa.dem", 23, 3),
+            ("practice.dem", 2, 1),
+        ];
+        for (name, players, bots) in stored {
+            // Stored as an analysis would have
+            c.conn
+                .execute(
+                    "UPDATE files SET players = ?1, bots = ?2 WHERE path = ?3",
+                    params![players, bots, name],
+                )
+                .unwrap();
+            c.conn
+                .execute(
+                    "INSERT INTO matches(file_id, ordinal, segment, status, opens_at, start, end,
+                        length, map, players, teams, kills, bots)
+                     SELECT id, 0, 1, 'complete', 0, 0, 600, 600, 'crossfire', ?1, 0, 10, ?2
+                     FROM files WHERE path = ?3",
+                    params![players, bots, name],
+                )
+                .unwrap();
+        }
+
+        let files = |bots: Bots| -> Vec<String> {
+            let q = FileQuery {
+                bots,
+                limit: 10,
+                ..FileQuery::default()
+            };
+            let mut names: Vec<String> = c.query(&q).unwrap().into_iter().map(|f| f.path).collect();
+            names.sort();
+            names
+        };
+        assert_eq!(files(Bots::Any).len(), 3);
+        assert_eq!(files(Bots::Few), ["duel.dem", "ffa.dem"]);
+        assert_eq!(files(Bots::None), ["duel.dem"]);
+
+        let matches = |bots: Bots| -> Vec<String> {
+            let q = MatchQuery {
+                files: FileQuery {
+                    bots,
+                    limit: 10,
+                    ..FileQuery::default()
+                },
+                ..MatchQuery::default()
+            };
+            let mut names: Vec<String> = c
+                .query_matches(&q)
+                .unwrap()
+                .into_iter()
+                .map(|r| r.path)
+                .collect();
+            names.sort();
+            names
+        };
+        assert_eq!(matches(Bots::Few), ["duel.dem", "ffa.dem"]);
+        assert_eq!(matches(Bots::None), ["duel.dem"]);
     }
 
     #[test]

@@ -272,7 +272,10 @@ mod tests {
         let at = |time: f32, players: u32| Moment {
             segment: 1,
             time,
-            counted: Counted { players, teams: 0 },
+            counted: Counted {
+                players,
+                ..Counted::default()
+            },
         };
         let history = [at(0., 2), at(50., 6), at(200., 3), at(900., 9)];
         assert_eq!(most_between(&history, 1, 100., 800.).players, 6);
@@ -288,13 +291,16 @@ mod tests {
             start: 0.,
             end: 0.,
             map: String::new(),
-            counted: Counted { players, teams: 0 },
+            counted: Counted {
+                players,
+                ..Counted::default()
+            },
             kills: 0,
             scoreboard: Scoreboard::default(),
         };
         let any = Counted {
             players: 8,
-            teams: 0,
+            ..Counted::default()
         };
         let parts = [
             part(PartStatus::Interrupted, 6),
