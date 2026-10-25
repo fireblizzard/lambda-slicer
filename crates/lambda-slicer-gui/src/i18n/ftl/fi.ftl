@@ -619,6 +619,7 @@ settings-free-vitals = Näytä elämä, panssari, ammukset ja pickupit myös vap
 settings-scores = Näytä pisteet vasemmassa yläkulmassa
 settings-score-rows = Pisterivejä enintään
 settings-server-settings = Näytä serverin asetukset oikeassa yläkulmassa
+settings-text-size = Chatin, killfeedin ja serverin asetusten koko
 settings-hud-messages = Näytä serverin tekstit, kuten bhop- ja KZ-ajastimet
 settings-see-through = Näe pelaajat seinien läpi
 settings-see-through-items = Myös muut mallit, kuten ammukset ja esineet

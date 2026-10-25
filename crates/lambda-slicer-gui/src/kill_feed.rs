@@ -119,10 +119,17 @@ pub(crate) fn add_tagged(
 
 impl KillFeed {
     /// The kill feed's `notices` over the view at `rect`, its icons from
-    /// `library`
-    pub fn draw(&mut self, ui: &egui::Ui, rect: Rect, notices: &[DeathNotice], library: &Library) {
+    /// `library` and its names `size` times the game's
+    pub fn draw(
+        &mut self,
+        ui: &egui::Ui,
+        rect: Rect,
+        notices: &[DeathNotice],
+        library: &Library,
+        size: f32,
+    ) {
         let scale = rect.height() / SCREEN_HEIGHT;
-        let font = egui::FontId::proportional(TEXT_SIZE * scale);
+        let font = egui::FontId::proportional(TEXT_SIZE * size * scale);
         let painter = ui.painter_at(rect);
 
         for (i, notice) in notices.iter().enumerate() {

@@ -636,6 +636,7 @@ settings-free-vitals = Mostra vita, armatura, munizioni e oggetti raccolti anche
 settings-scores = Mostra i punteggi in alto a sinistra
 settings-score-rows = Numero massimo di righe dei punteggi
 settings-server-settings = Mostra le impostazioni del server in alto a destra
+settings-text-size = Dimensione della chat, del kill feed e delle impostazioni del server
 settings-hud-messages = Mostra i testi del server, come i timer di bhop e KZ
 settings-see-through = Vedi i giocatori attraverso i muri
 settings-see-through-items = Anche altri modelli, come proiettili e oggetti

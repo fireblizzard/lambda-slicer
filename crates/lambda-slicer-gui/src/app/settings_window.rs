@@ -14,8 +14,8 @@ use crate::i18n::{Catalog, Locale};
 use crate::layout;
 use crate::library::{self, parse_number};
 use crate::settings::{
-    FOV, MAX_PADDING, MAX_SCORE_ROWS, SPREE_LEAST, SPREE_MOST, Settings, SpeedAxes, VITALS_SIZE,
-    ViewerSettings,
+    FOV, MAX_PADDING, MAX_SCORE_ROWS, SPREE_LEAST, SPREE_MOST, Settings, SpeedAxes, TEXT_SIZE,
+    VITALS_SIZE, ViewerSettings,
 };
 use crate::text::{self, Look};
 use crate::theme;
@@ -845,6 +845,16 @@ impl App {
             ui.checkbox(&mut viewer.server_settings, t("settings-server-settings"));
         });
         layout::row(ui, rtl, |ui| {
+            ui.label(t("settings-text-size"));
+            let range = TEXT_SIZE.0..=TEXT_SIZE.1;
+            ui.add(egui::Slider::new(&mut viewer.text_size, range).show_value(false));
+
+            let percent = (viewer.text_size * 100.).round();
+            let percent = FluentValue::from(f64::from(percent));
+            let percent = catalog.text_with("library-percent", &[("percent", percent)]);
+            ui.label(egui::RichText::new(percent).monospace().color(theme::MUTED));
+        });
+        layout::row(ui, rtl, |ui| {
             ui.checkbox(&mut viewer.hud_messages, t("settings-hud-messages"));
         });
 
@@ -1234,6 +1244,7 @@ fn changed_settings(current: &Settings, restored: &Settings) -> Vec<&'static str
             view.server_settings != first.server_settings,
             "settings-server-settings",
         ),
+        (view.text_size != first.text_size, "settings-text-size"),
         (
             view.hud_messages != first.hud_messages,
             "settings-hud-messages",

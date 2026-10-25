@@ -601,6 +601,7 @@ settings-free-vitals = Serbest kamerada da can, zırh, mermi ve alınan eşyalar
 settings-scores = Skorları sol üstte göster
 settings-score-rows = En fazla skor satırı
 settings-server-settings = Sunucu ayarlarını sağ üstte göster
+settings-text-size = Sohbet, kill feed ve sunucu ayarları boyutu
 settings-hud-messages = Sunucudan gelen yazıları göster, örneğin bhop ve KZ zamanlayıcıları
 settings-see-through = Oyuncuları duvarların ardından gör
 settings-see-through-items = Mermiler ve eşyalar gibi diğer modeller de

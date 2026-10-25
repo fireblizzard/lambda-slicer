@@ -154,7 +154,9 @@ with a ~ before them, such as ~465. A move faster than 3500 units a second, as a
 teleporter makes, gives no speed, and a free camera shows none. Show the recorder's fps puts the
 frames a second the recorder's game ran at in the top left corner, above the small scoreboard,
 from the frame times their demo recorded, averaged over each half second of them. It's the
-recorder's whatever view is shown, and not how fast the app draws. The keys are in the
+recorder's whatever view is shown, and not how fast the app draws. Size of the chat, kill feed
+and server's settings makes their text smaller or larger than the game's, 92% of it by default,
+as the game's is a little large over a view smaller than its screen. The keys are in the
 [README](../README.md#watching-a-demo).
 
 The list left of the playback buttons chooses whose eyes to watch through: the recorder first, then

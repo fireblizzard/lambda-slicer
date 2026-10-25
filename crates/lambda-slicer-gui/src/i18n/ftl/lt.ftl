@@ -650,6 +650,7 @@ settings-free-vitals = Rodyti gyvybes, šarvus, šovinius ir paimtus daiktus ir 
 settings-scores = Rodyti rezultatus viršuje kairėje
 settings-score-rows = Daugiausia rezultatų eilučių
 settings-server-settings = Rodyti serverio nustatymus viršuje dešinėje
+settings-text-size = Čato, kill feed ir serverio nustatymų dydis
 settings-hud-messages = Rodyti serverio tekstą, pvz., bhop ir KZ laikmačius
 settings-see-through = Matyti žaidėjus pro sienas
 settings-see-through-items = Taip pat kitus modelius, pvz., sviedinius ir daiktus

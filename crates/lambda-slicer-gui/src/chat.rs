@@ -140,7 +140,7 @@ impl Chat {
     }
 
     /// The chat's `lines` over the view at `rect`, its places from the map
-    /// at `map` in `library`
+    /// at `map` in `library`, its text `size` times the game's
     pub fn draw(
         &mut self,
         ui: &egui::Ui,
@@ -148,9 +148,10 @@ impl Chat {
         lines: &[ChatLine],
         map: Option<&str>,
         library: &Library,
+        size: f32,
     ) {
         let scale = rect.height() / SCREEN_HEIGHT;
-        let font = egui::FontId::proportional(TEXT_SIZE * scale);
+        let font = egui::FontId::proportional(TEXT_SIZE * size * scale);
         let width = rect.width() - (LEFT + RIGHT_ROOM) * scale;
         let painter = ui.painter_at(rect);
         let map = map.map(map_name);

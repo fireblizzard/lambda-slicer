@@ -216,6 +216,9 @@ pub struct ViewerSettings {
     /// Whether the server's settings show at the top right when it sends
     /// them
     pub server_settings: bool,
+    /// The size of the chat's, the kill feed's and the server's settings'
+    /// text against the game's
+    pub text_size: f32,
     /// Whether the text the server places on the HUD shows, such as a bhop
     /// or KZ server's timer
     pub hud_messages: bool,
@@ -270,6 +273,7 @@ impl Default for ViewerSettings {
             scores: true,
             score_rows: 4,
             server_settings: true,
+            text_size: 0.92,
             hud_messages: true,
             volume: 0.1,
             see_through: false,
@@ -320,6 +324,7 @@ impl ViewerSettings {
                 VITALS_SIZE.0,
                 VITALS_SIZE.1,
             ),
+            text_size: within(self.text_size, default.text_size, TEXT_SIZE.0, TEXT_SIZE.1),
             decals: self.decals.min(MAX_DECALS),
             score_rows: self.score_rows.min(MAX_SCORE_ROWS),
             ..self
@@ -335,6 +340,11 @@ pub const MAX_SCORE_ROWS: usize = 32;
 
 /// The sizes health, armour and ammo take against the game's
 pub const VITALS_SIZE: (f32, f32) = (0.3, 1.5);
+
+/// The sizes the chat, the kill feed and the server's settings take
+/// against the game's. The game's own is a little large over a view
+/// smaller than its screen, so the default is a point smaller
+pub const TEXT_SIZE: (f32, f32) = (0.5, 1.5);
 
 /// The longest padding a clip takes around an event, in seconds
 pub const MAX_PADDING: f32 = 120.;

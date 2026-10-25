@@ -640,6 +640,7 @@ settings-free-vitals = Mostrar vida, armadura, munição e itens coletados tamb�
 settings-scores = Mostrar o placar no canto superior esquerdo
 settings-score-rows = Máximo de linhas do placar
 settings-server-settings = Mostrar as configurações do servidor no canto superior direito
+settings-text-size = Tamanho do chat, do kill feed e das configurações do servidor
 settings-hud-messages = Mostrar textos do servidor, como os cronômetros de bhop e KZ
 settings-see-through = Ver jogadores através das paredes
 settings-see-through-items = Também outros modelos, como projéteis e itens

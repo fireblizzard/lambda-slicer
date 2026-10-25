@@ -589,6 +589,7 @@ settings-free-vitals = 自由视角下也显示生命值、护甲、弹药和拾
 settings-scores = 在左上角显示比分
 settings-score-rows = 比分最多显示几行
 settings-server-settings = 在右上角显示服务器设置
+settings-text-size = 聊天、击杀信息和服务器设置的大小
 settings-hud-messages = 显示服务器的文字，例如 bhop 和 KZ 计时器
 settings-see-through = 透过墙壁看到玩家
 settings-see-through-items = 也包括其他模型，如投射物和物品

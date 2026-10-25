@@ -650,6 +650,7 @@ settings-free-vitals = Показывать здоровье, броню, пат
 settings-scores = Показывать счёт слева вверху
 settings-score-rows = Максимум строк в счёте
 settings-server-settings = Показывать настройки сервера справа вверху
+settings-text-size = Размер чата, ленты убийств и настроек сервера
 settings-hud-messages = Показывать текст от сервера, например таймеры bhop и KZ
 settings-see-through = Видеть игроков сквозь стены
 settings-see-through-items = А также другие модели, например снаряды и предметы

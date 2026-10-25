@@ -617,6 +617,7 @@ settings-free-vitals = Show health, armour, ammo and pickups with the free camer
 settings-scores = Show the scores at the top left
 settings-score-rows = Most rows of scores
 settings-server-settings = Show the server's settings at the top right
+settings-text-size = Size of the chat, kill feed and server's settings
 settings-hud-messages = Show text from the server, such as bhop and KZ timers
 settings-see-through = See players through walls
 settings-see-through-items = Also other models, such as projectiles and items

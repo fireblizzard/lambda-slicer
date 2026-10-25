@@ -691,6 +691,7 @@ settings-free-vitals = إظهار الصحة والدرع والذخيرة وا�
 settings-scores = إظهار النتائج أعلى اليسار
 settings-score-rows = أقصى عدد من صفوف النتائج
 settings-server-settings = إظهار إعدادات السيرفر أعلى اليمين
+settings-text-size = حجم الدردشة وقائمة القتلات وإعدادات السيرفر
 settings-hud-messages = إظهار النصوص من السيرفر، مثل مؤقتات bhop و KZ
 settings-see-through = رؤية اللاعبين عبر الجدران
 settings-see-through-items = ونماذج أخرى أيضًا، كالمقذوفات والأغراض

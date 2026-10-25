@@ -2039,7 +2039,11 @@ impl Viewer {
                     if let Some(countdown) = &frame.countdown {
                         draw_countdown(ui.painter(), rect, countdown);
                     }
-                    let (announced, settings) = (&frame.announced, self.settings.server_settings);
+                    let announced = &frame.announced;
+                    let settings = self
+                        .settings
+                        .server_settings
+                        .then_some(self.settings.text_size);
                     announcements::draw(ui.painter(), rect, catalog, announced, settings);
                     if let Some(next) = changing_to(&self.sessions, frame.at.0) {
                         let map = FluentValue::from(next.name.clone());
@@ -2089,7 +2093,9 @@ impl Viewer {
                                 crate::weapon_menu::draw(ui, vitals, library, rect, size, menu);
                             }
                         }
-                        self.kill_feed.draw(ui, rect, &frame.death_notices, library);
+                        let size = self.settings.text_size;
+                        let notices = &frame.death_notices;
+                        self.kill_feed.draw(ui, rect, notices, library, size);
                         if self.settings.scores {
                             let most = self.settings.score_rows;
                             crate::mini_scores::draw(ui, rect, &frame.scores, most);
@@ -2099,7 +2105,8 @@ impl Viewer {
                         }
                         if self.settings.chat {
                             let map = frame.map.as_deref();
-                            self.chat.draw(ui, rect, &frame.chat, map, library);
+                            let size = self.settings.text_size;
+                            self.chat.draw(ui, rect, &frame.chat, map, library, size);
                         }
                     }
                     // The recorder's speeds as recorded while they play,

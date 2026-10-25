@@ -650,6 +650,7 @@ settings-free-vitals = Pokazuj życie, pancerz, amunicję i podniesione przedmio
 settings-scores = Pokazuj wyniki w lewym górnym rogu
 settings-score-rows = Najwięcej wierszy wyników
 settings-server-settings = Pokazuj ustawienia serwera w prawym górnym rogu
+settings-text-size = Rozmiar czatu, kill feedu i ustawień serwera
 settings-hud-messages = Pokazuj tekst z serwera, np. timery bhop i KZ
 settings-see-through = Widź graczy przez ściany
 settings-see-through-items = Także inne modele, np. pociski i przedmioty

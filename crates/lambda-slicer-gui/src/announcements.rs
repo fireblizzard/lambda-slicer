@@ -124,13 +124,13 @@ fn settings_lines(settings: &ServerSettings) -> Vec<(f32, String)> {
 }
 
 /// `announced` over the view at `rect`, with the server's settings when
-/// `settings` is set
+/// `settings` gives their text's size against the game's
 pub fn draw(
     painter: &egui::Painter,
     rect: Rect,
     catalog: &Catalog,
     announced: &Announced,
-    settings: bool,
+    settings: Option<f32>,
 ) {
     let line = rect.height() / LINES;
     let font = egui::FontId::proportional(line);
@@ -156,10 +156,15 @@ pub fn draw(
         draw_vote(painter, rect, line, &font, vote);
     }
 
-    if settings && let Some(server) = &announced.settings {
+    if let Some(size) = settings
+        && let Some(server) = &announced.settings
+    {
+        // The lines stand as far apart as their size makes them
         let left = rect.right() - rect.width() * SETTINGS_RIGHT;
+        let sized = line * size;
+        let font = egui::FontId::proportional(sized);
         for (row, text) in settings_lines(server) {
-            let at = egui::pos2(left, rect.top() + row * line);
+            let at = egui::pos2(left, rect.top() + row * sized);
             painter.text(at, Align2::LEFT_TOP, text, font.clone(), HUD_COLOR);
         }
         if server.match_on {
