@@ -483,11 +483,15 @@ impl DemoView {
                     filters.speed = !filters.speed;
                 }
                 let wallgauss = catalog.text("refine-wallgauss");
-                if selectable(ui, filters.wallgauss, &wallgauss, rtl).clicked() {
+                let response = selectable(ui, filters.wallgauss, &wallgauss, rtl)
+                    .on_hover_text(text::help(ui.ctx(), &catalog.text("help-wallgauss"), rtl));
+                if response.clicked() {
                     filters.wallgauss = !filters.wallgauss;
                 }
                 let multikill = catalog.text("refine-multikill");
-                if selectable(ui, filters.multikill, &multikill, rtl).clicked() {
+                let response = selectable(ui, filters.multikill, &multikill, rtl)
+                    .on_hover_text(text::help(ui.ctx(), &catalog.text("help-multikill"), rtl));
+                if response.clicked() {
                     filters.multikill = !filters.multikill;
                 }
 
@@ -562,7 +566,6 @@ impl DemoView {
                             filters.at_once = count;
                         }
                     }
-                    widgets::help(ui, &catalog.text("help-multikill"), rtl);
                 });
             }
 
@@ -592,16 +595,15 @@ impl DemoView {
                     }
                     WallStatus::Done => None,
                 };
-                layout::wrapping_row(ui, rtl, |ui| {
-                    if *status == WallStatus::Checking {
-                        ui.spinner();
-                    }
-                    if let Some((line, look)) = line {
+                if let Some((line, look)) = line {
+                    layout::wrapping_row(ui, rtl, |ui| {
+                        if *status == WallStatus::Checking {
+                            ui.spinner();
+                        }
                         let line = text::widget_text(ui.ctx(), &line, rtl, None, look);
                         ui.add(egui::Label::new(line).wrap());
-                    }
-                    widgets::help(ui, &catalog.text("help-wallgauss"), rtl);
-                });
+                    });
+                }
 
                 let locate = *status == WallStatus::NeedsFiles && self.viewer.is_some();
                 if locate {
