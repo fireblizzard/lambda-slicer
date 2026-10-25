@@ -72,6 +72,7 @@ use crate::layout;
 use crate::settings::ViewerSettings;
 use crate::text::{self, Look};
 use crate::theme;
+use crate::timeline::Ranked;
 use crate::widgets::{Icon, IconButton, PlayButton};
 
 /// `EF_NODRAW`, an entity the game does not draw
@@ -345,9 +346,10 @@ pub struct Viewer {
     /// Each session's map and when it began, from the analysis once it is
     /// in, to tell which map an intermission changes to
     pub sessions: Vec<SessionMap>,
-    /// Each session's players by slot and name, best scored at its end
-    /// first, from the analysis once it is in, for the players to follow
-    pub standings: BTreeMap<u32, Vec<(u8, String)>>,
+    /// Each session's players, best scored at its end first, with when
+    /// they play there, from the analysis once it is in, for the players
+    /// to follow
+    pub standings: BTreeMap<u32, Vec<Ranked>>,
     /// The game's files are there to draw and hear the demo with. Without
     /// them the demo still plays, so the timeline and clips work
     assets: bool,
@@ -1068,30 +1070,43 @@ impl Viewer {
         self.pov_wanted = None;
     }
 
-    /// The players to follow in the session shown, by entity and name, the
-    /// best scored at its end first and the recorder left out. The names
-    /// are as the demo has them now, or as the analysis last had them
-    fn followable(&self, frame: &PresentedFrame) -> Vec<(u16, String)> {
+    /// The players of the session shown, by the entity they play as now and
+    /// by name, the best scored at its end first and the recorder left out.
+    /// One not playing now, not there yet, gone or spectating, has no
+    /// entity and cannot be followed. The names are as the demo has them
+    /// now, or as the analysis last had them
+    fn followable(&self, frame: &PresentedFrame) -> Vec<(Option<u16>, String)> {
         let segment = frame.position.map(|p| p.segment);
         let Some(ranked) = segment.and_then(|s| self.standings.get(&s)) else {
             return Vec::new();
         };
+        let local = frame
+            .players
+            .iter()
+            .find(|p| p.entity == frame.local_entity);
+        let recorder = local.map(|p| p.name.as_str());
 
         let mut out = Vec::new();
-        for (slot, name) in ranked {
-            let number = u16::from(*slot) + 1;
-            if number == frame.local_entity {
+        for player in ranked {
+            let number = player.slot_at(frame.at.0 as f32).map(|s| u16::from(s) + 1);
+            let own = match number {
+                Some(number) => number == frame.local_entity,
+                None => recorder == Some(player.name.as_str()),
+            };
+            if own {
                 continue;
             }
-            let now = frame.players.iter().find(|p| p.entity == number);
-            let name = now.map_or(name.as_str(), |p| p.name.as_str());
+
+            let now = number.and_then(|n| frame.players.iter().find(|p| p.entity == n));
+            let name = now.map_or(player.name.as_str(), |p| p.name.as_str());
             out.push((number, text::without_colours(name)));
         }
         out
     }
 
     /// Follow the player `step` places after the one followed among the
-    /// recorder and then the players in score order, going round
+    /// recorder and then the players playing now in score order, going
+    /// round
     fn step_pov(&mut self, step: i32) {
         let Some(frame) = &self.frame else {
             return;
@@ -1099,7 +1114,9 @@ impl Viewer {
 
         let mut order = vec![None];
         for (number, _) in self.followable(frame) {
-            order.push(Some(number));
+            if number.is_some() {
+                order.push(number);
+            }
         }
         let at = order.iter().position(|&n| n == self.pov).unwrap_or(0);
         let count = order.len() as i32;
@@ -1108,13 +1125,13 @@ impl Viewer {
     }
 
     /// Follow the player at `place` in score order, the first at 0, when
-    /// there is one
+    /// there is one and they play now
     fn follow_place(&mut self, place: usize) {
         let Some(frame) = &self.frame else {
             return;
         };
 
-        if let Some(&(number, _)) = self.followable(frame).get(place) {
+        if let Some(&(Some(number), _)) = self.followable(frame).get(place) {
             self.follow(Some(number));
         }
     }
@@ -2164,7 +2181,10 @@ impl Viewer {
             None => catalog.text("viewer-pov-recorder-unnamed"),
         };
 
-        let current = match self.pov.and_then(|n| players.iter().find(|(p, _)| *p == n)) {
+        let followed = self
+            .pov
+            .and_then(|n| players.iter().find(|(p, _)| *p == Some(n)));
+        let current = match followed {
             Some((_, name)) => name.clone(),
             None => recorder.clone(),
         };
@@ -2175,13 +2195,21 @@ impl Viewer {
             .truncate()
             .selected_text(selected)
             .show_ui(ui, |ui| {
+                // Players not playing now keep their place and key, greyed
                 ui.selectable_value(&mut chosen, None, format!("`  {recorder}"));
                 for (place, (number, name)) in players.iter().enumerate() {
                     let line = match KEY_NAMES.get(place) {
                         Some(key) => format!("{key}  {name}"),
                         None => format!("    {name}"),
                     };
-                    ui.selectable_value(&mut chosen, Some(*number), line);
+                    match number {
+                        Some(number) => {
+                            ui.selectable_value(&mut chosen, Some(*number), line);
+                        }
+                        None => {
+                            ui.add_enabled(false, egui::Button::selectable(false, line));
+                        }
+                    }
                 }
             });
         let help = catalog.text("viewer-pov-help");

@@ -119,8 +119,10 @@ zooms in with the crossbow or another scope, while Zoom still zooms it. The keys
 The list left of the playback buttons chooses whose eyes to watch through: the recorder first, then
 the other players of the map shown, best first by their frags at the map's end and fewer deaths
 before more. A player counts once they score or die on that map, so spectators who never play
-aren't listed, and the order, and so the number keys, changes with the map. Choosing a player
-leaves the free camera. Their view stands over their model's origin, 28 units up standing and 12
+aren't listed, and the order, and so the number keys, changes with the map. A player who isn't
+playing at the moment, not there yet, gone or spectating, keeps their place and key but is greyed
+out and skipped until they play again. One who reconnects under the same name is one player.
+Choosing a player leaves the free camera. Their view stands over their model's origin, 28 units up standing and 12
 crouched, and looks the way their model faces, its pitch three times the model's lean the other
 way, as the server leans it a third. Their own model is left out, the weapon in their hand shows as
 the one in view, idle, and their shots' flashes and beams come from it. The crosshair is that

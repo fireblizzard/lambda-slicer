@@ -13,7 +13,7 @@ use lambda_slicer_core::analysis::accuracy::ShotOutcome;
 use lambda_slicer_core::analysis::context::{
     Coverage, Kill, KillCause, ScoreUpdate, SessionMap, TeamScoreUpdate,
 };
-use lambda_slicer_core::analysis::match_events::MatchChange;
+use lambda_slicer_core::analysis::match_events::{MatchChange, MatchEvent};
 use lambda_slicer_core::analysis::motion::{MotionEvidence, MotionState};
 use lambda_slicer_core::analysis::weapons::{Action, Actor, IntervalEnd, Weapon};
 use lambda_slicer_core::message::Message;
@@ -275,9 +275,38 @@ pub struct Model {
     pub team_segments: Vec<u32>,
     /// Each session's map and when it began
     pub maps: Vec<SessionMap>,
-    /// Each session's players by slot and name, best scored at its end
-    /// first
-    pub standings: BTreeMap<u32, Vec<(u8, String)>>,
+    /// Each session's players, best scored at its end first
+    pub standings: BTreeMap<u32, Vec<Ranked>>,
+}
+
+/// One player of a session for the viewer to follow, with when they play
+/// there and from which slot
+#[derive(Clone, Debug, PartialEq)]
+pub struct Ranked {
+    pub name: String,
+    /// From joining to leaving, less the time spent spectating, each with
+    /// the slot played from, in time order
+    pub playing: Vec<Playing>,
+}
+
+/// A stretch of time a player plays from one slot
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Playing {
+    pub from: f32,
+    pub to: f32,
+    pub slot: u8,
+}
+
+impl Ranked {
+    /// The slot they play from at `time`, none while they are not there or
+    /// spectate
+    pub fn slot_at(&self, time: f32) -> Option<u8> {
+        let span = self
+            .playing
+            .iter()
+            .find(|p| p.from <= time && time < p.to)?;
+        Some(span.slot)
+    }
 }
 
 impl Model {
@@ -603,37 +632,119 @@ impl Model {
             groups: r.groups.clone(),
             team_segments,
             maps: r.maps.clone(),
-            standings: standings(&r.score_updates),
+            standings: standings(&r.score_updates, &r.match_events),
         }
     }
 }
 
-/// Each session's players by slot and name, the one with most frags at its end
-/// first and fewer deaths before more, the order the viewer's number keys
-/// pick them in. A player counts once they score or die there, so a
-/// spectator who never does is left out. A player who left keeps their
-/// last score, and a slot taken again is its latest player's
-fn standings(updates: &[ScoreUpdate]) -> BTreeMap<u32, Vec<(u8, String)>> {
-    let mut last: BTreeMap<(u32, u8), &ScoreUpdate> = BTreeMap::new();
-    for update in updates.iter().filter(|u| !u.left) {
-        last.insert((update.segment, update.player.slot), update);
-    }
+/// One connection's part of a session, its last score and when it joined
+/// and left
+struct Connection<'a> {
+    last: &'a ScoreUpdate,
+    from: f32,
+    to: f32,
+}
 
-    let mut counted: BTreeMap<u32, Vec<&ScoreUpdate>> = BTreeMap::new();
-    for ((segment, _), update) in last {
-        if update.frags != 0 || update.deaths != 0 {
-            counted.entry(segment).or_default().push(update);
+/// Each session's players, the one with most frags at its end first and
+/// fewer deaths before more, the order the viewer's number keys pick them
+/// in. A player counts once they score or die there, so a spectator who
+/// never does is left out, and one who left stays with their last score.
+/// A player who reconnects under the same name is one player, playing
+/// from whichever slot they had at the time. `switches` say when each
+/// started spectating and played again
+fn standings(updates: &[ScoreUpdate], switches: &[MatchEvent]) -> BTreeMap<u32, Vec<Ranked>> {
+    let mut connections: BTreeMap<(u32, u8, u32), Connection> = BTreeMap::new();
+    for update in updates {
+        let key = (
+            update.segment,
+            update.player.slot,
+            update.player.incarnation,
+        );
+        let connection = connections.entry(key).or_insert(Connection {
+            last: update,
+            from: update.time,
+            to: f32::INFINITY,
+        });
+        if update.left {
+            connection.to = connection.to.min(update.time);
+        } else {
+            connection.last = update;
         }
     }
 
+    // Each player by session and name, the score of their latest
+    // connection and the stretches each connection played
+    let mut players: BTreeMap<(u32, String), (&ScoreUpdate, Vec<Playing>)> = BTreeMap::new();
+    for ((segment, slot, incarnation), connection) in &connections {
+        let mine = switches.iter().filter(|m| {
+            let who = m.player.as_ref().map(|p| (p.slot, p.incarnation));
+            m.segment == *segment && who == Some((*slot, *incarnation))
+        });
+        let stretches = playing(connection, mine, *slot);
+
+        let name = connection.last.player.name.clone();
+        let (last, all) = players
+            .entry((*segment, name))
+            .or_insert((connection.last, Vec::new()));
+        if connection.last.time >= last.time {
+            *last = connection.last;
+        }
+        all.extend(stretches);
+    }
+
+    let mut ranked: BTreeMap<u32, Vec<(&ScoreUpdate, Ranked)>> = BTreeMap::new();
+    for ((segment, name), (last, mut stretches)) in players {
+        if last.frags == 0 && last.deaths == 0 {
+            continue;
+        }
+        stretches.sort_by(|a, b| a.from.total_cmp(&b.from));
+        let player = Ranked {
+            name,
+            playing: stretches,
+        };
+        ranked.entry(segment).or_default().push((last, player));
+    }
+
     let mut out = BTreeMap::new();
-    for (segment, mut players) in counted {
-        players.sort_by(|a, b| b.frags.cmp(&a.frags).then(a.deaths.cmp(&b.deaths)));
-        let named = players
-            .iter()
-            .map(|u| (u.player.slot, u.player.name.clone()))
-            .collect();
-        out.insert(segment, named);
+    for (segment, mut players) in ranked {
+        players.sort_by(|(a, _), (b, _)| b.frags.cmp(&a.frags).then(a.deaths.cmp(&b.deaths)));
+        out.insert(segment, players.into_iter().map(|(_, p)| p).collect());
+    }
+    out
+}
+
+/// The stretches a `connection` played from `slot`, from joining to
+/// leaving less the time between its `switches` to spectating and back
+fn playing<'a>(
+    connection: &Connection,
+    switches: impl Iterator<Item = &'a MatchEvent>,
+    slot: u8,
+) -> Vec<Playing> {
+    let mut out = Vec::new();
+    let mut since = Some(connection.from);
+    for switch in switches {
+        match switch.change {
+            MatchChange::Spectating => {
+                if let Some(from) = since.take() {
+                    let to = switch.time.min(connection.to);
+                    if to > from {
+                        out.push(Playing { from, to, slot });
+                    }
+                }
+            }
+            MatchChange::Playing => since = since.or(Some(switch.time)),
+            _ => {}
+        }
+    }
+
+    if let Some(from) = since
+        && from < connection.to
+    {
+        out.push(Playing {
+            from,
+            to: connection.to,
+            slot,
+        });
     }
     out
 }
@@ -952,31 +1063,55 @@ mod tests {
 
     #[test]
     fn each_maps_players_rank_by_their_last_score_there() {
-        let update = |segment, slot, name: &str, frags, deaths, left| ScoreUpdate {
-            segment,
-            time: 0.,
-            player: player(slot, 0, name),
-            team: String::new(),
-            frags,
-            deaths,
-            left,
-        };
+        let update =
+            |segment, time, (slot, incarnation), name: &str, (frags, deaths), left| ScoreUpdate {
+                segment,
+                time,
+                player: player(slot, incarnation, name),
+                team: String::new(),
+                frags,
+                deaths,
+                left,
+            };
         let updates = [
-            update(0, 1, "early", 5, 0, false),
-            update(0, 2, "late", 3, 2, false),
-            update(0, 3, "spectator", 0, 0, false),
-            update(0, 4, "careful", 3, 1, false),
-            update(0, 2, "late", 9, 4, false),
-            update(0, 1, "early", 0, 0, true),
-            update(1, 3, "spectator", 1, 0, false),
+            update(0, 1., (1, 0), "early", (5, 0), false),
+            update(0, 1., (2, 0), "late", (3, 2), false),
+            update(0, 1., (3, 0), "spectator", (0, 0), false),
+            update(0, 1., (4, 0), "careful", (3, 1), false),
+            update(0, 5., (2, 0), "late", (9, 4), false),
+            update(0, 10., (1, 0), "early", (0, 0), true),
+            update(0, 12., (1, 1), "newcomer", (1, 0), false),
+            update(1, 1., (3, 0), "spectator", (1, 0), false),
+        ];
+        let switch = |time, change| MatchEvent {
+            segment: 0,
+            time,
+            player: Some(player(4, 0, "careful")),
+            change,
+        };
+        let switches = [
+            switch(6., MatchChange::Spectating),
+            switch(8., MatchChange::Playing),
         ];
 
-        // A spectator who never plays is left out, and a player who left
-        // keeps the score they left with
-        let ranked = standings(&updates);
+        // A spectator who never plays is left out, a player who left keeps
+        // the score they left with, and their slot taken again is another
+        // player's
+        let ranked = standings(&updates, &switches);
         let names =
-            |segment| -> Vec<&str> { ranked[&segment].iter().map(|(_, n)| n.as_str()).collect() };
-        assert_eq!(names(0), ["late", "early", "careful"]);
+            |segment| -> Vec<&str> { ranked[&segment].iter().map(|p| p.name.as_str()).collect() };
+        assert_eq!(names(0), ["late", "early", "careful", "newcomer"]);
         assert_eq!(names(1), ["spectator"]);
+
+        // Each plays from their slot only while there and not spectating
+        let [_, early, careful, newcomer] = &ranked[&0][..] else {
+            panic!("four players");
+        };
+        assert_eq!((early.slot_at(5.), early.slot_at(11.)), (Some(1), None));
+        assert_eq!((careful.slot_at(7.), careful.slot_at(9.)), (None, Some(4)));
+        assert_eq!(
+            (newcomer.slot_at(11.), newcomer.slot_at(13.)),
+            (None, Some(1))
+        );
     }
 }
