@@ -10,7 +10,7 @@
 //! [--viewer-capture TIMES FOLDER] [--viewer-size WxH] [--viewer-play SECONDS]
 //! [--viewer-gamma GAMMA,BRIGHTNESS,TEXGAMMA,LIGHTGAMMA[,OVERBRIGHT]]
 //! [--viewer-see-through] [--viewer-fullbright] [--viewer-fullscreen] [--viewer-free UNITS[,DEGREES]]
-//! [--viewer-free-at X,Y,Z,PITCH,YAW]]`
+//! [--viewer-free-at X,Y,Z,PITCH,YAW] [--viewer-follow N]]`
 //!
 //! Demos and folders given as `PATH` are opened for this session. `--locale`
 //! overrides the saved language, `--cache` the library cache and `--clips`
@@ -53,7 +53,9 @@
 //! `--viewer-free` starts a free camera that many units behind the
 //! recording player's view, turned that many degrees round them first, and
 //! `--viewer-free-at` one at that place looking that way, as the demo
-//! player shows them with the position setting on
+//! player shows them with the position setting on. `--viewer-follow`
+//! follows the map's `N`th best player, as the number keys do, once the
+//! demo's players are known
 
 // A release build opens no console window beside the app
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
@@ -158,6 +160,7 @@ fn main() -> eframe::Result {
     let mut viewer_fullscreen = false;
     let mut viewer_free = None;
     let mut viewer_free_at = None;
+    let mut viewer_follow = None;
     let mut viewer_bench = None;
     while let Some(a) = args.next() {
         match a.as_str() {
@@ -240,6 +243,9 @@ fn main() -> eframe::Result {
                     let degrees = values.next().and_then(Result::ok).unwrap_or(0.);
                     viewer_free = Some((units, degrees));
                 }
+            }
+            "--viewer-follow" => {
+                viewer_follow = args.next().and_then(|n| n.parse::<usize>().ok());
             }
             "--viewer-free-at" => {
                 let text = args.next().unwrap_or_default();
@@ -382,6 +388,7 @@ fn main() -> eframe::Result {
                     viewer_fullscreen,
                     viewer_free,
                     viewer_free_at,
+                    viewer_follow,
                     tab,
                     section,
                     viewer_capture: capture_times.map(|(times, folder)| viewer::Capture {

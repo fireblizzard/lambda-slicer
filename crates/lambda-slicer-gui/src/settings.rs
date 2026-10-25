@@ -186,6 +186,9 @@ pub struct ViewerSettings {
     pub player_names: bool,
     /// Where the picture is seen from and the way it looks, over it
     pub show_position: bool,
+    /// Whether choosing an event leaves the free camera for the view it is
+    /// best seen from, rather than keeping the camera where it is
+    pub events_leave_free: bool,
     /// The most decals left in play that are shown, the newest. The map's
     /// own are always shown
     pub decals: usize,
@@ -222,6 +225,7 @@ impl Default for ViewerSettings {
             see_through_items: false,
             player_names: true,
             show_position: false,
+            events_leave_free: false,
             decals: 100,
         }
     }

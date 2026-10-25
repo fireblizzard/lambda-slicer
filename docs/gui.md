@@ -23,6 +23,8 @@ Other options are for testing, and the full list is at the top of
   `--hidden` with the hidden demos alone.
 - `--viewer-free-at X,Y,Z,PITCH,YAW` starts the free camera at that place looking that way, the
   numbers Show position and view angles puts over the picture, to see someone's view again.
+- `--viewer-follow N` watches through the eyes of the map's `N`th best player, as the number keys
+  do, once the demo's players are known.
 
 ## Library
 
@@ -41,7 +43,11 @@ the choice is kept. Clicking a heading sorts by it. Rows load a page at a time.
 - **Date** is read from the file name when it has one like `20230910_214553`, as automatic
   recordings do, and otherwise from when the file was last changed.
 - **Map** lists every map of a demo with several. Maps with no kills that lasted under 5 minutes
-  are left out unless Settings says otherwise. The score is the score of the map played longest.
+  are left out unless Settings says otherwise.
+- **Score** has a score for each map the Map column lists, in the same order, such as
+  `63 : 44, –, 56 : 49`, each at the last kill of that map's session recorded longest, and a dash
+  for a map nobody was killed on. The tooltip lists each map with its score. Sorting by it, and the
+  list beside an open demo, use the score of the map played longest.
 - **Players** and **Teams** are counted when a match starts after its countdown. In team games
   only players on a team count. A demo shows the most in any complete match, and one with no
   complete match the most seen at any moment.
@@ -109,6 +115,23 @@ free camera inside a wall is not hidden by it. Show position and view angles, in
 where the picture is seen from and the way it looks on its left, the free camera's when it is on. The
 free camera keeps the field of view chosen in Settings, or 90°, so it never narrows as the recorder
 zooms in with the crossbow or another scope, while Zoom still zooms it. The keys are in the [README](../README.md#watching-a-demo).
+
+The list left of the playback buttons chooses whose eyes to watch through: the recorder first, then
+the other players of the map shown, best first by their frags at the map's end and fewer deaths
+before more. A player counts once they score or die on that map, so spectators who never play
+aren't listed, and the order, and so the number keys, changes with the map. Choosing a player
+leaves the free camera. Their view stands over their model's origin, 28 units up standing and 12
+crouched, and looks the way their model faces, its pitch three times the model's lean the other
+way, as the server leans it a third. Their own model is left out, the weapon in their hand shows as
+the one in view, idle, and their shots' flashes and beams come from it. The crosshair is that
+weapon's and the field of view is the one chosen in Settings, or 90°. The health, armour and ammo
+aren't shown, as the demo only has the recorder's, and the sound is heard from where the player
+is. While the demo doesn't have the player, because the server didn't send them, the picture is the
+recorder's view with a note saying so, and goes back to the player once they are in it again.
+Choosing a kill in the events list or on the timeline watches it through the killer's eyes when
+the demo has them at that moment, else the victim's, else the recorder's. Other events are watched
+from the recorder's view. A free camera stays on, and leaving it goes to that view, unless Leave
+the free camera when choosing an event is on in Settings.
 
 In full screen the app hides its toolbar, status bar and demo list and asks the window to fill the
 screen. The seek bar and controls show over the bottom of the picture while paused, under the

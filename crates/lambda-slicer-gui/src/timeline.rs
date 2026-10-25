@@ -6,6 +6,8 @@
 //! visible part of a lane is found by binary search and can be grouped into
 //! bins at wide zoom. The full report is dropped once this is built
 
+use std::collections::BTreeMap;
+
 use lambda_slicer_core::analysis::AnalysisReport;
 use lambda_slicer_core::analysis::accuracy::ShotOutcome;
 use lambda_slicer_core::analysis::context::{
@@ -105,6 +107,8 @@ pub enum EventKind {
         cause: KillCause,
         /// The killer's slot and incarnation
         killer: Option<(u8, u32)>,
+        /// The victim's, the same way
+        victim_player: Option<(u8, u32)>,
         headshot: Option<bool>,
         /// What kill filters and badges read, boxed as kills are a small
         /// share of the events
@@ -271,6 +275,9 @@ pub struct Model {
     pub team_segments: Vec<u32>,
     /// Each session's map and when it began
     pub maps: Vec<SessionMap>,
+    /// Each session's players by slot and name, best scored at its end
+    /// first
+    pub standings: BTreeMap<u32, Vec<(u8, String)>>,
 }
 
 impl Model {
@@ -418,6 +425,7 @@ impl Model {
                     weapon_name: k.weapon_name.clone(),
                     cause: k.cause,
                     killer: killer.map(|p| (p.slot, p.incarnation)),
+                    victim_player: k.victim.as_ref().map(|p| (p.slot, p.incarnation)),
                     headshot: k.headshot,
                     features: Box::new(KillFeatures::new(k, ordinal, gauss_kill)),
                 },
@@ -595,8 +603,39 @@ impl Model {
             groups: r.groups.clone(),
             team_segments,
             maps: r.maps.clone(),
+            standings: standings(&r.score_updates),
         }
     }
+}
+
+/// Each session's players by slot and name, the one with most frags at its end
+/// first and fewer deaths before more, the order the viewer's number keys
+/// pick them in. A player counts once they score or die there, so a
+/// spectator who never does is left out. A player who left keeps their
+/// last score, and a slot taken again is its latest player's
+fn standings(updates: &[ScoreUpdate]) -> BTreeMap<u32, Vec<(u8, String)>> {
+    let mut last: BTreeMap<(u32, u8), &ScoreUpdate> = BTreeMap::new();
+    for update in updates.iter().filter(|u| !u.left) {
+        last.insert((update.segment, update.player.slot), update);
+    }
+
+    let mut counted: BTreeMap<u32, Vec<&ScoreUpdate>> = BTreeMap::new();
+    for ((segment, _), update) in last {
+        if update.frags != 0 || update.deaths != 0 {
+            counted.entry(segment).or_default().push(update);
+        }
+    }
+
+    let mut out = BTreeMap::new();
+    for (segment, mut players) in counted {
+        players.sort_by(|a, b| b.frags.cmp(&a.frags).then(a.deaths.cmp(&b.deaths)));
+        let named = players
+            .iter()
+            .map(|u| (u.player.slot, u.player.name.clone()))
+            .collect();
+        out.insert(segment, named);
+    }
+    out
 }
 
 fn coverage_notes(c: &Coverage) -> Vec<Message> {
@@ -909,5 +948,35 @@ mod tests {
         assert_eq!(tick_step(0.3), 0.5);
         assert_eq!(tick_step(7.), 10.);
         assert_eq!(tick_step(5000.), 3600.);
+    }
+
+    #[test]
+    fn each_maps_players_rank_by_their_last_score_there() {
+        let update = |segment, slot, name: &str, frags, deaths, left| ScoreUpdate {
+            segment,
+            time: 0.,
+            player: player(slot, 0, name),
+            team: String::new(),
+            frags,
+            deaths,
+            left,
+        };
+        let updates = [
+            update(0, 1, "early", 5, 0, false),
+            update(0, 2, "late", 3, 2, false),
+            update(0, 3, "spectator", 0, 0, false),
+            update(0, 4, "careful", 3, 1, false),
+            update(0, 2, "late", 9, 4, false),
+            update(0, 1, "early", 0, 0, true),
+            update(1, 3, "spectator", 1, 0, false),
+        ];
+
+        // A spectator who never plays is left out, and a player who left
+        // keeps the score they left with
+        let ranked = standings(&updates);
+        let names =
+            |segment| -> Vec<&str> { ranked[&segment].iter().map(|(_, n)| n.as_str()).collect() };
+        assert_eq!(names(0), ["late", "early", "careful"]);
+        assert_eq!(names(1), ["spectator"]);
     }
 }

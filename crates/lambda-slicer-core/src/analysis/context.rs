@@ -604,6 +604,50 @@ pub fn every_map(maps: &[SessionMap]) -> String {
     map_names(maps).join(", ")
 }
 
+/// A map's score, by the map as players name it, none when nobody was
+/// killed on it
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct MapScore {
+    pub map: String,
+    pub scoreboard: Option<Scoreboard>,
+}
+
+/// Every map in `maps` once, in the order they were first played, each with
+/// the score at the last kill of its session recorded longest among those
+/// with a kill, none when nobody was killed on it. `lengths` gives how long
+/// each session was recorded for
+pub fn map_scores(
+    maps: &[SessionMap],
+    kills: &[Kill],
+    updates: &[ScoreUpdate],
+    team_updates: &[TeamScoreUpdate],
+    lengths: &BTreeMap<u32, f32>,
+) -> Vec<MapScore> {
+    let mut out = Vec::new();
+    for name in map_names(maps) {
+        // The session and time of the last kill to keep, by length
+        let mut decided: Option<(f32, u32, f32)> = None;
+        for session in maps.iter().filter(|m| m.name == name) {
+            let Some(last) = kills.iter().rev().find(|k| k.segment == session.segment) else {
+                continue;
+            };
+            let length = lengths.get(&session.segment).copied().unwrap_or(0.);
+            if decided.is_none_or(|(longest, _, _)| length > longest) {
+                decided = Some((length, session.segment, last.time));
+            }
+        }
+
+        let scoreboard = decided.map(|(_, segment, time)| {
+            Scoreboard::from(&standing_at(updates, team_updates, segment, time))
+        });
+        out.push(MapScore {
+            map: name.to_string(),
+            scoreboard,
+        });
+    }
+    out
+}
+
 /// The names of the maps in `maps`, each once, in the order they were first
 /// played
 fn map_names(maps: &[SessionMap]) -> Vec<&str> {

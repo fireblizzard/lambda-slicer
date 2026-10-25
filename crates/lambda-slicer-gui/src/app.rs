@@ -110,6 +110,8 @@ pub struct Launch {
     pub viewer_free: Option<(f32, f32)>,
     /// Where a free camera starts, and the way it looks
     pub viewer_free_at: Option<([f32; 3], [f32; 3])>,
+    /// The map's best player to follow, the first at 1
+    pub viewer_follow: Option<usize>,
     /// The inspector tab shown at start
     pub tab: InspectorTab,
     /// The settings window's section shown at start
@@ -189,6 +191,7 @@ pub struct App {
     viewer_fullscreen: bool,
     viewer_free: Option<(f32, f32)>,
     viewer_free_at: Option<([f32; 3], [f32; 3])>,
+    viewer_follow: Option<usize>,
     /// A setting changed, saved once the pointer is let go
     settings_unsaved: bool,
     /// The window's GPU device, which the viewer draws with
@@ -388,6 +391,7 @@ impl App {
             viewer_fullscreen: launch.viewer_fullscreen,
             viewer_free: launch.viewer_free,
             viewer_free_at: launch.viewer_free_at,
+            viewer_follow: launch.viewer_follow,
             settings_unsaved: false,
             render_state: None,
             brand: None,
@@ -558,6 +562,7 @@ impl App {
         viewer.fullbright = std::mem::take(&mut self.viewer_fullbright);
         viewer.free_behind = self.viewer_free.take();
         viewer.free_at = self.viewer_free_at.take();
+        viewer.follow_at = self.viewer_follow.take();
         d.viewer = Some(viewer);
     }
 

@@ -181,6 +181,8 @@ pub struct Entity {
     /// A player's weapon model index and name
     pub weapon_model: i64,
     pub weapon: Option<Arc<str>>,
+    /// A player's hull, 1 while they crouch
+    pub use_hull: i64,
     /// A player's legs, in presented entities whose gait sequence is set
     pub gait: Option<Gait>,
     /// Server time of the snapshot it was last taken from
@@ -315,7 +317,7 @@ struct Slot {
 }
 
 /// The entity fields the scene reads, in this order
-const FIELDS: [&str; 33] = [
+const FIELDS: [&str; 34] = [
     "modelindex",
     "origin[0]",
     "origin[1]",
@@ -349,6 +351,7 @@ const FIELDS: [&str; 33] = [
     "rendercolor.g",
     "rendercolor.b",
     "weaponmodel",
+    "usehull",
 ];
 
 /// Where each of [`FIELDS`] sits in one schema, looked up once
@@ -419,7 +422,7 @@ const WEAPON_MODELS: [(&str, &str); 15] = [
 /// The viewmodel of a player's weapon model, as the client finds it for
 /// a spectator watching through the player's eyes
 /// (`V_FindViewModelByWeaponModel`)
-fn view_model_for(weapon: &str) -> Option<&'static str> {
+pub fn view_model_for(weapon: &str) -> Option<&'static str> {
     WEAPON_MODELS
         .iter()
         .find(|(p, _)| p.eq_ignore_ascii_case(weapon))
@@ -724,6 +727,7 @@ impl Scene {
                 render_color: [v[29] as u8, v[30] as u8, v[31] as u8],
                 weapon_model: v[32] as i64,
                 weapon: self.model_name(decoder, v[32] as i64),
+                use_hull: v[33] as i64,
                 gait: None,
                 updated,
             });
@@ -1014,6 +1018,7 @@ mod tests {
             iuser2: 0,
             weapon_model: 0,
             weapon: None,
+            use_hull: 0,
             gait: None,
             updated: ServerTime(0.),
         }

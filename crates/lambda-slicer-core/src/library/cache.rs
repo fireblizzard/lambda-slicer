@@ -15,7 +15,9 @@ use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};
 use serde::Serialize;
 
 use super::date::recorded;
-use crate::analysis::context::{Scoreboard, every_map, map_list, short_map_name};
+use crate::analysis::context::{
+    MapScore, Scoreboard, every_map, map_list, map_scores, short_map_name,
+};
 use crate::analysis::parts::PartStatus;
 use crate::analysis::weapons::{Actor, PROFILE};
 use crate::analysis::{ANALYSIS_SCHEMA, AnalysisReport};
@@ -23,7 +25,7 @@ use crate::message::Message;
 use crate::state::{DECODE_REPORT_SCHEMA, DecodeStatus};
 
 /// Layout of the tables below. A different value rebuilds the cache
-pub const CACHE_SCHEMA: i64 = 10;
+pub const CACHE_SCHEMA: i64 = 11;
 
 #[derive(Debug, thiserror::Error)]
 pub enum CacheError {
@@ -164,6 +166,7 @@ CREATE TABLE files(
     date_source TEXT,
     score TEXT,
     score_json TEXT,
+    map_scores_json TEXT,
     scanned_at INTEGER NOT NULL
 );
 CREATE INDEX files_identity ON files(file_identity);
@@ -601,6 +604,10 @@ pub struct FileRow {
     pub clip_of: Option<String>,
     /// The final score, such as `88 – 74`
     pub score: Option<String>,
+    /// Each map's score, in the order the maps were first played, none
+    /// when the cache holds none
+    #[serde(skip)]
+    pub map_scores: Vec<MapScore>,
     /// The final scoreboard the score was made from, none when the cache
     /// holds none or it cannot be read. Only for display, the command line's
     /// JSON keeps the summary alone
@@ -822,6 +829,19 @@ impl Cache {
             Some(all) => Some(all),
             None => maps.clone(),
         };
+
+        // Each map's own score, in the maps' order, for a demo of several
+        let scores = r.map(|r| {
+            let lengths = r.groups.segment_lengths();
+            map_scores(
+                &r.maps,
+                &r.kills,
+                &r.score_updates,
+                &r.team_score_updates,
+                &lengths,
+            )
+        });
+        let scores_json = scores.map(|s| serde_json::to_string(&s).unwrap_or_default());
         let scanned_at = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |d| d.as_secs() as i64);
@@ -834,10 +854,10 @@ impl Cache {
                 demo_protocol, network_protocol, duration, recording_kind, max_clients, recorder,
                 playback, spectator_fraction, shots, unknown_shots, kills, best_window,
                 coverage_json, recorded_at, date_source, score, score_json, headshots, accuracy,
-                scanned_at, floors, clip_of, all_maps, players, teams)
+                scanned_at, floors, clip_of, all_maps, players, teams, map_scores_json)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16,
                 ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30, ?31,
-                ?32, ?33, ?34, ?35, ?36, ?37, ?38, ?39)",
+                ?32, ?33, ?34, ?35, ?36, ?37, ?38, ?39, ?40)",
             params![
                 display,
                 native_bytes(e.path),
@@ -878,6 +898,7 @@ impl Cache {
                 all_maps,
                 r.map(|r| r.counted.players),
                 r.map(|r| r.counted.teams),
+                scores_json,
             ],
         )?;
         let id = tx.last_insert_rowid();
@@ -1329,7 +1350,7 @@ impl Cache {
                 (SELECT w.shots FROM weapons w WHERE w.file_id = f.id AND w.weapon = 'gauss')
                     AS gauss,
                 f.recorded_at, f.date_source, f.score, f.headshots, f.accuracy, f.path_blob,
-                f.score_json, f.mtime_ns, f.clip_of, f.players, f.teams
+                f.score_json, f.mtime_ns, f.clip_of, f.players, f.teams, f.map_scores_json
              FROM files f WHERE {conditions}
              ORDER BY {order} {direction} NULLS LAST, f.path
              LIMIT ?{limit} OFFSET ?{offset}"
@@ -1357,6 +1378,10 @@ impl Cache {
                 accuracy: r.get(19)?,
                 players: r.get(24)?,
                 teams: r.get(25)?,
+                map_scores: r
+                    .get::<_, Option<String>>(26)?
+                    .and_then(|json| serde_json::from_str(&json).ok())
+                    .unwrap_or_default(),
                 native: r.get(20)?,
                 spectator_fraction: r.get(6)?,
                 shots: r.get(13)?,

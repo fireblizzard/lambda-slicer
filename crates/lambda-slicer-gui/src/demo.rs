@@ -1035,15 +1035,36 @@ impl DemoView {
         self.highlight_last = false;
         self.scroll_table = !from_list;
 
+        let players = self.event_players(event);
         if self.reachable(event)
             && let Some(viewer) = &mut self.viewer
         {
             viewer.seek(time);
+            viewer.follow_first_seen(players);
         }
 
         let (start, end) = self.view;
         if time < start || time > end {
             self.view = track::centre_on(self.view, self.extent(), time);
+        }
+    }
+
+    /// The players whose view an event is best seen from, by slot, a
+    /// kill's killer and then its victim. Other events have none, and are
+    /// seen from the recorder's view
+    fn event_players(&self, event: usize) -> [Option<u8>; 2] {
+        let kind = self
+            .model
+            .as_ref()
+            .and_then(|m| m.events.get(event))
+            .map(|e| &e.kind);
+        match kind {
+            Some(EventKind::Kill {
+                killer,
+                victim_player,
+                ..
+            }) => [killer.map(|k| k.0), victim_player.map(|v| v.0)],
+            _ => [None, None],
         }
     }
 
@@ -1299,6 +1320,11 @@ impl DemoView {
         {
             viewer.sessions = model.maps.clone();
         }
+        if let (Some(model), Some(viewer)) = (&self.model, &mut self.viewer)
+            && viewer.standings != model.standings
+        {
+            viewer.standings = model.standings.clone();
+        }
         self.name_chat_places();
 
         // The event the command line asked for, once there are rows
@@ -1428,11 +1454,13 @@ impl DemoView {
                 };
                 let range = (e.time - self.padding.0, e.time + self.padding.1);
 
+                let players = self.event_players(event);
                 if let Some(viewer) = &mut self.viewer {
                     // Played once, through any clip's loop
                     self.looping = None;
                     viewer.set_loop(None);
                     viewer.play_range(range.0, range.1);
+                    viewer.follow_first_seen(players);
                 }
             }
             DemoAction::Fit => {
@@ -2186,6 +2214,7 @@ mod tests {
                 weapon_name: "gauss".into(),
                 cause: KillCause::PlayerWeapon,
                 killer: None,
+                victim_player: None,
                 headshot: None,
                 features: Box::new(features),
             },

@@ -83,6 +83,9 @@ spectators, are left out. With two or more teams the sides
 are teams, otherwise players. The library shows the best three, as `88 – 74` or `50 – 44 – 38 – …`,
 with an en dash so a negative score stays readable.
 
+Each map also keeps its own score, at the last kill of its session recorded longest among those
+with a kill, for the app's Score column on demos of several maps.
+
 `query --windows` lists the best action windows across the library instead.
 
 ## In the app

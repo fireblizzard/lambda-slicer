@@ -605,6 +605,34 @@ fn score_of(board: Option<&Scoreboard>, summary: Option<&str>) -> Option<(String
     summary.map(|summary| (summary.to_string(), 0))
 }
 
+/// A demo of several maps' scores, one for each map its Map column lists
+/// and in that order, such as `63 : 44, –, 56 : 49`, with every map and
+/// its score for the tooltip. A map nobody was killed on scores a dash.
+/// None for a demo of one map, which shows its score as before
+fn per_map_scores(file: &FileRow) -> Option<(String, String)> {
+    let maps: Vec<&str> = file.map.as_deref()?.split(", ").collect();
+    if maps.len() < 2 || file.map_scores.is_empty() {
+        return None;
+    }
+
+    let mut scores = Vec::new();
+    let mut lines = Vec::new();
+    for map in maps {
+        let found = file.map_scores.iter().find(|s| s.map == map);
+        let board = found.and_then(|s| s.scoreboard.as_ref());
+        let score = match board.and_then(compact_score) {
+            Some((shown, _)) => shown,
+            None => NO_SCORE.to_string(),
+        };
+        lines.push(format!("{map}  {score}"));
+        scores.push(score);
+    }
+    Some((scores.join(", "), lines.join("\n")))
+}
+
+/// The score of a map nobody was killed on
+const NO_SCORE: &str = "–";
+
 /// The name of the file at `path` without the `.dem` every demo has
 fn display_name(path: &str) -> String {
     let name = Path::new(path)
@@ -1556,10 +1584,16 @@ impl LibraryView {
                 let map = file.map.as_deref().unwrap_or("");
                 text_cell(ui, map, text::starts_rtl(map), Look::Plain);
             }
-            Col::Score => {
-                let (board, summary) = (file.scoreboard.as_ref(), file.score.as_deref());
-                score_cell(ui, board, summary, catalog, rtl);
-            }
+            Col::Score => match per_map_scores(file) {
+                Some((scores, tip)) => {
+                    let tip = text::widget_text(ui.ctx(), &tip, rtl, None, Look::Plain);
+                    number_cell(ui, Some(scores), catalog, rtl).on_hover_text(tip);
+                }
+                None => {
+                    let (board, summary) = (file.scoreboard.as_ref(), file.score.as_deref());
+                    score_cell(ui, board, summary, catalog, rtl);
+                }
+            },
             Col::Action => self.intensity_cell(ui, file.best_window, catalog, rtl),
             figure => {
                 let value = match figure {
@@ -2181,6 +2215,7 @@ mod tests {
             clip_of: None,
             score: None,
             scoreboard: None,
+            map_scores: Vec::new(),
             spectator_fraction: None,
             shots: None,
             gauss: None,
@@ -2263,6 +2298,33 @@ mod tests {
             });
         }
         Scoreboard { teams: true, sides }
+    }
+
+    #[test]
+    fn a_demo_of_several_maps_scores_each_in_the_map_column_order() {
+        use lambda_slicer_core::analysis::context::MapScore;
+
+        let score = |map: &str, frags: Option<&[i32]>| MapScore {
+            map: map.into(),
+            scoreboard: frags.map(board),
+        };
+        let mut file = file_row("F:/demos/atascao.dem");
+        file.map = Some("boot_camp, rebellion, vengeance".into());
+        file.map_scores = vec![
+            score("boot_camp", Some(&[63, 44])),
+            score("rebellion", None),
+            score("scary_2", Some(&[9, 4])),
+            score("vengeance", Some(&[56, 49])),
+        ];
+
+        // The maps the column leaves out have no score in it either
+        let (scores, tip) = per_map_scores(&file).unwrap();
+        assert_eq!(scores, "63 : 44, –, 56 : 49");
+        assert_eq!(tip, "boot_camp  63 : 44\nrebellion  –\nvengeance  56 : 49");
+
+        // One map keeps its score as it was
+        file.map = Some("vengeance".into());
+        assert_eq!(per_map_scores(&file), None);
     }
 
     #[test]

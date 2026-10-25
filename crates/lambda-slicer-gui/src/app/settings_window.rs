@@ -838,6 +838,13 @@ impl App {
             ui.checkbox(&mut viewer.show_position, t("settings-show-position"));
             widgets::help(ui, &catalog.text("settings-show-position-hint"), rtl);
         });
+        layout::row(ui, rtl, |ui| {
+            ui.checkbox(
+                &mut viewer.events_leave_free,
+                t("settings-events-leave-free"),
+            );
+            widgets::help(ui, &catalog.text("settings-events-leave-free-hint"), rtl);
+        });
 
         // Bullet holes and other marks, the newest kept
         heading(
@@ -1179,6 +1186,10 @@ fn changed_settings(current: &Settings, restored: &Settings) -> Vec<&'static str
         (
             view.show_position != first.show_position,
             "settings-show-position",
+        ),
+        (
+            view.events_leave_free != first.events_leave_free,
+            "settings-events-leave-free",
         ),
         (view.decals != first.decals, "settings-section-decals"),
         (view.volume != first.volume, "viewer-volume"),

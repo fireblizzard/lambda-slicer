@@ -60,6 +60,9 @@ stuff like a zooming in or seeing players through walls, as long as the demo has
 | F | Toggle fullbright |
 | N | Toggle player names |
 | C | Free camera: fly with W, A, S and D, Space up, Ctrl down, Shift faster, and hold the right mouse button to look around |
+| 1 to 9, 0 | Watch through the eyes of the map's 1st to 10th best player |
+| ` | Back to the recorder's view |
+| Page Up / Page Down, or the mouse wheel over the picture | Previous / next player's view |
 | F11 or double-click the picture | Full screen |
 | Ctrl+Left / Ctrl+Right | Previous / next event |
 | I / O | Set the chosen clip's start / end to now |

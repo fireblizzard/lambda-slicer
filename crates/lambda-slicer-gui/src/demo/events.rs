@@ -1559,6 +1559,7 @@ mod tests {
                 weapon_name: weapon.into(),
                 cause,
                 killer: None,
+                victim_player: None,
                 headshot: None,
                 features: Box::new(features),
             },

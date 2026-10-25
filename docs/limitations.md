@@ -66,6 +66,11 @@ Not shown or played yet:
 
 Known differences from the game:
 
+- Another player's view is worked out from their model, so it is close but not exact: the pitch
+  comes from the model's lean, which is less precise, the view doesn't bob, and a dead player's
+  view doesn't drop to the floor. Their weapon in view doesn't move, reload or fire, as the demo
+  only has the recorder's weapon animations, and it shows neither their zoom nor their health,
+  armour and ammo.
 - Gauss balls and glows can stay in the air a few seconds longer than in the game.
 - The sound hasn't been properly compared with a recording of the game's yet, only by ear.
 
@@ -75,6 +80,9 @@ and a missing sound is silent.
 
 ## The app
 
+- A demo that plays the same map twice shows one score for that map in the library's Score
+  column, from the map's session recorded longest among those with a kill. The Matches tab lists
+  each match with its own score.
 - Apart from English and Spanish, the other 12 language translations haven't been checked by native speakers,
   and the translations have been AI generated.
 - Arabic text boxes show their text in the order it was typed, not right to left, while you

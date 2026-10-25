@@ -6,15 +6,17 @@
 //! drawn from the recorder's view. Entities with a studio model are posed
 //! from their recorded sequence, frame, frame rate and animation time, and
 //! a player is drawn with the model its userinfo names. The entity the
-//! recorder views from is left out, as the game leaves it out.
+//! recorder views from is left out, as the game leaves it out. Another
+//! player can be followed instead, seen from their eyes while the demo
+//! shows them and from the recorder's view while it does not.
 //!
 //! Sound plays on the default output device while playing forward, mixed
 //! from a playback of its own that shares the worker's checkpoints and
 //! heard from the recorder's view. Shown only once the Half-Life folder is
 //! known, from the settings or from `--game`
 
-use std::collections::HashMap;
 use std::collections::hash_map::Entry;
+use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::mpsc::{self, Receiver, Sender};
@@ -36,7 +38,9 @@ use lambda_slicer_playback::PresentedFrame;
 use lambda_slicer_playback::animation::{Flash, Holder};
 use lambda_slicer_playback::controller::{Command, Controller, LoopRange, Reply, Stamp};
 use lambda_slicer_playback::hud::{Countdown, WAITING};
-use lambda_slicer_playback::scene::{self, Entity, EntityId, PlayerView, weapon_model_for};
+use lambda_slicer_playback::scene::{
+    self, Entity, EntityId, PlayerView, view_model_for, weapon_model_for,
+};
 use lambda_slicer_playback::tempents::Tint;
 use lambda_slicer_playback::time::{Rate, SourceTime};
 use lambda_slicer_playback::trace::{Hull, Trace};
@@ -84,6 +88,14 @@ const OBS_IN_EYE: i64 = 4;
 /// no player
 const OBS_ROAMING: i64 = 3;
 const OBS_MAP_FREE: i64 = 5;
+
+/// How far over a player's origin their eyes are, standing and crouched
+/// (`DEFAULT_VIEWHEIGHT` and `VEC_DUCK_VIEW`)
+const EYE_STANDING: f32 = 28.;
+const EYE_CROUCHED: f32 = 12.;
+
+/// How wide the list of players to follow is
+const POV_MENU_WIDTH: f32 = 150.;
 
 /// Time frames for this many seconds once playback runs, write what was
 /// measured to `out` and close the window. The view is drawn `size` pixels
@@ -333,6 +345,9 @@ pub struct Viewer {
     /// Each session's map and when it began, from the analysis once it is
     /// in, to tell which map an intermission changes to
     pub sessions: Vec<SessionMap>,
+    /// Each session's players by slot and name, best scored at its end
+    /// first, from the analysis once it is in, for the players to follow
+    pub standings: BTreeMap<u32, Vec<(u8, String)>>,
     /// The game's files are there to draw and hear the demo with. Without
     /// them the demo still plays, so the timeline and clips work
     assets: bool,
@@ -348,6 +363,12 @@ pub struct Viewer {
     /// A camera of the viewer's own, flown apart from the recording
     /// player's view, for the session
     free: Option<FreeCamera>,
+    /// The player followed, by entity, seen from their eyes while the demo
+    /// shows them. None for the recorder's own view
+    pov: Option<u16>,
+    /// The players an event asked to follow, the first the demo shows in
+    /// the first frame answering the stamp, else the recorder
+    pov_wanted: Option<(Stamp, [Option<u16>; 2])>,
     /// Units behind the recording player's view a free camera starts once
     /// the first frame is in, turned this many degrees round them, for
     /// checking the picture from the command line
@@ -355,6 +376,9 @@ pub struct Viewer {
     /// Where a free camera starts once the first frame is in, and the way
     /// it looks, for seeing again a view someone saw
     pub free_at: Option<([f32; 3], [f32; 3])>,
+    /// The map's best player to follow once the demo's players are known,
+    /// the first at 1, for seeing a player's view from the command line
+    pub follow_at: Option<usize>,
     /// The view fills the whole screen, which the app follows
     pub fullscreen: bool,
     /// When the pointer last moved over the whole screen view, in egui's
@@ -546,14 +570,18 @@ impl Viewer {
         Self {
             settings: ViewerSettings::default(),
             sessions: Vec::new(),
+            standings: BTreeMap::new(),
             assets,
             resume,
             unmuted_volume: None,
             zoomed: false,
             fullbright: false,
             free: None,
+            pov: None,
+            pov_wanted: None,
             free_behind: None,
             free_at: None,
+            follow_at: None,
             fullscreen: false,
             pointer_moved: 0.,
             first_click: None,
@@ -738,6 +766,17 @@ impl Viewer {
                 self.frame = Some(frame);
             }
         }
+        self.settle_pov();
+
+        // The player the command line asked to follow, once the analysis
+        // has ranked the players
+        if let Some(place) = self.follow_at
+            && let Some(frame) = &self.frame
+            && !self.followable(frame).is_empty()
+        {
+            self.follow_place(place.saturating_sub(1));
+            self.follow_at = None;
+        }
         if let Some(request) = self.controller.tick(wall) {
             self.worker.send(request);
         }
@@ -843,7 +882,8 @@ impl Viewer {
             self.sky_loading = Some(sky.to_owned());
         }
 
-        for model in wanted(frame, &self.models, self.free.is_some()) {
+        let eyes = self.eyes(frame);
+        for model in wanted(frame, &self.models, eyes) {
             if let Entry::Vacant(slot) = self.models.entry(model) {
                 let _ = loader.requests.send(Asset::Model(slot.key().clone()));
                 slot.insert(Slot::Loading);
@@ -856,24 +896,134 @@ impl Viewer {
         self.free.is_some()
     }
 
-    /// Leave the recording player's view for a free camera where that view
-    /// is, or go back to it
+    /// Leave the view shown for a free camera where that view is, or go
+    /// back to it
     fn toggle_free(&mut self) {
         self.free = match (&self.free, &self.frame) {
             (None, Some(frame)) => {
-                let camera = &frame.recorder;
-                Some(FreeCamera::new(camera.origin, camera.angles))
+                let (origin, angles) = self.eye(frame);
+                Some(FreeCamera::new(origin, angles))
             }
             _ => None,
         };
     }
 
+    /// Whose view the picture is, the free camera's, the followed player's
+    /// while the demo shows them, or else the recorder's
+    fn eyes(&self, frame: &PresentedFrame) -> Eyes {
+        if self.free.is_some() {
+            return Eyes::Free;
+        }
+
+        match self.pov.and_then(|number| followed(frame, number)) {
+            Some(player) => Eyes::Player(player.id),
+            None => Eyes::Recorder,
+        }
+    }
+
     /// Where the picture is seen from and the way it looks, the free
-    /// camera's or the recording player's
+    /// camera's, the followed player's or the recorder's
     fn eye(&self, frame: &PresentedFrame) -> ([f32; 3], [f32; 3]) {
-        match &self.free {
-            Some(free) => (free.origin, free.angles),
+        if let Some(free) = &self.free {
+            return (free.origin, free.angles);
+        }
+
+        match self.pov.and_then(|number| followed(frame, number)) {
+            Some(player) => player_eye(player),
             None => (frame.recorder.origin, frame.recorder.angles),
+        }
+    }
+
+    /// Follow the player at entity `number`, or go back to the recorder
+    /// with none, leaving a free camera for their view
+    fn follow(&mut self, number: Option<u16>) {
+        self.pov = number;
+        self.pov_wanted = None;
+        self.free = None;
+    }
+
+    /// Follow the first of `slots` the demo shows once the playhead has
+    /// gone where it was just sent, else the recorder. A free camera stays,
+    /// and leaving it goes to that view, unless the settings leave it now
+    pub fn follow_first_seen(&mut self, slots: [Option<u8>; 2]) {
+        let entities = slots.map(|slot| slot.map(|s| u16::from(s) + 1));
+        self.pov_wanted = Some((self.controller.stamp(), entities));
+        if self.settings.events_leave_free {
+            self.free = None;
+        }
+    }
+
+    /// Follow whom an event asked for, once the frame answering it is in.
+    /// The recorder among them is their own view
+    fn settle_pov(&mut self) {
+        let (Some((stamp, wanted)), Some(frame)) = (self.pov_wanted, &self.frame) else {
+            return;
+        };
+        if frame.stamp < stamp {
+            return;
+        }
+
+        self.pov = None;
+        for number in wanted.into_iter().flatten() {
+            if number == frame.local_entity {
+                break;
+            }
+            if followed(frame, number).is_some() {
+                self.pov = Some(number);
+                break;
+            }
+        }
+        self.pov_wanted = None;
+    }
+
+    /// The players to follow in the session shown, by entity and name, the
+    /// best scored at its end first and the recorder left out. The names
+    /// are as the demo has them now, or as the analysis last had them
+    fn followable(&self, frame: &PresentedFrame) -> Vec<(u16, String)> {
+        let segment = frame.position.map(|p| p.segment);
+        let Some(ranked) = segment.and_then(|s| self.standings.get(&s)) else {
+            return Vec::new();
+        };
+
+        let mut out = Vec::new();
+        for (slot, name) in ranked {
+            let number = u16::from(*slot) + 1;
+            if number == frame.local_entity {
+                continue;
+            }
+            let now = frame.players.iter().find(|p| p.entity == number);
+            let name = now.map_or(name.as_str(), |p| p.name.as_str());
+            out.push((number, text::without_colours(name)));
+        }
+        out
+    }
+
+    /// Follow the player `step` places after the one followed among the
+    /// recorder and then the players in score order, going round
+    fn step_pov(&mut self, step: i32) {
+        let Some(frame) = &self.frame else {
+            return;
+        };
+
+        let mut order = vec![None];
+        for (number, _) in self.followable(frame) {
+            order.push(Some(number));
+        }
+        let at = order.iter().position(|&n| n == self.pov).unwrap_or(0);
+        let count = order.len() as i32;
+        let next = (at as i32 + step).rem_euclid(count);
+        self.follow(order[next as usize]);
+    }
+
+    /// Follow the player at `place` in score order, the first at 0, when
+    /// there is one
+    fn follow_place(&mut self, place: usize) {
+        let Some(frame) = &self.frame else {
+            return;
+        };
+
+        if let Some(&(number, _)) = self.followable(frame).get(place) {
+            self.follow(Some(number));
         }
     }
 
@@ -945,7 +1095,7 @@ impl Viewer {
         let solid = solid_brushes(frame);
 
         let mut names = Vec::new();
-        for drawn in drawn(frame, &self.models, self.free.is_some()) {
+        for drawn in drawn(frame, &self.models, self.eyes(frame)) {
             if !drawn.pose.player {
                 continue;
             }
@@ -992,6 +1142,7 @@ impl Viewer {
         // Chrome reflects the view the scene is drawn from
         let (eye_origin, eye_angles) = self.eye(frame);
         let eye = Eye::new(eye_origin, eye_angles);
+        let eyes = self.eyes(frame);
         let mut instances = Vec::new();
         let mut silhouettes = Vec::new();
         let mut sprites = Vec::new();
@@ -1027,7 +1178,7 @@ impl Viewer {
                 guns.insert(holder, at);
             }
         };
-        for drawn in drawn(frame, &self.models, self.free.is_some()) {
+        for drawn in drawn(frame, &self.models, eyes) {
             if let Some(Slot::Sprite(handle)) = self.models.get(&drawn.model) {
                 sprites.push(SpriteInstance {
                     sprite: *handle,
@@ -1132,13 +1283,13 @@ impl Viewer {
             }
         }
 
-        // The weapon in view is the recording player's, so a free camera
+        // The weapon in view is the recorder's or the followed player's,
+        // whose muzzle flashes and beams then come from it. A free camera
         // shows none
         let mut viewmodel = Vec::new();
         if self.settings.viewmodel
-            && self.free.is_none()
-            && let Some((_, pose)) = viewmodel_pose(frame)
-            && let Some(Slot::Ready(model, handle)) = viewmodel_ref(frame, &self.models)
+            && let Some((_, pose)) = viewmodel_pose(frame, eyes)
+            && let Some(Slot::Ready(model, handle)) = viewmodel_ref(frame, &self.models, eyes)
                 .as_ref()
                 .and_then(|m| self.models.get(m))
             && let Some(bones) = model.pose(&pose)
@@ -1150,7 +1301,11 @@ impl Viewer {
                 mode: RenderMode::Normal,
                 amount: 1.,
             });
-            place(Holder::Viewmodel, model, &bones);
+            let holder = match eyes {
+                Eyes::Player(id) => Holder::Entity(id),
+                _ => Holder::Viewmodel,
+            };
+            place(holder, model, &bones);
         }
         for (f, origin) in flashed {
             if let Some(Slot::Sprite(handle)) = self.models.get(&flash_sprite(f.sprite)) {
@@ -1394,7 +1549,7 @@ impl Viewer {
             return false;
         };
         let map = frame.map.as_deref().map(map_name);
-        let loading = wanted(frame, &self.models, self.free.is_some())
+        let loading = wanted(frame, &self.models, self.eyes(frame))
             .into_iter()
             .any(|m| matches!(self.models.get(&m), None | Some(Slot::Loading)));
         // The sky the server names, once it is in or could not be read
@@ -1612,6 +1767,28 @@ impl Viewer {
         let (rect, clicked) = ui.allocate_exact_size(size, Sense::click_and_drag());
         self.fly(&ctx, &clicked);
 
+        // The wheel over the picture goes to the previous or next player,
+        // one a frame however far it turns
+        if clicked.hovered() {
+            let turned = ctx.input_mut(|i| {
+                let mut turned = 0.;
+                for event in &i.events {
+                    if let egui::Event::MouseWheel { delta, .. } = event {
+                        turned += delta.y;
+                    }
+                }
+                if turned != 0. {
+                    i.smooth_scroll_delta = egui::Vec2::ZERO;
+                }
+                turned
+            });
+            if turned != 0. {
+                let step = if turned > 0. { -1 } else { 1 };
+                self.step_pov(step);
+                ctx.request_repaint();
+            }
+        }
+
         // A click on the view pauses, or plays on the way it went last,
         // rewinding again after a pause while rewinding, unless the rewind
         // reached the start
@@ -1701,20 +1878,30 @@ impl Viewer {
                         let line = catalog.text_with("viewer-map-change", &[("map", map)]);
                         draw_map_change(ui.painter(), rect, &line);
                     }
+                    let eyes = self.eyes(frame);
                     if let Some(library) = &self.library {
+                        let weapon = match eyes {
+                            Eyes::Recorder => weapon_in_view(frame).map(str::to_owned),
+                            _ => viewmodel_pose(frame, eyes).map(|(path, _)| path),
+                        };
                         if self.settings.crosshair
-                            && self.free.is_none()
-                            && let Some(weapon) = weapon_in_view(frame)
+                            && let Some(weapon) = weapon
                         {
-                            let fov = frame.recorder.fov;
-                            self.crosshairs.draw(ui, rect, weapon, fov, library);
+                            let fov = self.fov().or(frame.recorder.fov);
+                            self.crosshairs.draw(ui, rect, &weapon, fov, library);
                         }
                         // The game shows no health, armour, ammo, pickups,
                         // damage or weapon menu to a spectator or at
                         // intermission. A free camera has none of its own,
-                        // unless the settings show the recorder's anyway
+                        // unless the settings show the recorder's anyway. A
+                        // followed player has none, as the demo only has
+                        // the recorder's
                         let camera = &frame.recorder;
-                        let free_shows = self.free.is_none() || self.settings.free_vitals;
+                        let free_shows = match eyes {
+                            Eyes::Recorder => true,
+                            Eyes::Free => self.settings.free_vitals,
+                            Eyes::Player(_) => false,
+                        };
                         let shown = !camera.spectating && !camera.intermission && free_shows;
                         if self.settings.vitals && shown {
                             let (vitals, status) = (&mut self.vitals, &frame.status);
@@ -1749,10 +1936,25 @@ impl Viewer {
                     }
                     // A free camera watches nobody, its names over the players
                     let players = &frame.players;
-                    if self.free.is_none()
-                        && let Some(player) = watched(&frame.recorder, frame.local_entity, players)
-                    {
+                    let shown = match eyes {
+                        Eyes::Recorder => watched(&frame.recorder, frame.local_entity, players),
+                        Eyes::Player(id) => players.iter().find(|p| p.entity == id.number),
+                        Eyes::Free => None,
+                    };
+                    if let Some(player) = shown {
                         draw_watched(ui.painter(), rect, player);
+                    }
+
+                    // A player followed out of the demo's view is seen from
+                    // the recorder's until they are back
+                    if eyes == Eyes::Recorder
+                        && let Some(number) = self.pov
+                    {
+                        let player = players.iter().find(|p| p.entity == number);
+                        let name = player.map_or(String::new(), |p| text::without_colours(&p.name));
+                        let name = FluentValue::from(name);
+                        let line = catalog.text_with("viewer-pov-unseen", &[("name", name)]);
+                        draw_unseen(ui.painter(), rect, &line);
                     }
                     if self.time_frame(pixels, drawn) {
                         ctx.send_viewport_cmd(egui::ViewportCommand::Close);
@@ -1788,13 +1990,26 @@ impl Viewer {
         let full = ui.available_width();
         let gap = ui.spacing().item_spacing.x;
         let view_start = full - last.view - gap;
-        let buttons_lead = lead(full / 2. - last.play_middle, last.buttons, full);
+        let centred = lead(full / 2. - last.play_middle, last.buttons, full);
+
+        // The players to follow at the row's start, keeping the buttons
+        // clear of them
+        let buttons_lead = match self.assets {
+            true => centred.max(last.pov + gap),
+            false => centred,
+        };
         let view_first = buttons_lead + last.buttons <= view_start;
         let view_second = !view_first && last.time <= view_start;
 
         // The buttons, the play button's middle under the picture's
         layout::row(ui, false, |ui| {
-            ui.add_space(buttons_lead);
+            now.pov = 0.;
+            if self.assets {
+                now.pov = self.pov_menu(ui, catalog, rtl);
+                ui.add_space(buttons_lead - now.pov - gap);
+            } else {
+                ui.add_space(buttons_lead);
+            }
             let group = ui.scope(|ui| self.playback_controls(ui, catalog, rtl));
             let group_left = group.response.rect.left();
             now.buttons = group.response.rect.width();
@@ -1831,6 +2046,59 @@ impl Viewer {
         }
 
         picture
+    }
+
+    /// The list of whose view to watch, the recorder first and then the
+    /// players of the session shown in score order, each with the number
+    /// key that picks them. Choosing one leaves a free camera. Returns how
+    /// wide it is
+    fn pov_menu(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool) -> f32 {
+        let (players, recorder) = match &self.frame {
+            Some(frame) => {
+                let own = frame
+                    .players
+                    .iter()
+                    .find(|p| p.entity == frame.local_entity);
+                let name = own.map(|p| text::without_colours(&p.name));
+                (self.followable(frame), name)
+            }
+            None => (Vec::new(), None),
+        };
+        let recorder = match recorder.filter(|n| !n.trim().is_empty()) {
+            Some(name) => {
+                let name = FluentValue::from(name);
+                catalog.text_with("viewer-pov-recorder", &[("name", name)])
+            }
+            None => catalog.text("viewer-pov-recorder-unnamed"),
+        };
+
+        let current = match self.pov.and_then(|n| players.iter().find(|(p, _)| *p == n)) {
+            Some((_, name)) => name.clone(),
+            None => recorder.clone(),
+        };
+        let mut chosen = self.pov;
+        let selected = text::widget_text(ui.ctx(), &current, rtl, None, Look::Plain);
+        let menu = egui::ComboBox::from_id_salt("viewer-pov")
+            .width(POV_MENU_WIDTH)
+            .truncate()
+            .selected_text(selected)
+            .show_ui(ui, |ui| {
+                ui.selectable_value(&mut chosen, None, format!("`  {recorder}"));
+                for (place, (number, name)) in players.iter().enumerate() {
+                    let line = match KEY_NAMES.get(place) {
+                        Some(key) => format!("{key}  {name}"),
+                        None => format!("    {name}"),
+                    };
+                    ui.selectable_value(&mut chosen, Some(*number), line);
+                }
+            });
+        let help = catalog.text("viewer-pov-help");
+        let width = menu.response.on_hover_text(help).rect.width();
+
+        if chosen != self.pov {
+            self.follow(chosen);
+        }
+        width
     }
 
     /// The view controls at the row's trailing end. Returns whether the
@@ -2252,9 +2520,13 @@ impl Viewer {
             return Some(self.settings.zoom_fov);
         }
 
-        // A free camera looks through nobody's scope, so the recorder's
-        // zoom stays theirs
-        if self.free.is_some() {
+        // A free camera or another player's view looks through nobody's
+        // scope, so the recorder's zoom stays theirs
+        let own_view = match &self.frame {
+            Some(frame) => self.eyes(frame) == Eyes::Recorder,
+            None => self.free.is_none(),
+        };
+        if !own_view {
             return Some(self.settings.fov.unwrap_or(DEFAULT_FOV));
         }
         self.settings.fov
@@ -2343,8 +2615,9 @@ impl Viewer {
     /// The keys that drive playback while no text is being typed. Space and
     /// L play forward or pause, J plays backward or pauses, K pauses, comma
     /// and period step one recorded group back or forward, the left and
-    /// right arrows seek five seconds, Home goes back to the start and F
-    /// fills the screen. While
+    /// right arrows seek five seconds, Home goes back to the start, F11
+    /// fills the screen, the number keys follow the map's best players and `
+    /// goes back to the recorder's view. While
     /// a control has the keyboard's focus, space, the arrows and Home are its
     /// own
     pub fn shortcuts(&mut self, ctx: &egui::Context) {
@@ -2380,6 +2653,29 @@ impl Viewer {
         if pressed(egui::Key::N) && self.assets {
             self.settings.player_names = !self.settings.player_names;
             ctx.request_repaint();
+        }
+
+        // ` goes back to the recorder's view, the number keys follow the
+        // session's best players, and Page Up and Page Down go round them
+        if self.assets {
+            if pressed(egui::Key::Backtick) {
+                self.follow(None);
+                ctx.request_repaint();
+            }
+            for (place, key) in NUMBER_KEYS.into_iter().enumerate() {
+                if pressed(key) {
+                    self.follow_place(place);
+                    ctx.request_repaint();
+                }
+            }
+            if pressed(egui::Key::PageUp) {
+                self.step_pov(-1);
+                ctx.request_repaint();
+            }
+            if pressed(egui::Key::PageDown) {
+                self.step_pov(1);
+                ctx.request_repaint();
+            }
         }
 
         // F11 fills the screen or leaves it, and so does Escape when it is
@@ -2433,12 +2729,18 @@ impl Viewer {
         }
     }
 
-    /// Tell the sound mixer what the frame shown plays
+    /// Tell the sound mixer what the frame shown plays, heard from the
+    /// view shown
     fn feed_sound(&self) {
         let (Some(sound), Some(frame), Some(demo)) =
             (&self.sound, &self.frame, self.worker.loaded())
         else {
             return;
+        };
+
+        let ears = match self.eyes(frame) {
+            Eyes::Recorder => None,
+            _ => Some(self.eye(frame)),
         };
         sound.feed(Feed {
             stamp: self.controller.stamp(),
@@ -2448,9 +2750,61 @@ impl Viewer {
             // Backward playback is heard as nothing
             audible: frame.audible && !self.controller.clock().backward(),
             until: self.controller.until(),
-            ears: self.free.map(|free| (free.origin, free.angles)),
+            ears,
         });
     }
+}
+
+/// The keys that follow the session's best players, in score order
+const NUMBER_KEYS: [egui::Key; 10] = [
+    egui::Key::Num1,
+    egui::Key::Num2,
+    egui::Key::Num3,
+    egui::Key::Num4,
+    egui::Key::Num5,
+    egui::Key::Num6,
+    egui::Key::Num7,
+    egui::Key::Num8,
+    egui::Key::Num9,
+    egui::Key::Num0,
+];
+
+/// How the list of players names [`NUMBER_KEYS`]
+const KEY_NAMES: [&str; 10] = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"];
+
+/// Whose view the picture is, which says whose model is left out and
+/// whose weapon is in view
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Eyes {
+    /// The recorder's, or the player they watch through the eyes of
+    Recorder,
+    /// A player followed, while the demo shows them
+    Player(EntityId),
+    /// A free camera's, which leaves nobody out and holds no weapon
+    Free,
+}
+
+/// The player at entity `number` when the demo shows them playing, not
+/// spectating, in the frame
+fn followed(frame: &PresentedFrame, number: u16) -> Option<&Entity> {
+    let player = frame.entities.iter().find(|e| e.id.number == number)?;
+    let shown = player.effects & NO_DRAW == 0 && player.iuser1 == 0;
+    let is_player = frame.players.iter().any(|p| p.entity == number);
+    (shown && is_player).then_some(player)
+}
+
+/// Where a player's eyes are and the way they look, over their origin by
+/// the standing or crouched view height. Their model leans a third of
+/// their view's pitch the other way, which is turned back
+fn player_eye(player: &Entity) -> ([f32; 3], [f32; 3]) {
+    let height = if player.use_hull == 1 {
+        EYE_CROUCHED
+    } else {
+        EYE_STANDING
+    };
+    let [x, y, z] = player.origin;
+    let [pitch, yaw, _] = player.angles;
+    ([x, y, z + height], [-3. * pitch, yaw, 0.])
 }
 
 /// One entity to draw, its model, what it holds and its pose
@@ -2472,12 +2826,13 @@ struct Drawn {
 }
 
 /// Which model each drawn entity uses and how it is posed. Players use the
-/// model their userinfo names, upright as the game draws them. The entity
-/// the recorder views from is left out, and so is the player a spectator
-/// sees through the eyes of, unless a `free` camera shows them. The server
-/// leaves the recorder's own entity at nought, so it stands where the
-/// recorder's own frames say they are
-fn drawn(frame: &PresentedFrame, models: &HashMap<ModelRef, Slot>, free: bool) -> Vec<Drawn> {
+/// model their userinfo names, upright as the game draws them. The player
+/// whose `eyes` the view is through is left out, the entity the recorder
+/// views from or the one they spectate through the eyes of, or a player
+/// followed. A free camera leaves nobody out. The server leaves the
+/// recorder's own entity at nought, so it stands where the recorder's own
+/// frames say they are
+fn drawn(frame: &PresentedFrame, models: &HashMap<ModelRef, Slot>, eyes: Eyes) -> Vec<Drawn> {
     let viewer = frame.recorder.view_entity.unwrap_or(frame.local_entity);
     let observed =
         (frame.recorder.observer_mode == OBS_IN_EYE).then_some(frame.recorder.observer_target);
@@ -2486,10 +2841,13 @@ fn drawn(frame: &PresentedFrame, models: &HashMap<ModelRef, Slot>, free: bool) -
     let mut out = Vec::new();
     for e in frame.entities.iter() {
         let number = e.id.number;
-        // Beams are drawn as strips, not as their sprite. The player seen
-        // through is drawn only for a free camera
-        let seen_through = number == viewer || observed == Some(i64::from(number));
-        if e.beam || (seen_through && !free) || e.effects & NO_DRAW != 0 {
+        // Beams are drawn as strips, not as their sprite
+        let seen_through = match eyes {
+            Eyes::Recorder => number == viewer || observed == Some(i64::from(number)),
+            Eyes::Player(id) => number == id.number,
+            Eyes::Free => false,
+        };
+        if e.beam || seen_through || e.effects & NO_DRAW != 0 {
             continue;
         }
 
@@ -2575,8 +2933,8 @@ fn drawn(frame: &PresentedFrame, models: &HashMap<ModelRef, Slot>, free: bool) -
 /// Every model and sprite `frame` draws, entities, held weapons, the
 /// viewmodel, muzzle flashes, temporary entities and beams, as the models
 /// in `models` say their variations
-fn wanted(frame: &PresentedFrame, models: &HashMap<ModelRef, Slot>, free: bool) -> Vec<ModelRef> {
-    let drawn = drawn(frame, models, free)
+fn wanted(frame: &PresentedFrame, models: &HashMap<ModelRef, Slot>, eyes: Eyes) -> Vec<ModelRef> {
+    let drawn = drawn(frame, models, eyes)
         .into_iter()
         .flat_map(|d| std::iter::once(d.model).chain(d.weapon));
     let flashes = frame.flashes.iter().map(|f| flash_sprite(f.sprite));
@@ -2598,17 +2956,25 @@ fn wanted(frame: &PresentedFrame, models: &HashMap<ModelRef, Slot>, free: bool) 
         .chain(entity_beams)
         .map(|s| ModelRef::File(s.to_owned()));
     drawn
-        .chain(viewmodel_ref(frame, models))
+        .chain(viewmodel_ref(frame, models, eyes))
         .chain(flashes)
         .chain(temp)
         .chain(beam_sprites)
         .collect()
 }
 
-/// The viewmodel to draw, in the body its last animation gave
-fn viewmodel_ref(frame: &PresentedFrame, models: &HashMap<ModelRef, Slot>) -> Option<ModelRef> {
-    let (path, _) = viewmodel_pose(frame)?;
-    let body = frame.viewmodel.map_or(0, |a| i64::from(a.body));
+/// The viewmodel to draw through `eyes`, the recorder's in the body its
+/// last animation gave
+fn viewmodel_ref(
+    frame: &PresentedFrame,
+    models: &HashMap<ModelRef, Slot>,
+    eyes: Eyes,
+) -> Option<ModelRef> {
+    let (path, _) = viewmodel_pose(frame, eyes)?;
+    let body = match eyes {
+        Eyes::Recorder => frame.viewmodel.map_or(0, |a| i64::from(a.body)),
+        _ => 0,
+    };
     Some(studio_ref(models, &path, body, 0))
 }
 
@@ -2989,23 +3355,39 @@ fn weapon_in_view(frame: &PresentedFrame) -> Option<&str> {
     Some(path)
 }
 
-/// The recorder's first-person weapon and its pose, the last weapon
-/// animation played from when it started, at the view's origin and angles,
-/// the pitch turned the other way as the game gives it to a viewmodel. None
-/// whenever [`weapon_in_view`] is
-fn viewmodel_pose(frame: &PresentedFrame) -> Option<(String, EntityPose)> {
-    let camera = &frame.recorder;
-    let path = weapon_in_view(frame)?;
-    let animation = frame.viewmodel?;
+/// The first-person weapon seen through `eyes` and its pose, at the view's
+/// origin and angles, the pitch turned the other way as the game gives it
+/// to a viewmodel. The recorder's plays the last weapon animation from
+/// when it started, and is none whenever [`weapon_in_view`] is. A followed
+/// player's is the one in their hand, idle, as their animations are not
+/// in the demo. A free camera has none
+fn viewmodel_pose(frame: &PresentedFrame, eyes: Eyes) -> Option<(String, EntityPose)> {
+    let (path, sequence, elapsed, (origin, angles)) = match eyes {
+        Eyes::Recorder => {
+            let camera = &frame.recorder;
+            let path = weapon_in_view(frame)?;
+            let animation = frame.viewmodel?;
+            let sequence = animation.sequence.max(0) as usize;
+            let elapsed = frame.at.0 - animation.started.0;
+            (path, sequence, elapsed, (camera.origin, camera.angles))
+        }
+        Eyes::Player(id) => {
+            let player = followed(frame, id.number)?;
+            let path = player.weapon.as_deref().and_then(view_model_for)?;
+            (path, 0, frame.client_time, player_eye(player))
+        }
+        Eyes::Free => return None,
+    };
+
     let pose = EntityPose {
-        sequence: animation.sequence.max(0) as usize,
+        sequence,
         cycle: 0.,
-        elapsed: frame.at.0 - animation.started.0,
+        elapsed,
         framerate: 1.,
         controllers: [127.; 4],
         blending: [0.; 2],
-        origin: camera.origin,
-        angles: [-camera.angles[0], camera.angles[1], camera.angles[2]],
+        origin,
+        angles: [-angles[0], angles[1], angles[2]],
         player: false,
         gait: None,
     };
@@ -3201,6 +3583,8 @@ fn draw_countdown(painter: &egui::Painter, rect: egui::Rect, countdown: &Countdo
 /// How wide the transport's parts were last drawn
 #[derive(Clone, Copy, Default)]
 struct TransportWidths {
+    /// The list of players to follow, none without the game's files
+    pov: f32,
     /// The playback buttons with the speed, and how far into them the play
     /// button's middle is
     buttons: f32,
@@ -3214,6 +3598,7 @@ impl TransportWidths {
     /// Whether these are close enough to `other` to lay out the same
     fn settled(&self, other: &Self) -> bool {
         let pairs = [
+            (self.pov, other.pov),
             (self.buttons, other.buttons),
             (self.play_middle, other.play_middle),
             (self.time, other.time),
@@ -3441,6 +3826,22 @@ fn draw_position(
         painter.galley(at, galley, HUD_COLOR);
         at.y += height + size / 3.;
     }
+}
+
+/// Why the view is the recorder's while a player is followed, two lines
+/// over where the watched player's name stands, on the same dark band
+fn draw_unseen(painter: &egui::Painter, rect: egui::Rect, line: &str) {
+    let size = rect.height() / 32.;
+    let font = egui::FontId::proportional(size);
+    let galley = painter.layout_no_wrap(line.to_owned(), font, HUD_COLOR);
+    let at = egui::pos2(
+        rect.center().x - galley.size().x / 2.,
+        rect.bottom() - (NAME_FROM_BOTTOM + 2.) * size - galley.size().y,
+    );
+    let band = egui::Rect::from_min_size(at, galley.size());
+    let band = band.expand2(egui::vec2(size / 2., size / 5.));
+    painter.rect_filled(band, theme::RADIUS_SMALL, NAME_BAND);
+    painter.galley(at, galley, HUD_COLOR);
 }
 
 /// Which map the server is changing to, where AG's countdown stands, on a
