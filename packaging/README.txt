@@ -52,7 +52,13 @@ Keys in the demo player
     Z                   Zoom in or out
     C                   Free camera: fly with W, A, S, D, Space up, Ctrl
                         down, Shift faster, right mouse button to look
-    F, F11              Full screen (or double-click the picture)
+    1 to 9, 0           Watch through the eyes of the map's top 10
+    `                   Back to the recorder's view
+    Page Up / Down      Previous / next player's view (or the mouse wheel)
+    X                   Players through walls on or off
+    N                   Player names on or off
+    F                   Light up everything on or off
+    F11                 Full screen (or double-click the picture)
     Ctrl+Left / Right   Previous / next event
     I / O               Set the clip's start / end to now
     Escape              Leave full screen, or close the demo
