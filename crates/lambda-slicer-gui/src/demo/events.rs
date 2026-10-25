@@ -2,7 +2,8 @@
 //! the way through them
 //!
 //! The filters at the top and the footer stay put, and only the events
-//! scroll. The list, the timeline and its density read the same shown rows
+//! scroll. The filters fold to one row saying what they let through. The
+//! list, the timeline and its density read the same shown rows
 
 use std::sync::Arc;
 
@@ -16,7 +17,7 @@ use lambda_slicer_core::analysis::weapons::Weapon;
 use lambda_slicer_playback::kill_features::{Doubt, OtherRoute, WallGauss, WallRoute};
 
 use super::compact::{clock, side_colour};
-use super::{DemoAction, DemoView, Request, WINDOW_TINT, track};
+use super::{DemoAction, DemoView, Pointing, Request, Shown, WINDOW_TINT, fold_triangle, track};
 use crate::i18n::Catalog;
 use crate::kill_analysis::WallStatus;
 use crate::kill_filters::{self, AirBadge, MidairMode, SpeedBadge, SpeedSubject};
@@ -56,11 +57,15 @@ const SCROLLED_BY_HAND: f32 = 0.5;
 const BADGE_PADDING: Vec2 = Vec2::new(4., 1.);
 const NAMES_LEAST: f32 = 120.;
 
-/// The weapon menu's width, the player's name field's and the highlight
-/// menu's
+/// The kinds menu's width, the weapon menu's and the player's name field's
+const KINDS_WIDTH: f32 = 140.;
 const WEAPON_WIDTH: f32 = 120.;
 const PLAYER_WIDTH: f32 = 140.;
-const HIGHLIGHT_WIDTH: f32 = 220.;
+
+/// The highlight menu's width, and the least it narrows to beside the
+/// timeline's other controls
+pub(super) const HIGHLIGHT_WIDTH: f32 = 220.;
+pub(super) const HIGHLIGHT_LEAST: f32 = 120.;
 
 /// How many ups dragging the least speed moves it for a point
 const UPS_PER_POINT: f64 = 10.;
@@ -140,10 +145,44 @@ impl RowLine {
     }
 }
 
+/// Each kind of event, whether `shown` shows it and its name
+fn kinds(shown: &Shown) -> [(bool, &'static str); 6] {
+    [
+        (shown.kills, "show-kills"),
+        (shown.chat, "show-chat"),
+        (shown.matches, "show-match"),
+        (shown.shots, "show-shots"),
+        (shown.switches, "show-switches"),
+        (shown.actions, "show-actions"),
+    ]
+}
+
+/// The kinds `shown` shows by name, or that it shows none
+fn kinds_summary(shown: &Shown, catalog: &Catalog) -> String {
+    let mut names = Vec::new();
+    for (on, id) in kinds(shown) {
+        if on {
+            names.push(catalog.text(id));
+        }
+    }
+
+    if names.is_empty() {
+        return catalog.text("events-kinds-none");
+    }
+    names.join(", ")
+}
+
 impl DemoView {
-    /// The event filters, the shown events and the footer under them, with
-    /// the footer placed first so the events never push it out of view
-    pub(super) fn events_tab(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool) {
+    /// The event filters, open or folded to their summary, the shown events
+    /// and the footer under them, with the footer placed first so the events
+    /// never push it out of view
+    pub(super) fn events_tab(
+        &mut self,
+        ui: &mut Ui,
+        catalog: &Catalog,
+        rtl: bool,
+        filters_open: &mut bool,
+    ) {
         let Some(model) = self.model.clone() else {
             return;
         };
@@ -160,77 +199,157 @@ impl DemoView {
                 self.events_footer(ui, catalog, rtl, &model, details)
             });
 
-        // The filters scroll rather than take the room a few events need, and
-        // never more than their share. In a short tab they keep a row of
-        // themselves in view as long as one event still shows
-        let room = ui.available_height();
-        let count_row = theme::CONTROL_HEIGHT;
-        let beside_rows = room - count_row - ROW_HEIGHT * EVENT_ROWS_KEPT;
-        let beside_one = room - count_row - ROW_HEIGHT;
-        let most = beside_rows
-            .max(FILTERS_LEAST.min(beside_one))
-            .clamp(0., (room * FILTERS_SHARE).max(0.));
-        egui::ScrollArea::vertical()
-            .id_salt(("event filters", self.generation))
-            .min_scrolled_height(0.)
-            .max_height(most)
-            .show(ui, |ui| self.event_filters(ui, catalog, rtl, &model));
-        ui.separator();
-
-        // What the filters changed this frame shows in this frame's list
-        self.refresh_rows();
-        self.events_count(ui, catalog, rtl);
-        self.events_list(ui, catalog, rtl, &model);
-    }
-
-    /// Why events stop early, the kinds shown, the weapon menu, the player's
-    /// name, the highlight menu, and the kill refinements while kills are
-    /// shown
-    fn event_filters(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool, model: &Model) {
-        // Why events stop early is never hidden away
+        // Why events stop early is never folded away
         if let Some(e) = &model.decode_error {
             let width = Some(ui.available_width());
             let line = catalog.message(e);
             let line = text::widget_text(ui.ctx(), &line, rtl, width, Look::Color(theme::WARNING));
             ui.add(egui::Label::new(line).wrap());
         }
+        self.filters_row(ui, catalog, rtl, filters_open, &model);
 
-        // The kinds, with what the recording cannot show behind their help
-        layout::wrapping_row(ui, rtl, |ui| {
-            let shown = &mut self.shown;
-            let kinds = [
-                (&mut shown.kills, "show-kills"),
-                (&mut shown.shots, "show-shots"),
-                (&mut shown.switches, "show-switches"),
-                (&mut shown.actions, "show-actions"),
-                (&mut shown.chat, "show-chat"),
-                (&mut shown.matches, "show-match"),
-            ];
-            for (on, id) in kinds {
-                if selectable(ui, *on, &catalog.text(id), rtl).clicked() {
-                    *on = !*on;
+        // The filters scroll rather than take the room a few events need, and
+        // never more than their share. In a short tab they keep a row of
+        // themselves in view as long as one event still shows
+        if *filters_open {
+            let room = ui.available_height();
+            let beside_rows = room - ROW_HEIGHT * EVENT_ROWS_KEPT;
+            let beside_one = room - ROW_HEIGHT;
+            let most = beside_rows
+                .max(FILTERS_LEAST.min(beside_one))
+                .clamp(0., (room * FILTERS_SHARE).max(0.));
+            egui::ScrollArea::vertical()
+                .id_salt(("event filters", self.generation))
+                .min_scrolled_height(0.)
+                .max_height(most)
+                .show(ui, |ui| self.event_filters(ui, catalog, rtl));
+        }
+        ui.separator();
+
+        // What the filters changed this frame shows in this frame's list
+        self.refresh_rows();
+        self.unknown_kills_note(ui, catalog, rtl);
+        self.events_list(ui, catalog, rtl, &model);
+    }
+
+    /// The button that opens or folds the filters, counting those on, the
+    /// kinds of event shown, and the button that keeps the list on the
+    /// playhead at the trailing end
+    fn filters_row(
+        &mut self,
+        ui: &mut Ui,
+        catalog: &Catalog,
+        rtl: bool,
+        open: &mut bool,
+        model: &Model,
+    ) {
+        // The button first, so the row ends short of it. Turned back on, the
+        // list goes straight back to the playhead
+        layout::trailing(ui, rtl, |ui| {
+            let label = catalog.text("events-follow");
+            let button = IconButton::new(Icon::Crosshair, &label).selected(self.follow_playhead);
+            if ui.add_enabled(self.viewer.is_some(), button).clicked() {
+                self.follow_playhead = !self.follow_playhead;
+                self.pan_to_playhead = self.follow_playhead;
+            }
+
+            layout::row(ui, rtl, |ui| {
+                let pointing = if *open {
+                    Pointing::Down
+                } else {
+                    Pointing::Along
+                };
+                let mut clicked = fold_triangle(ui, pointing, rtl).clicked();
+
+                // The title says how many filters past the kinds are on, so
+                // a folded list that shows less says why
+                let on = self.filters_on();
+                let title = if on == 0 {
+                    catalog.text("events-filters")
+                } else {
+                    let count = FluentValue::from(on as i64);
+                    catalog.text_with("events-filters-on", &[("count", count)])
+                };
+                let title = text::widget_text(ui.ctx(), &title, rtl, None, Look::Plain);
+                clicked |= ui.add(egui::Button::new(title)).clicked();
+                if clicked {
+                    *open = !*open;
                 }
-            }
 
-            if !model.coverage_notes.is_empty() {
-                let notes: Vec<String> = model
-                    .coverage_notes
-                    .iter()
-                    .map(|n| catalog.message(n))
-                    .collect();
-                widgets::help(ui, &notes.join("\n\n"), rtl);
-            }
+                self.kinds_menu(ui, catalog, rtl, model);
+            });
         });
+    }
 
+    /// How many filters besides the kinds are on, the weapon, the text in
+    /// the players' names and each kill refinement while kills show
+    fn filters_on(&self) -> usize {
+        let mut on = 0;
+        if self.shown.weapon.is_some() {
+            on += 1;
+        }
+        if !self.player.trim().is_empty() {
+            on += 1;
+        }
+
+        let filters = &self.shown.kill_filters;
+        if self.shown.kills {
+            let refinements = [
+                filters.midair != MidairMode::Off,
+                filters.speed,
+                filters.wallgauss,
+            ];
+            on += refinements.iter().filter(|&&r| r).count();
+        }
+        on
+    }
+
+    /// The weapon menu and the player's name, and the kill refinements while
+    /// kills are shown
+    fn event_filters(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool) {
         layout::wrapping_row(ui, rtl, |ui| {
             self.weapon_menu(ui, catalog, rtl);
             self.player_field(ui, catalog, rtl);
-            self.highlight_menu(ui, catalog, rtl, model);
         });
 
         // Hidden with the kills, the refinements keep their values
         if self.shown.kills {
             self.refinements(ui, catalog, rtl);
+        }
+    }
+
+    /// The kinds of event shown, each with its checkbox in one menu, and
+    /// what the recording cannot show behind its help
+    fn kinds_menu(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool, model: &Model) {
+        let summary = kinds_summary(&self.shown, catalog);
+        let summary = text::widget_text(ui.ctx(), &summary, rtl, None, Look::Plain);
+        egui::ComboBox::from_id_salt(("event kinds", self.generation))
+            .selected_text(summary)
+            .width(KINDS_WIDTH)
+            .truncate()
+            .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+            .show_ui(ui, |ui| {
+                let shown = &mut self.shown;
+                let switches = [
+                    (&mut shown.kills, "show-kills"),
+                    (&mut shown.chat, "show-chat"),
+                    (&mut shown.matches, "show-match"),
+                    (&mut shown.shots, "show-shots"),
+                    (&mut shown.switches, "show-switches"),
+                    (&mut shown.actions, "show-actions"),
+                ];
+                for (on, id) in switches {
+                    ui.checkbox(on, catalog.text(id));
+                }
+            });
+
+        if !model.coverage_notes.is_empty() {
+            let notes: Vec<String> = model
+                .coverage_notes
+                .iter()
+                .map(|n| catalog.message(n))
+                .collect();
+            widgets::help(ui, &notes.join("\n\n"), rtl);
         }
     }
 
@@ -270,9 +389,16 @@ impl DemoView {
         ui.add(field);
     }
 
-    /// The most intense moments to jump to, the best first, and the way to
-    /// clip the chosen one whole
-    fn highlight_menu(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool, model: &Model) {
+    /// The most intense moments to jump to, the best first, `width` wide,
+    /// and the way to clip the chosen one whole
+    pub(super) fn highlight_menu(
+        &mut self,
+        ui: &mut Ui,
+        catalog: &Catalog,
+        rtl: bool,
+        model: &Model,
+        width: f32,
+    ) {
         if model.windows.is_empty() {
             return;
         }
@@ -293,7 +419,7 @@ impl DemoView {
         let mut chosen = None;
         let menu = egui::ComboBox::from_id_salt(("highlights", self.generation))
             .selected_text(current)
-            .width(HIGHLIGHT_WIDTH)
+            .width(width)
             .wrap_mode(egui::TextWrapMode::Truncate)
             .show_ui(ui, |ui| {
                 for i in 0..model.windows.len() {
@@ -482,45 +608,25 @@ impl DemoView {
         });
     }
 
-    /// How many events are shown, how many kills a refinement could not
-    /// tell about, and the button that keeps the list on the playhead
-    fn events_count(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool) {
-        // The button at the trailing end first, so the counts wrap before it.
-        // Turned back on, the list goes straight back to the playhead
-        layout::trailing(ui, rtl, |ui| {
-            let label = catalog.text("events-follow");
-            let button = IconButton::new(Icon::Crosshair, &label).selected(self.follow_playhead);
-            if ui.add_enabled(self.viewer.is_some(), button).clicked() {
-                self.follow_playhead = !self.follow_playhead;
-                self.pan_to_playhead = self.follow_playhead;
-            }
+    /// How many kills a refinement could not tell about, over the list, and
+    /// nothing while it told about them all. The tab counts the events shown
+    fn unknown_kills_note(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool) {
+        if self.unknown_kills == 0 {
+            return;
+        }
 
-            layout::wrapping_row(ui, rtl, |ui| {
-                let count = FluentValue::from(self.rows.len() as i64);
-                let count = catalog.text_with("demo-events", &[("count", count)]);
-                let look = Look::Color(theme::MUTED);
-                ui.label(text::styled_text(
-                    ui.ctx(),
-                    &count,
-                    rtl,
-                    look,
-                    &theme::secondary(),
-                ));
-
-                if self.unknown_kills > 0 {
-                    let unknown = FluentValue::from(self.unknown_kills as i64);
-                    let unknown = catalog.text_with("events-unknown", &[("count", unknown)]);
-                    let look = Look::Color(theme::WARNING);
-                    ui.label(text::styled_text(
-                        ui.ctx(),
-                        &unknown,
-                        rtl,
-                        look,
-                        &theme::secondary(),
-                    ));
-                    widgets::help(ui, &catalog.text("help-unknown"), rtl);
-                }
-            });
+        layout::wrapping_row(ui, rtl, |ui| {
+            let unknown = FluentValue::from(self.unknown_kills as i64);
+            let unknown = catalog.text_with("events-unknown", &[("count", unknown)]);
+            let look = Look::Color(theme::WARNING);
+            ui.label(text::styled_text(
+                ui.ctx(),
+                &unknown,
+                rtl,
+                look,
+                &theme::secondary(),
+            ));
+            widgets::help(ui, &catalog.text("help-unknown"), rtl);
         });
     }
 

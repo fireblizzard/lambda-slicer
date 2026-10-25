@@ -281,11 +281,6 @@ mode-bullets = balles
 mode-single = simple
 mode-double = double
 mode-rapid = rapide
-demo-events = { $count ->
-    [one] { $count } événement
-    [many] { $count } d’événements
-   *[other] { $count } événements
-}
 
 column-date = Date
 column-file-date = Date du fichier
@@ -300,6 +295,9 @@ timeline-window = N° { $rank } { NUMBER($score, minimumFractionDigits: 2) } · 
 scores-final = Scores finaux, à la dernière élimination { $time }
 scores-at = Scores à { $time }
 scores-show-final = Voir les scores finaux
+scores-spectators = Spectateurs
+pane-fill = Lui donner tout le panneau latéral
+pane-share = Partager le panneau latéral moitié-moitié
 scores-frags = Frags
 scores-deaths = Morts
 
@@ -387,6 +385,9 @@ events-unknown = { $count ->
    *[other] { $count } éliminations manquent de données pour trancher
 }
 help-unknown = Un mouvement que l’enregistrement n’a pas pu voir compte comme inconnu, jamais comme au sol ou à l’arrêt, donc ces éliminations sont exclues.
+events-filters = Filtres
+events-filters-on = Filtres ({ $count })
+events-kinds-none = Aucun événement
 events-follow = Garder la liste sur le moment actuel pendant la lecture de la démo. Faire défiler la liste désactive cette option.
 clip-it = Clipper
 badge-headshot = TT

@@ -154,32 +154,49 @@ told apart share one lane, last.
 - **Selecting.** Hovering a mark shows its time, player and action. Clicking a mark selects its
   event, and clicking anywhere else goes there.
 
+### Side panel
+
+The panel beside the player has the scoreboard on top and the Events and Clips tabs under it. The
+scoreboard takes the height its scores need, up to half the panel, and the lists the rest.
+Dragging the line between them shares the panel another way, kept across demos and runs, and a
+double click on it goes back to what the scoreboard needs. Restoring the layout in Settings
+forgets it too. The triangle before either one's title gives it the whole panel and folds the
+other to its title, and a click on either while one is folded shares the panel again. Choosing a
+tab, or anything that shows a list such as choosing a clip, unfolds the lists. `--tab scoreboard`
+starts with the scoreboard taking the whole panel.
+
 ### Events
 
 The Events tab lists every event in order with its time, the players and the weapon. Kills show
 badges for headshots, midair kills, speed, wallgauss, suicides and team kills, and hovering a kill
 explains how it was worked out.
 
-- **Shown.** Kills, shots, weapon switches, other actions, chat and match events (votes,
-  timeouts, pauses, sudden death) can each be shown or hidden. A weapon and a player name narrow
-  the list.
+- **Shown.** One menu over the list with a checkbox for each kind: kills, chat, match
+  events (votes, timeouts, pauses, sudden death), shots, weapon switches and other actions.
+- **Filters.** The button before that menu opens the rest, folded at first: a weapon and a player
+  name that narrow the list, and the kill refinements. It counts those on, such as Filters (2),
+  and they stay open across demos for the session. The tab's title counts the events shown.
 - **Kills with.** Midair, speed and wallgauss narrow the kills further. Wallgauss follows each
   gauss shot through the map, so it needs the game's files and checks the kills in the background
   ([analysis](analysis-profile.md)).
-- **Jump to highlight** lists the five most intense minutes, the best one marked Golden minute,
+- **Jump to highlight**, in the timeline's heading, lists the five most intense minutes, the best one marked Golden minute,
   with their score, time and frags per side. Choosing one goes there, and Clip this intense moment
   clips it.
 - **Following.** While the demo plays, the list keeps the current moment in view. Scrolling it by
-  hand stops that, and the button at its top right brings it back.
+  hand stops that, and the button at the end of the filters' row brings it back.
 - At the bottom, the previous and next event buttons (Ctrl+Left and Ctrl+Right), Play event, which
   plays the event with the clip padding around it, and Clip it.
 
 ### Scoreboard
 
-The Scoreboard tab has one table per team with its total and each player's frags and deaths, two
-tables for a duel, and one ranked table for three or more players without teams. It shows the
-final scores, as they stood at the last kill, until an event is selected, then the scores at that
-moment. Players who left drop out, as on the game's own scoreboard, and a team's `TeamScore`
+The scoreboard has one table per team with its total and each player's frags and deaths, two
+tables for a duel, and one ranked table for three or more players without teams, and the players
+spectating at that moment under them. It shows the final scores, as they stood at the last kill,
+when the demo opens, and from the first time the playhead plays or moves the scores where it is,
+updated as it plays. Show final scores goes back to the final ones until the playhead moves
+again. Without the game's files there is no playhead, and the scores are at the selected event.
+A player counts as spectating from AG's message that they started until the one that they play
+again, and moves from the tables to the spectators while they watch. Players who left drop out, as on the game's own scoreboard, and a team's `TeamScore`
 overrides its players' sum. The last kill decides the result because players often leave between
 the end of a game and the end of the recording.
 

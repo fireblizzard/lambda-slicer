@@ -281,11 +281,6 @@ mode-bullets = balas
 mode-single = simples
 mode-double = duplo
 mode-rapid = rápido
-demo-events = { $count ->
-    [one] { $count } evento
-    [many] { $count } de eventos
-   *[other] { $count } eventos
-}
 
 column-date = Data
 column-file-date = Data do arquivo
@@ -300,6 +295,9 @@ timeline-window = Nº { $rank } { NUMBER($score, minimumFractionDigits: 2) } · 
 scores-final = Placar final, no último abate { $time }
 scores-at = Placar em { $time }
 scores-show-final = Ver placar final
+scores-spectators = Espectadores
+pane-fill = Dar o painel lateral inteiro para esta parte
+pane-share = Dividir o painel lateral meio a meio
 scores-frags = Abates
 scores-deaths = Mortes
 
@@ -387,6 +385,9 @@ events-unknown = { $count ->
    *[other] { $count } abates não têm dados para dizer
 }
 help-unknown = O movimento que a gravação não conseguiu ver conta como desconhecido, nunca como no chão ou parado, então esses abates ficam de fora.
+events-filters = Filtros
+events-filters-on = Filtros ({ $count })
+events-kinds-none = Nenhum evento
 events-follow = Manter a lista no momento atual enquanto a demo é reproduzida. Rolar a lista desativa isso.
 clip-it = Clipar
 badge-headshot = HS

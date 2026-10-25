@@ -320,14 +320,6 @@ mode-bullets = رصاص
 mode-single = مفرد
 mode-double = مزدوج
 mode-rapid = سريع
-demo-events = { $count ->
-    [zero] لا أحداث
-    [one] حدث واحد
-    [two] حدثان
-    [few] { $count } أحداث
-    [many] { $count } حدثًا
-   *[other] { $count } حدث
-}
 
 column-date = التاريخ
 column-file-date = تاريخ الملف
@@ -342,6 +334,9 @@ timeline-window = رقم { $rank } { NUMBER($score, minimumFractionDigits: 2) } 
 scores-final = النتائج النهائية عند آخر قتل { $time }
 scores-at = النتائج عند { $time }
 scores-show-final = عرض النتائج النهائية
+scores-spectators = المشاهدون
+pane-fill = منحه اللوحة الجانبية كاملة
+pane-share = تقاسم اللوحة الجانبية مناصفة
 scores-frags = القتلات
 scores-deaths = الوفيات
 
@@ -435,6 +430,9 @@ events-unknown = { $count ->
    *[other] { $count } عملية قتل تنقصها البيانات اللازمة للحكم
 }
 help-unknown = الحركة التي لم يستطع التسجيل رؤيتها تُعدّ مجهولة، ولا تُعدّ أبدًا وقوفًا على الأرض أو ثباتًا، لذا تُستبعد هذه القتلات.
+events-filters = المرشحات
+events-filters-on = المرشحات ({ $count })
+events-kinds-none = لا توجد أحداث
 events-follow = أبقِ القائمة على اللحظة الحالية أثناء تشغيل التسجيل. تمرير القائمة يوقف ذلك.
 clip-it = أنشئ مقطعًا
 badge-headshot = HS

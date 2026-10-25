@@ -13,6 +13,7 @@ use fluent_bundle::FluentValue;
 use lambda_slicer_core::analysis::weapons::Weapon;
 use lambda_slicer_core::timeline::time::DemoTime;
 
+use super::events::{HIGHLIGHT_LEAST, HIGHLIGHT_WIDTH};
 use super::track::{self, Side, Surface, Target, Transform};
 use super::{
     Chooser, DemoAction, DemoView, Drag, Edge, KILL_COLOR, MarkerCache, WINDOW_TINT, secs,
@@ -55,6 +56,10 @@ const PRECISE_VIEW: f32 = 10.;
 
 /// A heading this wide has room for the legend beside its title
 const LEGEND_ROOM: f32 = 760.;
+
+/// About how wide the timeline's heading is without its highlight menu,
+/// the title and the controls at its trailing end
+const HEADING_CONTROLS: f32 = 480.;
 
 /// A legend swatch, and the most kill colours it shows
 const SWATCH: f32 = 8.;
@@ -223,13 +228,26 @@ impl DemoView {
         self.chooser_ui(ui, catalog, rtl);
     }
 
-    /// The title and legend, then from the trailing end the buttons to fit
-    /// and zoom, the lanes toggle, help and the stretch in view
+    /// The title, the highlights to jump to and the legend, then from the
+    /// trailing end the buttons to fit and zoom, the lanes toggle, help and
+    /// the stretch in view. The highlight menu narrows before the legend
+    /// goes
     fn timeline_heading(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool) {
         let room = ui.available_width();
+        let model = self.model.clone();
+        let highlights = model.as_ref().is_some_and(|m| !m.windows.is_empty());
+        let legend_room = if highlights {
+            LEGEND_ROOM + HIGHLIGHT_WIDTH
+        } else {
+            LEGEND_ROOM
+        };
         layout::row(ui, rtl, |ui| {
             widgets::section_title(ui, &catalog.text("timeline-title"), rtl);
-            if room >= LEGEND_ROOM {
+            if let Some(model) = &model {
+                let width = (room - HEADING_CONTROLS).clamp(HIGHLIGHT_LEAST, HIGHLIGHT_WIDTH);
+                self.highlight_menu(ui, catalog, rtl, model, width);
+            }
+            if room >= legend_room {
                 self.legend_inline(ui, catalog, rtl);
             }
 

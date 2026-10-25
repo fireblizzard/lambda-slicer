@@ -1,6 +1,7 @@
-//! The Scoreboard tab, the standings at the selected event or the final
-//! ones, a table per team or per player of a duel and one ranked table for
-//! anything else
+//! The scoreboard over the events, the final standings until the playhead
+//! moves and then the standings where it is, or at the selected event
+//! without a viewer. A table per team or per player of a duel and one
+//! ranked table for anything else, and the spectators under them
 //!
 //! Other players' kills and shots often happen outside what the recording
 //! client receives, so their headshots and accuracy are incomplete. Only
@@ -8,12 +9,13 @@
 //! too, since every kill there is of the recording player, whose death the
 //! recording always shows. Anything not shown is a dash, never a zero
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use eframe::egui::{self, Align2, Color32, FontId, Pos2, Rangef, Rect, Sense, Ui, Vec2};
 use fluent_bundle::FluentValue;
 use lambda_slicer_core::analysis::accuracy::accuracy;
 use lambda_slicer_core::analysis::context::{PlayerScore, StandingSide, standing_at};
+use lambda_slicer_core::analysis::match_events::MatchChange;
 use lambda_slicer_core::timeline::time::DemoTime;
 
 use super::{DemoAction, DemoView};
@@ -21,7 +23,7 @@ use crate::i18n::Catalog;
 use crate::layout;
 use crate::text::{self, Look};
 use crate::theme;
-use crate::timeline::{EventKind, Model};
+use crate::timeline::{EventKind, LaneKey, Model};
 use crate::widgets::{self, Variant};
 
 /// How many number columns a table has, accuracy, headshots, kills per
@@ -92,13 +94,20 @@ fn clock(time: f32) -> String {
 
 impl DemoView {
     /// The heading saying whose moment the scores are of, the two sides'
-    /// totals when they compare, and the tables
-    pub(super) fn scores_tab(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool) {
+    /// totals when they compare, the tables and the spectators. Returns how
+    /// much of them is scrolled out of view
+    pub(super) fn scores_tab(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool) -> f32 {
         let Some(model) = self.model.clone() else {
-            return;
+            return 0.;
         };
 
-        let selected = self.selected.and_then(|i| model.events.get(i));
+        // With a viewer the scores follow the playhead once it moves, and
+        // without one they are at the selected event
+        let live = self.live_moment(&model);
+        let selected = match self.viewer {
+            Some(_) => None,
+            None => self.selected.and_then(|i| model.events.get(i)),
+        };
 
         // The final scores are of the map played longest, since a demo may
         // end with a few moments of the next one
@@ -110,22 +119,21 @@ impl DemoView {
 
         // The selected event's moment, or the last kill for the final scores,
         // since players often leave once a game is over
-        let (segment, at) = match (selected, last_kill) {
-            (Some(e), _) | (None, Some(e)) => (e.segment, e.time),
-            (None, None) => {
+        let (segment, at) = match (live, selected, last_kill) {
+            (Some(moment), _, _) => moment,
+            (None, Some(e), _) | (None, None, Some(e)) => (e.segment, e.time),
+            (None, None, None) => {
                 let last = model.score_updates.last().map_or(0, |u| u.segment);
                 (longest.unwrap_or(last), f32::INFINITY)
             }
         };
-        let heading = match (selected, last_kill) {
-            (Some(e), _) => {
-                let time = FluentValue::from(clock(e.time));
-                catalog.text_with("scores-at", &[("time", time)])
-            }
-            (None, kill) => {
-                let time = FluentValue::from(kill.map(|e| clock(e.time)).unwrap_or_default());
-                catalog.text_with("scores-final", &[("time", time)])
-            }
+        let not_final = live.is_some() || selected.is_some();
+        let heading = if not_final {
+            let time = FluentValue::from(clock(at));
+            catalog.text_with("scores-at", &[("time", time)])
+        } else {
+            let time = FluentValue::from(last_kill.map(|e| clock(e.time)).unwrap_or_default());
+            catalog.text_with("scores-final", &[("time", time)])
         };
 
         layout::wrapping_row(ui, rtl, |ui| {
@@ -137,7 +145,7 @@ impl DemoView {
                 look,
                 &theme::secondary(),
             ));
-            if selected.is_some() {
+            if not_final {
                 let label = catalog.text("scores-show-final");
                 let label = text::widget_text(ui.ctx(), &label, rtl, None, Look::Plain);
                 let button = widgets::Button::new(None, label, Variant::Ghost, rtl);
@@ -148,8 +156,9 @@ impl DemoView {
         });
         ui.add_space(theme::GAP_S);
 
-        let tables = score_tables(&model, segment, at);
-        if tables.is_empty() {
+        let watching = spectators(&model, segment, at);
+        let tables = score_tables(&model, segment, at, &watching);
+        if tables.is_empty() && watching.is_empty() {
             let none = catalog.text("scores-none");
             ui.label(text::widget_text(
                 ui.ctx(),
@@ -158,12 +167,16 @@ impl DemoView {
                 None,
                 Look::Color(theme::MUTED),
             ));
-            return;
+            return 0.;
         }
 
-        egui::ScrollArea::vertical()
+        // As tall as the scores, up to the room there is
+        // Names are never cut short, so tables too wide for the panel scroll
+        // sideways to their last numbers
+        let names = names_width(ui, catalog, &tables);
+        let scrolled = egui::ScrollArea::both()
             .id_salt(("scores", self.generation))
-            .auto_shrink(false)
+            .auto_shrink([false, true])
             .show(ui, |ui| {
                 let frags: Vec<i32> = tables.iter().map(|t| t.frags).collect();
                 if tables.len() == 2 && tables[0].title.is_some() && comparable(&frags) {
@@ -172,15 +185,114 @@ impl DemoView {
                 }
 
                 for table in &tables {
-                    side_table(ui, catalog, rtl, table);
+                    side_table(ui, catalog, rtl, table, names);
                     ui.add_space(TABLE_GAP);
                 }
+                spectator_list(ui, catalog, rtl, &watching, model.recorder);
             });
+        (scrolled.content_size.y - scrolled.inner_rect.height()).max(0.)
+    }
+
+    /// The playhead's session and time once the scoreboard follows it,
+    /// from the first time the playhead plays or moves after the demo
+    /// opened or the final scores were asked for. None without a viewer
+    fn live_moment(&mut self, model: &Model) -> Option<(u32, f32)> {
+        let viewer = self.viewer.as_ref()?;
+        let (time, playing) = (viewer.time(), viewer.is_playing());
+        if !self.scores_live {
+            let moved = self.scores_still.is_some_and(|still| still != time);
+            if !playing && !moved {
+                self.scores_still = Some(time);
+                return None;
+            }
+            self.scores_live = true;
+        }
+
+        let segment = DemoTime::from_f32(time).and_then(|t| model.groups.segment_at(t))?;
+        Some((segment, time))
     }
 }
 
-/// The tables of the standings in `segment` at `at`
-fn score_tables(model: &Model, segment: u32, at: f32) -> Vec<SideTable> {
+/// The players spectating in `segment` at `at`, by slot and incarnation,
+/// with their names, as their last switch before then left them. Those
+/// who had left the server by then are left out
+fn spectators(model: &Model, segment: u32, at: f32) -> BTreeMap<(u8, u32), String> {
+    let mut watching = BTreeMap::new();
+    for event in &model.events {
+        if event.segment != segment || event.time > at {
+            continue;
+        }
+        let spectating = match event.kind {
+            EventKind::Match(MatchChange::Spectating) => true,
+            EventKind::Match(MatchChange::Playing) => false,
+            _ => continue,
+        };
+        let Some(LaneKey::Player {
+            slot, incarnation, ..
+        }) = model.lanes.get(event.lane).map(|l| l.key)
+        else {
+            continue;
+        };
+
+        let key = (slot, incarnation);
+        if spectating {
+            let name = event.actor.as_deref().unwrap_or_default();
+            watching.insert(key, text::player_name(name));
+        } else {
+            watching.remove(&key);
+        }
+    }
+
+    for update in &model.score_updates {
+        if update.segment == segment && update.time <= at && update.left {
+            watching.remove(&(update.player.slot, update.player.incarnation));
+        }
+    }
+    watching
+}
+
+/// The spectators under the tables, the recorder marked as in the tables,
+/// nothing when nobody spectates
+fn spectator_list(
+    ui: &mut Ui,
+    catalog: &Catalog,
+    rtl: bool,
+    watching: &BTreeMap<(u8, u32), String>,
+    recorder: Option<(u8, u32)>,
+) {
+    if watching.is_empty() {
+        return;
+    }
+
+    let title = catalog.text("scores-spectators");
+    let title = text::styled_text(
+        ui.ctx(),
+        &title,
+        rtl,
+        Look::Color(theme::MUTED),
+        &theme::secondary(),
+    );
+    layout::column(ui, rtl, |ui| ui.label(title));
+    for (key, name) in watching {
+        let line = if Some(*key) == recorder {
+            let name = FluentValue::from(name.clone());
+            catalog.text_with("lane-recorder", &[("name", name)])
+        } else {
+            name.clone()
+        };
+        let line = text::widget_text(ui.ctx(), &line, text::starts_rtl(name), None, Look::Plain);
+        layout::column(ui, rtl, |ui| ui.label(line));
+    }
+}
+
+/// The tables of the standings in `segment` at `at`, the players among
+/// `watching` left out, as they show among the spectators
+fn score_tables(
+    model: &Model,
+    segment: u32,
+    at: f32,
+    watching: &BTreeMap<(u8, u32), String>,
+) -> Vec<SideTable> {
     let standing = standing_at(&model.score_updates, &model.team_score_updates, segment, at);
     let recorder = model.recorder;
 
@@ -239,11 +351,12 @@ fn score_tables(model: &Model, segment: u32, at: f32) -> Vec<SideTable> {
             accuracy,
         }
     };
+    let playing = |p: &&PlayerScore| !watching.contains_key(&(p.slot, p.incarnation));
     let table = |side: &StandingSide, title: bool| SideTable {
         title: title.then(|| text::player_name(&side.name)),
         colour: theme::team_colour(&side.name),
         frags: side.frags,
-        players: side.players.iter().map(row).collect(),
+        players: side.players.iter().filter(playing).map(row).collect(),
     };
 
     // Teams and the two sides of a duel get a table each, and anything else
@@ -257,7 +370,7 @@ fn score_tables(model: &Model, segment: u32, at: f32) -> Vec<SideTable> {
 
     let mut players = Vec::new();
     for side in &standing.sides {
-        players.extend(side.players.iter().map(row));
+        players.extend(side.players.iter().filter(playing).map(row));
     }
     vec![SideTable {
         title: None,
@@ -318,7 +431,7 @@ fn totals(ui: &mut Ui, rtl: bool, tables: &[SideTable]) {
 
 /// A side's title, then its players under a heading of what each column
 /// holds
-fn side_table(ui: &mut Ui, catalog: &Catalog, rtl: bool, table: &SideTable) {
+fn side_table(ui: &mut Ui, catalog: &Catalog, rtl: bool, table: &SideTable, names: f32) {
     if let Some(title) = &table.title {
         let line = format!("{title}  {}", table.frags);
         let look = Look::Color(table.colour);
@@ -356,13 +469,18 @@ fn side_table(ui: &mut Ui, catalog: &Catalog, rtl: bool, table: &SideTable) {
         *width = width.max(title.size().x + COLUMN_GAP);
     }
 
-    let cells = table_row(
+    // The names' column `names` wide, and the numbers' after it, or the
+    // whole panel when it is wider
+    let numbers_width: f32 = widths.iter().sum();
+    let row_width = (names + numbers_width).max(ui.available_width());
+
+    let (_, cells) = table_row(
         ui,
         rtl,
         &catalog.text("scores-player"),
         false,
         &header,
-        &widths,
+        (&widths, row_width),
         theme::FAINT,
     );
 
@@ -394,13 +512,13 @@ fn side_table(ui: &mut Ui, catalog: &Catalog, rtl: bool, table: &SideTable) {
             player.deaths.to_string(),
             player.frags.to_string(),
         ];
-        let cells = table_row(
+        let (row, cells) = table_row(
             ui,
             rtl,
             &player.name,
             player.recorder,
             &numbers,
-            &widths,
+            (&widths, row_width),
             theme::FOREGROUND,
         );
 
@@ -408,39 +526,61 @@ fn side_table(ui: &mut Ui, catalog: &Catalog, rtl: bool, table: &SideTable) {
             let name = FluentValue::from(player.name.clone());
             let mine = catalog.text_with("lane-recorder", &[("name", name)]);
             let id = ui.scope_id().with(("recorder row", player.name.as_str()));
-            let name_cell = row_name_cell(ui, rtl, &cells);
+            let name_cell = row_name_cell(row, rtl, &cells);
             ui.interact(name_cell, id, Sense::hover())
                 .on_hover_text(mine);
         }
     }
 }
 
-/// The part of a row left of its numbers, or right of them in a
-/// right-to-left interface
-fn row_name_cell(ui: &Ui, rtl: bool, cells: &[Rect; COLUMNS]) -> Rect {
-    let row = cells[0].y_range();
-    let last = &cells[COLUMNS - 1];
-    let across = if rtl {
-        Rangef::new(last.max.x, ui.max_rect().max.x)
-    } else {
-        Rangef::new(ui.max_rect().min.x, last.min.x)
+/// How wide the names' column must be for every player's whole name in
+/// `tables`, the recorder's with their mark, and for its heading
+fn names_width(ui: &Ui, catalog: &Catalog, tables: &[SideTable]) -> f32 {
+    let font = egui::TextStyle::Body.resolve(ui.style());
+    let width = |name: String| {
+        let galley = ui.fonts_mut(|f| f.layout_no_wrap(name, font.clone(), Color32::PLACEHOLDER));
+        galley.size().x
     };
-    Rect::from_x_y_ranges(across, row)
+
+    let mut widest = width(catalog.text("scores-player"));
+    for table in tables {
+        for player in &table.players {
+            let mark = if player.recorder {
+                RECORDER_MARK * 2. + theme::GAP_XS
+            } else {
+                0.
+            };
+            widest = widest.max(width(player.name.clone()) + mark);
+        }
+    }
+    widest + theme::GAP_S
 }
 
-/// One row of a table, the name cut short to leave the numbers their
-/// columns `widths` wide, and the recorder marked beside their name.
-/// Returns where each number was drawn, accuracy first
+/// The part of the `row` left of its numbers, or right of them in a
+/// right-to-left interface
+fn row_name_cell(row: Rect, rtl: bool, cells: &[Rect; COLUMNS]) -> Rect {
+    let last = &cells[COLUMNS - 1];
+    let across = if rtl {
+        Rangef::new(last.max.x, row.max.x)
+    } else {
+        Rangef::new(row.min.x, last.min.x)
+    };
+    Rect::from_x_y_ranges(across, row.y_range())
+}
+
+/// One row of a table `width` wide, the numbers in their columns `widths`
+/// wide and the name in what they leave, cut short only when that is too
+/// little, with the recorder marked beside their name. Returns the row and
+/// where each number was drawn, accuracy first
 fn table_row(
     ui: &mut Ui,
     rtl: bool,
     name: &str,
     recorder: bool,
     numbers: &[String; COLUMNS],
-    widths: &[f32; COLUMNS],
+    (widths, width): (&[f32; COLUMNS], f32),
     colour: Color32,
-) -> [Rect; COLUMNS] {
-    let width = ui.available_width();
+) -> (Rect, [Rect; COLUMNS]) {
     let (rect, _) = ui.allocate_exact_size(Vec2::new(width, ROW_HEIGHT), Sense::hover());
     let painter = ui.painter();
 
@@ -522,12 +662,85 @@ fn table_row(
         );
     }
 
-    cells
+    (rect, cells)
 }
 
 #[cfg(test)]
 mod tests {
+    use lambda_slicer_core::analysis::context::ScoreUpdate;
+    use lambda_slicer_core::state::PlayerIdentity;
+
     use super::*;
+    use crate::timeline::{Event, Lane};
+
+    /// A lane of the player in `slot`
+    fn lane(slot: u8) -> Lane {
+        Lane {
+            key: LaneKey::Player {
+                segment: 0,
+                slot,
+                incarnation: 0,
+            },
+            names: Vec::new(),
+            recorder: false,
+            marks: Vec::new(),
+            spans: Vec::new(),
+        }
+    }
+
+    /// The player in `lane` starting to spectate, or to play again, at `time`
+    fn switch(lane: usize, name: &str, time: f32, spectating: bool) -> Event {
+        let change = if spectating {
+            MatchChange::Spectating
+        } else {
+            MatchChange::Playing
+        };
+        Event {
+            segment: 0,
+            time,
+            lane,
+            actor: Some(name.into()),
+            weapon: None,
+            kind: EventKind::Match(change),
+        }
+    }
+
+    #[test]
+    fn spectators_are_those_whose_last_switch_was_to_spectate_and_who_stayed() {
+        let left = ScoreUpdate {
+            segment: 0,
+            time: 30.,
+            player: PlayerIdentity {
+                segment: 0,
+                slot: 3,
+                user_id: 3,
+                incarnation: 0,
+                name: "gone".into(),
+            },
+            team: String::new(),
+            frags: 0,
+            deaths: 0,
+            left: true,
+        };
+        let model = Model {
+            lanes: vec![lane(1), lane(2), lane(3)],
+            events: vec![
+                switch(0, "watcher", 5., true),
+                switch(1, "back", 5., true),
+                switch(1, "back", 20., false),
+                switch(2, "gone", 10., true),
+            ],
+            score_updates: vec![left],
+            ..Model::default()
+        };
+
+        // Before the second player plays again and the third leaves, all
+        // three watch
+        let names = |at| -> Vec<String> { spectators(&model, 0, at).into_values().collect() };
+        assert_eq!(names(15.), ["watcher", "back", "gone"]);
+        assert_eq!(names(40.), ["watcher"]);
+        assert!(names(1.).is_empty());
+    }
 
     #[test]
     fn kills_per_death_divide_by_one_for_a_player_who_never_died() {

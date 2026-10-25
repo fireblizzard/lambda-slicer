@@ -265,10 +265,6 @@ mode-bullets = bullets
 mode-single = single
 mode-double = double
 mode-rapid = rapid
-demo-events = { $count ->
-    [one] { $count } event
-   *[other] { $count } events
-}
 
 column-date = Date
 column-file-date = File date
@@ -283,6 +279,9 @@ timeline-window = #{ $rank } { NUMBER($score, minimumFractionDigits: 2) } · { $
 scores-final = Final scores, at the last kill { $time }
 scores-at = Scores at { $time }
 scores-show-final = Show final scores
+scores-spectators = Spectators
+pane-fill = Give it the whole side panel
+pane-share = Share the side panel half and half
 scores-frags = Frags
 scores-deaths = Deaths
 
@@ -368,6 +367,9 @@ events-unknown = { $count ->
    *[other] { $count } kills lack the data to tell
 }
 help-unknown = Movement the recording couldn't see counts as unknown, never as on the ground or standing still, so these kills are left out.
+events-filters = Filters
+events-filters-on = Filters ({ $count })
+events-kinds-none = No events
 events-follow = Keep the list on the current moment while the demo plays. Scrolling the list turns this off.
 clip-it = Clip it
 badge-headshot = HS

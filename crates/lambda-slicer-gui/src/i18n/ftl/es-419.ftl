@@ -281,11 +281,6 @@ mode-bullets = balas
 mode-single = simple
 mode-double = doble
 mode-rapid = rápido
-demo-events = { $count ->
-    [one] { $count } evento
-    [many] { $count } de eventos
-   *[other] { $count } eventos
-}
 
 column-date = Fecha
 column-file-date = Fecha del archivo
@@ -300,6 +295,9 @@ timeline-window = N.º { $rank } { NUMBER($score, minimumFractionDigits: 2) } ·
 scores-final = Puntajes finales, en la última baja { $time }
 scores-at = Puntajes a las { $time }
 scores-show-final = Ver puntajes finales
+scores-spectators = Espectadores
+pane-fill = Darle todo el panel lateral
+pane-share = Compartir el panel lateral mitad y mitad
 scores-frags = Bajas
 scores-deaths = Muertes
 
@@ -387,6 +385,9 @@ events-unknown = { $count ->
    *[other] A { $count } bajas les faltan datos para saberlo
 }
 help-unknown = El movimiento que la grabación no pudo ver cuenta como desconocido, nunca como en el suelo o quieto, así que estas bajas quedan fuera.
+events-filters = Filtros
+events-filters-on = Filtros ({ $count })
+events-kinds-none = Sin eventos
 events-follow = Mantener la lista en el momento actual mientras se reproduce la demo. Si haces scroll en la lista, se desactiva.
 clip-it = Clipear
 badge-headshot = HS

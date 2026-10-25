@@ -264,10 +264,6 @@ mode-bullets = luodit
 mode-single = yksittäinen
 mode-double = kaksois
 mode-rapid = nopea
-demo-events = { $count ->
-    [one] { $count } tapahtuma
-   *[other] { $count } tapahtumaa
-}
 
 column-date = Päiväys
 column-file-date = Tiedoston päiväys
@@ -282,6 +278,9 @@ timeline-window = { $rank }. { NUMBER($score, minimumFractionDigits: 2) } · { $
 scores-final = Lopputulokset viimeisen tapon kohdalla { $time }
 scores-at = Tilanne kohdassa { $time }
 scores-show-final = Näytä lopputulokset
+scores-spectators = Katsojat
+pane-fill = Anna tälle koko sivupaneeli
+pane-share = Jaa sivupaneeli puoliksi
 scores-frags = Fragit
 scores-deaths = Kuolemat
 
@@ -367,6 +366,9 @@ events-unknown = { $count ->
    *[other] { $count } tapon tiedot eivät riitä ratkaisuun
 }
 help-unknown = Liike, jota tallenne ei nähnyt, lasketaan tuntemattomaksi, ei koskaan maassa olemiseksi tai paikallaan seisomiseksi, joten nämä tapot jätetään pois.
+events-filters = Suodattimet
+events-filters-on = Suodattimet ({ $count })
+events-kinds-none = Ei tapahtumia
 events-follow = Pidä luettelo nykyisessä hetkessä, kun demo toistuu. Luettelon vierittäminen poistaa tämän käytöstä.
 clip-it = Klippaa
 badge-headshot = PL

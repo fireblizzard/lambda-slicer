@@ -264,10 +264,6 @@ mode-bullets = Kugeln
 mode-single = einzeln
 mode-double = doppelt
 mode-rapid = schnell
-demo-events = { $count ->
-    [one] { $count } Ereignis
-   *[other] { $count } Ereignisse
-}
 
 column-date = Datum
 column-file-date = Dateidatum
@@ -282,6 +278,9 @@ timeline-window = Nr. { $rank } { NUMBER($score, minimumFractionDigits: 2) } · 
 scores-final = Endstand beim letzten Abschuss { $time }
 scores-at = Stand bei { $time }
 scores-show-final = Endstand zeigen
+scores-spectators = Zuschauer
+pane-fill = Ganzen Seitenbereich nutzen
+pane-share = Seitenbereich halb und halb teilen
 scores-frags = Frags
 scores-deaths = Tode
 
@@ -367,6 +366,9 @@ events-unknown = { $count ->
    *[other] { $count } Abschüssen fehlen die Daten zur Beurteilung
 }
 help-unknown = Bewegung, die die Aufnahme nicht sehen konnte, zählt als unbekannt, nie als am Boden oder stillstehend, daher werden diese Abschüsse ausgelassen.
+events-filters = Filter
+events-filters-on = Filter ({ $count })
+events-kinds-none = Keine Ereignisse
 events-follow = Die Liste beim aktuellen Moment halten, während die Demo läuft. Scrollen in der Liste schaltet das aus.
 clip-it = Clippen
 badge-headshot = KS

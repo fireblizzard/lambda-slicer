@@ -1045,9 +1045,10 @@ impl App {
             d.lanes_open = restored.player_lanes;
         }
 
-        // The inspector forgets the width it was dragged to
+        // The inspector forgets the width and the divider it was dragged to
         self.workspace.list_hidden = restored.layout.list_hidden;
         self.workspace.inspector_width = None;
+        self.workspace.scores_share = None;
         self.workspace.restored += 1;
 
         let locale = restored.locale;

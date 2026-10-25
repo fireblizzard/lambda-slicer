@@ -17,7 +17,9 @@ pub use settings_window::SettingsTab;
 
 use crate::clips::{ClipStore, LoadProblem};
 use crate::content::{GameFolders, Overrides};
-use crate::demo::{self, DemoView, InspectorTab, Request, Setup, Surroundings, WorkspaceUi};
+use crate::demo::{
+    self, DemoView, InspectorTab, PaneSplit, Request, Setup, Surroundings, WorkspaceUi,
+};
 use crate::export::FileNaming;
 use crate::game_setup::{self, Refusal};
 use crate::i18n::{Catalog, Locale};
@@ -112,8 +114,9 @@ pub struct Launch {
     pub viewer_free_at: Option<([f32; 3], [f32; 3])>,
     /// The map's best player to follow, the first at 1
     pub viewer_follow: Option<usize>,
-    /// The inspector tab shown at start
+    /// The inspector tab shown at start, and how its panes share it
     pub tab: InspectorTab,
+    pub split: PaneSplit,
     /// The settings window's section shown at start
     pub section: SettingsTab,
 }
@@ -397,7 +400,9 @@ impl App {
             brand: None,
             workspace: WorkspaceUi {
                 inspector_tab: launch.tab,
+                split: launch.split,
                 inspector_width: settings_layout.inspector_width,
+                scores_share: settings_layout.scores_share,
                 list_hidden: settings_layout.list_hidden,
                 ..WorkspaceUi::default()
             },
@@ -902,6 +907,7 @@ impl App {
             layout.list_filters_open = l.list_filters_open;
         }
         layout.list_hidden = self.workspace.list_hidden;
+        layout.scores_share = self.workspace.scores_share;
 
         // The inspector's width only once dragged away from its first one
         if let Some(width) = self.workspace.inspector_width {

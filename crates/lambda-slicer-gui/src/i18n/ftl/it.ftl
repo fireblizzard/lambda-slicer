@@ -277,11 +277,6 @@ mode-bullets = proiettili
 mode-single = singolo
 mode-double = doppio
 mode-rapid = rapido
-demo-events = { $count ->
-    [one] { $count } evento
-    [many] { $count } di eventi
-   *[other] { $count } eventi
-}
 
 column-date = Data
 column-file-date = Data del file
@@ -296,6 +291,9 @@ timeline-window = N. { $rank } { NUMBER($score, minimumFractionDigits: 2) } · {
 scores-final = Punteggi finali, all’ultima uccisione { $time }
 scores-at = Punteggi a { $time }
 scores-show-final = Mostra i punteggi finali
+scores-spectators = Spettatori
+pane-fill = Dagli tutto il pannello laterale
+pane-share = Dividi il pannello laterale a metà
 scores-frags = Frag
 scores-deaths = Morti
 
@@ -383,6 +381,9 @@ events-unknown = { $count ->
    *[other] A { $count } uccisioni mancano i dati per stabilirlo
 }
 help-unknown = Il movimento che la registrazione non ha potuto vedere conta come sconosciuto, mai come a terra o fermo, quindi queste uccisioni restano escluse.
+events-filters = Filtri
+events-filters-on = Filtri ({ $count })
+events-kinds-none = Nessun evento
 events-follow = Tieni l’elenco sul momento attuale mentre la demo è in riproduzione. Scorrere l’elenco lo disattiva.
 clip-it = Clippa
 badge-headshot = CT

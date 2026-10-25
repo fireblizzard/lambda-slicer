@@ -240,9 +240,6 @@ mode-bullets = 子弹
 mode-single = 单发
 mode-double = 双发
 mode-rapid = 速射
-demo-events = { $count ->
-   *[other] { $count } 个事件
-}
 
 column-date = 日期
 column-file-date = 文件日期
@@ -257,6 +254,9 @@ timeline-window = 第 { $rank } 名 { NUMBER($score, minimumFractionDigits: 2) }
 scores-final = 最终比分（最后一次击杀 { $time }）
 scores-at = { $time } 时的比分
 scores-show-final = 显示最终比分
+scores-spectators = 观战者
+pane-fill = 占满整个侧边栏
+pane-share = 侧边栏上下各占一半
 scores-frags = 击杀
 scores-deaths = 死亡
 
@@ -340,6 +340,9 @@ events-unknown = { $count ->
    *[other] { $count } 次击杀缺少判断所需的数据
 }
 help-unknown = 录像无法看到的移动计为未知，绝不计为在地面或静止，因此这些击杀被排除。
+events-filters = 筛选
+events-filters-on = 筛选（{ $count }）
+events-kinds-none = 没有事件
 events-follow = 播放录像时让列表停在当前时刻。滚动列表会关闭此功能。
 clip-it = 剪辑
 badge-headshot = 爆头

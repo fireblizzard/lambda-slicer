@@ -249,10 +249,6 @@ mode-bullets = mermi
 mode-single = tekli
 mode-double = çift
 mode-rapid = seri
-demo-events = { $count ->
-    [one] { $count } olay
-   *[other] { $count } olay
-}
 
 column-date = Tarih
 column-file-date = Dosya tarihi
@@ -267,6 +263,9 @@ timeline-window = { $rank }. { NUMBER($score, minimumFractionDigits: 2) } · { $
 scores-final = Son skorlar, son öldürmede { $time }
 scores-at = { $time } anındaki skorlar
 scores-show-final = Son skorları göster
+scores-spectators = İzleyiciler
+pane-fill = Yan panelin tamamını kapla
+pane-share = Yan paneli yarı yarıya paylaş
 scores-frags = Fraglar
 scores-deaths = Ölümler
 
@@ -352,6 +351,9 @@ events-unknown = { $count ->
    *[other] { $count } öldürmede karar vermek için veri yok
 }
 help-unknown = Kaydın göremediği hareket asla yerde ya da duruyor sayılmaz, bilinmiyor sayılır; bu yüzden bu öldürmeler dışarıda bırakılır.
+events-filters = Filtreler
+events-filters-on = Filtreler ({ $count })
+events-kinds-none = Olay yok
 events-follow = Demo oynatılırken listeyi şu anki anda tut. Listeyi kaydırmak bunu kapatır.
 clip-it = Klip yap
 badge-headshot = KV

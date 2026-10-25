@@ -287,12 +287,6 @@ mode-bullets = pociski
 mode-single = pojedynczy
 mode-double = podwójny
 mode-rapid = szybki
-demo-events = { $count ->
-    [one] { $count } zdarzenie
-    [few] { $count } zdarzenia
-    [many] { $count } zdarzeń
-   *[other] { $count } zdarzenia
-}
 
 column-date = Data
 column-file-date = Data pliku
@@ -307,6 +301,9 @@ timeline-window = Nr { $rank } { NUMBER($score, minimumFractionDigits: 2) } · {
 scores-final = Wyniki końcowe, przy ostatnim zabójstwie { $time }
 scores-at = Wyniki o { $time }
 scores-show-final = Pokaż wyniki końcowe
+scores-spectators = Obserwatorzy
+pane-fill = Daj temu cały panel boczny
+pane-share = Podziel panel boczny po połowie
 scores-frags = Fragi
 scores-deaths = Zgony
 
@@ -396,6 +393,9 @@ events-unknown = { $count ->
    *[other] Dla { $count } zabójstwa brakuje danych, by to ustalić
 }
 help-unknown = Ruch, którego nagranie nie mogło zobaczyć, liczy się jako nieznany, nigdy jako stanie na ziemi czy bezruch, więc te zabójstwa są pomijane.
+events-filters = Filtry
+events-filters-on = Filtry ({ $count })
+events-kinds-none = Brak zdarzeń
 events-follow = Trzymaj listę na bieżącym momencie podczas odtwarzania dema. Przewinięcie listy to wyłącza.
 clip-it = Zrób klip
 badge-headshot = SG

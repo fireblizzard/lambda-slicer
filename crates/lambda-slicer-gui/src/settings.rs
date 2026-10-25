@@ -77,6 +77,9 @@ pub struct LayoutSettings {
     pub list_hidden: bool,
     /// The width the inspector was dragged to, none for its first width
     pub inspector_width: Option<f32>,
+    /// The share of the inspector's height the divider under the scoreboard
+    /// was dragged to give it, none to give it what it needs
+    pub scores_share: Option<f32>,
     /// Where the settings window was left, none to open it in the middle
     pub settings_at: Option<[f32; 2]>,
 }
@@ -88,6 +91,7 @@ impl Default for LayoutSettings {
             list_filters_open: false,
             list_hidden: false,
             inspector_width: None,
+            scores_share: None,
             settings_at: None,
         }
     }
@@ -97,11 +101,13 @@ impl LayoutSettings {
     /// Sizes and places that are numbers, others forgotten
     fn clamped(self) -> Self {
         let width = self.inspector_width.filter(|w| w.is_finite() && *w > 0.);
+        let share = self.scores_share.filter(|s| (0. ..=1.).contains(s));
         let settings_at = self
             .settings_at
             .filter(|at| at.iter().all(|c| c.is_finite()));
         Self {
             inspector_width: width,
+            scores_share: share,
             settings_at,
             ..self
         }

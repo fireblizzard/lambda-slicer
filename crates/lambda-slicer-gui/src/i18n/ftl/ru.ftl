@@ -287,12 +287,6 @@ mode-bullets = пули
 mode-single = одиночный
 mode-double = двойной
 mode-rapid = быстрый
-demo-events = { $count ->
-    [one] { $count } событие
-    [few] { $count } события
-    [many] { $count } событий
-   *[other] { $count } события
-}
 
 column-date = Дата
 column-file-date = Дата файла
@@ -307,6 +301,9 @@ timeline-window = №{ $rank } { NUMBER($score, minimumFractionDigits: 2) } · {
 scores-final = Итоговый счёт на последнем убийстве { $time }
 scores-at = Счёт на { $time }
 scores-show-final = Показать итоговый счёт
+scores-spectators = Наблюдатели
+pane-fill = Отдать всю боковую панель
+pane-share = Поделить боковую панель пополам
 scores-frags = Фраги
 scores-deaths = Смерти
 
@@ -396,6 +393,9 @@ events-unknown = { $count ->
    *[other] Для { $count } убийства не хватает данных, чтобы это определить
 }
 help-unknown = Движение, которое запись не смогла увидеть, считается неизвестным, но никогда — нахождением на земле или неподвижностью, поэтому эти убийства не учитываются.
+events-filters = Фильтры
+events-filters-on = Фильтры ({ $count })
+events-kinds-none = Нет событий
 events-follow = Держать список на текущем моменте во время воспроизведения демозаписи. Прокрутка списка это отключает.
 clip-it = В клип
 badge-headshot = ХШ

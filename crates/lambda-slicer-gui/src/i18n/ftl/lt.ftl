@@ -287,12 +287,6 @@ mode-bullets = kulkos
 mode-single = pavienis
 mode-double = dvigubas
 mode-rapid = greitas
-demo-events = { $count ->
-    [one] { $count } įvykis
-    [few] { $count } įvykiai
-    [many] { $count } įvykio
-   *[other] { $count } įvykių
-}
 
 column-date = Data
 column-file-date = Failo data
@@ -307,6 +301,9 @@ timeline-window = Nr. { $rank } { NUMBER($score, minimumFractionDigits: 2) } · 
 scores-final = Galutiniai rezultatai, ties paskutiniu nužudymu { $time }
 scores-at = Rezultatai ties { $time }
 scores-show-final = Rodyti galutinius rezultatus
+scores-spectators = Stebėtojai
+pane-fill = Užimti visą šoninį skydelį
+pane-share = Padalyti šoninį skydelį per pusę
 scores-frags = Fragai
 scores-deaths = Mirtys
 
@@ -396,6 +393,9 @@ events-unknown = { $count ->
    *[other] { $count } nužudymų neturi duomenų tam nustatyti
 }
 help-unknown = Judėjimas, kurio įrašas negalėjo matyti, laikomas nežinomu, o ne buvimu ant žemės ar stovėjimu vietoje, todėl šie nužudymai neįtraukiami.
+events-filters = Filtrai
+events-filters-on = Filtrai ({ $count })
+events-kinds-none = Nėra įvykių
 events-follow = Laikyti sąrašą ties dabartine akimirka, kol leidžiamas įrašas. Slenkant sąrašą tai išjungiama.
 clip-it = Į klipą
 badge-headshot = ŠG

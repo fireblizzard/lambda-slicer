@@ -133,13 +133,109 @@ pub enum Request {
     Favourite(String),
 }
 
-/// The inspector's tabs beside the view
+/// The tabs of the inspector's lower pane, under the scoreboard
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum InspectorTab {
     #[default]
     Events,
     Clips,
-    Scoreboard,
+}
+
+/// How the inspector's scoreboard and the events and clips under it share
+/// its height
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum PaneSplit {
+    /// Half each
+    #[default]
+    Even,
+    /// The scoreboard takes it all, the events and clips folded to their
+    /// header
+    Scores,
+    /// The events and clips take it all, the scoreboard folded
+    Lists,
+}
+
+impl PaneSplit {
+    /// The split after a click on the scoreboard's header, or the lists'
+    /// when not `scores`. From half each the pane clicked takes it all, and
+    /// a click on either while one is folded goes back to half each, so one
+    /// is always open
+    fn clicked(self, scores: bool) -> Self {
+        match (self, scores) {
+            (PaneSplit::Even, true) => PaneSplit::Scores,
+            (PaneSplit::Even, false) => PaneSplit::Lists,
+            _ => PaneSplit::Even,
+        }
+    }
+}
+
+/// The gap between the inspector's two panes, a line across the panel in
+/// its middle
+const PANE_GAP: f32 = 2. * theme::GAP_M;
+
+/// Which way a fold button's triangle points
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Pointing {
+    Down,
+    Up,
+    /// Along the line, right or left in a right-to-left interface
+    Along,
+}
+
+/// A pane's button that folds or unfolds it, its triangle pointing along
+/// while the panes share the panel, up while this one is folded and down
+/// while it is `full`. Its tooltip says what a click does, the pane taking
+/// the whole panel from sharing it, or both sharing it again
+fn fold_button(
+    ui: &mut Ui,
+    catalog: &Catalog,
+    open: bool,
+    full: bool,
+    rtl: bool,
+) -> egui::Response {
+    let (pointing, tip) = if !open {
+        (Pointing::Up, "pane-share")
+    } else if full {
+        (Pointing::Down, "pane-share")
+    } else {
+        (Pointing::Along, "pane-fill")
+    };
+    fold_triangle(ui, pointing, rtl).on_hover_text(catalog.text(tip))
+}
+
+/// A button that folds or unfolds something, a triangle `pointing` one way
+pub(super) fn fold_triangle(ui: &mut Ui, pointing: Pointing, rtl: bool) -> egui::Response {
+    let side = ui.spacing().interact_size.y;
+    let (rect, response) = ui.allocate_exact_size(Vec2::splat(side), Sense::click());
+    let colour = if response.hovered() {
+        theme::FOREGROUND
+    } else {
+        theme::MUTED
+    };
+
+    let centre = rect.center();
+    let size = side / 6.;
+    let along = if rtl { -1. } else { 1. };
+    let points = match pointing {
+        Pointing::Down => vec![
+            centre + Vec2::new(-size, -size / 2.),
+            centre + Vec2::new(size, -size / 2.),
+            centre + Vec2::new(0., size),
+        ],
+        Pointing::Up => vec![
+            centre + Vec2::new(-size, size / 2.),
+            centre + Vec2::new(size, size / 2.),
+            centre + Vec2::new(0., -size),
+        ],
+        Pointing::Along => vec![
+            centre + Vec2::new(-size / 2. * along, -size),
+            centre + Vec2::new(-size / 2. * along, size),
+            centre + Vec2::new(size * along, 0.),
+        ],
+    };
+    let shape = egui::Shape::convex_polygon(points, colour, egui::Stroke::NONE);
+    ui.painter().add(shape);
+    response
 }
 
 /// How the demo's panes are arranged, kept for the session whichever demo
@@ -147,6 +243,13 @@ pub enum InspectorTab {
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct WorkspaceUi {
     pub inspector_tab: InspectorTab,
+    pub split: PaneSplit,
+    /// The share of the inspector's height the divider was dragged to give
+    /// the scoreboard while both panes are open, none to give it what it
+    /// needs up to half
+    pub scores_share: Option<f32>,
+    /// The event filters are open, rather than folded to their summary
+    pub event_filters_open: bool,
     /// The inspector's width beside the view as last drawn, none before it
     /// was, and its first width before any drag, as the window's width suits
     pub inspector_width: Option<f32>,
@@ -588,6 +691,13 @@ pub struct DemoView {
     /// The timeline's markers for the view last drawn
     markers: Option<MarkerCache>,
     selected: Option<usize>,
+    /// The scoreboard follows the playhead once it has moved since the demo
+    /// opened, or since the final scores were asked for, and shows the
+    /// final scores until then, while the playhead stays where this says
+    scores_live: bool,
+    scores_still: Option<f32>,
+    /// The height the scoreboard's pane needs to show it all, as last drawn
+    scores_needed: Option<f32>,
     /// Events chosen together in the list for copying, with Ctrl or Shift
     /// held or by Ctrl+A. Selecting an event chooses it alone
     marked: BTreeSet<usize>,
@@ -703,6 +813,9 @@ impl DemoView {
             density: None,
             markers: None,
             selected: None,
+            scores_live: false,
+            scores_still: None,
+            scores_needed: None,
             marked: BTreeSet::new(),
             mark_from: None,
             scroll_table: false,
@@ -1527,7 +1640,15 @@ impl DemoView {
                     self.wanted_tab = Some(InspectorTab::Clips);
                 }
             }
-            DemoAction::ShowFinal => self.selected = None,
+            DemoAction::ShowFinal => {
+                // Until the playhead moves again, or without a viewer until
+                // another event is chosen
+                self.scores_live = false;
+                self.scores_still = None;
+                if self.viewer.is_none() {
+                    self.selected = None;
+                }
+            }
         }
     }
 
@@ -1941,8 +2062,9 @@ impl DemoView {
         }
     }
 
-    /// The inspector's tabs with their counts, and the chosen one under
-    /// them
+    /// The scoreboard over the events and clips, sharing the panel's height
+    /// half each or one taking it all while the other is folded to its
+    /// header
     fn inspector(
         &mut self,
         ui: &mut Ui,
@@ -1950,26 +2072,147 @@ impl DemoView {
         rtl: bool,
         workspace: &mut WorkspaceUi,
     ) {
-        // The tabs fill the whole panel, so it keeps its height whatever the
-        // chosen tab holds
-        ui.set_min_height(ui.available_height());
-
+        // A list asked for unfolds
         if let Some(tab) = self.wanted_tab.take() {
             self.choose_tab(workspace, tab);
+            if workspace.split == PaneSplit::Scores {
+                workspace.split = PaneSplit::Even;
+            }
         }
 
+        // A folded pane keeps the room for its header, to be unfolded by it.
+        // Sharing the panel, the scoreboard has the share it was dragged to,
+        // or what it needs up to half
+        let whole = ui.available_rect_before_wrap();
+        let header = ui.spacing().interact_size.y + ui.spacing().item_spacing.y;
+        let usable = (whole.height() - PANE_GAP).max(2. * header);
+        let shared = match (workspace.scores_share, self.scores_needed) {
+            (Some(share), _) => usable * share,
+            (None, Some(needed)) => needed.min(usable / 2.),
+            (None, None) => usable / 2.,
+        };
+        let upper = match workspace.split {
+            PaneSplit::Even => shared.clamp(header, usable - header),
+            PaneSplit::Scores => usable - header,
+            PaneSplit::Lists => header,
+        };
+        let upper_rect = Rect::from_min_size(whole.min, Vec2::new(whole.width(), upper));
+        let mut lower_rect = whole;
+        lower_rect.min.y = upper_rect.max.y + PANE_GAP;
+
+        // The line between the panes drags to share the panel another way,
+        // sharing it again when one was folded, and a double click goes back
+        // to what the scoreboard needs
+        let gap = Rect::from_x_y_ranges(whole.x_range(), upper_rect.max.y..=lower_rect.min.y);
+        let divider = ui
+            .interact(
+                gap,
+                ui.scope_id().with("pane divider"),
+                Sense::click_and_drag(),
+            )
+            .on_hover_cursor(egui::CursorIcon::ResizeVertical);
+        if divider.dragged()
+            && let Some(pointer) = divider.interact_pointer_pos()
+        {
+            let height = (pointer.y - whole.min.y - PANE_GAP / 2.).clamp(header, usable - header);
+            workspace.scores_share = Some(height / usable);
+            workspace.split = PaneSplit::Even;
+        }
+        if divider.double_clicked() {
+            workspace.scores_share = None;
+        }
+
+        // The line runs from edge to edge of the panel, and each pane's
+        // header is on a band of its own, so the lower one's header never
+        // reads as part of the scores above it
+        let divide = upper_rect.max.y + PANE_GAP / 2.;
+        let across = whole.x_range().expand(theme::GAP_S);
+        let colour = if divider.hovered() || divider.dragged() {
+            theme::MUTED
+        } else {
+            theme::HOVER
+        };
+        ui.painter()
+            .hline(across, divide, egui::Stroke::new(1., colour));
+        let band_height = ui.spacing().interact_size.y;
+        for top in [upper_rect.min, lower_rect.min] {
+            let band = Rect::from_min_size(top, Vec2::new(whole.width(), band_height));
+            ui.painter()
+                .rect_filled(band, theme::RADIUS_CONTROL, theme::SURFACE);
+        }
+
+        let mut scores = ui.new_child(egui::UiBuilder::new().max_rect(upper_rect));
+        scores.set_clip_rect(upper_rect.intersect(ui.clip_rect()));
+        self.scores_pane(&mut scores, catalog, rtl, workspace);
+
+        let mut lists = ui.new_child(egui::UiBuilder::new().max_rect(lower_rect));
+        lists.set_clip_rect(lower_rect.intersect(ui.clip_rect()));
+        self.lists_pane(&mut lists, catalog, rtl, workspace);
+
+        // The panes fill the whole panel, so it keeps its height whatever
+        // they hold
+        ui.allocate_rect(whole, Sense::hover());
+    }
+
+    /// The scoreboard's header, which folds or unfolds it, and the scores
+    /// under it while open
+    fn scores_pane(
+        &mut self,
+        ui: &mut Ui,
+        catalog: &Catalog,
+        rtl: bool,
+        workspace: &mut WorkspaceUi,
+    ) {
+        let open = workspace.split != PaneSplit::Lists;
+        let full = workspace.split == PaneSplit::Scores;
+        layout::row(ui, rtl, |ui| {
+            let mut clicked = fold_button(ui, catalog, open, full, rtl).clicked();
+            let title = catalog.text("tab-scoreboard");
+            let title = text::widget_text(ui.ctx(), &title, rtl, None, Look::Plain);
+            clicked |= ui.add(egui::Button::selectable(false, title)).clicked();
+            if clicked {
+                workspace.split = workspace.split.clicked(true);
+            }
+        });
+        if !open {
+            return;
+        }
+
+        // All the scores would fill this much of the panel, scrolled or not
+        ui.separator();
+        let hidden = self.scores_tab(ui, catalog, rtl);
+        self.scores_needed = Some(ui.min_rect().height() + hidden);
+    }
+
+    /// The events and clips' tabs with their counts, after the button that
+    /// folds or unfolds them, and the chosen one under them while open. A
+    /// tab chosen while folded unfolds them
+    fn lists_pane(
+        &mut self,
+        ui: &mut Ui,
+        catalog: &Catalog,
+        rtl: bool,
+        workspace: &mut WorkspaceUi,
+    ) {
+        let open = workspace.split != PaneSplit::Scores;
+        let full = workspace.split == PaneSplit::Lists;
         let events = self.model.as_ref().map(|_| self.rows.len());
         let tabs = [
             (InspectorTab::Events, "tab-events", events),
             (InspectorTab::Clips, "tab-clips", Some(self.clips.len())),
-            (InspectorTab::Scoreboard, "tab-scoreboard", None),
         ];
         layout::row(ui, rtl, |ui| {
+            if fold_button(ui, catalog, open, full, rtl).clicked() {
+                workspace.split = workspace.split.clicked(false);
+            }
             for (tab, id, count) in tabs {
                 let chosen = workspace.inspector_tab == tab;
                 let title = text::widget_text(ui.ctx(), &catalog.text(id), rtl, None, Look::Plain);
                 if ui.add(egui::Button::selectable(chosen, title)).clicked() {
                     self.choose_tab(workspace, tab);
+                    if !open {
+                        workspace.split = PaneSplit::Even;
+                    }
                 }
                 if let Some(count) = count {
                     let count = egui::RichText::new(count.to_string())
@@ -1979,15 +2222,20 @@ impl DemoView {
                 }
             }
         });
-        ui.separator();
+        if !open {
+            return;
+        }
 
+        ui.separator();
         if !self.analysis_ready(ui, catalog, rtl) {
             return;
         }
         match workspace.inspector_tab {
-            InspectorTab::Events => self.events_tab(ui, catalog, rtl),
+            InspectorTab::Events => {
+                let filters_open = &mut workspace.event_filters_open;
+                self.events_tab(ui, catalog, rtl, filters_open);
+            }
             InspectorTab::Clips => self.clips_tab(ui, catalog, rtl),
-            InspectorTab::Scoreboard => self.scores_tab(ui, catalog, rtl),
         }
     }
 
@@ -2121,6 +2369,19 @@ mod tests {
     }
 
     #[test]
+    fn a_click_on_either_pane_from_half_each_gives_it_all_and_any_click_after_halves_again() {
+        let even = PaneSplit::Even;
+        assert_eq!(even.clicked(true), PaneSplit::Scores);
+        assert_eq!(even.clicked(false), PaneSplit::Lists);
+
+        // The open pane clicked or the folded one, both go back to half each
+        for folded in [PaneSplit::Scores, PaneSplit::Lists] {
+            assert_eq!(folded.clicked(true), PaneSplit::Even);
+            assert_eq!(folded.clicked(false), PaneSplit::Even);
+        }
+    }
+
+    #[test]
     fn leaving_the_clips_tab_keeps_a_time_still_being_typed() {
         let mut view = view_typing("00:00:01.500");
         let mut workspace = WorkspaceUi {
@@ -2145,7 +2406,7 @@ mod tests {
             ..Default::default()
         };
 
-        view.choose_tab(&mut workspace, InspectorTab::Scoreboard);
+        view.choose_tab(&mut workspace, InspectorTab::Events);
         assert_eq!(view.clips[0].start, DemoTime::from_micros(1_000_000));
         assert!(!view.clips_changed);
         assert_eq!(view.typing, Some((0, Edge::Start, "1:3x".to_string())));
@@ -2158,7 +2419,7 @@ mod tests {
 
         // Only the clips tab holds the fields, so nothing is typed elsewhere
         // to keep, and what is typed waits for its field
-        view.choose_tab(&mut workspace, InspectorTab::Scoreboard);
+        view.choose_tab(&mut workspace, InspectorTab::Clips);
         assert_eq!(view.clips[0].start, DemoTime::from_micros(1_000_000));
         assert!(view.typing.is_some());
     }

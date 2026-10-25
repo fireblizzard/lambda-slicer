@@ -22,7 +22,7 @@
 //! comma-separated `LIST` on with `--refine`, from `midair`, `both`, `one`,
 //! `speed`, `killer`, `victim` and `wallgauss`, and only events of players
 //! with `TEXT` in their name with `--player`. `--tab` shows the inspector's
-//! `events`, `clips` or `scoreboard` tab, and `--export` exports its clips
+//! `events` or `clips` tab, the scoreboard alone with `scoreboard`, and `--export` exports its clips
 //! into `DIR`. `--settings` opens the settings window, on its `general`,
 //! `library`, `viewer` or `clips` section with `--section` and asking
 //! whether to restore the defaults with `--restore` or to clear the
@@ -97,7 +97,7 @@ use std::path::PathBuf;
 use eframe::egui;
 
 use app::{App, Launch, Screenshot, SettingsTab};
-use demo::InspectorTab;
+use demo::{InspectorTab, PaneSplit};
 use i18n::Locale;
 use kill_filters::{KillFilters, MidairMode, SpeedSubject};
 use settings::Settings;
@@ -141,6 +141,7 @@ fn main() -> eframe::Result {
     let mut player = String::new();
     let mut show = None;
     let mut tab = InspectorTab::default();
+    let mut split = PaneSplit::default();
     let mut section = SettingsTab::default();
     let mut size = [1280., 800.];
     let mut dates = false;
@@ -201,13 +202,11 @@ fn main() -> eframe::Result {
                     _ => SettingsTab::General,
                 }
             }
-            "--tab" => {
-                tab = match args.next().as_deref() {
-                    Some("clips") => InspectorTab::Clips,
-                    Some("scoreboard") => InspectorTab::Scoreboard,
-                    _ => InspectorTab::Events,
-                }
-            }
+            "--tab" => match args.next().as_deref() {
+                Some("clips") => tab = InspectorTab::Clips,
+                Some("scoreboard") => split = PaneSplit::Scores,
+                _ => tab = InspectorTab::Events,
+            },
             "--size" => {
                 if let Some((w, h)) = args.next().as_deref().and_then(|s| s.split_once('x'))
                     && let (Ok(w), Ok(h)) = (w.parse(), h.parse())
@@ -390,6 +389,7 @@ fn main() -> eframe::Result {
                     viewer_free_at,
                     viewer_follow,
                     tab,
+                    split,
                     section,
                     viewer_capture: capture_times.map(|(times, folder)| viewer::Capture {
                         times,
