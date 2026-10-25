@@ -26,7 +26,10 @@ settings-start-tab = Aba ao abrir
 settings-start-tab-hint = A aba da biblioteca mostrada cada vez que o Lambda Slicer abre. Clicar em outra aba ainda mostra essa aba, até você fechar o Lambda Slicer.
 settings-sort = Ordem ao abrir
 settings-sort-hint = Como as demos são ordenadas cada vez que o Lambda Slicer abre. Clicar no título de uma coluna ainda ordena por ela, até você fechar o Lambda Slicer.
-settings-start-filters = Filtros ao abrir
+settings-sprees = Sequências de abates
+settings-sprees-hint = O último abate de um jogador antes de morrer mostra um selo com quantos abates ele fez seguidos, quando são pelo menos esses. Morrer de qualquer jeito encerra a sequência, assim como o fim do mapa ou a saída do jogador. Teamkills não contam.
+settings-spree-least = Pelo menos (abates)
+settings-start-filters =Filtros ao abrir
 settings-start-filters-hint = A biblioteca começa com estes filtros cada vez que o Lambda Slicer abre, para que demos curtas que você nunca quer ver não atrapalhem. Você ainda pode mudar os filtros até fechar o Lambda Slicer.
 settings-hide-unplayed-maps = Em demos com vários mapas, esconder os mapas sem abates e com menos de 5 minutos gravados
 settings-folders = Pastas da biblioteca
@@ -392,6 +395,12 @@ events-kinds-none = Nenhum evento
 events-follow = Manter a lista no momento atual enquanto a demo é reproduzida. Rolar a lista desativa isso.
 clip-it = Clipar
 badge-headshot = HS
+badge-spree = ×{ $count }
+badge-spree-help = { $count ->
+    [one] { $count } abate seguido sem morrer
+    [many] { $count } de abates seguidos sem morrer
+   *[other] { $count } abates seguidos sem morrer
+}
 badge-air = AIR
 badge-air-both = AIR ×2
 speed-ups = { $speed } ups

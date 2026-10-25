@@ -578,6 +578,7 @@ impl App {
             return;
         };
         d.padding = (self.settings.preroll, self.settings.postroll);
+        d.spree_least = self.settings.spree_badge;
         d.export_folder = self.settings.export_folder.clone();
         d.file_naming = FileNaming {
             clip_name: self.settings.clip_name_files,

@@ -26,7 +26,10 @@ settings-start-tab = Skirtukas paleidus
 settings-start-tab-hint = Bibliotekos skirtukas, rodomas kaskart paleidus Lambda Slicer. Spustelėjus kitą skirtuką, vis tiek rodomas jis, kol uždarysite Lambda Slicer.
 settings-sort = Tvarka paleidus
 settings-sort-hint = Kaip įrašai rikiuojami kaskart paleidus Lambda Slicer. Spustelėjus stulpelio antraštę, vis tiek rikiuojama pagal jį, kol uždarysite Lambda Slicer.
-settings-start-filters = Filtrai paleidus
+settings-sprees = Nužudymų serijos
+settings-sprees-hint = Paskutinis žaidėjo nužudymas prieš mirtį gauna ženkliuką, rodantį, kiek nužudymų jis padarė iš eilės, jei jų yra bent tiek. Bet kokia mirtis nutraukia seriją, kaip ir žemėlapio pabaiga ar žaidėjo išėjimas. Savo komandos žaidėjų nužudymai neskaičiuojami.
+settings-spree-least = Bent (nužudymų)
+settings-start-filters =Filtrai paleidus
 settings-start-filters-hint = Kaskart paleidus Lambda Slicer, bibliotekoje įjungiami šie filtrai, kad trumpi įrašai, kurių niekada nenorite matyti, netrukdytų. Filtrus vis tiek galite keisti, kol uždarysite Lambda Slicer.
 settings-hide-unplayed-maps = Kelių žemėlapių įrašuose nerodyti žemėlapių be nužudymų, įrašytų trumpiau nei 5 minutes
 settings-folders = Bibliotekos aplankai
@@ -400,6 +403,13 @@ events-kinds-none = Nėra įvykių
 events-follow = Laikyti sąrašą ties dabartine akimirka, kol leidžiamas įrašas. Slenkant sąrašą tai išjungiama.
 clip-it = Į klipą
 badge-headshot = ŠG
+badge-spree = ×{ $count }
+badge-spree-help = { $count ->
+    [one] { $count } nužudymas iš eilės nemirštant
+    [few] { $count } nužudymai iš eilės nemirštant
+    [many] { $count } nužudymo iš eilės nemirštant
+   *[other] { $count } nužudymų iš eilės nemirštant
+}
 badge-air = AIR
 badge-air-both = AIR ×2
 speed-ups = { $speed } ups

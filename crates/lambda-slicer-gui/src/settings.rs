@@ -40,6 +40,9 @@ pub struct Settings {
     /// filters ask of a demo when the app starts, 0 for any
     pub start_min_minutes: f32,
     pub start_min_kills: u32,
+    /// The fewest kills of a killing spree whose last kill shows a badge
+    /// in the events
+    pub spree_badge: u32,
     /// Whether the library leaves out the maps of a demo of several maps
     /// that nobody was killed on and that were recorded for less than five
     /// minutes, rather than naming every map
@@ -290,6 +293,11 @@ pub const VITALS_SIZE: (f32, f32) = (0.3, 1.5);
 /// The longest padding a clip takes around an event, in seconds
 pub const MAX_PADDING: f32 = 120.;
 
+/// The fewest and most kills a killing spree's badge can be asked to show
+/// from
+pub const SPREE_LEAST: u32 = 2;
+pub const SPREE_MOST: u32 = 999;
+
 impl Default for Settings {
     fn default() -> Self {
         Self {
@@ -305,6 +313,7 @@ impl Default for Settings {
             sort_descending: true,
             start_min_minutes: 0.,
             start_min_kills: 0,
+            spree_badge: crate::demo::DEFAULT_SPREE,
             hide_unplayed_maps: true,
             player_lanes: false,
             preroll: 4.,
@@ -372,6 +381,7 @@ impl Settings {
             0.
         };
         self.start_min_kills = self.start_min_kills.min(MAX_KILLS);
+        self.spree_badge = self.spree_badge.clamp(SPREE_LEAST, SPREE_MOST);
         self.viewer = self.viewer.clamped();
         self.layout = self.layout.clamped();
         self
@@ -423,6 +433,7 @@ mod tests {
             sort_descending: false,
             start_min_minutes: 5.,
             start_min_kills: 25,
+            spree_badge: 15,
             hide_unplayed_maps: false,
             player_lanes: true,
             preroll: 2.5,

@@ -26,7 +26,10 @@ settings-start-tab = Karta przy uruchomieniu
 settings-start-tab-hint = Karta biblioteki pokazywana przy każdym uruchomieniu Lambda Slicer. Kliknięcie innej karty nadal ją pokazuje, dopóki nie zamkniesz Lambda Slicer.
 settings-sort = Kolejność przy uruchomieniu
 settings-sort-hint = Jak dema są sortowane przy każdym uruchomieniu Lambda Slicer. Kliknięcie nagłówka kolumny nadal sortuje według niej, dopóki nie zamkniesz Lambda Slicer.
-settings-start-filters = Filtry przy uruchomieniu
+settings-sprees = Serie zabójstw
+settings-sprees-hint = Ostatnie zabójstwo gracza przed śmiercią dostaje odznakę z liczbą zabójstw zdobytych z rzędu, jeśli jest ich co najmniej tyle. Każda śmierć kończy serię, tak samo jak koniec mapy albo wyjście gracza z gry. Teamkille się nie liczą.
+settings-spree-least = Co najmniej (zabójstwa)
+settings-start-filters =Filtry przy uruchomieniu
 settings-start-filters-hint = Przy każdym uruchomieniu Lambda Slicer biblioteka startuje z tymi filtrami, żeby krótkie dema, których nigdy nie chcesz oglądać, nie przeszkadzały. Nadal możesz zmieniać filtry, dopóki nie zamkniesz Lambda Slicer.
 settings-hide-unplayed-maps = W demach z kilkoma mapami pomiń mapy bez zabójstw nagrane krócej niż 5 minut
 settings-folders = Foldery biblioteki
@@ -400,6 +403,13 @@ events-kinds-none = Brak zdarzeń
 events-follow = Trzymaj listę na bieżącym momencie podczas odtwarzania dema. Przewinięcie listy to wyłącza.
 clip-it = Zrób klip
 badge-headshot = SG
+badge-spree = ×{ $count }
+badge-spree-help = { $count ->
+    [one] { $count } zabójstwo z rzędu bez śmierci
+    [few] { $count } zabójstwa z rzędu bez śmierci
+    [many] { $count } zabójstw z rzędu bez śmierci
+   *[other] { $count } zabójstwa z rzędu bez śmierci
+}
 badge-air = AIR
 badge-air-both = AIR ×2
 speed-ups = { $speed } ups

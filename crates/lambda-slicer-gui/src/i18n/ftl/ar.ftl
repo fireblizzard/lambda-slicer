@@ -26,7 +26,10 @@ settings-start-tab = التبويب عند التشغيل
 settings-start-tab-hint = تبويب المكتبة الذي يظهر في كل مرة يُشغَّل فيها Lambda Slicer. النقر على تبويب آخر يظل يعرضه حتى تُغلق Lambda Slicer.
 settings-sort = الترتيب عند التشغيل
 settings-sort-hint = كيف تُرتَّب التسجيلات في كل مرة يُشغَّل فيها Lambda Slicer. النقر على عنوان عمود يظل يرتّب حسبه حتى تُغلق Lambda Slicer.
-settings-start-filters = المرشحات عند التشغيل
+settings-sprees = سلاسل القتل
+settings-sprees-hint = آخر قتلة للاعب قبل موته تظهر عليها شارة بعدد القتلات التي حققها على التوالي، إذا كان عددها هذا الرقم على الأقل. الموت بأي طريقة ينهي السلسلة، وكذلك انتهاء الخريطة أو خروج اللاعب. قتل الزملاء لا يُحتسب.
+settings-spree-least = على الأقل (قتلات)
+settings-start-filters =المرشحات عند التشغيل
 settings-start-filters-hint = تبدأ المكتبة بهذه المرشحات في كل مرة يُشغَّل فيها Lambda Slicer، فتبقى التسجيلات القصيرة التي لا تريد رؤيتها بعيدًا عن طريقك. يظل بإمكانك تغيير المرشحات حتى تُغلق Lambda Slicer.
 settings-hide-unplayed-maps = في التسجيلات ذات الخرائط المتعددة، إخفاء الخرائط التي لا قتلات فيها وسُجِّلت أقل من 5 دقائق
 settings-folders = مجلدات المكتبة
@@ -437,6 +440,15 @@ events-kinds-none = لا توجد أحداث
 events-follow = أبقِ القائمة على اللحظة الحالية أثناء تشغيل التسجيل. تمرير القائمة يوقف ذلك.
 clip-it = أنشئ مقطعًا
 badge-headshot = HS
+badge-spree = ×{ $count }
+badge-spree-help = { $count ->
+    [zero] { $count } قتلة متتالية دون أن يموت
+    [one] قتلة واحدة دون أن يموت
+    [two] قتلتان متتاليتان دون أن يموت
+    [few] { $count } قتلات متتالية دون أن يموت
+    [many] { $count } قتلة متتالية دون أن يموت
+   *[other] { $count } قتلة متتالية دون أن يموت
+}
 badge-air = AIR
 badge-air-both = AIR ×2
 speed-ups = { $speed } ups

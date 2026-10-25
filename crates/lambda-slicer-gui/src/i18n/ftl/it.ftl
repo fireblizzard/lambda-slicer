@@ -26,7 +26,10 @@ settings-start-tab = Scheda all’avvio
 settings-start-tab-hint = La scheda della libreria mostrata a ogni avvio di Lambda Slicer. Cliccando un’altra scheda si mostra comunque quella, finché non chiudi Lambda Slicer.
 settings-sort = Ordine all’avvio
 settings-sort-hint = Come vengono ordinate le demo a ogni avvio di Lambda Slicer. Cliccando l’intestazione di una colonna si ordina comunque per quella, finché non chiudi Lambda Slicer.
-settings-start-filters = Filtri all’avvio
+settings-sprees = Serie di uccisioni
+settings-sprees-hint = L’ultima uccisione di un giocatore prima di morire mostra un badge con quante uccisioni ha fatto di fila, se sono almeno queste. Morire in qualsiasi modo interrompe la serie, così come la fine della mappa o l’uscita del giocatore. I teamkill non contano.
+settings-spree-least = Almeno (uccisioni)
+settings-start-filters =Filtri all’avvio
 settings-start-filters-hint = La libreria parte con questi filtri a ogni avvio di Lambda Slicer, così le demo brevi che non vuoi mai vedere restano fuori dai piedi. Puoi comunque cambiare i filtri finché non chiudi Lambda Slicer.
 settings-hide-unplayed-maps = Nelle demo con più mappe, nascondi le mappe senza uccisioni e registrate per meno di 5 minuti
 settings-folders = Cartelle della libreria
@@ -388,6 +391,12 @@ events-kinds-none = Nessun evento
 events-follow = Tieni l’elenco sul momento attuale mentre la demo è in riproduzione. Scorrere l’elenco lo disattiva.
 clip-it = Clippa
 badge-headshot = CT
+badge-spree = ×{ $count }
+badge-spree-help = { $count ->
+    [one] { $count } uccisione di fila senza morire
+    [many] { $count } di uccisioni di fila senza morire
+   *[other] { $count } uccisioni di fila senza morire
+}
 badge-air = AIR
 badge-air-both = AIR ×2
 speed-ups = { $speed } ups

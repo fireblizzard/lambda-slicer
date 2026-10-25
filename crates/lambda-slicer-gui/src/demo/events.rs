@@ -897,7 +897,7 @@ impl DemoView {
 
         // Badges take their room before the names, as many as leave the
         // names enough
-        let mut badges = self.badges(catalog, event);
+        let mut badges = self.badges(catalog, model, index);
         let widths: Vec<f32> = badges.iter().map(|b| badge_width(ui, b)).collect();
         let mut kept = badges.len();
         let mut used: f32 = widths.iter().map(|w| w + PART_GAP).sum();
@@ -1065,19 +1065,33 @@ impl DemoView {
         truncated
     }
 
-    /// A kill's badges in their order, headshot, airborne, speed and how
-    /// the kill came about, none for other events
-    fn badges(&self, catalog: &Catalog, event: &Event) -> Vec<Badge> {
+    /// The badges of the kill at `index`, in their order, the killing spree
+    /// it ends, headshot, through a wall, airborne, speed and how the kill
+    /// came about, none for other events
+    fn badges(&self, catalog: &Catalog, model: &Model, index: usize) -> Vec<Badge> {
         let EventKind::Kill {
             headshot,
             cause,
             features,
             ..
-        } = &event.kind
+        } = &model.events[index].kind
         else {
             return Vec::new();
         };
         let mut badges = Vec::new();
+
+        // A spree shows from the length the settings ask for
+        if let Some(&count) = model.sprees.get(&index)
+            && count >= self.spree_least
+        {
+            let count = FluentValue::from(i64::from(count));
+            let args = [("count", count)];
+            badges.push(Badge {
+                text: catalog.text_with("badge-spree", &args),
+                tone: Tone::Accent,
+                tip: Some(catalog.text_with("badge-spree-help", &args)),
+            });
+        }
 
         if *headshot == Some(true) {
             badges.push(Badge {

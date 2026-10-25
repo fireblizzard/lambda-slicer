@@ -26,7 +26,10 @@ settings-start-tab = Tab beim Start
 settings-start-tab-hint = Der Tab der Bibliothek, der bei jedem Start von Lambda Slicer angezeigt wird. Ein anderer Tab, auf den du klickst, bleibt trotzdem offen, bis du Lambda Slicer schließt.
 settings-sort = Reihenfolge beim Start
 settings-sort-hint = Wie die Demos bei jedem Start von Lambda Slicer sortiert werden. Ein Klick auf die Überschrift einer Spalte sortiert trotzdem danach, bis du Lambda Slicer schließt.
-settings-start-filters = Filter beim Start
+settings-sprees = Killstreaks
+settings-sprees-hint = Der letzte Abschuss eines Spielers vor seinem Tod bekommt ein Abzeichen mit der Zahl seiner Abschüsse am Stück, wenn es mindestens so viele sind. Jeder Tod beendet die Killstreak, egal wie, genauso wie das Ende der Map oder wenn der Spieler das Spiel verlässt. Teamkills zählen nicht.
+settings-spree-least = Mindestens (Abschüsse)
+settings-start-filters =Filter beim Start
 settings-start-filters-hint = Bei jedem Start von Lambda Slicer sind diese Filter in der Bibliothek eingeschaltet, damit kurze Demos, die du nie sehen willst, nicht im Weg sind. Du kannst die Filter trotzdem ändern, bis du Lambda Slicer schließt.
 settings-hide-unplayed-maps = Bei Demos mit mehreren Maps die Maps weglassen, auf denen es keine Abschüsse gab und die weniger als 5 Minuten aufgenommen wurden
 settings-folders = Bibliotheksordner
@@ -373,6 +376,11 @@ events-kinds-none = Keine Ereignisse
 events-follow = Die Liste beim aktuellen Moment halten, während die Demo läuft. Scrollen in der Liste schaltet das aus.
 clip-it = Clippen
 badge-headshot = KS
+badge-spree = ×{ $count }
+badge-spree-help = { $count ->
+    [one] { $count } Abschuss am Stück, ohne zu sterben
+   *[other] { $count } Abschüsse am Stück, ohne zu sterben
+}
 badge-air = AIR
 badge-air-both = AIR ×2
 speed-ups = { $speed } ups

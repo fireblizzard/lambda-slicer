@@ -26,7 +26,10 @@ settings-start-tab = Onglet au lancement
 settings-start-tab-hint = L’onglet de la bibliothèque affiché à chaque lancement de Lambda Slicer. Cliquer sur un autre onglet l’affiche quand même, jusqu’à ce que tu fermes Lambda Slicer.
 settings-sort = Ordre au lancement
 settings-sort-hint = Comment les démos sont triées à chaque lancement de Lambda Slicer. Cliquer sur l’en-tête d’une colonne trie quand même par celle-ci, jusqu’à ce que tu fermes Lambda Slicer.
-settings-start-filters = Filtres au lancement
+settings-sprees = Séries d’éliminations
+settings-sprees-hint = La dernière élimination d’un joueur avant sa mort affiche un badge avec le nombre d’éliminations qu’il a enchaînées, s’il y en a au moins autant. Mourir de n’importe quelle façon met fin à la série, tout comme la fin de la carte ou le départ du joueur. Les teamkills ne comptent pas.
+settings-spree-least = Au moins (éliminations)
+settings-start-filters =Filtres au lancement
 settings-start-filters-hint = La bibliothèque démarre avec ces filtres à chaque lancement de Lambda Slicer, pour que les démos courtes que tu ne veux jamais voir ne te gênent pas. Tu peux quand même changer les filtres jusqu’à ce que tu fermes Lambda Slicer.
 settings-hide-unplayed-maps = Dans les démos à plusieurs cartes, masquer les cartes sans aucune élimination et enregistrées moins de 5 minutes
 settings-folders = Dossiers de la bibliothèque
@@ -392,6 +395,12 @@ events-kinds-none = Aucun événement
 events-follow = Garder la liste sur le moment actuel pendant la lecture de la démo. Faire défiler la liste désactive cette option.
 clip-it = Clipper
 badge-headshot = TT
+badge-spree = ×{ $count }
+badge-spree-help = { $count ->
+    [one] { $count } élimination d’affilée sans mourir
+    [many] { $count } d’éliminations d’affilée sans mourir
+   *[other] { $count } éliminations d’affilée sans mourir
+}
 badge-air = AIR
 badge-air-both = AIR ×2
 speed-ups = { $speed } ups

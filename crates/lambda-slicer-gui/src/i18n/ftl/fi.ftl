@@ -26,7 +26,10 @@ settings-start-tab = Välilehti käynnistettäessä
 settings-start-tab-hint = Kirjaston välilehti, joka näytetään aina, kun Lambda Slicer käynnistyy. Toisen välilehden napsauttaminen näyttää silti sen, kunnes suljet Lambda Slicerin.
 settings-sort = Järjestys käynnistettäessä
 settings-sort-hint = Miten demot lajitellaan aina, kun Lambda Slicer käynnistyy. Sarakkeen otsikon napsauttaminen lajittelee silti sen mukaan, kunnes suljet Lambda Slicerin.
-settings-start-filters = Suodattimet käynnistettäessä
+settings-sprees = Tappoputket
+settings-sprees-hint = Pelaajan viimeinen tappo ennen kuolemaa saa merkin, joka näyttää, montako tappoa hän teki putkeen, jos niitä on vähintään näin monta. Kuolema millä tahansa tavalla katkaisee putken, samoin kartan loppuminen tai pelaajan poistuminen. Tiimitappoja ei lasketa.
+settings-spree-least = Vähintään (tappoa)
+settings-start-filters =Suodattimet käynnistettäessä
 settings-start-filters-hint = Kirjasto käyttää näitä suodattimia aina, kun Lambda Slicer käynnistyy, joten lyhyet demot, joita et koskaan halua nähdä, pysyvät poissa tieltä. Voit silti muuttaa suodattimia, kunnes suljet Lambda Slicerin.
 settings-hide-unplayed-maps = Jätä usean kartan demoista pois kartat, joilla ei ole tappoja ja joita nauhoitettiin alle 5 minuuttia
 settings-folders = Kirjaston kansiot
@@ -373,6 +376,11 @@ events-kinds-none = Ei tapahtumia
 events-follow = Pidä luettelo nykyisessä hetkessä, kun demo toistuu. Luettelon vierittäminen poistaa tämän käytöstä.
 clip-it = Klippaa
 badge-headshot = PL
+badge-spree = ×{ $count }
+badge-spree-help = { $count ->
+    [one] { $count } tappo putkeen kuolematta
+   *[other] { $count } tappoa putkeen kuolematta
+}
 badge-air = AIR
 badge-air-both = AIR ×2
 speed-ups = { $speed } ups

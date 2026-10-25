@@ -77,6 +77,10 @@ const WINDOW_TINT: Color32 = Color32::from_rgba_premultiplied(40, 32, 10, 40);
 /// The length of a clip made with New clip, before it is edited
 const NEW_CLIP_SECONDS: f32 = 10.;
 
+/// The fewest kills of a killing spree that shows its badge, unless the
+/// settings say otherwise
+pub const DEFAULT_SPREE: u32 = 20;
+
 /// How dark the controls over the whole screen view are behind them
 const FULLSCREEN_SHADE: u8 = 160;
 
@@ -754,6 +758,9 @@ pub struct DemoView {
     typing: Option<(usize, Edge, String)>,
     /// Seconds a new clip keeps before and after its event
     pub padding: (f32, f32),
+    /// The fewest kills of a killing spree that shows its badge, the
+    /// settings' each frame
+    pub spree_least: u32,
     /// What an export of each requested range would cut, worked out once
     snapped: HashMap<(DemoTime, DemoTime), Result<Snapped, Message>>,
     /// Where exports go, the demo's own folder when none is set
@@ -840,6 +847,7 @@ impl DemoView {
             chosen_clip: None,
             typing: None,
             padding: (0., 0.),
+            spree_least: DEFAULT_SPREE,
             snapped: HashMap::new(),
             export_folder: None,
             file_naming: FileNaming::default(),

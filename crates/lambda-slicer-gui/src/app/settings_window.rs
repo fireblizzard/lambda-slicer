@@ -13,7 +13,10 @@ use super::App;
 use crate::i18n::{Catalog, Locale};
 use crate::layout;
 use crate::library::{self, parse_number};
-use crate::settings::{FOV, MAX_PADDING, MAX_SCORE_ROWS, Settings, VITALS_SIZE, ViewerSettings};
+use crate::settings::{
+    FOV, MAX_PADDING, MAX_SCORE_ROWS, SPREE_LEAST, SPREE_MOST, Settings, VITALS_SIZE,
+    ViewerSettings,
+};
 use crate::text::{self, Look};
 use crate::theme;
 use crate::widgets::{self, Icon, IconButton, Variant};
@@ -39,6 +42,9 @@ const FIRST_FOV: f32 = 90.;
 
 /// The step and decimals of a clip's padding
 const PADDING_STEP: f64 = 0.1;
+
+/// How many kills dragging the killing spree's length moves it for a point
+const SPREE_STEP: f64 = 0.2;
 const PADDING_DECIMALS: usize = 1;
 
 /// The width of the dialog asking whether to restore the defaults, and the
@@ -525,6 +531,7 @@ impl App {
                 self.settings_unsaved = true;
             }
         });
+        self.spree_setting(ui, rtl);
 
         heading(ui, &self.catalog, "settings-cache", None, rtl, false);
         let cache = self.cache_path.as_ref().map(|p| p.display().to_string());
@@ -677,6 +684,37 @@ impl App {
                 self.settings.start_min_minutes,
                 self.settings.start_min_kills,
             ) = wanted;
+            self.settings_unsaved = true;
+        }
+    }
+
+    /// From how many kills a killing spree's last kill shows a badge in the
+    /// events, applied to the events shown at once
+    fn spree_setting(&mut self, ui: &mut egui::Ui, rtl: bool) {
+        heading(
+            ui,
+            &self.catalog,
+            "settings-sprees",
+            Some("settings-sprees-hint"),
+            rtl,
+            false,
+        );
+
+        let catalog = &self.catalog;
+        let ids = ["settings-spree-least"];
+        let width = label_width(ui, catalog, &ids, rtl);
+        let mut least = self.settings.spree_badge;
+        field(ui, catalog, "settings-spree-least", width, rtl, |ui| {
+            ui.add(
+                egui::DragValue::new(&mut least)
+                    .range(SPREE_LEAST..=SPREE_MOST)
+                    .speed(SPREE_STEP)
+                    .custom_formatter(|v, _| catalog.number(v, 0))
+                    .custom_parser(parse_number),
+            );
+        });
+        if least != self.settings.spree_badge {
+            self.settings.spree_badge = least;
             self.settings_unsaved = true;
         }
     }
@@ -1125,6 +1163,7 @@ fn changed_settings(current: &Settings, restored: &Settings) -> Vec<&'static str
     let order = |s: &Settings| (s.sort_column.clone(), s.sort_descending);
     let starting = |s: &Settings| (s.start_min_minutes, s.start_min_kills);
     let checks = [
+        (now.spree_badge != then.spree_badge, "settings-sprees"),
         (view.hd_models != first.hd_models, "settings-hd-models"),
         (
             view.addon_content != first.addon_content,

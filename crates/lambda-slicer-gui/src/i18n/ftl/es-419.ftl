@@ -26,7 +26,10 @@ settings-start-tab = Pestaña al abrir
 settings-start-tab-hint = La pestaña de la biblioteca que se muestra cada vez que se abre Lambda Slicer. Si haces clic en otra pestaña, se muestra esa hasta que cierres Lambda Slicer.
 settings-sort = Orden al abrir
 settings-sort-hint = Cómo se ordenan las demos cada vez que se abre Lambda Slicer. Si haces clic en el encabezado de una columna, se ordena por ella hasta que cierres Lambda Slicer.
-settings-start-filters = Filtros al abrir
+settings-sprees = Rachas de bajas
+settings-sprees-hint = La última baja de un jugador antes de morir muestra una insignia con cuántas bajas hizo seguidas, si son al menos estas. Morir de cualquier forma termina la racha, y también el fin del mapa o que el jugador se vaya. Los teamkills no cuentan.
+settings-spree-least = Al menos (bajas)
+settings-start-filters =Filtros al abrir
 settings-start-filters-hint = La biblioteca arranca con estos filtros cada vez que se abre Lambda Slicer, así las demos cortas que nunca quieres ver no te estorban. Igual puedes cambiar los filtros hasta que cierres Lambda Slicer.
 settings-hide-unplayed-maps = En demos de varios mapas, ocultar los mapas sin bajas que se grabaron menos de 5 minutos
 settings-folders = Carpetas de la biblioteca
@@ -392,6 +395,12 @@ events-kinds-none = Sin eventos
 events-follow = Mantener la lista en el momento actual mientras se reproduce la demo. Si haces scroll en la lista, se desactiva.
 clip-it = Clipear
 badge-headshot = HS
+badge-spree = ×{ $count }
+badge-spree-help = { $count ->
+    [one] { $count } baja seguida sin morir
+    [many] { $count } de bajas seguidas sin morir
+   *[other] { $count } bajas seguidas sin morir
+}
 badge-air = AIR
 badge-air-both = AIR ×2
 speed-ups = { $speed } ups
