@@ -129,7 +129,10 @@ aren't shown, as the demo only has the recorder's, and the sound is heard from w
 is. While the demo doesn't have the player, because the server didn't send them, the picture is the
 recorder's view with a note saying so, and goes back to the player once they are in it again.
 Choosing a kill in the events list or on the timeline watches it through the killer's eyes when
-the demo has them at that moment, else the victim's, else the recorder's. Other events are watched
+the demo has them at that moment, else the victim's, else the recorder's. Playing a kill, with a
+double click or Play event, watches it from the recorder's view until the demo has the killer or
+the victim, then through the first of them it has, moving on to the killer if they show later and
+never back. Once it has played, the view goes back to the one chosen before, or the recorder's. Other events are watched
 from the recorder's view. A free camera stays on, and leaving it goes to that view, unless Leave
 the free camera when choosing an event is on in Settings.
 

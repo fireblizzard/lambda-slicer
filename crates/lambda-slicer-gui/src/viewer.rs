@@ -369,6 +369,13 @@ pub struct Viewer {
     /// The players an event asked to follow, the first the demo shows in
     /// the first frame answering the stamp, else the recorder
     pov_wanted: Option<(Stamp, [Option<u16>; 2])>,
+    /// An event being played, followed through whom it names as they come
+    /// into view, until it ends
+    pov_played: Option<PlayedEvent>,
+    /// The view chosen by hand before events chose for it, none for the
+    /// recorder's, gone back to once a played event ends. Kept while events
+    /// choose, and forgotten when a view is chosen by hand again
+    own_pov: Option<Option<u16>>,
     /// Units behind the recording player's view a free camera starts once
     /// the first frame is in, turned this many degrees round them, for
     /// checking the picture from the command line
@@ -579,6 +586,8 @@ impl Viewer {
             free: None,
             pov: None,
             pov_wanted: None,
+            pov_played: None,
+            own_pov: None,
             free_behind: None,
             free_at: None,
             follow_at: None,
@@ -767,6 +776,7 @@ impl Viewer {
             }
         }
         self.settle_pov();
+        self.follow_played();
 
         // The player the command line asked to follow, once the analysis
         // has ranked the players
@@ -939,6 +949,8 @@ impl Viewer {
     fn follow(&mut self, number: Option<u16>) {
         self.pov = number;
         self.pov_wanted = None;
+        self.pov_played = None;
+        self.own_pov = None;
         self.free = None;
     }
 
@@ -946,10 +958,78 @@ impl Viewer {
     /// gone where it was just sent, else the recorder. A free camera stays,
     /// and leaving it goes to that view, unless the settings leave it now
     pub fn follow_first_seen(&mut self, slots: [Option<u8>; 2]) {
+        self.keep_own_pov();
         let entities = slots.map(|slot| slot.map(|s| u16::from(s) + 1));
         self.pov_wanted = Some((self.controller.stamp(), entities));
+        self.pov_played = None;
         if self.settings.events_leave_free {
             self.free = None;
+        }
+    }
+
+    /// Follow the first of `slots` as they come into view while the event
+    /// plays from `from` to `to`, the recorder's view until one does, and
+    /// go back to the view chosen by hand before once it ends. Called once
+    /// the event is sent playing
+    pub fn follow_while_played(&mut self, slots: [Option<u8>; 2], (from, to): (f32, f32)) {
+        self.keep_own_pov();
+        self.pov_wanted = None;
+        self.pov = None;
+        self.pov_played = Some(PlayedEvent {
+            stamp: self.controller.stamp(),
+            wanted: slots.map(|slot| slot.map(|s| u16::from(s) + 1)),
+            from: f64::from(from),
+            to: f64::from(to),
+            chosen: None,
+        });
+        if self.settings.events_leave_free {
+            self.free = None;
+        }
+    }
+
+    /// Keep the view chosen by hand before an event chooses one, unless an
+    /// event already chose
+    fn keep_own_pov(&mut self) {
+        if self.own_pov.is_none() {
+            self.own_pov = Some(self.pov);
+        }
+    }
+
+    /// While an event plays, follow the first it names the demo shows once
+    /// they come into view, never leaving one for one named after it, and
+    /// go back to the view chosen by hand before once the playhead passes
+    /// its end or leaves it
+    fn follow_played(&mut self) {
+        let (Some(played), Some(frame)) = (&mut self.pov_played, &self.frame) else {
+            return;
+        };
+        if frame.stamp < played.stamp {
+            return;
+        }
+
+        let at = frame.at.0;
+        if at >= played.to - PLAYED_END || at < played.from - PLAYED_END {
+            self.pov = self.own_pov.take().flatten();
+            self.pov_played = None;
+            return;
+        }
+
+        // The recorder among them is their own view, and always in it
+        let before = played.chosen.unwrap_or(played.wanted.len());
+        for (place, number) in played.wanted.iter().enumerate().take(before) {
+            let Some(number) = *number else {
+                continue;
+            };
+            if number == frame.local_entity {
+                played.chosen = Some(place);
+                self.pov = None;
+                break;
+            }
+            if followed(frame, number).is_some() {
+                played.chosen = Some(place);
+                self.pov = Some(number);
+                break;
+            }
         }
     }
 
@@ -2771,6 +2851,25 @@ const NUMBER_KEYS: [egui::Key; 10] = [
 
 /// How the list of players names [`NUMBER_KEYS`]
 const KEY_NAMES: [&str; 10] = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"];
+
+/// How near its end a played event counts as over, as playing stops at
+/// the last recorded moment before it
+const PLAYED_END: f64 = 0.05;
+
+/// An event being played and followed through whom it names
+#[derive(Clone, Copy, Debug)]
+struct PlayedEvent {
+    /// The command that sent it playing, as frames before it are of
+    /// another moment
+    stamp: Stamp,
+    /// Whom it names by entity, the first the best to follow
+    wanted: [Option<u16>; 2],
+    /// Where it plays from and to
+    from: f64,
+    to: f64,
+    /// Which of `wanted` is followed, none before any came into view
+    chosen: Option<usize>,
+}
 
 /// Whose view the picture is, which says whose model is left out and
 /// whose weapon is in view

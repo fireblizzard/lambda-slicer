@@ -1573,7 +1573,7 @@ impl DemoView {
                     self.looping = None;
                     viewer.set_loop(None);
                     viewer.play_range(range.0, range.1);
-                    viewer.follow_first_seen(players);
+                    viewer.follow_while_played(players, range);
                 }
             }
             DemoAction::Fit => {
