@@ -115,6 +115,7 @@ fn refinements(list: &str) -> KillFilters {
             "killer" => filters.speed_subject = SpeedSubject::Killer,
             "victim" => filters.speed_subject = SpeedSubject::Victim,
             "wallgauss" => filters.wallgauss = true,
+            "multikill" => filters.multikill = true,
             other => eprintln!("ignoring refinement {other}"),
         }
     }

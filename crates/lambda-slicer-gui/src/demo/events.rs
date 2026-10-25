@@ -145,6 +145,25 @@ impl RowLine {
     }
 }
 
+/// The multikills the refinement offers, a double kill to a penta kill
+const MULTIKILLS: [u32; 4] = [2, 3, 4, 5];
+
+/// What a shot that killed `count` players is called, double kill to penta
+/// kill, then how many it killed
+fn multikill_name(catalog: &Catalog, count: u32) -> String {
+    let id = match count {
+        2 => "badge-double-kill",
+        3 => "badge-triple-kill",
+        4 => "badge-quadra-kill",
+        5 => "badge-penta-kill",
+        _ => {
+            let count = FluentValue::from(i64::from(count));
+            return catalog.text_with("badge-multikill", &[("count", count)]);
+        }
+    };
+    catalog.text(id)
+}
+
 /// Each kind of event, whether `shown` shows it and its name
 fn kinds(shown: &Shown) -> [(bool, &'static str); 6] {
     [
@@ -298,6 +317,7 @@ impl DemoView {
                 filters.midair != MidairMode::Off,
                 filters.speed,
                 filters.wallgauss,
+                filters.multikill,
             ];
             on += refinements.iter().filter(|&&r| r).count();
         }
@@ -483,6 +503,10 @@ impl DemoView {
                 if selectable(ui, filters.wallgauss, &wallgauss, rtl).clicked() {
                     filters.wallgauss = !filters.wallgauss;
                 }
+                let multikill = catalog.text("refine-multikill");
+                if selectable(ui, filters.multikill, &multikill, rtl).clicked() {
+                    filters.multikill = !filters.multikill;
+                }
 
                 if filters.any() {
                     let clear = catalog.text("refine-clear");
@@ -541,6 +565,21 @@ impl DemoView {
                             filters.speed_subject = subject;
                         }
                     }
+                });
+            }
+
+            // From a double kill to a penta kill, the kills of a shot that
+            // killed at least that many
+            if filters.multikill {
+                layout::wrapping_row(ui, rtl, |ui| {
+                    widgets::section_title(ui, &catalog.text("speed-at-least"), rtl);
+                    for count in MULTIKILLS {
+                        let name = multikill_name(catalog, count);
+                        if selectable(ui, filters.at_once == count, &name, rtl).clicked() {
+                            filters.at_once = count;
+                        }
+                    }
+                    widgets::help(ui, &catalog.text("help-multikill"), rtl);
                 });
             }
 
@@ -1079,6 +1118,15 @@ impl DemoView {
             return Vec::new();
         };
         let mut badges = Vec::new();
+
+        // Every kill of a shot that killed several shows how many
+        if features.at_once >= 2 {
+            badges.push(Badge {
+                text: multikill_name(catalog, features.at_once),
+                tone: Tone::Accent,
+                tip: Some(catalog.text("help-multikill")),
+            });
+        }
 
         // A spree shows from the length the settings ask for
         if let Some(&count) = model.sprees.get(&index)
@@ -1666,6 +1714,7 @@ mod tests {
             victim_team: None,
             gauss: false,
             gauss_kill: None,
+            at_once: 1,
         };
 
         Event {

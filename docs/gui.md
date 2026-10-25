@@ -184,9 +184,13 @@ the player leaving. Team kills neither count nor end it. A change in Settings sh
 - **Filters.** The button before that menu opens the rest, folded at first: a weapon and a player
   name that narrow the list, and the kill refinements. It counts those on, such as Filters (2),
   and they stay open across demos for the session. The tab's title counts the events shown.
-- **Kills with.** Midair, speed and wallgauss narrow the kills further. Wallgauss follows each
-  gauss shot through the map, so it needs the game's files and checks the kills in the background
-  ([analysis](analysis-profile.md)).
+- **Kills with.** Midair, speed, wallgauss and multikill narrow the kills further. Wallgauss
+  follows each gauss shot through the map, so it needs the game's files and checks the kills in
+  the background ([analysis](analysis-profile.md)). Multikill shows the kills of a shot that
+  killed at least two, three, four or five players, a double kill to a penta kill. Kills of other
+  players by the same killer with the same weapon in the same server frame are one shot, as a
+  blast kills everyone it reaches at once and a gauss beam everyone it goes through. Each of
+  those kills has a badge such as double kill.
 - **Jump to highlight**, in the timeline's heading, lists the five most intense minutes, the best one marked Golden minute,
   with their score, time and frags per side. Choosing one goes there, and Clip this intense moment
   clips it.

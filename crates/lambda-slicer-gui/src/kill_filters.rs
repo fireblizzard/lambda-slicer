@@ -66,6 +66,10 @@ pub enum SpeedSubject {
 /// The speed a fast kill needs at first, in units per second
 pub const DEFAULT_MIN_UPS: u32 = 800;
 
+/// The fewest players a multikill kills with one shot at first, a double
+/// kill
+pub const DEFAULT_AT_ONCE: u32 = 2;
+
 /// The refinements of the kills shown, all of them on the same kill
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct KillFilters {
@@ -74,6 +78,9 @@ pub struct KillFilters {
     pub min_ups: u32,
     pub speed_subject: SpeedSubject,
     pub wallgauss: bool,
+    /// Kills of a shot that killed at least `at_once` players
+    pub multikill: bool,
+    pub at_once: u32,
 }
 
 impl Default for KillFilters {
@@ -84,6 +91,8 @@ impl Default for KillFilters {
             min_ups: DEFAULT_MIN_UPS,
             speed_subject: SpeedSubject::Either,
             wallgauss: false,
+            multikill: false,
+            at_once: DEFAULT_AT_ONCE,
         }
     }
 }
@@ -91,14 +100,15 @@ impl Default for KillFilters {
 impl KillFilters {
     /// Whether any refinement is on
     pub fn any(&self) -> bool {
-        self.midair != MidairMode::Off || self.speed || self.wallgauss
+        self.midair != MidairMode::Off || self.speed || self.wallgauss || self.multikill
     }
 
-    /// Every refinement off, keeping the speed typed in for when it is
-    /// turned on again
+    /// Every refinement off, keeping the speed typed in and the multikill
+    /// chosen for when they are turned on again
     pub fn clear(&mut self) {
         *self = Self {
             min_ups: self.min_ups,
+            at_once: self.at_once,
             ..Self::default()
         };
     }
@@ -138,6 +148,16 @@ impl KillFilters {
                 (true, _) => Verdict::Unknown,
             };
             verdict = verdict.and(wall);
+        }
+
+        // How many a shot killed is always known
+        if self.multikill {
+            let enough = if kill.at_once >= self.at_once {
+                Verdict::Match
+            } else {
+                Verdict::NoMatch
+            };
+            verdict = verdict.and(enough);
         }
 
         verdict
@@ -282,6 +302,7 @@ mod tests {
             victim_team: None,
             gauss,
             gauss_kill: None,
+            at_once: 1,
         }
     }
 
@@ -459,18 +480,21 @@ mod tests {
     }
 
     #[test]
-    fn clearing_turns_everything_off_but_keeps_the_speed() {
+    fn clearing_turns_everything_off_but_keeps_the_speed_and_multikill() {
         let mut filters = KillFilters {
             midair: MidairMode::Both,
             speed: true,
             min_ups: 1500,
             speed_subject: SpeedSubject::Victim,
             wallgauss: true,
+            multikill: true,
+            at_once: 3,
         };
         filters.clear();
         assert!(!filters.any());
         assert_eq!(filters.min_ups, 1500);
         assert_eq!(filters.speed_subject, SpeedSubject::Either);
+        assert_eq!(filters.at_once, 3);
     }
 
     #[test]

@@ -195,10 +195,13 @@ pub struct KillFeatures {
     /// The Gauss kill with the killer's shots that could have made it, for
     /// telling whether it went through a wall
     pub gauss_kill: Option<GaussKill>,
+    /// How many players the shot that made it killed, this one among them,
+    /// 1 for a kill on its own
+    pub at_once: u32,
 }
 
 impl KillFeatures {
-    fn new(kill: &Kill, ordinal: usize, gauss_kill: Option<GaussKill>) -> Self {
+    fn new(kill: &Kill, ordinal: usize, gauss_kill: Option<GaussKill>, at_once: u32) -> Self {
         let key = KillKey {
             segment: kill.segment,
             ordinal: u32::try_from(ordinal).unwrap_or(u32::MAX),
@@ -223,8 +226,47 @@ impl KillFeatures {
             victim_team: kill.victim_team.clone(),
             gauss: kill.weapon == Some(Weapon::Gauss),
             gauss_kill,
+            at_once,
         }
     }
+}
+
+/// The shot that made `kill`, by session, killer, weapon and server frame,
+/// none for a kill no player made of another
+fn shot_of(kill: &Kill) -> Option<(u32, u8, u32, &str, u32)> {
+    let by_player = matches!(
+        kill.cause,
+        KillCause::PlayerWeapon | KillCause::PlayerOther | KillCause::MountedGun
+    );
+    let killer = kill.killer.as_ref().filter(|_| by_player)?;
+    let frame = kill.server_time.to_bits();
+    Some((
+        kill.segment,
+        killer.slot,
+        killer.incarnation,
+        &kill.weapon_name,
+        frame,
+    ))
+}
+
+/// How many players the shot that made each of `kills` killed, in their
+/// order, 1 for a kill on its own. Kills of other players by one killer
+/// with one weapon in the same server frame are one shot, as a blast kills
+/// everyone it reaches at once and a Gauss beam everyone it goes through
+fn kills_at_once(kills: &[Kill]) -> Vec<u32> {
+    let mut counts: HashMap<_, u32> = HashMap::new();
+    for kill in kills {
+        if let Some(shot) = shot_of(kill) {
+            *counts.entry(shot).or_default() += 1;
+        }
+    }
+
+    let mut out = Vec::new();
+    for kill in kills {
+        let count = shot_of(kill).map_or(1, |shot| counts[&shot]);
+        out.push(count);
+    }
+    out
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -438,6 +480,7 @@ impl Model {
             });
         }
 
+        let at_once = kills_at_once(&r.kills);
         for (ordinal, k) in r.kills.iter().enumerate() {
             let killer = k.killer.as_ref();
             let lane = match killer {
@@ -459,7 +502,7 @@ impl Model {
                     killer: killer.map(|p| (p.slot, p.incarnation)),
                     victim_player: k.victim.as_ref().map(|p| (p.slot, p.incarnation)),
                     headshot: k.headshot,
-                    features: Box::new(KillFeatures::new(k, ordinal, gauss_kill)),
+                    features: Box::new(KillFeatures::new(k, ordinal, gauss_kill, at_once[ordinal])),
                 },
             };
             b.mark(lane, k.time, MarkKind::Kill, k.weapon, event);
@@ -1015,6 +1058,33 @@ mod tests {
         }
     }
 
+    #[test]
+    fn kills_of_one_shot_count_together() {
+        let by = |time, killer: u8, weapon: &str| Kill {
+            killer: Some(player(killer, 0, "killer")),
+            weapon_name: weapon.into(),
+            ..kill(time, None)
+        };
+        let suicide = Kill {
+            cause: KillCause::Suicide,
+            ..by(5., 0, "rpg_rocket")
+        };
+        let kills = [
+            by(5., 0, "rpg_rocket"),
+            by(5., 0, "rpg_rocket"),
+            suicide,
+            by(5., 0, "gauss"),
+            by(5., 4, "rpg_rocket"),
+            by(6., 0, "rpg_rocket"),
+            by(6., 0, "rpg_rocket"),
+            by(6., 0, "rpg_rocket"),
+        ];
+
+        // The rocket's two kills at 5 seconds, not the killer's own death,
+        // another weapon's or another killer's, and three at 6 seconds
+        assert_eq!(kills_at_once(&kills), [2, 2, 1, 1, 1, 3, 3, 3]);
+    }
+
     fn report(kills: Vec<Kill>) -> AnalysisReport {
         AnalysisReport {
             schema: 0,
@@ -1141,6 +1211,7 @@ mod tests {
             victim_team: None,
             gauss: false,
             gauss_kill: None,
+            at_once: 1,
         };
         Event {
             segment,

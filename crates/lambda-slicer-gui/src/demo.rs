@@ -2470,6 +2470,7 @@ mod tests {
             victim_team: None,
             gauss: true,
             gauss_kill: None,
+            at_once: 1,
         };
 
         Event {
