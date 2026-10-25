@@ -79,7 +79,7 @@ const NEW_CLIP_SECONDS: f32 = 10.;
 
 /// The fewest kills of a killing spree that shows its badge, unless the
 /// settings say otherwise
-pub const DEFAULT_SPREE: u32 = 20;
+pub const DEFAULT_SPREE: u32 = 10;
 
 /// How dark the controls over the whole screen view are behind them
 const FULLSCREEN_SHADE: u8 = 160;

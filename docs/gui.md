@@ -176,7 +176,7 @@ The Events tab lists every event in order with its time, the players and the wea
 badges for headshots, midair kills, speed, wallgauss, suicides and team kills, and hovering a kill
 explains how it was worked out. A player's last kill before dying shows their killing spree, such
 as ×22 for 22 kills in a row, when it has at least as many kills as Killing sprees in Settings
-asks for, 20 unless changed. Any death ends a spree, a suicide too, and so does the map ending or
+asks for, 10 unless changed. Any death ends a spree, a suicide too, and so does the map ending or
 the player leaving. Team kills neither count nor end it. A change in Settings shows at once.
 
 - **Shown.** One menu over the list with a checkbox for each kind: kills, chat, match
