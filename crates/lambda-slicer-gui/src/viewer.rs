@@ -41,15 +41,15 @@ use lambda_slicer_playback::hud::{Countdown, WAITING};
 use lambda_slicer_playback::scene::{
     self, Entity, EntityId, PlayerView, view_model_for, weapon_model_for,
 };
-use lambda_slicer_playback::tempents::Tint;
+use lambda_slicer_playback::tempents::{DynamicLight, Tint};
 use lambda_slicer_playback::time::{Rate, SourceTime};
 use lambda_slicer_playback::trace::{Hull, Trace};
 use lambda_slicer_playback::worker::Worker;
 use lambda_slicer_render::Rgba;
 use lambda_slicer_render::camera::{Camera, Matrix};
 use lambda_slicer_render::gpu::{
-    Blit, Brush, DrawList, Instance, ModelHandle, RenderMode, Scene, SpriteHandle, SpriteInstance,
-    Streak, StreakPoint, View,
+    Blit, Brush, DrawList, Instance, MOST_LIGHTS, ModelHandle, RenderMode, Scene, SpriteHandle,
+    SpriteInstance, Streak, StreakPoint, View, WorldLight,
 };
 use lambda_slicer_render::light::{LightTree, ModelLight};
 use lambda_slicer_render::load::{self, EntityPose, GaitPose, LoadError, LoadedModel};
@@ -1242,11 +1242,14 @@ impl Viewer {
             return DrawList::default();
         };
         let styles = light_styles(frame);
+        // What is under a model, brightened by the dynamic lights near it
+        let lights = dynamic_lights(frame);
         let light_at = |point: [f32; 3]| {
-            self.light
-                .as_ref()
-                .and_then(|tree| tree.at(point, &styles))
-                .map_or(ModelLight::UNLIT, ModelLight::from_point)
+            let under = self.light.as_ref().and_then(|tree| tree.at(point, &styles));
+            match under {
+                Some(colour) => ModelLight::from_point(lit_by(colour, point, &lights)),
+                None => ModelLight::UNLIT,
+            }
         };
         // Chrome reflects the view the scene is drawn from
         let (eye_origin, eye_angles) = self.eye(frame);
@@ -3588,6 +3591,7 @@ fn view(
     fov: Option<f32>,
     settings: &ViewerSettings,
 ) -> View {
+    let (lights, light_count) = world_lights(frame, eye);
     View {
         view_projection: view_projection(frame, (eye, angles), aspect, fov),
         eye,
@@ -3596,7 +3600,145 @@ fn view(
         light_styles: light_styles(frame),
         gamma: settings.gamma(),
         fullbright: false,
+        lights,
+        light_count,
     }
+}
+
+/// `EF_` effects that make a dynamic light on their entity
+const EF_MUZZLEFLASH: i64 = 2;
+const EF_BRIGHTLIGHT: i64 = 4;
+const EF_DIMLIGHT: i64 = 8;
+const EF_LIGHT: i64 = 64;
+
+/// How long a muzzle flash's light lasts, in seconds, how far it reaches
+/// and how far ahead of its gun it is
+const MUZZLE_LIGHT: f64 = 0.1;
+const MUZZLE_RADIUS: f32 = 200.;
+const MUZZLE_AHEAD: f32 = 18.;
+
+/// Every dynamic light in `frame`, those messages made, those of the
+/// entities' effects (`CL_LinkPacketEntities`) and the muzzle flashes'. A
+/// muzzle flash lights the gun, 18 units ahead and 16 up, or ahead of the
+/// eye for the weapon in view, and a bright or dim light and an entity's
+/// own light shine from 16 up. The game varies their radius a little at
+/// random, which is left out. The recorder's own entity stands where their
+/// own frames say they are
+fn dynamic_lights(frame: &PresentedFrame) -> Vec<DynamicLight> {
+    let mut out = frame.lights.clone();
+    let flash = |origin| DynamicLight {
+        origin,
+        radius: MUZZLE_RADIUS,
+        color: [255; 3],
+        models_only: false,
+    };
+    let ahead = |origin: [f32; 3], angles: [f32; 3]| {
+        let (forward, _, _) = lambda_slicer_render::camera::angle_vectors(angles);
+        [0, 1, 2].map(|k| origin[k] + forward[k] * MUZZLE_AHEAD)
+    };
+
+    // The flashes events showed, a light each while it lasts, one for each
+    // gun however many flashes it shows
+    let mut flashed: Vec<Holder> = Vec::new();
+    for f in &frame.flashes {
+        let since = frame.at.0 - f.time.0;
+        if !(0. ..MUZZLE_LIGHT).contains(&since) || flashed.contains(&f.holder) {
+            continue;
+        }
+        flashed.push(f.holder);
+        match f.holder {
+            Holder::Viewmodel => {
+                let camera = &frame.recorder;
+                out.push(flash(ahead(camera.origin, camera.angles)));
+            }
+            Holder::Entity(id) => {
+                let Some(e) = frame.entities.iter().find(|e| e.id == id) else {
+                    continue;
+                };
+                let [x, y, z] = e.origin;
+                out.push(flash(ahead([x, y, z + 16.], [0., e.angles[1], 0.])));
+            }
+        }
+    }
+
+    for e in frame.entities.iter() {
+        let origin = if e.id.number == frame.local_entity {
+            frame.recorder.player_origin
+        } else {
+            e.origin
+        };
+        let [x, y, z] = origin;
+        let raised = [x, y, z + 16.];
+        let mut add = |origin, radius| {
+            out.push(DynamicLight {
+                origin,
+                radius,
+                color: [255; 3],
+                models_only: false,
+            });
+        };
+
+        // The flag stays on until the next update, which a flash outlasts
+        // only for a moment
+        let since = frame.client_time - f64::from(e.updated.0);
+        let gun_lit = flashed.contains(&Holder::Entity(e.id));
+        if e.effects & EF_MUZZLEFLASH != 0 && since < MUZZLE_LIGHT && !gun_lit {
+            add(ahead(raised, [0., e.angles[1], 0.]), MUZZLE_RADIUS);
+        }
+        if e.effects & EF_BRIGHTLIGHT != 0 {
+            add(raised, 400.);
+        }
+        if e.effects & EF_DIMLIGHT != 0 {
+            add(raised, 200.);
+        }
+        if e.effects & EF_LIGHT != 0 {
+            add(origin, 200.);
+        }
+    }
+    out
+}
+
+/// The dynamic lights that light the world in `frame`, the nearest to
+/// `eye` first when there are more than the renderer takes, and how many
+fn world_lights(frame: &PresentedFrame, eye: [f32; 3]) -> ([WorldLight; MOST_LIGHTS], usize) {
+    let mut lights: Vec<DynamicLight> = dynamic_lights(frame)
+        .into_iter()
+        .filter(|l| !l.models_only)
+        .collect();
+    let distance = |l: &DynamicLight| {
+        let d = [0, 1, 2].map(|k| l.origin[k] - eye[k]);
+        d[0] * d[0] + d[1] * d[1] + d[2] * d[2]
+    };
+    lights.sort_by(|a, b| distance(a).total_cmp(&distance(b)));
+
+    let mut out = [WorldLight::default(); MOST_LIGHTS];
+    let count = lights.len().min(MOST_LIGHTS);
+    for (slot, light) in out.iter_mut().zip(&lights) {
+        *slot = WorldLight {
+            origin: light.origin,
+            radius: light.radius,
+            color: light.color.map(f32::from),
+        };
+    }
+    (out, count)
+}
+
+/// The light `colour` under a model at `point`, 0 to 255, with what each
+/// of `lights` adds there, what is left of its radius after the way to it
+/// in its colour (`R_StudioDynamicLight`)
+fn lit_by(colour: [f32; 3], point: [f32; 3], lights: &[DynamicLight]) -> [f32; 3] {
+    let mut out = colour;
+    for light in lights {
+        let d = [0, 1, 2].map(|k| point[k] - light.origin[k]);
+        let distance = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt();
+        let left = light.radius - distance;
+        if left > 0. {
+            for (channel, c) in out.iter_mut().zip(light.color) {
+                *channel += left * f32::from(c) / 255.;
+            }
+        }
+    }
+    out
 }
 
 /// The recorder's view. The recorded field of view is across the screen's

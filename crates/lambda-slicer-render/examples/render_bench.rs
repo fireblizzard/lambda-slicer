@@ -132,6 +132,8 @@ fn main() {
             light_styles: [1.; 64],
             gamma: Default::default(),
             fullbright: false,
+            lights: Default::default(),
+            light_count: 0,
         };
         let (_, commands) = scene.render(
             &device,

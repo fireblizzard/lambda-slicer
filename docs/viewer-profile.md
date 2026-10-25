@@ -726,8 +726,31 @@ leave 23 shot decals (`{SHOT1` to `{SHOT5`, 179 to 183 in `decals.wad`) and play
 
 Not yet: hitboxes, as the game traces players through their models' hitboxes where its prediction
 has them, so a shot past a model but inside its box meets the box here; brush entities turned by
-their angles; the crossbow's bolts; player sprays (`TE_PLAYERDECAL`);
-particles (the sparks' streaks, the explosions' flicker and an impact's dust); and dynamic lights.
+their angles; the crossbow's bolts; player sprays (`TE_PLAYERDECAL`); and particles (the sparks'
+streaks, the explosions' flicker and an impact's dust).
+
+### Dynamic lights
+
+**Implemented**, from the engine as Quake and Xash3D restate it (`CL_LinkPacketEntities`,
+`CL_ParseTEnt`, `R_AddDynamicLights`, `R_StudioDynamicLight`), checked on screen but not yet
+compared with the game. A frame lights the world with up to 32, the nearest to the camera first,
+as the game keeps 32.
+
+- **Sources.** An explosion (`TE_EXPLOSION` without `TE_EXPLFLAG_NODLIGHTS`) lights radius 200 in
+  250, 250, 150 for 0.01 s, shrinking 800 units a second. `TE_DLIGHT` and `TE_ELIGHT` light as
+  their messages say, a `TE_ELIGHT` models alone and from where it was sent rather than
+  following its entity. An entity's `EF_BRIGHTLIGHT` lights radius 400, `EF_DIMLIGHT` 200, both
+  16 units up, and `EF_LIGHT` 200 at its origin, such as a rocket's. A muzzle flash lights radius
+  200 for 0.1 s, 18 units ahead of the gun and 16 up, or of the eye for the weapon in view, from
+  each muzzle flash the events show and from `EF_MUZZLEFLASH` on an entity. The game adds up to
+  31 to the radius at random each frame, which is left out, and colours lights the engine leaves
+  unset white.
+- **The world.** Each light adds what is left of its radius after the way off a face's plane and
+  the way across it, in its colour, to the face's light, as the game adds it to the lightmap.
+  The game does that per lightmap texel, every 16 units, and here per pixel, so the light's edge
+  is smooth rather than blocky.
+- **Models.** Each light near a model adds what is left of its radius after the way to the model
+  to the light under it, in its colour, before the model's ambient and shade are worked out.
 
 ### Beams and tracers
 

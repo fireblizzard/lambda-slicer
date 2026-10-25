@@ -65,11 +65,15 @@ const SHADER: &str = r#"
 const SILHOUETTE_BACK: bool = true;
 struct Uniforms {
     view_projection: mat4x4<f32>,
-    // y time in seconds, z 1 when everything is fully lit
+    // y time in seconds, z 1 when everything is fully lit, w how many
+    // dynamic lights there are
     params: vec4<f32>,
     styles: array<vec4<f32>, 17>,
     // The game's gamma (Gamma::uniform)
     gamma: array<vec4<f32>, 2>,
+    // Each dynamic light's origin and radius, then its colour a 256th of
+    // each channel's 0 to 255
+    lights: array<vec4<f32>, 64>,
 }
 struct Object {
     model: mat4x4<f32>,
@@ -129,6 +133,26 @@ fn model_light(l: vec3<f32>) -> vec3<f32> {
     return light_table(clamp(l, vec3<f32>(0.0), vec3<f32>(1.0)) * (1020.0 / 1023.0));
 }
 
+// What the dynamic lights add to a face's light at `world`, facing
+// `normal`, as the game adds them to its lightmap. Each gives what is left
+// of its radius after the way off the face's plane and the way across it,
+// so a light lights its own wall brightest (`R_AddDynamicLights`)
+fn dynamic_light(world: vec3<f32>, normal: vec3<f32>) -> vec3<f32> {
+    var sum = vec3<f32>(0.0);
+    let count = u32(u.params.w);
+    for (var k = 0u; k < count; k = k + 1u) {
+        let at = u.lights[2u * k];
+        let d = world - at.xyz;
+        let off = dot(d, normal);
+        let across = length(d - normal * off);
+        let left = at.w - abs(off) - across;
+        if (left > 0.0) {
+            sum = sum + u.lights[2u * k + 1u].rgb * left / 255.0;
+        }
+    }
+    return sum;
+}
+
 struct WorldOut {
     @builtin(position) clip: vec4<f32>,
     @location(0) uv: vec2<f32>,
@@ -136,6 +160,7 @@ struct WorldOut {
     @location(2) @interpolate(flat) styles: vec4<u32>,
     @location(3) @interpolate(flat) flags: u32,
     @location(4) @interpolate(flat) style_step: f32,
+    @location(5) world: vec3<f32>,
 }
 
 @vertex
@@ -148,7 +173,9 @@ fn world_vs(
     @location(5) flags: u32,
 ) -> WorldOut {
     var out: WorldOut;
-    out.clip = u.view_projection * object.model * vec4<f32>(position, 1.0);
+    let world = object.model * vec4<f32>(position, 1.0);
+    out.clip = u.view_projection * world;
+    out.world = world.xyz;
     out.uv = uv;
     out.lightmap_uv = lightmap_uv;
     out.styles = styles;
@@ -159,6 +186,9 @@ fn world_vs(
 
 @fragment
 fn world_fs(v: WorldOut) -> @location(0) vec4<f32> {
+    // The face's plane, from how the position changes across the pixels
+    let normal = normalize(cross(dpdx(v.world), dpdy(v.world)));
+
     // Turbulent faces carry texels, warped as the game's water is
     var uv = v.uv;
     if ((v.flags & 1u) != 0u) {
@@ -191,6 +221,7 @@ fn world_fs(v: WorldOut) -> @location(0) vec4<f32> {
         let offset = vec2<f32>(f32(k) * v.style_step, 0.0);
         light = light + textureSample(lightmap, lightmap_sampler, v.lightmap_uv + offset).rgb * style_value(s);
     }
+    light = light + dynamic_light(v.world, normal);
     // Fully lit, every face shows its texture's own colours
     if (fullbright()) {
         light = vec3<f32>(1.0);
@@ -339,6 +370,22 @@ struct Uniforms {
     params: [f32; 4],
     styles: [f32; 68],
     gamma: [[f32; 4]; 2],
+    lights: [[f32; 4]; 2 * MOST_LIGHTS],
+}
+
+/// The most dynamic lights a frame lights the world with, the game's
+/// `MAX_DLIGHTS`
+pub const MOST_LIGHTS: usize = 32;
+
+/// A light that brightens what is near it for a moment, such as a muzzle
+/// flash or an explosion (`dlight_t`)
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct WorldLight {
+    pub origin: [f32; 3],
+    /// How far it reaches, in units
+    pub radius: f32,
+    /// 0 to 255 for each channel
+    pub color: [f32; 3],
 }
 
 /// One brush model's draw, at a dynamic offset in the object buffer
@@ -456,6 +503,9 @@ pub struct View {
     /// Every face fully lit and every model lit well, to see into dark
     /// places
     pub fullbright: bool,
+    /// The dynamic lights that light the world, the first `light_count`
+    pub lights: [WorldLight; MOST_LIGHTS],
+    pub light_count: usize,
 }
 
 /// The render mode the world's shader takes for decals
@@ -1817,11 +1867,25 @@ impl Scene {
         let mut styles = [0f32; 68];
         styles[..64].copy_from_slice(&view.light_styles);
         styles[STYLE_SLOTS - 1] = 1.;
+        let count = view.light_count.min(MOST_LIGHTS);
+        let mut lights = [[0f32; 4]; 2 * MOST_LIGHTS];
+        for (k, light) in view.lights[..count].iter().enumerate() {
+            let [x, y, z] = light.origin;
+            let [r, g, b] = light.color.map(|c| c / 256.);
+            lights[2 * k] = [x, y, z, light.radius];
+            lights[2 * k + 1] = [r, g, b, 0.];
+        }
         let uniforms = Uniforms {
             view_projection: view.view_projection,
-            params: [0., view.time, f32::from(u8::from(view.fullbright)), 0.],
+            params: [
+                0.,
+                view.time,
+                f32::from(u8::from(view.fullbright)),
+                count as f32,
+            ],
             styles,
             gamma: view.gamma.uniform(),
+            lights,
         };
         queue.write_buffer(&self.uniforms, 0, bytemuck::bytes_of(&uniforms));
         let models: Vec<Instance> = draw
@@ -2301,6 +2365,8 @@ mod tests {
             light_styles: [1.; 64],
             gamma: Gamma::default(),
             fullbright: false,
+            lights: [WorldLight::default(); MOST_LIGHTS],
+            light_count: 0,
         }
     }
 

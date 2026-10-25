@@ -168,9 +168,34 @@ impl TempEntity {
 }
 
 /// Every temporary entity alive
+/// A light that brightens what is near it for a moment, such as an
+/// explosion's flash (`dlight_t`)
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct DynamicLight {
+    pub origin: [f32; 3],
+    /// How far it reaches, in units
+    pub radius: f32,
+    /// 0 to 255 for each channel
+    pub color: [u8; 3],
+    /// It lights models alone, not the world (`TE_ELIGHT`)
+    pub models_only: bool,
+}
+
+/// A dynamic light a message made, shrinking from when it was made until
+/// it dies
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct TimedLight {
+    light: DynamicLight,
+    born: SourceTime,
+    die: SourceTime,
+    /// Units of radius it loses a second
+    decay: f32,
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct TempEntities {
     entities: Vec<TempEntity>,
+    lights: Vec<TimedLight>,
     next_id: u64,
     last: Option<SourceTime>,
 }
@@ -178,6 +203,37 @@ pub struct TempEntities {
 impl TempEntities {
     pub fn entities(&self) -> &[TempEntity] {
         &self.entities
+    }
+
+    /// The dynamic lights messages made that still shine at `at`, each as
+    /// far as it reaches by then
+    pub fn lights(&self, at: SourceTime) -> Vec<DynamicLight> {
+        let mut out = Vec::new();
+        for timed in &self.lights {
+            if at < timed.born || at >= timed.die {
+                continue;
+            }
+            let shrunk = timed.decay * (at.0 - timed.born.0) as f32;
+            let radius = timed.light.radius - shrunk;
+            if radius > 0. {
+                out.push(DynamicLight {
+                    radius,
+                    ..timed.light
+                });
+            }
+        }
+        out
+    }
+
+    /// A dynamic `light` from `now` for `life` seconds, shrinking by
+    /// `decay` units a second
+    fn light(&mut self, light: DynamicLight, now: SourceTime, life: f64, decay: f32) {
+        self.lights.push(TimedLight {
+            light,
+            born: now,
+            die: SourceTime(now.0 + life),
+            decay,
+        });
     }
 
     /// A new entity at `origin`, none when the engine would have no room
@@ -400,6 +456,7 @@ impl TempEntities {
         if dt <= 0. {
             return Vec::new();
         }
+        self.lights.retain(|l| at < l.die);
         let pull = -dt * gravity;
         let mut sounds = Vec::new();
         let mut glints = Vec::new();
@@ -511,6 +568,8 @@ pub mod kind {
     pub const SMOKE: u8 = 5;
     pub const SPARKS: u8 = 9;
     pub const SPRITE: u8 = 17;
+    pub const DLIGHT: u8 = 27;
+    pub const ELIGHT: u8 = 28;
     pub const MODEL: u8 = 106;
     pub const BREAK_MODEL: u8 = 108;
     pub const GUNSHOT_DECAL: u8 = 109;
@@ -521,7 +580,12 @@ pub mod kind {
 
 /// `TE_EXPLFLAG_` flags
 const NO_ADDITIVE: u8 = 1;
+const NO_LIGHTS: u8 = 2;
 const NO_SOUND: u8 = 4;
+
+/// An explosion's flash, its radius, colour, life and how fast it shrinks
+/// (`CL_ParseTEnt`)
+const EXPLOSION_LIGHT: (f32, [u8; 3], f64, f32) = (200., [250, 250, 150], 0.01, 800.);
 
 /// A temporary entity message's body, read in the order it was written
 struct Body<'a>(&'a [u8], usize);
@@ -596,6 +660,16 @@ impl TempEntities {
                     e.origin[2] += 10.;
                     e.scale = scale;
                 }
+                if flags & NO_LIGHTS == 0 {
+                    let (radius, color, life, decay) = EXPLOSION_LIGHT;
+                    let light = DynamicLight {
+                        origin,
+                        radius,
+                        color,
+                        models_only: false,
+                    };
+                    self.light(light, now, life, decay);
+                }
                 if flags & NO_SOUND == 0 {
                     let samples = [
                         "weapons/explode3.wav",
@@ -625,6 +699,35 @@ impl TempEntities {
             kind::SPARKS => {
                 let origin = b.vector();
                 self.spark_shower(origin, now);
+            }
+            kind::DLIGHT => {
+                let origin = b.vector();
+                let radius = f32::from(b.byte()) * 10.;
+                let color = [b.byte(), b.byte(), b.byte()];
+                let life = f64::from(b.byte()) * 0.1;
+                let decay = f32::from(b.byte()) * 10.;
+                let light = DynamicLight {
+                    origin,
+                    radius,
+                    color,
+                    models_only: false,
+                };
+                self.light(light, now, life, decay);
+            }
+            kind::ELIGHT => {
+                let _entity = b.short();
+                let origin = b.vector();
+                let radius = b.coord();
+                let color = [b.byte(), b.byte(), b.byte()];
+                let life = f64::from(b.byte()) * 0.1;
+                let decay = b.coord();
+                let light = DynamicLight {
+                    origin,
+                    radius,
+                    color,
+                    models_only: true,
+                };
+                self.light(light, now, life, decay);
             }
             kind::SPRITE => {
                 let origin = b.vector();
@@ -992,6 +1095,53 @@ mod tests {
             node_faces: Vec::new(),
             faces: Vec::new(),
         }
+    }
+
+    /// An `svc_temp_entity` body of `bytes`, the coordinates of `origin`
+    /// first
+    fn body(origin: [f32; 3], bytes: &[u8]) -> Vec<u8> {
+        let mut out = Vec::new();
+        for c in origin {
+            out.extend(((c * 8.) as i16).to_le_bytes());
+        }
+        out.extend(bytes);
+        out
+    }
+
+    #[test]
+    fn lights_shine_shrinking_until_they_die() {
+        let none = |_: i16| None;
+        let no_frames = |_: &str| None;
+        let lookup = Lookup {
+            model: &none,
+            frames: &no_frames,
+            world: None,
+        };
+        let mut t = TempEntities::default();
+        let now = SourceTime(10.);
+
+        // Radius 300, orange, a second long, shrinking 100 units a second
+        let dlight = body([1., 2., 3.], &[30, 255, 128, 0, 10, 10]);
+        t.message(kind::DLIGHT, &dlight, now, &lookup);
+        let half = t.lights(SourceTime(10.5));
+        assert_eq!(half.len(), 1);
+        assert_eq!((half[0].origin, half[0].radius), ([1., 2., 3.], 250.));
+        assert_eq!(half[0].color, [255, 128, 0]);
+        assert!(t.lights(SourceTime(11.)).is_empty());
+
+        // An explosion's flash, unless its flags say no light
+        let explosion = |flags: u8| body([0.; 3], &[0, 0, 10, 15, flags]);
+        let mut t = TempEntities::default();
+        t.message(kind::EXPLOSION, &explosion(NO_SOUND), now, &lookup);
+        assert_eq!(t.lights(now)[0].radius, 200.);
+        let mut t = TempEntities::default();
+        t.message(
+            kind::EXPLOSION,
+            &explosion(NO_SOUND | NO_LIGHTS),
+            now,
+            &lookup,
+        );
+        assert!(t.lights(now).is_empty());
     }
 
     #[test]

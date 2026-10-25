@@ -39,7 +39,7 @@ use crate::scene::{self, Camera, Entity, PlayerView, Scene, Viewmodel};
 use crate::scores::ScoreRow;
 use crate::source::{Cursor, Group, Source};
 use crate::status;
-use crate::tempents::{Lookup, TempEntities, TempEntity};
+use crate::tempents::{DynamicLight, Lookup, TempEntities, TempEntity};
 use crate::time::{Position, ServerTime, SourceTime};
 use crate::trace::Hull;
 use crate::weapon_menu::MenuShown;
@@ -89,6 +89,10 @@ pub struct PresentedFrame {
     pub flashes: Vec<Flash>,
     /// The client's own sprites and models, shells among them
     pub temp_entities: Vec<TempEntity>,
+    /// The dynamic lights messages made that still shine, such as
+    /// explosions' flashes. Those of entities' effects are left to whoever
+    /// draws them
+    pub lights: Vec<DynamicLight>,
     /// The decals on the map, oldest first
     pub decals: Arc<VecDeque<Decal>>,
     /// Grows whenever a decal is made or they are cleared
@@ -746,6 +750,7 @@ impl Playback {
                 .filter(|e| e.visible())
                 .cloned()
                 .collect(),
+            lights: state.tempents.lights(at),
         }
     }
 }

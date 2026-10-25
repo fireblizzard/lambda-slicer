@@ -32,7 +32,7 @@
 - [ ] Add glow shell
 - [ ] Support `remap` textures
 - [ ] Add blending between animations
-- [ ] Add dynamic lights
+- [x] Add dynamic lights
 - [ ] Read `sentences.txt` and play the words to hear what the NPCs say
 - [ ] Add aimpunch
 - [ ] Add voice chat audio to hear what players were saying in the demo

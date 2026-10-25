@@ -53,7 +53,6 @@ Not shown or played yet:
 - The flashlight and its HUD.
 - The big HALF-LIFE logo at the start of a new game. Chapter titles and other text from
   `titles.txt` do show.
-- Dynamic lights, such as muzzle flashes and the gauss's and Egon's light.
 - Particles: the streaks of sparks, the flicker of explosions and the dust of bullet impacts.
 - Recorded voice chat, sentences (speech made of words, like the HEV suit's or soldiers') and
   room echoes.
@@ -66,6 +65,9 @@ Not shown or played yet:
 
 Known differences from the game:
 
+- Dynamic lights, such as muzzle flashes and explosions' flashes, light smoothly rather than in
+  the game's 16-unit steps, and don't flicker in size. Other players' muzzle flashes light only
+  when the demo shows them firing.
 - Another player's view is worked out from their model, so it is close but not exact: the pitch
   comes from the model's lean, which is less precise, the view doesn't bob, and a dead player's
   view doesn't drop to the floor. Their weapon in view doesn't move, reload or fire, as the demo
