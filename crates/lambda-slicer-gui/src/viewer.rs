@@ -2317,7 +2317,8 @@ impl Viewer {
                     }
                     if self.settings.show_position {
                         let seen_from = self.eye(frame);
-                        draw_position(ui.painter(), rect, catalog, seen_from);
+                        let colour = text_colour(&self.settings);
+                        draw_position(ui.painter(), rect, catalog, seen_from, colour);
                     }
                     if self.settings.recorder_fps
                         && let Some(fps) = frame.recorder.fps
@@ -2398,7 +2399,9 @@ impl Viewer {
                         if self.settings.chat {
                             let map = frame.map.as_deref();
                             let size = self.settings.text_size;
-                            self.chat.draw(ui, rect, &frame.chat, map, library, size);
+                            let colour = text_colour(&self.settings);
+                            self.chat
+                                .draw(ui, rect, &frame.chat, map, library, size, colour);
                         }
                     }
                     // The recorder's speeds as recorded while they play,
@@ -4685,14 +4688,23 @@ const POSITION_FROM_TOP: f32 = 0.3;
 const FPS_TEXT: f32 = 10.;
 const FPS_MARGIN: f32 = 6.;
 
+/// The colour the settings give chat and the position, as `con_color`
+/// gives the console's text in the game
+fn text_colour(settings: &ViewerSettings) -> egui::Color32 {
+    let [r, g, b] = settings.text_color;
+    egui::Color32::from_rgb(r, g, b)
+}
+
 /// Where the picture is seen from, `origin`, and the way it looks,
-/// `angles`, in the game's units and degrees, on the left of the picture.
-/// They are what `--viewer-free-at` takes to see the same view again
+/// `angles`, in the game's units and degrees, on the left of the picture
+/// in `colour`. They are what `--viewer-free-at` takes to see the same
+/// view again
 fn draw_position(
     painter: &egui::Painter,
     rect: egui::Rect,
     catalog: &Catalog,
     (origin, angles): ([f32; 3], [f32; 3]),
+    colour: egui::Color32,
 ) {
     let number = |v: f32| FluentValue::from(format!("{v:.1}"));
     let position = catalog.text_with(
@@ -4719,12 +4731,12 @@ fn draw_position(
         // order `--viewer-free-at` takes, and a right-to-left label still
         // reads as it should
         let line = text::visual_pieces(&line, false).concat();
-        let galley = painter.layout_no_wrap(line, font.clone(), HUD_COLOR);
+        let galley = painter.layout_no_wrap(line, font.clone(), colour);
         let band = egui::Rect::from_min_size(at, galley.size());
         let band = band.expand2(egui::vec2(size / 3., size / 8.));
         painter.rect_filled(band, theme::RADIUS_SMALL, NAME_BAND);
         let height = galley.size().y;
-        painter.galley(at, galley, HUD_COLOR);
+        painter.galley(at, galley, colour);
         at.y += height + size / 3.;
     }
 }

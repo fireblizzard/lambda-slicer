@@ -10,6 +10,9 @@
 //! and their positions split by `#` (OpenAG's `CHudLocation`). Everything is
 //! sized to the view as the game's 640 by 480 screen would be, as the kill
 //! feed is
+//!
+//! The text that isn't a name takes the colour the settings give, which
+//! the game takes from `con_color`
 
 use std::collections::HashMap;
 
@@ -33,9 +36,6 @@ const TEXT_SIZE: f32 = 13.;
 
 /// Lines the chat makes room for, its five and two more
 const ROOM_LINES: f32 = 7.;
-
-/// The console's text colour, which chat takes (`con_color`)
-const CONSOLE: Color32 = Color32::from_rgb(255, 180, 30);
 
 /// The codes a sender's place stands in for
 const PLACE_CODES: [&str; 4] = ["%l", "%L", "%d", "%D"];
@@ -107,7 +107,7 @@ impl Chat {
     }
 
     /// One line laid out to wrap within `width`, its place codes filled in
-    /// from the places of `map`
+    /// from the places of `map`, its text other than the name in `text`
     fn line_job(
         &mut self,
         line: &ChatLine,
@@ -115,6 +115,7 @@ impl Chat {
         library: &Library,
         font: &egui::FontId,
         width: f32,
+        text: Color32,
     ) -> egui::text::LayoutJob {
         let place = match (map, line.place) {
             (Some(map), Some(at)) => nearest(self.places(library, map), at).unwrap_or(""),
@@ -130,17 +131,19 @@ impl Chat {
                     &line.text[range.clone()],
                     &line.text[range.end..],
                 );
-                add_tagged(&mut job, &with_place(before, place), CONSOLE, font);
+                add_tagged(&mut job, &with_place(before, place), text, font);
                 add_tagged(&mut job, name, team_colour(team), font);
-                add_tagged(&mut job, &with_place(after, place), CONSOLE, font);
+                add_tagged(&mut job, &with_place(after, place), text, font);
             }
-            None => add_tagged(&mut job, &with_place(&line.text, place), CONSOLE, font),
+            None => add_tagged(&mut job, &with_place(&line.text, place), text, font),
         }
         job
     }
 
     /// The chat's `lines` over the view at `rect`, its places from the map
-    /// at `map` in `library`, its text `size` times the game's
+    /// at `map` in `library`, its text `size` times the game's and in
+    /// `text` other than the names
+    #[allow(clippy::too_many_arguments)]
     pub fn draw(
         &mut self,
         ui: &egui::Ui,
@@ -149,6 +152,7 @@ impl Chat {
         map: Option<&str>,
         library: &Library,
         size: f32,
+        text: Color32,
     ) {
         let scale = rect.height() / SCREEN_HEIGHT;
         let font = egui::FontId::proportional(TEXT_SIZE * size * scale);
@@ -158,10 +162,10 @@ impl Chat {
 
         let mut top = rect.bottom() - (BOTTOM_ROOM + LINE_HEIGHT * ROOM_LINES) * scale;
         for line in lines {
-            let job = self.line_job(line, map, library, &font, width);
+            let job = self.line_job(line, map, library, &font, width, text);
             let galley = painter.layout_job(job);
             let height = galley.size().y.max(LINE_HEIGHT * scale);
-            painter.galley(Pos2::new(rect.left() + LEFT * scale, top), galley, CONSOLE);
+            painter.galley(Pos2::new(rect.left() + LEFT * scale, top), galley, text);
             top += height;
         }
     }

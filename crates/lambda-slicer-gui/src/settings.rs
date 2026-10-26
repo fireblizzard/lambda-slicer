@@ -261,6 +261,10 @@ pub struct ViewerSettings {
     /// The size of the chat's, the kill feed's and the server's settings'
     /// text against the game's
     pub text_size: f32,
+    /// The colour of chat messages, of lines no player sent and of the
+    /// position and view angles, as `con_color` sets the console's in the
+    /// game. Names keep their team's colour
+    pub text_color: [u8; 3],
     /// Whether the text the server places on the HUD shows, such as a bhop
     /// or KZ server's timer
     pub hud_messages: bool,
@@ -321,6 +325,7 @@ impl Default for ViewerSettings {
             scoreboard: ScoreboardShown::Fullscreen,
             server_settings: true,
             text_size: 0.92,
+            text_color: [255, 180, 30],
             hud_messages: true,
             volume: 0.1,
             see_through: false,

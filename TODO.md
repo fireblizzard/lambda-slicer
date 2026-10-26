@@ -1,70 +1,35 @@
 # Pending features, fixes or improvements
-- [x] Try to reduce lag when watching a demo while it's scanning folders, prioritize the demo player
-- [x] Add a filter for non-bot demos. If we can't determine whether a player is a bot or not, just make it filter out scores where the other player doesn't move in a 1v1
 - [ ] Support WON demos (protocol 5/47)
 	- [x] Singleplayer
 	- [ ] Multiplayer
-- [x] Add a speedometer and last jump speed to the demo player, with a setting to make it count only horizontal, only vertical or full 3D (both)
-- [x] Add flashlight HUD to the demo player
-- [x] Add a fps counter to the demo player, not at which framerate the demo is being rendered, but what fps the player recording the demo had instead
-- [x] Add x1.25 and x1.5 replay speed. but the dropdown is getting too crowded, we might have to use a different UI element type
-- [x] Make holding left click on the demo player speed up the demo twice the current speed (x1 -> x2, x4 -> x8). releasing click makes it go back to normal (whichever replay speed you had set, not necessarily x1)
-- [x] Make mouse4 navigate back and mouse5 navigate forward. so if you're in the library view and click a demo, it opens the demo view with the player and everything, and pressing mouse4 would close that view and go back to the library where you see the whole table, and mouse5 would get you back to that demo view
-- [x] On `afafsd.dem` it's initially a 3v3 but after 05:52.999 a new match starts while the previous one is ongoing, and this new one is a 2v2, so we should really say 4 players for this demo as the only complete match is a 2v2. if there was already an ongoing match when the demo started and that match is a 3v3 and gets to finish, and then there's a full 2v2 match after that in the same demo, then we should still count the 2v2, as it's the complete one.  if there are 2 different complete matches in the demo, then in that case we should count the match with the highest amount of players, so if one is 3v3 and the other 2v2, keep the 3v3 for the players column in the library
-- [x] Add a setting to adjust the font size for the chat, server settings and kill feed, and make it slightly smaller (like 1 point) by default
 - [ ] Add the ability to export to different video formats that can be uploaded directly to platforms like YouTube or TikTok
 - [ ] Detect flicks and add it as filter for demos and events
 - [ ] Add 3rd person camera
-- [x] Add ability to switch to another player's POV as long as the demo has the info. While it doesn't have it, switch to the recorder POV until we have info again. Also clicking on an event should put you in the killer's POV if there's one, otherwise in the victim's POV is there's one, otherwise just go to recorder's POV for that event even if it's unrelated to the recorder (so like current behaviour, no change there)
-- [x] Show multiple scores for multi-map demos, one for each map that's not ignored
-- [x] Add weapon bob
-- [x] Support scrolling textures
 - [ ] Support randomly tiled textures
-- [x] Support GameTitle message, like the HALF-LIFE logo when you start a new singleplayer game
 - [ ] For events scheduled before the start of a clip, send it again in the clip with the time it had left
 - [ ] Fix walls starting clean on a clip that you play in the game, replay decals at that point
-- [x] Don't refuse clips, offer to start the clip at the nearest moment that works, like 0.3s earlier
-- [x] Check the stop button inside the export's own loop, so it stops the export within a moment
-- [x] Store which part a clip belongs to as well as its times, for demos with multiple server clock restarts (e.g. loads)
 - [ ] Fix gauss balls and glows
-- [x] Support clips across changelevels or loads
-- [x] Add particles
-- [x] Add glow shell
 - [ ] Support `remap` textures
 - [ ] Add blending between animations
-- [x] Add dynamic lights
-- [x] Read `sentences.txt` and play the words to hear what the NPCs say
-- [x] Fix aimpunch kicking the weapon
 - [ ] Add voice chat audio to hear what players were saying in the demo
 - [ ] Support room echoes
 - [ ] Add tripmine's and snark's effects
-- [x] Add a Matches tab for the library, which also includes Free play for parts of a demo that are long enough to be worth mentioning even if they were not in a match (agstart)
-- [x] Add filters for multikills (doublekill, triple, quadra, penta...) in a single shot, like a charged gauss shot through several players or an explosion (grenade, rocket, satchel, tripmine...) killing multiple thanks to the blast radius
-- [x] Add a badge for killing sprees in the event list. The badge should be on the last kill before they died, or on the last one if they didn't die, with a setting for showing the badge when the streak is X (by default, 10 kills). So with the default setting, a player who does 22 kills and then dies would have a x22 badge on their last kill before dying, but if it was 9 kills instead then there would be no badge. When they die the count resets, so there can be potentially multiple events with this badge for the same player, e.g. if they got to do another 10 kill streak after dying. If the setting is changed while an event list is showing, then it should update immediately to recalculate the badges
 - [ ] Make a filter for explosion kills that happened when the players couldn't see each other. They could be in the PVS still but this is for things like throwing a grenade around a corner and killing someone behind the corner or a wall, like on `20220102_225243_pwrcore` at 00:34.144
-- [x] Add a Favourites tab and an Add to favourites or Remove from favourites option to the context menu of a demo. The tab should be right after the Filters button above the table, and for now there will be 2 tabs: All and Favourites. All is the normal table and Favourite will just show the favourited demos. Demo entries in the table should show a yellow star after the name of the demo, in the same column as the name, just at the end of the text
-- [x] Add Hide/Unhide to the context menu of a demo, and a "Hidden" tab like All/Favourites but for hidden demos. Hidden demos should not show up when we're in the All tab. They can appear in the Favourites tab if they're favourited, although that'd be weird. And they'll always show up when we're in the Hidden tab as long as the user doesn't unhide them
-- [x] Split the right pane where Events, Clips and Scoreboard is in half, so that we have one upper pane and one lower pane. We'll have the scoreboard showing in the upper pane and we'll remove its tab that it currently has. These 2 panes should be collapsible, so when the upper pane is collapsed the lower pane will take almost all the space (the upper pane still needs a little space to show its own title and to be able to click on it to expand it), and viceversa, so there will always be at least one expanded, cannot have both collapsed; if you have one collapsed and click on the other, it will just become half and half again; if you click on the one that's collapsed, it will expand to half and half; when it's half and half and you click one, it will expand to collapse the other. The lower pane will have the events and clips. The scoreboard should show the final score on the very first frame when we load the demo player but still haven't started playing the video. After that it should just update live with whatever is going on in the demo. It should also show spectators
-- [x] Add scoreboard to the demo player, so it shows it inside the viewport when the recorder hit `+showscores`, but have it disabled by default with a setting
-- [x] Show ping and loss on the scoreboard in the upper right panel
 - [ ] Add library filter for moments where a player is going at 1000 ups (customizable speed) for longer than 10s (customizable duration)
-- [ ] Add support for HLKZ, showing things like run times in a demo, jump/strafing stats and so on
-- [x] Find demos of players by name or SteamID
+- [ ] Add support for HLKZ, showing things like run times in a demo, jump/strafing stats and so on. Add its own tab next to Matches, it should show only demos where the player presses either the start button or the end button, or both, and also demos with the custom hudmessage that shows the HLKZ timer (or any other clue that tells us it was HLKZ)
 - [ ] Add an option to change the HUD color (HP/AP, ammo, item pickups, weapon selection, timer, votes, server settings, custom hudmessages..., equivalent to `hud_color` game cvar) and another to change the text color (chat and kill feed, equivalent to `con_color` game cvar, i think it only applies to the kill feed when it's not teamplay, i'm not sure)
-- [x] When hovering the seek bar, show a small preview of that moment
-- [x] When the video player has paused due to reaching the end of the demo, left click on it should restart it (back to 00:00:00.000)
 - [ ] Add a setting for the in-player scoreboard to show it only if the recorder was playing and not spectating. This should be the new default
+- [ ] Add an easy way to clip a demo by map, so if a demo has 3 maps in it, make 3 clips from the beginning of each map until the end of it
+- [ ] Add a button to export the demo info to a text file, with the map, date, player names at the top, then the scoreboard and then the filtered event list
+- [ ] Find chat messages across the whole library, like words or parts of a message, with filters like sender and map
+- [ ] Improve the match highlights (top moments), accounting for things that require skill like complicated kills, headshots, flicks, stunts, trickshots, etc.
 
 # Ideas for later
 - [ ] Add a crosshair editor in settings that it's then used for the demo viewer
 - [ ] Add a demo viewer setting to customize the sky in the rendered demo. If none is set then just use the one found in the demo
-- [ ] Add an easy way to clip a demo by map, so if a demo has 3 maps in it, make 3 clips from the beginning of each map until the end of it
-- [ ] Add a button to export the demo info to a text file, with the map, date, player names at the top, then the scoreboard and then the filtered event list
 - [ ] Add ability to make volumetric triggers to time segments for HLKZ
 - [ ] Support Opposing Force demos
 - [ ] Support Blue Shift demos
-- [ ] Find chat messages across the whole library, like words or parts of a message, with filters like sender and map
-- [ ] Improve the match highlights (top moments), accounting for things that require skill like complicated kills, headshots, stunts, trickshots, etc.
 - [ ] Add support for Xash3D
 - [ ] Add entity view mode for the demo player which can work with or without freecam, so you click on a door to check its properties, or you're able to see (and click) invisible entities like triggers, NPC nodes, and so on.
 - [ ] Make a heatmap to see where the player spends more or less time on a map.  should be able to see for each player in a demo map, and then accounting for the whole library through a new Heatmap button left to the settings button (top right)
