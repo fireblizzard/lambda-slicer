@@ -157,7 +157,11 @@ frames a second the recorder's game ran at in the top left corner, above the sma
 from the frame times their demo recorded, averaged over each half second of them. It's the
 recorder's whatever view is shown, and not how fast the app draws. Size of the chat, kill feed
 and server's settings makes their text smaller or larger than the game's, 92% of it by default,
-as the game's is a little large over a view smaller than its screen. Text colour colours chat
+as the game's is a little large over a view smaller than its screen. HUD colour colours the
+health, armour, ammo, pickups, damage marks, weapon menu, the speeds and the recorder's fps, and
+AG's countdown, timer, votes and server settings, as `hud_color` does in OpenAG, HL's orange by
+default. Low health and weapons out of ammo stay red, the server's own HUD text keeps the colour
+it sends, and the full scoreboard keeps its own, as in the game. Text colour colours chat
 messages, lines no player sent, and the position and view angles, as `con_color` does in the game,
 its orange by default. Names keep their team's colour, and the kill feed is not changed, as in the
 game. Show scoreboard shows the

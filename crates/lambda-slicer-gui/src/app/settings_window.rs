@@ -892,6 +892,14 @@ impl App {
             ui.label(egui::RichText::new(percent).monospace().color(theme::MUTED));
         });
         layout::row(ui, rtl, |ui| {
+            ui.label(t("settings-hud-color"));
+            ui.color_edit_button_srgb(&mut viewer.hud_color);
+            if ui.button(t("settings-text-color-default")).clicked() {
+                viewer.hud_color = ViewerSettings::default().hud_color;
+            }
+            widgets::help(ui, &catalog.text("settings-hud-color-hint"), rtl);
+        });
+        layout::row(ui, rtl, |ui| {
             ui.label(t("settings-text-color"));
             ui.color_edit_button_srgb(&mut viewer.text_color);
             if ui.button(t("settings-text-color-default")).clicked() {
@@ -1296,6 +1304,7 @@ fn changed_settings(current: &Settings, restored: &Settings) -> Vec<&'static str
             "settings-server-settings",
         ),
         (view.text_size != first.text_size, "settings-text-size"),
+        (view.hud_color != first.hud_color, "settings-hud-color"),
         (view.text_color != first.text_color, "settings-text-color"),
         (
             view.hud_messages != first.hud_messages,

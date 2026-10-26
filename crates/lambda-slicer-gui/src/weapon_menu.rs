@@ -14,8 +14,7 @@ use lambda_slicer_audio::library::Library;
 use lambda_slicer_playback::weapon_menu::{MenuShown, MenuWeapon};
 
 use crate::hud_sprites::{HUD_LIST, HudSprites};
-use crate::viewer::HUD_COLOR;
-use crate::vitals::{NO_AMMO_COLOUR, Painter, scaled};
+use crate::vitals::{HudLook, NO_AMMO_COLOUR, Painter, scaled};
 
 /// Where the menu starts from the top left, and the room between columns
 /// and between weapons, in the game's columns and rows
@@ -43,17 +42,17 @@ fn list(weapon: &MenuWeapon) -> String {
     format!("sprites/{}.txt", weapon.name)
 }
 
-/// `menu` over the view at `rect`, `size` times the game's size, its
-/// sprites from `library`
+/// `menu` over the view at `rect`, as `look` says, its sprites from
+/// `library`
 pub fn draw(
     ui: &egui::Ui,
     sprites: &mut HudSprites,
     library: &Library,
     rect: Rect,
-    size: f32,
+    look: HudLook,
     menu: &MenuShown,
 ) {
-    let mut p = Painter::new(ui, sprites, library, rect, size);
+    let mut p = Painter::new(ui, sprites, library, rect, look);
     let Some(bucket) = p.icon(HUD_LIST, "bucket1") else {
         return;
     };
@@ -79,7 +78,7 @@ pub fn draw(
     let mut x = MARGIN;
     for column in 0..menu.columns.len() {
         if let Some(number) = p.icon(HUD_LIST, &format!("bucket{}", column + 1)) {
-            p.draw(&number, x, MARGIN, scaled(HUD_COLOR, 255.), 0.);
+            p.draw(&number, x, MARGIN, scaled(p.colour, 255.), 0.);
         }
         x += width_of(column) + GAP;
     }
@@ -93,7 +92,7 @@ pub fn draw(
                 y += draw_weapon(&mut p, weapon, x, y) + GAP;
             } else {
                 let (colour, brightness) = if weapon.has_ammo {
-                    (HUD_COLOR, BOX)
+                    (p.colour, BOX)
                 } else {
                     (NO_AMMO_COLOUR, BOX_EMPTY)
                 };
@@ -114,13 +113,13 @@ fn draw_weapon(p: &mut Painter, weapon: &MenuWeapon, x: f32, y: f32) -> f32 {
     };
 
     if weapon.picked {
-        p.draw(&lit, x, y, scaled(HUD_COLOR, 255.), 0.);
+        p.draw(&lit, x, y, scaled(p.colour, 255.), 0.);
         if let Some(frame) = p.icon(HUD_LIST, "selection") {
-            p.draw(&frame, x, y, scaled(HUD_COLOR, 255.), 0.);
+            p.draw(&frame, x, y, scaled(p.colour, 255.), 0.);
         }
     } else if let Some(dim) = p.icon(&list, "weapon") {
         let tint = if weapon.has_ammo {
-            scaled(HUD_COLOR, UNPICKED)
+            scaled(p.colour, UNPICKED)
         } else {
             scaled(NO_AMMO_COLOUR, UNPICKED_EMPTY)
         };
@@ -140,7 +139,7 @@ fn draw_weapon(p: &mut Painter, weapon: &MenuWeapon, x: f32, y: f32) -> f32 {
             y,
             BAR.x - full,
             BAR.y,
-            scaled(HUD_COLOR, BAR_EMPTY),
+            scaled(p.colour, BAR_EMPTY),
         );
         bar_x += BAR.x + GAP;
     }

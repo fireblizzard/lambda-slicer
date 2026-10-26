@@ -888,7 +888,7 @@ round's winner.
 |---|---|
 | Sound | from ten down, a number spoken as it comes, `fvox/ten.wav` to `fvox/one.wav` and `barney/ba_bring.wav` at nought, where the listener is at full volume (`pfnPlaySoundByName`) |
 | Shown | for five seconds from the last spoken number. At fifty, "Waiting for players to get ready..." or "The last round was won by" the winner, until the next message. Below nought, nothing |
-| Drawn | over the view in HL's default HUD colour, the line "The match is about to start." or "<first> vs. <second>" seven text lines from the top and the number three lines below, sized as on a 640 by 480 screen. AG's colour codes, `^` and a digit, are left out of the names. The text is the game's own, in English |
+| Drawn | over the view in the HUD's colour, HL's default unless the settings change it, the line "The match is about to start." or "<first> vs. <second>" seven text lines from the top and the number three lines below, sized as on a 640 by 480 screen. AG's colour codes, `^` and a digit, are left out of the names. The text is the game's own, in English |
 
 It is part of playback's state, so a seek or a checkpoint restores it as everything else. The
 viewer's captures read the scene alone, without it. In `20210424_012456_crossfire.dem` the server

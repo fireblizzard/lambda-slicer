@@ -21,7 +21,8 @@ use lambda_slicer_audio::library::Library;
 use lambda_slicer_playback::hud_messages::{HudMessage, ShownMessage, WRITE_OUT};
 
 use crate::hud_sprites::{HUD_LIST, HudSprites};
-use crate::vitals::{Painter, scaled};
+use crate::viewer::HUD_COLOR;
+use crate::vitals::{HudLook, Painter, scaled};
 
 /// The game's screen height the HUD is laid out on
 const SCREEN_HEIGHT: f32 = 480.;
@@ -131,7 +132,12 @@ pub fn draw_title(
     rect: Rect,
     title: &ShownMessage,
 ) {
-    let mut p = Painter::new(ui, sprites, library, rect, 1.);
+    // The logo takes the message's colour rather than the HUD's
+    let look = HudLook {
+        size: 1.,
+        colour: HUD_COLOR,
+    };
+    let mut p = Painter::new(ui, sprites, library, rect, look);
     let (Some(half), Some(life)) = (
         p.icon(HUD_LIST, "title_half"),
         p.icon(HUD_LIST, "title_life"),

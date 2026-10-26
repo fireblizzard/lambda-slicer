@@ -80,6 +80,7 @@ use crate::settings::ViewerSettings;
 use crate::text::{self, Look};
 use crate::theme;
 use crate::timeline::Ranked;
+use crate::vitals::HudLook;
 use crate::widgets::{Icon, IconButton, PlayButton};
 
 /// `EF_NODRAW`, an entity the game does not draw
@@ -2317,27 +2318,28 @@ impl Viewer {
                     }
                     if self.settings.show_position {
                         let seen_from = self.eye(frame);
-                        let colour = text_colour(&self.settings);
+                        let colour = rgb(self.settings.text_color);
                         draw_position(ui.painter(), rect, catalog, seen_from, colour);
                     }
+                    let hud = rgb(self.settings.hud_color);
                     if self.settings.recorder_fps
                         && let Some(fps) = frame.recorder.fps
                     {
-                        draw_fps(ui.painter(), rect, catalog, fps);
+                        draw_fps(ui.painter(), rect, catalog, fps, hud);
                     }
                     if let Some(countdown) = &frame.countdown {
-                        draw_countdown(ui.painter(), rect, countdown);
+                        draw_countdown(ui.painter(), rect, countdown, hud);
                     }
                     let announced = &frame.announced;
                     let settings = self
                         .settings
                         .server_settings
                         .then_some(self.settings.text_size);
-                    announcements::draw(ui.painter(), rect, catalog, announced, settings);
+                    announcements::draw(ui.painter(), rect, catalog, announced, settings, hud);
                     if let Some(next) = changing_to(&self.sessions, frame.at.0) {
                         let map = FluentValue::from(next.name.clone());
                         let line = catalog.text_with("viewer-map-change", &[("map", map)]);
-                        draw_map_change(ui.painter(), rect, &line);
+                        draw_map_change(ui.painter(), rect, &line, hud);
                     }
                     let eyes = self.eyes(frame);
                     if let Some(library) = &self.library {
@@ -2366,20 +2368,23 @@ impl Viewer {
                         let shown = !camera.spectating && !camera.intermission && free_shows;
                         if self.settings.vitals && shown {
                             let (vitals, status) = (&mut self.vitals, &frame.status);
-                            let size = self.settings.vitals_size;
+                            let look = HudLook {
+                                size: self.settings.vitals_size,
+                                colour: hud,
+                            };
                             let at = frame.at;
-                            crate::vitals::draw(ui, vitals, library, rect, size, status, at);
+                            crate::vitals::draw(ui, vitals, library, rect, look, status, at);
                             let pickups = &frame.pickups;
                             crate::vitals::draw_pickups(
-                                ui, vitals, library, rect, size, pickups, at,
+                                ui, vitals, library, rect, look, pickups, at,
                             );
                             let damage = &frame.damage;
                             let health = status.health.map(|h| h.value);
                             crate::vitals::draw_damage(
-                                ui, vitals, library, rect, size, damage, health,
+                                ui, vitals, library, rect, look, damage, health,
                             );
                             if let Some(menu) = &frame.weapon_menu {
-                                crate::weapon_menu::draw(ui, vitals, library, rect, size, menu);
+                                crate::weapon_menu::draw(ui, vitals, library, rect, look, menu);
                             }
                         }
                         let size = self.settings.text_size;
@@ -2399,7 +2404,7 @@ impl Viewer {
                         if self.settings.chat {
                             let map = frame.map.as_deref();
                             let size = self.settings.text_size;
-                            let colour = text_colour(&self.settings);
+                            let colour = rgb(self.settings.text_color);
                             self.chat
                                 .draw(ui, rect, &frame.chat, map, library, size, colour);
                         }
@@ -2449,7 +2454,7 @@ impl Viewer {
                         let name = player.map_or(String::new(), |p| text::without_colours(&p.name));
                         let name = FluentValue::from(name);
                         let line = catalog.text_with("viewer-pov-unseen", &[("name", name)]);
-                        draw_unseen(ui.painter(), rect, &line);
+                        draw_unseen(ui.painter(), rect, &line, hud);
                     }
 
                     // The game shows the full scoreboard while its key is
@@ -4426,7 +4431,8 @@ impl CallbackTrait for Frame {
     }
 }
 
-/// HL's default HUD colour, which AG's countdown is drawn in
+/// HL's default HUD colour, which the full scoreboard keeps whatever the
+/// HUD's colour, as the game's does
 pub(crate) const HUD_COLOR: egui::Color32 = egui::Color32::from_rgb(255, 160, 0);
 
 /// How many of the game's text lines above the view's bottom the watched
@@ -4443,7 +4449,12 @@ const MAP_CHANGE_FROM_TOP: f32 = 7.;
 /// below, sized as on a 640 by 480 screen, where a line is a 32nd of the
 /// height and the HUD's digits a 20th. The text is the game's own, in
 /// English as AG writes it
-fn draw_countdown(painter: &egui::Painter, rect: egui::Rect, countdown: &Countdown) {
+fn draw_countdown(
+    painter: &egui::Painter,
+    rect: egui::Rect,
+    countdown: &Countdown,
+    colour: egui::Color32,
+) {
     let line = rect.height() / 32.;
     let [first, second] = countdown.names.each_ref().map(|n| text::without_colours(n));
     let text = if countdown.seconds == WAITING {
@@ -4464,7 +4475,7 @@ fn draw_countdown(painter: &egui::Painter, rect: egui::Rect, countdown: &Countdo
         egui::Align2::CENTER_TOP,
         text,
         egui::FontId::proportional(line),
-        HUD_COLOR,
+        colour,
     );
     if countdown.seconds != WAITING {
         // A digit stands about seven tenths of its font's size
@@ -4474,7 +4485,7 @@ fn draw_countdown(painter: &egui::Painter, rect: egui::Rect, countdown: &Countdo
             egui::Align2::CENTER_TOP,
             countdown.seconds.to_string(),
             egui::FontId::proportional(digits),
-            HUD_COLOR,
+            colour,
         );
     }
 }
@@ -4688,10 +4699,8 @@ const POSITION_FROM_TOP: f32 = 0.3;
 const FPS_TEXT: f32 = 10.;
 const FPS_MARGIN: f32 = 6.;
 
-/// The colour the settings give chat and the position, as `con_color`
-/// gives the console's text in the game
-fn text_colour(settings: &ViewerSettings) -> egui::Color32 {
-    let [r, g, b] = settings.text_color;
+/// A colour the settings give, as red, green and blue
+fn rgb([r, g, b]: [u8; 3]) -> egui::Color32 {
     egui::Color32::from_rgb(r, g, b)
 }
 
@@ -4742,26 +4751,33 @@ fn draw_position(
 }
 
 /// The recorder's frames a second in the top left corner, over the small
-/// scoreboard
-fn draw_fps(painter: &egui::Painter, rect: egui::Rect, catalog: &Catalog, fps: f32) {
+/// scoreboard, in `colour`
+fn draw_fps(
+    painter: &egui::Painter,
+    rect: egui::Rect,
+    catalog: &Catalog,
+    fps: f32,
+    colour: egui::Color32,
+) {
     let scale = rect.height() / crate::kill_feed::SCREEN_HEIGHT;
     let fps = FluentValue::from(fps.round() as i64);
     let line = catalog.text_with("viewer-fps", &[("fps", fps)]);
     let font = egui::FontId::proportional(FPS_TEXT * scale);
-    let galley = painter.layout_no_wrap(line, font, HUD_COLOR);
+    let galley = painter.layout_no_wrap(line, font, colour);
     let at = egui::pos2(
         rect.left() + FPS_MARGIN * scale,
         rect.top() + FPS_MARGIN * scale,
     );
-    painter.galley(at, galley, HUD_COLOR);
+    painter.galley(at, galley, colour);
 }
 
 /// Why the view is the recorder's while a player is followed, two lines
-/// over where the watched player's name stands, on the same dark band
-fn draw_unseen(painter: &egui::Painter, rect: egui::Rect, line: &str) {
+/// over where the watched player's name stands, on the same dark band, in
+/// `colour`
+fn draw_unseen(painter: &egui::Painter, rect: egui::Rect, line: &str, colour: egui::Color32) {
     let size = rect.height() / 32.;
     let font = egui::FontId::proportional(size);
-    let galley = painter.layout_no_wrap(line.to_owned(), font, HUD_COLOR);
+    let galley = painter.layout_no_wrap(line.to_owned(), font, colour);
     let at = egui::pos2(
         rect.center().x - galley.size().x / 2.,
         rect.bottom() - (NAME_FROM_BOTTOM + 2.) * size - galley.size().y,
@@ -4769,7 +4785,7 @@ fn draw_unseen(painter: &egui::Painter, rect: egui::Rect, line: &str) {
     let band = egui::Rect::from_min_size(at, galley.size());
     let band = band.expand2(egui::vec2(size / 2., size / 5.));
     painter.rect_filled(band, theme::RADIUS_SMALL, NAME_BAND);
-    painter.galley(at, galley, HUD_COLOR);
+    painter.galley(at, galley, colour);
 }
 
 /// How far under the view's middle the speedometer stands, as a share of
@@ -4800,6 +4816,7 @@ fn draw_speeds(
     settings: &ViewerSettings,
 ) {
     let axes = settings.speed_axes;
+    let colour = rgb(settings.hud_color);
     let shown = |velocity: [f32; 3]| {
         let speed = axes.speed(velocity).round();
         if speeds.estimated {
@@ -4817,13 +4834,7 @@ fn draw_speeds(
         && let Some(velocity) = speeds.velocity
     {
         let font = egui::FontId::proportional(rect.height() * SPEED_SIZE);
-        let drawn = painter.text(
-            at,
-            egui::Align2::CENTER_TOP,
-            shown(velocity),
-            font,
-            HUD_COLOR,
-        );
+        let drawn = painter.text(at, egui::Align2::CENTER_TOP, shown(velocity), font, colour);
         at.y = drawn.bottom();
     }
 
@@ -4833,16 +4844,16 @@ fn draw_speeds(
         let speed = FluentValue::from(shown(jump));
         let line = catalog.text_with("viewer-jump-speed", &[("speed", speed)]);
         let font = egui::FontId::proportional(rect.height() * JUMP_SIZE);
-        painter.text(at, egui::Align2::CENTER_TOP, line, font, HUD_COLOR);
+        painter.text(at, egui::Align2::CENTER_TOP, line, font, colour);
     }
 }
 
 /// Which map the server is changing to, where AG's countdown stands, on a
-/// dark band as the watched player's name is
-fn draw_map_change(painter: &egui::Painter, rect: egui::Rect, line: &str) {
+/// dark band as the watched player's name is, in `colour`
+fn draw_map_change(painter: &egui::Painter, rect: egui::Rect, line: &str, colour: egui::Color32) {
     let size = rect.height() / 32.;
     let font = egui::FontId::proportional(size);
-    let galley = painter.layout_no_wrap(line.to_owned(), font, HUD_COLOR);
+    let galley = painter.layout_no_wrap(line.to_owned(), font, colour);
     let at = egui::pos2(
         rect.center().x - galley.size().x / 2.,
         rect.top() + MAP_CHANGE_FROM_TOP * size,
@@ -4850,7 +4861,7 @@ fn draw_map_change(painter: &egui::Painter, rect: egui::Rect, line: &str) {
     let band = egui::Rect::from_min_size(at, galley.size());
     let band = band.expand2(egui::vec2(size / 2., size / 5.));
     painter.rect_filled(band, theme::RADIUS_SMALL, NAME_BAND);
-    painter.galley(at, galley, HUD_COLOR);
+    painter.galley(at, galley, colour);
 }
 
 #[cfg(test)]

@@ -261,6 +261,9 @@ pub struct ViewerSettings {
     /// The size of the chat's, the kill feed's and the server's settings'
     /// text against the game's
     pub text_size: f32,
+    /// The colour of the health, armour, ammo, pickups, weapon menu, the
+    /// speeds and AG's messages, as `hud_color` sets it in OpenAG
+    pub hud_color: [u8; 3],
     /// The colour of chat messages, of lines no player sent and of the
     /// position and view angles, as `con_color` sets the console's in the
     /// game. Names keep their team's colour
@@ -325,6 +328,7 @@ impl Default for ViewerSettings {
             scoreboard: ScoreboardShown::Fullscreen,
             server_settings: true,
             text_size: 0.92,
+            hud_color: [255, 160, 0],
             text_color: [255, 180, 30],
             hud_messages: true,
             volume: 0.1,

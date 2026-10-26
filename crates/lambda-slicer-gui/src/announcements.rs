@@ -9,16 +9,15 @@
 //! width from the right, from one line down, AG's version, the game mode,
 //! then after half a line more the limits and rules, and while a match is
 //! on that says so in the middle two lines down. Everything is in the HUD's
-//! colour, sized as on a 640 by 480 screen, where a line is a 32nd of the
+//! colour, which OpenAG's `hud_color` sets, sized as on a 640 by 480 screen, where a line is a 32nd of the
 //! height, as the countdown is. The text is AG's own, in English as it
 //! writes it, but for a pause without a timeout, which AG does not word
 
-use eframe::egui::{self, Align2, Rect};
+use eframe::egui::{self, Align2, Color32, Rect};
 use lambda_slicer_playback::announcements::{Announced, ServerSettings, Timeout, Vote, VoteStatus};
 
 use crate::i18n::Catalog;
 use crate::kill_feed::add_tagged;
-use crate::viewer::HUD_COLOR;
 
 /// How many of the game's text lines from the top each message stands
 const TIMER_LINE: f32 = 1.;
@@ -123,20 +122,22 @@ fn settings_lines(settings: &ServerSettings) -> Vec<(f32, String)> {
     lines
 }
 
-/// `announced` over the view at `rect`, with the server's settings when
-/// `settings` gives their text's size against the game's
+/// `announced` over the view at `rect` in the HUD's `colour`, with the
+/// server's settings when `settings` gives their text's size against the
+/// game's
 pub fn draw(
     painter: &egui::Painter,
     rect: Rect,
     catalog: &Catalog,
     announced: &Announced,
     settings: Option<f32>,
+    colour: Color32,
 ) {
     let line = rect.height() / LINES;
     let font = egui::FontId::proportional(line);
     let centred = |row: f32, text: String| {
         let at = egui::pos2(rect.center().x, rect.top() + row * line);
-        painter.text(at, Align2::CENTER_TOP, text, font.clone(), HUD_COLOR);
+        painter.text(at, Align2::CENTER_TOP, text, font.clone(), colour);
     };
 
     if let Some(seconds) = announced.timer {
@@ -153,7 +154,7 @@ pub fn draw(
     }
 
     if let Some(vote) = &announced.vote {
-        draw_vote(painter, rect, line, &font, vote);
+        draw_vote(painter, rect, line, &font, vote, colour);
     }
 
     if let Some(size) = settings
@@ -165,7 +166,7 @@ pub fn draw(
         let font = egui::FontId::proportional(sized);
         for (row, text) in settings_lines(server) {
             let at = egui::pos2(left, rect.top() + row * sized);
-            painter.text(at, Align2::LEFT_TOP, text, font.clone(), HUD_COLOR);
+            painter.text(at, Align2::LEFT_TOP, text, font.clone(), colour);
         }
         if server.match_on {
             centred(MATCH_ON_LINE, "A match is on!".to_owned());
@@ -173,9 +174,16 @@ pub fn draw(
     }
 }
 
-/// A vote at the top left, what it is on, who called it in their colours,
-/// then its counts or how it ended
-fn draw_vote(painter: &egui::Painter, rect: Rect, line: f32, font: &egui::FontId, vote: &Vote) {
+/// A vote at the top left in `colour`, what it is on, who called it in
+/// their colours, then its counts or how it ended
+fn draw_vote(
+    painter: &egui::Painter,
+    rect: Rect,
+    line: f32,
+    font: &egui::FontId,
+    vote: &Vote,
+    colour: Color32,
+) {
     let left = rect.left() + rect.width() * VOTE_LEFT;
     let mut top = rect.top() + rect.height() * VOTE_TOP;
 
@@ -185,14 +193,14 @@ fn draw_vote(painter: &egui::Painter, rect: Rect, line: f32, font: &egui::FontId
         Align2::LEFT_TOP,
         subject,
         font.clone(),
-        HUD_COLOR,
+        colour,
     );
     top += line;
 
     let mut caller = egui::text::LayoutJob::default();
-    add_tagged(&mut caller, "Called by: ", HUD_COLOR, font);
-    add_tagged(&mut caller, &vote.called_by, HUD_COLOR, font);
-    painter.galley(egui::pos2(left, top), painter.layout_job(caller), HUD_COLOR);
+    add_tagged(&mut caller, "Called by: ", colour, font);
+    add_tagged(&mut caller, &vote.called_by, colour, font);
+    painter.galley(egui::pos2(left, top), painter.layout_job(caller), colour);
     top += line * VOTE_GAP;
 
     for text in vote_lines(vote) {
@@ -201,7 +209,7 @@ fn draw_vote(painter: &egui::Painter, rect: Rect, line: f32, font: &egui::FontId
             Align2::LEFT_TOP,
             text,
             font.clone(),
-            HUD_COLOR,
+            colour,
         );
         top += line;
     }

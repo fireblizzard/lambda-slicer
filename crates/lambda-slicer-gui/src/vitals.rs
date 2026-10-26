@@ -52,7 +52,6 @@ use lambda_slicer_playback::status::{
 use lambda_slicer_playback::time::SourceTime;
 
 use crate::hud_sprites::{HUD_LIST, HudSprites};
-use crate::viewer::HUD_COLOR;
 
 /// The game's screen height the HUD is laid out on
 const SCREEN_HEIGHT: f32 = 480.;
@@ -148,6 +147,14 @@ fn digits(value: i32) -> [Option<u32>; DIGITS as usize] {
     [hundreds, tens, Some(value % 10)]
 }
 
+/// How large the HUD stands against the game's, and its colour, as
+/// `hud_color` sets it
+#[derive(Clone, Copy)]
+pub(crate) struct HudLook {
+    pub size: f32,
+    pub colour: Color32,
+}
+
 /// Draws on the view at the game's scale
 pub(crate) struct Painter<'a> {
     painter: egui::Painter,
@@ -156,16 +163,19 @@ pub(crate) struct Painter<'a> {
     sprites: &'a mut HudSprites,
     rect: Rect,
     scale: f32,
+    /// The HUD's colour
+    pub(crate) colour: Color32,
 }
 
 impl<'a> Painter<'a> {
-    /// A painter over the view at `rect`, `size` times the game's size
+    /// A painter over the view at `rect`, as large and in the colour `look`
+    /// gives
     pub(crate) fn new(
         ui: &'a egui::Ui,
         sprites: &'a mut HudSprites,
         library: &'a Library,
         rect: Rect,
-        size: f32,
+        look: HudLook,
     ) -> Self {
         Painter {
             painter: ui.painter_at(rect),
@@ -173,7 +183,8 @@ impl<'a> Painter<'a> {
             library,
             sprites,
             rect,
-            scale: rect.height() / SCREEN_HEIGHT * size,
+            scale: rect.height() / SCREEN_HEIGHT * look.size,
+            colour: look.colour,
         }
     }
 
@@ -256,17 +267,17 @@ impl<'a> Painter<'a> {
 }
 
 /// The recording player's health, armour and ammo in `shown` over the view at
-/// `rect` at `at`, `size` times the game's size, their sprites from `library`
+/// `rect` at `at`, as `look` says, their sprites from `library`
 pub fn draw(
     ui: &egui::Ui,
     sprites: &mut HudSprites,
     library: &Library,
     rect: Rect,
-    size: f32,
+    look: HudLook,
     shown: &Shown,
     at: SourceTime,
 ) {
-    let mut p = Painter::new(ui, sprites, library, rect, size);
+    let mut p = Painter::new(ui, sprites, library, rect, look);
 
     // A digit's size sets the row and the room numbers take (`m_iFontHeight`)
     let Some(digit) = p.icon(HUD_LIST, "number_0") else {
@@ -294,17 +305,17 @@ pub fn draw(
 }
 
 /// What the recording player picked up in `pickups` over the view at `rect`
-/// at `at`, `size` times the game's size, their sprites from `library`
+/// at `at`, as `look` says, their sprites from `library`
 pub fn draw_pickups(
     ui: &egui::Ui,
     sprites: &mut HudSprites,
     library: &Library,
     rect: Rect,
-    size: f32,
+    look: HudLook,
     pickups: &[Pickup],
     at: SourceTime,
 ) {
-    let mut p = Painter::new(ui, sprites, library, rect, size);
+    let mut p = Painter::new(ui, sprites, library, rect, look);
     let Vec2 {
         x: width,
         y: height,
@@ -321,7 +332,7 @@ pub fn draw_pickups(
                 icon,
                 count,
             } => {
-                let tint = scaled(HUD_COLOR, brightness);
+                let tint = scaled(p.colour, brightness);
                 let x = width - PICKUP_AMMO_RIGHT;
                 let list = format!("sprites/{weapon}.txt");
                 if let Some(icon) = p.icon(&list, icon) {
@@ -330,7 +341,7 @@ pub fn draw_pickups(
                 p.text_before(x - PICKUP_COUNT_GAP, y, count.to_string(), tint);
             }
             PickupShown::Weapon { name, empty } => {
-                let colour = if *empty { NO_AMMO_COLOUR } else { HUD_COLOR };
+                let colour = if *empty { NO_AMMO_COLOUR } else { p.colour };
                 let list = format!("sprites/{name}.txt");
                 if let Some(icon) = p.icon(&list, "weapon") {
                     let x = width - icon.size_vec2().x;
@@ -340,7 +351,7 @@ pub fn draw_pickups(
             PickupShown::Item(name) => {
                 if let Some(icon) = p.icon(HUD_LIST, name) {
                     let x = width - icon.size_vec2().x - PICKUP_ITEM_RIGHT;
-                    p.draw(&icon, x, y, scaled(HUD_COLOR, brightness), 0.);
+                    p.draw(&icon, x, y, scaled(p.colour, brightness), 0.);
                 }
             }
         }
@@ -348,18 +359,18 @@ pub fn draw_pickups(
 }
 
 /// Where the recording player was hit from and what hurts them in
-/// `damage` over the view at `rect`, `size` times the game's size, the
-/// marks red for `health` of 25 or less
+/// `damage` over the view at `rect`, as `look` says, the marks red for
+/// `health` of 25 or less
 pub fn draw_damage(
     ui: &egui::Ui,
     sprites: &mut HudSprites,
     library: &Library,
     rect: Rect,
-    size: f32,
+    look: HudLook,
     damage: &DamageShown,
     health: Option<i32>,
 ) {
-    let mut p = Painter::new(ui, sprites, library, rect, size);
+    let mut p = Painter::new(ui, sprites, library, rect, look);
     let Vec2 {
         x: width,
         y: height,
@@ -367,7 +378,7 @@ pub fn draw_damage(
     let middle = Vec2::new(width / 2., height / 2.);
 
     let hurt = health.is_some_and(|h| h <= HURT);
-    let colour = if hurt { HURT_COLOUR } else { HUD_COLOR };
+    let colour = if hurt { HURT_COLOUR } else { p.colour };
     for &(side, mark) in &damage.marks {
         let frame = side as usize;
         let Some(sprite) = p.sprites.frame(p.ctx, p.library, PAIN_SHEET, frame) else {
@@ -387,7 +398,7 @@ pub fn draw_damage(
     }
 
     // Every icon flashes together (`DrawDamage`)
-    let tint = scaled(HUD_COLOR, damage.flash);
+    let tint = scaled(p.colour, damage.flash);
     for &(name, place) in &damage.kinds {
         let Some(icon) = p.icon(HUD_LIST, name) else {
             continue;
@@ -405,7 +416,7 @@ fn draw_health(p: &mut Painter, health: &Reading, digit: Vec2, row: f32, at: Sou
         brightness = 255.;
     }
     let colour = if health.value > HURT {
-        HUD_COLOR
+        p.colour
     } else {
         HURT_COLOUR
     };
@@ -419,19 +430,13 @@ fn draw_health(p: &mut Painter, health: &Reading, digit: Vec2, row: f32, at: Sou
 
     let x = cross_width + digit.x / 2.;
     let x = p.number(x, row, health.value, tint) + digit.x / 2.;
-    p.bar(
-        x,
-        row,
-        digit.x / 10.,
-        digit.y,
-        scaled(HUD_COLOR, brightness),
-    );
+    p.bar(x, row, digit.x / 10., digit.y, scaled(p.colour, brightness));
 }
 
 /// The suit filled as far as the armour goes and the armour, a fifth of the
 /// way across
 fn draw_armour(p: &mut Painter, armour: &Reading, row: f32, width: f32, at: SourceTime) {
-    let tint = scaled(HUD_COLOR, reading_brightness(armour, at));
+    let tint = scaled(p.colour, reading_brightness(armour, at));
     let (Some(empty), Some(full)) = (
         p.icon(HUD_LIST, "suit_empty"),
         p.icon(HUD_LIST, "suit_full"),
@@ -463,7 +468,7 @@ fn draw_ammo(
     at: SourceTime,
 ) {
     let brightness = faded(weapon.changed, at, AMMO_FADE).max(LEAST);
-    let tint = scaled(HUD_COLOR, brightness);
+    let tint = scaled(p.colour, brightness);
     let list = format!("sprites/{}.txt", weapon.name);
 
     if let Some(ammo) = weapon.ammo {
@@ -508,7 +513,7 @@ fn draw_flashlight(p: &mut Painter, flashlight: &Flashlight, width: f32) {
     let colour = if flashlight.battery < FLASHLIGHT_LOW {
         NO_AMMO_COLOUR
     } else {
-        HUD_COLOR
+        p.colour
     };
     let tint = scaled(colour, brightness);
     let (Some(empty), Some(full)) = (
