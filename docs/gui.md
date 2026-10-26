@@ -356,6 +356,16 @@ run. Every change applies at once. A setting that needs explaining has a `(?)` b
   of view, the weapon in view and its bob), each part of the HUD, seeing players through walls, how many
   decals stay, and the sound.
 - **Clips.** The export folder, how files are named, and the clip padding.
+- **Shortcuts.** Up to two keys for each action, under Anywhere, Demo, Playback, View, POVs and
+  Free camera. Click a key, then press the new one, with Ctrl, Shift or Alt if wanted, or mouse 3,
+  4 or 5, or turn the mouse wheel with the pointer on the key. Wheel shortcuts work over the
+  demo's picture, where by default the wheel goes to the previous or next POV. The free camera's
+  keys can also be Ctrl, Shift or Alt alone, but not the wheel. Escape gives up and a right
+  click clears a key. A key another action already has moves over, and a note says which action
+  lost it. The free camera's keys only count while it flies, so they can share a key with another
+  action, which leaves that key to the free camera while it flies. Escape can't be bound, and
+  Enter, the arrow keys and Ctrl+A in lists keep their usual jobs. Default keys puts every key
+  back. The controls' tooltips and the POV list show the keys as they're set.
 
 Restore defaults lists every setting that differs from its default before putting them back. The
 Half-Life folders and the library folders stay as they are.

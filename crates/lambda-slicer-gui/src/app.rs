@@ -13,6 +13,7 @@ use lambda_slicer_core::library::scan::{ScanFloors, ScanOptions};
 
 mod settings_window;
 
+use settings_window::Choosing;
 pub use settings_window::SettingsTab;
 
 use crate::clips::{ClipStore, LoadProblem};
@@ -28,6 +29,7 @@ use crate::jobs::{Problem, ScanJob};
 use crate::layout;
 use crate::library::{LibraryView, ListAction};
 use crate::settings::Settings;
+use crate::shortcuts::{Action, Binding, Input};
 use crate::text::{self, Look};
 use crate::theme;
 use crate::widgets::{self, Icon, IconButton, Variant};
@@ -141,6 +143,11 @@ pub struct App {
     settings_tab: SettingsTab,
     /// The settings window has the keys, so playback leaves them alone
     settings_keyboard: bool,
+    /// The shortcut being chosen in the settings, which takes the next key
+    /// before anything else, and the key the last choice took from another
+    /// action
+    choosing: Option<Choosing>,
+    shortcut_moved: Option<(Binding, Action)>,
     /// Asking whether to restore the default settings
     confirm_restore: bool,
     /// Asking whether to clear the library, and clearing it once no scan
@@ -372,6 +379,8 @@ impl App {
             show_settings: launch.show_settings,
             settings_tab: launch.section,
             settings_keyboard: false,
+            choosing: None,
+            shortcut_moved: None,
             confirm_restore: launch.confirm_restore,
             confirm_clear: launch.confirm_clear,
             clear_library: false,
@@ -603,10 +612,12 @@ impl App {
             demo_first: self.settings.demo_name_first,
         };
 
+        d.shortcuts = self.settings.shortcuts.clone();
         let Some(v) = &mut d.viewer else {
             return;
         };
         v.settings = self.settings.viewer.clone();
+        v.shortcuts = self.settings.shortcuts.clone();
 
         if let Some(g) = self.viewer_gamma {
             v.settings.gamma = g.gamma;
@@ -955,15 +966,16 @@ impl App {
         }
     }
 
-    /// Ctrl+O opens demos and Ctrl+comma opens or closes the settings, in
-    /// any part of the app
+    /// The keys that open demos and open or close the settings, in any part
+    /// of the app, as the settings bind them
     fn app_shortcuts(&mut self, ctx: &egui::Context) {
-        let command = |key| ctx.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, key));
-        if command(egui::Key::O) {
-            self.open_dialog(ctx);
-        }
-        if command(egui::Key::Comma) {
-            self.show_settings = !self.show_settings;
+        let actions = [Action::OpenDemo, Action::Settings];
+        for action in self.settings.shortcuts.take(ctx, &actions, typed(ctx)) {
+            match action {
+                Action::OpenDemo => self.open_dialog(ctx),
+                Action::Settings => self.show_settings = !self.show_settings,
+                _ => {}
+            }
         }
     }
 
@@ -988,15 +1000,13 @@ impl App {
         }
     }
 
-    /// Mouse 4 leaves full screen, closes the settings, or else goes back a
-    /// place, and mouse 5 goes forward a place
-    fn mouse_back_forward(&mut self, ctx: &egui::Context) {
-        let (back, forward) = ctx.input(|i| {
-            (
-                i.pointer.button_pressed(egui::PointerButton::Extra1),
-                i.pointer.button_pressed(egui::PointerButton::Extra2),
-            )
-        });
+    /// Back, mouse 4 at first, leaves full screen, closes the settings, or
+    /// else goes back a place, and forward, mouse 5, goes forward a place
+    fn back_forward(&mut self, ctx: &egui::Context) {
+        let actions = [Action::Back, Action::Forward];
+        let pressed = self.settings.shortcuts.take(ctx, &actions, typed(ctx));
+        let back = pressed.contains(&Action::Back);
+        let forward = pressed.contains(&Action::Forward);
 
         if back {
             let viewer = self.demo.as_mut().and_then(|d| d.viewer.as_mut());
@@ -1607,6 +1617,13 @@ impl App {
     }
 }
 
+/// Turns down a key with neither Ctrl nor Alt while text is typed, as it
+/// is the text's. The mouse's buttons still count
+fn typed(ctx: &egui::Context) -> impl Fn(Binding) -> bool {
+    let typing = text::typing(ctx);
+    move |b: Binding| typing && matches!(b.input, Input::Key(_)) && !b.ctrl && !b.alt
+}
+
 impl eframe::App for App {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
@@ -1616,6 +1633,7 @@ impl eframe::App for App {
         }
 
         self.handle_drops(&ctx);
+        let choosing = self.choose_shortcut(&ctx);
         self.app_shortcuts(&ctx);
         if let Some(job) = &mut self.scan
             && job.drain()
@@ -1805,7 +1823,9 @@ impl eframe::App for App {
         self.settings_window(&ctx);
         self.problems_window(&ctx);
         self.escape(&ctx);
-        self.mouse_back_forward(&ctx);
+        if !choosing {
+            self.back_forward(&ctx);
+        }
         self.keep_layout();
 
         // Saved once nothing is being dragged, so a slider is not written out

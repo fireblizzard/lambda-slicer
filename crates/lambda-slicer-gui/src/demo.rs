@@ -41,6 +41,7 @@ use crate::i18n::Catalog;
 use crate::kill_analysis::Walls;
 use crate::kill_filters::{KillFilters, Verdict};
 use crate::layout;
+use crate::shortcuts::{Action as Shortcut, Shortcuts};
 use crate::text::{self, Look};
 use crate::theme;
 use crate::timeline::{Event, EventKind, MarkKind, Model};
@@ -655,6 +656,8 @@ fn row_mark(index: usize, event: &Event, teams: bool) -> RowMark {
 
 pub struct DemoView {
     pub path: PathBuf,
+    /// The keys that drive it and its viewer, the app's each frame
+    pub shortcuts: Shortcuts,
     /// Which demo view this is, for egui state that must not carry over
     generation: u64,
     /// What the controls asked for this frame, applied once they have drawn,
@@ -805,6 +808,7 @@ impl DemoView {
             reanalysis: None,
             path,
             generation: GENERATION.fetch_add(1, Ordering::Relaxed),
+            shortcuts: Shortcuts::default(),
             actions: Vec::new(),
             requests: Vec::new(),
             model: None,
@@ -1503,40 +1507,49 @@ impl DemoView {
         }
     }
 
-    /// Ctrl+Left and Ctrl+Right go to the shown event before or after, and
-    /// I and O set the chosen clip's start and end to the current moment.
-    /// While text is typed every key is the text's
+    /// The keys that go to the shown event before or after, and that set
+    /// the chosen clip's start and end to the current moment, as the
+    /// settings bind them. While text is typed every key is the text's
     fn shortcuts(&mut self, ctx: &egui::Context) {
         if text::typing(ctx) {
             return;
         }
 
-        let command = |key| ctx.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, key));
-        let back = command(egui::Key::ArrowLeft);
-        let forward = command(egui::Key::ArrowRight);
-        if (back || forward)
-            && let Some(model) = self.model.clone()
-        {
-            let (previous, next) = self.neighbours(&model);
-            let row = if back { previous } else { next };
-            if let Some(&event) = row.and_then(|r| self.rows.get(r)) {
-                self.actions.push(DemoAction::Select {
-                    event,
-                    from_list: false,
-                });
+        let actions = [
+            Shortcut::PreviousEvent,
+            Shortcut::NextEvent,
+            Shortcut::ClipStart,
+            Shortcut::ClipEnd,
+        ];
+        for action in self.shortcuts.take(ctx, &actions, |_| false) {
+            match action {
+                Shortcut::PreviousEvent => self.step_event(true),
+                Shortcut::NextEvent => self.step_event(false),
+                Shortcut::ClipStart => self.edge_to_now(Edge::Start),
+                Shortcut::ClipEnd => self.edge_to_now(Edge::End),
+                _ => {}
             }
         }
+    }
 
-        // Only the clip chosen, never a new one
-        let plain = |key| ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, key));
-        let edge = if plain(egui::Key::I) {
-            Some(Edge::Start)
-        } else if plain(egui::Key::O) {
-            Some(Edge::End)
-        } else {
-            None
+    /// The shown event before the selected one when `back`, or else after
+    fn step_event(&mut self, back: bool) {
+        let Some(model) = self.model.clone() else {
+            return;
         };
-        if let (Some(edge), Some(i)) = (edge, self.chosen_clip) {
+        let (previous, next) = self.neighbours(&model);
+        let row = if back { previous } else { next };
+        if let Some(&event) = row.and_then(|r| self.rows.get(r)) {
+            self.actions.push(DemoAction::Select {
+                event,
+                from_list: false,
+            });
+        }
+    }
+
+    /// The chosen clip's `edge` at the current moment, never a new clip's
+    fn edge_to_now(&mut self, edge: Edge) {
+        if let Some(i) = self.chosen_clip {
             self.edge_to_playhead(i, edge);
         }
     }

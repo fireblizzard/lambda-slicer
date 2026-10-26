@@ -282,8 +282,10 @@ change what it shows.
 | Rate | | 0.25×, 0.5×, 1×, 2× or 4×, for either direction, the playhead staying where it is |
 | Time bar | left and right arrows | seeks, the arrows five seconds back or forward |
 
-Keys work while no text box has the keyboard's focus. While a button or the time bar has it,
-space and the arrows are left to it. Without a sound device "No sound" shows beside the controls,
+Keys work while no text box has the keyboard's focus, and Settings can bind them anew
+([GUI](gui.md), "Settings"). While a button or the time bar has it, Space, Enter, the arrows,
+Home and End are left to it, whatever they're bound to, and while the free camera flies, its keys
+are its own. Without a sound device "No sound" shows beside the controls,
 the reason on hovering it. Sound plays only forward, the device's blocks from before
 dropped when the direction changes.
 

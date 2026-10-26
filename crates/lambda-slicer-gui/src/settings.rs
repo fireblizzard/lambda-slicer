@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::i18n::Locale;
 use crate::library::{MAX_KILLS, MAX_MINUTES};
+use crate::shortcuts::Shortcuts;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -62,6 +63,8 @@ pub struct Settings {
     pub clip_name_files: bool,
     pub demo_name_first: bool,
     pub viewer: ViewerSettings,
+    /// The keys and mouse buttons that run the app's commands
+    pub shortcuts: Shortcuts,
     /// A layout this version cannot read opens the first way, keeping every
     /// other setting
     #[serde(deserialize_with = "readable_layout")]
@@ -444,6 +447,7 @@ impl Default for Settings {
             clip_name_files: true,
             demo_name_first: true,
             viewer: ViewerSettings::default(),
+            shortcuts: Shortcuts::default(),
             layout: LayoutSettings::default(),
         }
     }
@@ -574,6 +578,12 @@ mod tests {
                 viewmodel: false,
                 volume: 0.25,
                 ..ViewerSettings::default()
+            },
+            shortcuts: {
+                use crate::shortcuts::{Action, Binding, Input};
+                let mut keys = Shortcuts::default();
+                keys.set(Action::Zoom, 1, Some(Binding::plain(Input::Mouse4)));
+                keys
             },
             layout: LayoutSettings {
                 filters_open: false,

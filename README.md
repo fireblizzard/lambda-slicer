@@ -73,6 +73,9 @@ stuff like a zooming in or seeing players through walls, as long as the demo has
 | Ctrl+O | Open a demo |
 | Ctrl+Comma | Settings |
 
+You can change all of these except Escape in Settings, under Shortcuts, and give each one a second
+key, mouse 3, 4 or 5, or the mouse wheel, which works over the picture.
+
 ### Finding the good moments
 
 - First **filter** the demo library a bit, as you might have lots of trash demos not worth checking, so set a

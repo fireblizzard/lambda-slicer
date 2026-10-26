@@ -77,6 +77,7 @@ use crate::kill_feed::KillFeed;
 use crate::layout;
 use crate::preview::Previews;
 use crate::settings::ViewerSettings;
+use crate::shortcuts::{self, Action, Binding, Group, Shortcuts};
 use crate::text::{self, Look};
 use crate::theme;
 use crate::timeline::Ranked;
@@ -395,8 +396,10 @@ impl PreviewMap {
 }
 
 pub struct Viewer {
-    /// The settings it shows and plays with, the app's each frame
+    /// The settings it shows and plays with, and the keys that drive it,
+    /// the app's each frame
     pub settings: ViewerSettings,
+    pub shortcuts: Shortcuts,
     /// Each session's map and when it began, from the analysis once it is
     /// in, to tell which map an intermission changes to
     pub sessions: Vec<SessionMap>,
@@ -644,6 +647,7 @@ impl Viewer {
 
         Self {
             settings: ViewerSettings::default(),
+            shortcuts: Shortcuts::default(),
             sessions: Vec::new(),
             standings: BTreeMap::new(),
             assets,
@@ -1282,16 +1286,17 @@ impl Viewer {
         };
 
         let typing = ctx.text_edit_focused();
+        let shortcuts = &self.shortcuts;
         let (held, seconds, dragged) = ctx.input(|i| {
-            let key = |k: egui::Key| !typing && i.key_down(k);
+            let key = |action| !typing && shortcuts.held(i, action);
             let held = Held {
-                forward: key(egui::Key::W),
-                back: key(egui::Key::S),
-                left: key(egui::Key::A),
-                right: key(egui::Key::D),
-                up: key(egui::Key::Space),
-                down: !typing && i.modifiers.ctrl,
-                fast: !typing && i.modifiers.shift,
+                forward: key(Action::FlyForward),
+                back: key(Action::FlyBack),
+                left: key(Action::FlyLeft),
+                right: key(Action::FlyRight),
+                up: key(Action::FlyUp),
+                down: key(Action::FlyDown),
+                fast: key(Action::FlyFast),
             };
             (held, i.stable_dt.min(LONGEST_FLIGHT), i.pointer.delta())
         });
@@ -2230,15 +2235,9 @@ impl Viewer {
         let (rect, clicked) = ui.allocate_exact_size(size, Sense::click_and_drag());
         self.fly(&ctx, &clicked);
 
-        // The wheel over the picture goes to the previous or next player,
-        // one a frame however far it turns
+        // The wheel's shortcuts count over the picture
         if clicked.hovered() {
-            let turned = wheel_turned(&ctx);
-            if turned != 0. {
-                let step = if turned > 0. { -1 } else { 1 };
-                self.step_pov(step);
-                ctx.request_repaint();
-            }
+            shortcuts::under_pointer(&ctx);
         }
 
         let let_go = self.hold(&ctx, &clicked);
@@ -2596,12 +2595,21 @@ impl Viewer {
             .selected_text(selected)
             .show_ui(ui, |ui| {
                 // Players not playing now keep their place and key, greyed
-                ui.selectable_value(&mut chosen, None, format!("`  {recorder}"));
-                for (place, (number, name)) in players.iter().enumerate() {
-                    let line = match KEY_NAMES.get(place) {
-                        Some(key) => format!("{key}  {name}"),
+                let keyed = |action: Option<Action>, name: &str| {
+                    let first = action.and_then(|a| self.shortcuts.of(a)[0]);
+                    match first {
+                        Some(binding) => format!("{}  {name}", binding.shown(catalog)),
                         None => format!("    {name}"),
-                    };
+                    }
+                };
+                let line = keyed(Some(Action::Recorder), &recorder);
+                ui.selectable_value(&mut chosen, None, line);
+                for (place, (number, name)) in players.iter().enumerate() {
+                    let action = u8::try_from(place)
+                        .ok()
+                        .filter(|&p| p < shortcuts::FOLLOWED)
+                        .map(Action::Follow);
+                    let line = keyed(action, name);
                     match number {
                         Some(number) => {
                             ui.selectable_value(&mut chosen, Some(*number), line);
@@ -2612,7 +2620,14 @@ impl Viewer {
                     }
                 }
             });
-        let help = catalog.text("viewer-pov-help");
+        let keys = |action| FluentValue::from(self.shortcuts.keys(action, catalog));
+        let help = catalog.text_with(
+            "viewer-pov-help",
+            &[
+                ("previous", keys(Action::PreviousPlayer)),
+                ("next", keys(Action::NextPlayer)),
+            ],
+        );
         let width = menu.response.on_hover_text(help).rect.width();
 
         if chosen != self.pov {
@@ -2630,21 +2645,17 @@ impl Viewer {
         })
     }
 
-    /// An icon button that runs `command`, naming its keyboard shortcut
+    /// An icon button that runs `command`, naming the keys of `action`
     fn command_button(
         &mut self,
         ui: &mut Ui,
         catalog: &Catalog,
         icon: Icon,
         id: &str,
-        key: &str,
+        action: Action,
         command: Command,
     ) {
-        let shortcut = catalog.text_with(
-            "viewer-shortcut",
-            &[("key", FluentValue::from(key.to_owned()))],
-        );
-        let label = format!("{}\n{shortcut}", catalog.text(id));
+        let label = self.shortcuts.with_keys(&catalog.text(id), action, catalog);
         if ui.add(IconButton::new(icon, &label)).clicked() {
             self.command(command);
         }
@@ -2664,7 +2675,7 @@ impl Viewer {
             catalog,
             Icon::SkipStart,
             "viewer-start",
-            "Home",
+            Action::Start,
             Command::SeekTo(SourceTime::ZERO),
         );
 
@@ -2677,15 +2688,14 @@ impl Viewer {
                 Command::PlayBackward,
             )
         };
-        self.command_button(ui, catalog, icon, id, "J", command);
+        self.command_button(ui, catalog, icon, id, Action::Rewind, command);
 
-        let shift_left = catalog.text("key-shift-left");
         self.command_button(
             ui,
             catalog,
             Icon::SkipBack,
             "viewer-skip-back",
-            &shift_left,
+            Action::SkipBack,
             Command::SeekTo(SourceTime((now - SKIP_STEP).max(0.))),
         );
         self.command_button(
@@ -2693,22 +2703,19 @@ impl Viewer {
             catalog,
             Icon::StepBack,
             "viewer-step-back",
-            ",",
+            Action::FrameBack,
             Command::StepGroup(-1),
         );
 
         // The main play button, filled in the accent
-        let space = catalog.text("key-space");
-        let shortcut = catalog.text_with(
-            "viewer-shortcut",
-            &[("key", FluentValue::from(format!("{space}, L")))],
-        );
         let (id, command) = if forward {
             ("viewer-pause", Command::Pause)
         } else {
             ("viewer-play", Command::Play)
         };
-        let label = format!("{}\n{shortcut}", catalog.text(id));
+        let label = self
+            .shortcuts
+            .with_keys(&catalog.text(id), Action::PlayPause, catalog);
         let play = ui.add(PlayButton::new(forward, &label));
         if play.clicked() {
             self.command(command);
@@ -2719,16 +2726,15 @@ impl Viewer {
             catalog,
             Icon::StepForward,
             "viewer-step-forward",
-            ".",
+            Action::FrameForward,
             Command::StepGroup(1),
         );
-        let shift_right = catalog.text("key-shift-right");
         self.command_button(
             ui,
             catalog,
             Icon::SkipForward,
             "viewer-skip-forward",
-            &shift_right,
+            Action::SkipForward,
             Command::SeekTo(SourceTime(now + SKIP_STEP)),
         );
 
@@ -2844,18 +2850,15 @@ impl Viewer {
     fn rate_stepper(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool) {
         let clock = self.controller.clock();
         let rate = clock.rate();
-        let with_key = |id: &str, key: &str| {
-            let key = FluentValue::from(key.to_owned());
-            let shortcut = catalog.text_with("viewer-shortcut", &[("key", key)]);
-            format!("{}\n{shortcut}", catalog.text(id))
-        };
+        let with_key =
+            |id: &str, action| self.shortcuts.with_keys(&catalog.text(id), action, catalog);
 
         let chosen = ui.scope(|ui| {
             ui.spacing_mut().item_spacing.x = 0.;
             ui.spacing_mut().button_padding.x = 0.;
             let mut chosen = None;
 
-            let slower = with_key("viewer-slower", "-");
+            let slower = with_key("viewer-slower", Action::Slower);
             let button = IconButton::new(Icon::Minus, &slower).narrow();
             if ui.add_enabled(rate.slower().is_some(), button).clicked() {
                 chosen = rate.slower();
@@ -2884,7 +2887,7 @@ impl Viewer {
                 }
             }
 
-            let faster = with_key("viewer-faster", "+");
+            let faster = with_key("viewer-faster", Action::Faster);
             let button = IconButton::new(Icon::Plus, &faster).narrow();
             if ui.add_enabled(rate.faster().is_some(), button).clicked() {
                 chosen = rate.faster();
@@ -2906,13 +2909,14 @@ impl Viewer {
     /// settings were asked for
     fn view_controls(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool) -> bool {
         // The whole screen at the far end, as video players have it
-        let shortcut = catalog.text_with("viewer-shortcut", &[("key", FluentValue::from("F11"))]);
         let (icon, id) = if self.fullscreen {
             (Icon::Shrink, "viewer-leave-fullscreen")
         } else {
             (Icon::Fit, "viewer-fullscreen")
         };
-        let label = format!("{}\n{shortcut}", catalog.text(id));
+        let label = self
+            .shortcuts
+            .with_keys(&catalog.text(id), Action::Fullscreen, catalog);
         if ui.add(IconButton::new(icon, &label)).clicked() {
             self.fullscreen = !self.fullscreen;
         }
@@ -2963,11 +2967,10 @@ impl Viewer {
         });
 
         // Players through walls, a setting the app saves
-        let shortcut = catalog.text_with("viewer-shortcut", &[("key", FluentValue::from("X"))]);
-        let label = format!(
-            "{}
-{shortcut}",
-            catalog.text("viewer-see-through")
+        let label = self.shortcuts.with_keys(
+            &catalog.text("viewer-see-through"),
+            Action::SeeThrough,
+            catalog,
         );
         let button = IconButton::new(Icon::Eye, &label).selected(self.settings.see_through);
         let response = ui.add_enabled(self.assets, button);
@@ -2983,8 +2986,9 @@ impl Viewer {
         }
 
         // Players' names over them, a setting the app saves
-        let shortcut = catalog.text_with("viewer-shortcut", &[("key", FluentValue::from("N"))]);
-        let label = format!("{}\n{shortcut}", catalog.text("viewer-player-names"));
+        let label =
+            self.shortcuts
+                .with_keys(&catalog.text("viewer-player-names"), Action::Names, catalog);
         let button = IconButton::new(Icon::Tag, &label).selected(self.settings.player_names);
         let response = ui.add_enabled(self.assets, button);
         let response = response
@@ -2999,8 +3003,11 @@ impl Viewer {
         }
 
         // Everything fully lit, for this session only
-        let shortcut = catalog.text_with("viewer-shortcut", &[("key", FluentValue::from("F"))]);
-        let label = format!("{}\n{shortcut}", catalog.text("viewer-fullbright"));
+        let label = self.shortcuts.with_keys(
+            &catalog.text("viewer-fullbright"),
+            Action::Fullbright,
+            catalog,
+        );
         let button = IconButton::new(Icon::Sun, &label).selected(self.fullbright);
         let response = ui.add_enabled(self.assets, button);
         let response = response
@@ -3015,22 +3022,35 @@ impl Viewer {
         }
 
         // A closer look, for this session only
-        let shortcut = catalog.text_with("viewer-shortcut", &[("key", FluentValue::from("Z"))]);
-        let label = format!("{}\n{shortcut}", catalog.text("viewer-zoom"));
+        let label = self
+            .shortcuts
+            .with_keys(&catalog.text("viewer-zoom"), Action::Zoom, catalog);
         let zoom = IconButton::new(Icon::ZoomIn, &label).selected(self.zoomed);
         if ui.add(zoom).clicked() {
             self.zoomed = !self.zoomed;
         }
 
         // A camera of its own, flown about the map
-        let shortcut = catalog.text_with("viewer-shortcut", &[("key", FluentValue::from("C"))]);
-        let label = format!("{}\n{shortcut}", catalog.text("viewer-free-camera"));
+        let label = self.shortcuts.with_keys(
+            &catalog.text("viewer-free-camera"),
+            Action::FreeCamera,
+            catalog,
+        );
         let free = IconButton::new(Icon::Move, &label).selected(self.free.is_some());
-        let response = ui.add(free).on_hover_text(text::help(
-            ui.ctx(),
-            &catalog.text("viewer-free-camera-help"),
-            rtl,
-        ));
+        let keys = |action| FluentValue::from(self.shortcuts.keys(action, catalog));
+        let help = catalog.text_with(
+            "viewer-free-camera-help",
+            &[
+                ("forward", keys(Action::FlyForward)),
+                ("left", keys(Action::FlyLeft)),
+                ("back", keys(Action::FlyBack)),
+                ("right", keys(Action::FlyRight)),
+                ("up", keys(Action::FlyUp)),
+                ("down", keys(Action::FlyDown)),
+                ("fast", keys(Action::FlyFast)),
+            ],
+        );
+        let response = ui.add(free).on_hover_text(text::help(ui.ctx(), &help, rtl));
         if response.clicked() {
             self.toggle_free();
         }
@@ -3167,126 +3187,101 @@ impl Viewer {
         }
     }
 
-    /// The keys that drive playback while no text is being typed. Space and
-    /// L play forward or pause, J plays backward or pauses, K pauses, comma
-    /// and period step one recorded group back or forward, the left and
-    /// right arrows seek five seconds, Home goes back to the start, F11
-    /// fills the screen, the number keys follow the map's best players and `
-    /// goes back to the recorder's view. While
-    /// a control has the keyboard's focus, space, the arrows and Home are its
-    /// own
+    /// The keys that drive playback, the view and whose eyes it is, as the
+    /// settings bind them, while no text is being typed. While a control
+    /// has the keyboard's focus, Space, Enter, the arrows, Home and End are
+    /// its own, and while the free camera flies its keys are. Escape gives
+    /// up a scrub where it began, or else leaves the whole screen
     pub fn shortcuts(&mut self, ctx: &egui::Context) {
-        // Typing goes to the text, other controls keep only space and the
-        // arrows for themselves
         if ctx.text_edit_focused() {
             return;
         }
         let focused = ctx.memory(|m| m.focused().is_some());
+
+        let escape = |ctx: &egui::Context| {
+            ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape))
+        };
+        if self.controller.scrubbing() {
+            if escape(ctx) {
+                self.scrub_cancelled = true;
+                self.command(Command::EndScrub { cancel: true });
+                ctx.request_repaint();
+            }
+        } else if self.fullscreen && escape(ctx) {
+            self.fullscreen = false;
+            ctx.request_repaint();
+        }
+
+        // Seeing through walls, lighting everything, names and other
+        // players' eyes need the game's files
+        let mut actions = Vec::new();
+        for action in Action::ALL {
+            let ours = matches!(
+                action.group(),
+                Group::Playback | Group::View | Group::Players
+            );
+            if ours && (self.assets || !needs_files(action)) {
+                actions.push(action);
+            }
+        }
+
+        let flying = if self.free.is_some() {
+            self.shortcuts.flying_inputs()
+        } else {
+            Vec::new()
+        };
+        let skip = |b: Binding| (focused && shortcuts::navigates(b)) || flying.contains(&b.input);
+        for action in self.shortcuts.take(ctx, &actions, skip) {
+            self.run_shortcut(action);
+            ctx.request_repaint();
+        }
+    }
+
+    /// Do what a shortcut's `action` asks
+    fn run_shortcut(&mut self, action: Action) {
         let clock = self.controller.clock();
         let forward = clock.playing() && !clock.backward();
         let backward = clock.playing() && clock.backward();
-        let pressed = |key: egui::Key| ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, key));
-        let shifted =
-            |key: egui::Key| ctx.input_mut(|i| i.consume_key(egui::Modifiers::SHIFT, key));
+        let rate = clock.rate();
         let now = self.controller.time(self.wall()).0;
-        if pressed(egui::Key::Z) {
-            self.zoomed = !self.zoomed;
-            ctx.request_repaint();
-        }
-        if pressed(egui::Key::C) {
-            self.toggle_free();
-            ctx.request_repaint();
-        }
-        if pressed(egui::Key::X) && self.assets {
-            self.settings.see_through = !self.settings.see_through;
-            ctx.request_repaint();
-        }
-        if pressed(egui::Key::F) && self.assets {
-            self.fullbright = !self.fullbright;
-            ctx.request_repaint();
-        }
-        if pressed(egui::Key::N) && self.assets {
-            self.settings.player_names = !self.settings.player_names;
-            ctx.request_repaint();
-        }
-
-        // ` goes back to the recorder's view, the number keys follow the
-        // session's best players, and Page Up and Page Down go round them
-        if self.assets {
-            if pressed(egui::Key::Backtick) {
-                self.follow(None);
-                ctx.request_repaint();
+        match action {
+            Action::PlayPause if forward => self.command(Command::Pause),
+            Action::PlayPause => self.command(Command::Play),
+            Action::Rewind if backward => self.command(Command::Pause),
+            Action::Rewind => self.command(Command::PlayBackward),
+            Action::Pause => self.command(Command::Pause),
+            Action::Start => self.command(Command::SeekTo(SourceTime::ZERO)),
+            Action::SeekBack => {
+                self.command(Command::SeekTo(SourceTime((now - SEEK_STEP).max(0.))))
             }
-            for (place, key) in NUMBER_KEYS.into_iter().enumerate() {
-                if pressed(key) {
-                    self.follow_place(place);
-                    ctx.request_repaint();
+            Action::SeekForward => self.command(Command::SeekTo(SourceTime(now + SEEK_STEP))),
+            Action::SkipBack => {
+                self.command(Command::SeekTo(SourceTime((now - SKIP_STEP).max(0.))))
+            }
+            Action::SkipForward => self.command(Command::SeekTo(SourceTime(now + SKIP_STEP))),
+            Action::FrameBack => self.command(Command::StepGroup(-1)),
+            Action::FrameForward => self.command(Command::StepGroup(1)),
+            Action::Slower => {
+                if let Some(rate) = rate.slower() {
+                    self.command(Command::SetRate(rate));
                 }
             }
-            if pressed(egui::Key::PageUp) {
-                self.step_pov(-1);
-                ctx.request_repaint();
+            Action::Faster => {
+                if let Some(rate) = rate.faster() {
+                    self.command(Command::SetRate(rate));
+                }
             }
-            if pressed(egui::Key::PageDown) {
-                self.step_pov(1);
-                ctx.request_repaint();
-            }
-        }
-
-        // F11 fills the screen or leaves it, and so does Escape when it is
-        // not cancelling a scrub
-        let leave = self.fullscreen && !self.controller.scrubbing();
-        if pressed(egui::Key::F11) || (leave && pressed(egui::Key::Escape)) {
-            self.fullscreen = !self.fullscreen;
-            ctx.request_repaint();
-        }
-
-        let command = if self.controller.scrubbing() && pressed(egui::Key::Escape) {
-            // Back to where the drag began
-            self.scrub_cancelled = true;
-            Some(Command::EndScrub { cancel: true })
-        } else if (!focused && self.free.is_none() && pressed(egui::Key::Space))
-            || pressed(egui::Key::L)
-        {
-            Some(if forward {
-                Command::Pause
-            } else {
-                Command::Play
-            })
-        } else if pressed(egui::Key::J) {
-            Some(if backward {
-                Command::Pause
-            } else {
-                Command::PlayBackward
-            })
-        } else if pressed(egui::Key::K) {
-            Some(Command::Pause)
-        } else if !focused && pressed(egui::Key::Home) {
-            Some(Command::SeekTo(SourceTime::ZERO))
-        } else if pressed(egui::Key::Minus) {
-            let rate = self.controller.clock().rate();
-            rate.slower().map(Command::SetRate)
-        } else if pressed(egui::Key::Plus) || pressed(egui::Key::Equals) {
-            let rate = self.controller.clock().rate();
-            rate.faster().map(Command::SetRate)
-        } else if pressed(egui::Key::Comma) {
-            Some(Command::StepGroup(-1))
-        } else if pressed(egui::Key::Period) {
-            Some(Command::StepGroup(1))
-        } else if !focused && shifted(egui::Key::ArrowLeft) {
-            Some(Command::SeekTo(SourceTime((now - SKIP_STEP).max(0.))))
-        } else if !focused && shifted(egui::Key::ArrowRight) {
-            Some(Command::SeekTo(SourceTime(now + SKIP_STEP)))
-        } else if !focused && pressed(egui::Key::ArrowLeft) {
-            Some(Command::SeekTo(SourceTime((now - SEEK_STEP).max(0.))))
-        } else if !focused && pressed(egui::Key::ArrowRight) {
-            Some(Command::SeekTo(SourceTime(now + SEEK_STEP)))
-        } else {
-            None
-        };
-        if let Some(command) = command {
-            self.command(command);
-            ctx.request_repaint();
+            Action::Fullscreen => self.fullscreen = !self.fullscreen,
+            Action::Zoom => self.zoomed = !self.zoomed,
+            Action::SeeThrough => self.settings.see_through = !self.settings.see_through,
+            Action::Fullbright => self.fullbright = !self.fullbright,
+            Action::Names => self.settings.player_names = !self.settings.player_names,
+            Action::FreeCamera => self.toggle_free(),
+            Action::Recorder => self.follow(None),
+            Action::Follow(place) => self.follow_place(usize::from(place)),
+            Action::PreviousPlayer => self.step_pov(-1),
+            Action::NextPlayer => self.step_pov(1),
+            _ => {}
         }
     }
 
@@ -3381,22 +3376,14 @@ struct Boost {
     resumed: bool,
 }
 
-/// The keys that follow the session's best players, in score order
-const NUMBER_KEYS: [egui::Key; 10] = [
-    egui::Key::Num1,
-    egui::Key::Num2,
-    egui::Key::Num3,
-    egui::Key::Num4,
-    egui::Key::Num5,
-    egui::Key::Num6,
-    egui::Key::Num7,
-    egui::Key::Num8,
-    egui::Key::Num9,
-    egui::Key::Num0,
-];
-
-/// How the list of players names [`NUMBER_KEYS`]
-const KEY_NAMES: [&str; 10] = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"];
+/// Whether a shortcut's `action` needs the game's files, to see through
+/// walls, light everything, show names or follow other players
+fn needs_files(action: Action) -> bool {
+    matches!(
+        action,
+        Action::SeeThrough | Action::Fullbright | Action::Names
+    ) || action.group() == Group::Players
+}
 
 /// How near its end a played event counts as over, as playing stops at
 /// the last recorded moment before it

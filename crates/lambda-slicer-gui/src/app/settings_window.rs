@@ -1,5 +1,5 @@
 //! The settings window, which can be moved anywhere in the app's window,
-//! with its four sections down one side and the chosen one beside them
+//! with its five sections down one side and the chosen one beside them
 //!
 //! Every change applies at once, with no Save to press, and is written out
 //! once nothing is being dragged. Each section keeps its own scroll place,
@@ -17,6 +17,7 @@ use crate::settings::{
     FOV, GAME_BOB, MAX_PADDING, MAX_SCORE_ROWS, SPREE_LEAST, SPREE_MOST, ScoreboardShown, Settings,
     SpeedAxes, TEXT_SIZE, VITALS_SIZE, ViewerSettings, WEAPON_BOB,
 };
+use crate::shortcuts::{self, Action, Chosen, Group, Shortcuts};
 use crate::text::{self, Look};
 use crate::theme;
 use crate::widgets::{self, Icon, IconButton, Variant};
@@ -43,6 +44,9 @@ const FIRST_FOV: f32 = 90.;
 const BOB_STEP: f64 = 0.0005;
 const BOB_DECIMALS: usize = 3;
 
+/// The least width of a shortcut's key buttons
+const KEY_WIDTH: f32 = 96.;
+
 /// The step and decimals of a clip's padding
 const PADDING_STEP: f64 = 0.1;
 
@@ -67,6 +71,19 @@ pub enum SettingsTab {
     Viewer,
     /// Where clips are exported, and what a clip keeps around its event
     Clips,
+    /// The keys and mouse buttons that run the app's commands
+    Shortcuts,
+}
+
+/// The shortcut being chosen, one of an action's two `slot`s, and the
+/// modifiers held last frame, to tell one newly held for the free camera
+#[derive(Clone, Copy, Debug)]
+pub(super) struct Choosing {
+    action: Action,
+    slot: usize,
+    before: egui::Modifiers,
+    /// Where its key was last drawn, which the wheel binds over
+    rect: egui::Rect,
 }
 
 impl App {
@@ -137,6 +154,7 @@ impl App {
             (SettingsTab::Library, "settings-tab-library"),
             (SettingsTab::Viewer, "settings-viewer"),
             (SettingsTab::Clips, "settings-tab-clips"),
+            (SettingsTab::Shortcuts, "settings-tab-shortcuts"),
         ];
         let height = ui.available_height();
         let direction = if rtl {
@@ -185,6 +203,7 @@ impl App {
                         SettingsTab::Library => self.library_section(ui, rtl),
                         SettingsTab::Viewer => self.viewer_section(ui, rtl),
                         SettingsTab::Clips => self.clips_section(ui, rtl),
+                        SettingsTab::Shortcuts => self.shortcuts_section(ui, rtl),
                     });
                 });
         });
@@ -1012,6 +1031,139 @@ impl App {
         }
     }
 
+    /// The key or button pressed for the shortcut being chosen, taken before
+    /// anything else sees it. Escape gives up, as does leaving the section.
+    /// Returns whether a shortcut was being chosen, as the mouse's buttons
+    /// can't be taken from the input
+    pub(super) fn choose_shortcut(&mut self, ctx: &egui::Context) -> bool {
+        let Some(choosing) = self.choosing else {
+            return false;
+        };
+        if !self.show_settings || self.settings_tab != SettingsTab::Shortcuts {
+            self.choosing = None;
+            return false;
+        }
+
+        let flies = choosing.action.flies();
+        let pointer = ctx.input(|i| i.pointer.hover_pos());
+        let hovered = pointer.is_some_and(|p| choosing.rect.contains(p));
+        match shortcuts::choose(ctx, flies, choosing.before, hovered) {
+            Some(Chosen::Cancelled) => self.choosing = None,
+            Some(Chosen::Binding(binding)) => {
+                let shortcuts = &mut self.settings.shortcuts;
+                let taken = shortcuts.set(choosing.action, choosing.slot, Some(binding));
+                self.shortcut_moved = taken.map(|from| (binding, from));
+                self.settings_unsaved = true;
+                self.choosing = None;
+            }
+            None => {
+                let before = ctx.input(|i| i.modifiers);
+                self.choosing = Some(Choosing { before, ..choosing });
+            }
+        }
+        true
+    }
+
+    /// Every action's two keys under its heading, a click on one waiting
+    /// for the key to give it and a right click clearing it
+    fn shortcuts_section(&mut self, ui: &mut egui::Ui, rtl: bool) {
+        let catalog = &self.catalog;
+        let mut shortcuts = self.settings.shortcuts.clone();
+        let mut choosing = self.choosing;
+        let mut moved = self.shortcut_moved;
+
+        let hint = catalog.text("settings-shortcuts-hint");
+        let width = Some(ui.available_width());
+        let hint = text::widget_text(ui.ctx(), &hint, rtl, width, Look::Weak);
+        ui.add(egui::Label::new(hint).wrap());
+        layout::row(ui, rtl, |ui| {
+            if ui
+                .button(catalog.text("settings-shortcuts-defaults"))
+                .clicked()
+            {
+                shortcuts = Shortcuts::default();
+                choosing = None;
+                moved = None;
+            }
+        });
+
+        // What the last key chosen was taken from
+        if let Some((binding, from)) = moved {
+            let key = FluentValue::from(binding.shown(catalog));
+            let action = FluentValue::from(from.text(catalog));
+            let line = catalog.text_with(
+                "settings-shortcut-moved",
+                &[("key", key), ("action", action)],
+            );
+            let line = text::widget_text(ui.ctx(), &line, rtl, width, Look::Color(theme::WARNING));
+            ui.add(egui::Label::new(line).wrap());
+        }
+
+        let names: Vec<String> = Action::ALL.iter().map(|a| a.text(catalog)).collect();
+        let label_width = texts_width(ui, &names, rtl);
+        let press = catalog.text("settings-shortcut-press");
+        let change = catalog.text("settings-shortcut-change");
+        for (number, group) in Group::ALL.into_iter().enumerate() {
+            heading(ui, catalog, group.text_id(), None, rtl, number == 0);
+            for (action, name) in Action::ALL.iter().zip(&names) {
+                if action.group() != group {
+                    continue;
+                }
+                // An action with no key is muted, as it simply goes unused
+                let slots = shortcuts.of(*action);
+                let look = if slots.iter().all(Option::is_none) {
+                    Look::Weak
+                } else {
+                    Look::Plain
+                };
+                layout::row(ui, rtl, |ui| {
+                    layout::cell(ui, rtl, label_width, |ui| {
+                        ui.label(text::widget_text(ui.ctx(), name, rtl, None, look));
+                    });
+                    for (slot, binding) in slots.into_iter().enumerate() {
+                        let waiting =
+                            choosing.is_some_and(|c| c.action == *action && c.slot == slot);
+                        let shown = if waiting {
+                            press.clone()
+                        } else {
+                            binding.map_or_else(|| "—".to_owned(), |b| b.shown(catalog))
+                        };
+                        let shown = text::widget_text(ui.ctx(), &shown, rtl, None, Look::Plain);
+                        let button = egui::Button::new(shown)
+                            .selected(waiting)
+                            .min_size(Vec2::new(KEY_WIDTH, 0.));
+                        let response = ui.add(button).on_hover_text(&change);
+                        if waiting && let Some(c) = &mut choosing {
+                            c.rect = response.rect;
+                        }
+                        if response.clicked() {
+                            let before = ui.input(|i| i.modifiers);
+                            choosing = Some(Choosing {
+                                action: *action,
+                                slot,
+                                before,
+                                rect: response.rect,
+                            });
+                            moved = None;
+                        }
+                        if response.secondary_clicked() {
+                            shortcuts.set(*action, slot, None);
+                            choosing = None;
+                            moved = None;
+                        }
+                    }
+                });
+            }
+        }
+
+        self.choosing = choosing;
+        self.shortcut_moved = moved;
+        if shortcuts != self.settings.shortcuts {
+            self.settings.shortcuts = shortcuts;
+            self.settings_unsaved = true;
+        }
+    }
+
     /// Where clips are exported, and how much a clip made around an event
     /// keeps on each side of it
     fn clips_section(&mut self, ui: &mut egui::Ui, rtl: bool) {
@@ -1357,6 +1509,7 @@ fn changed_settings(current: &Settings, restored: &Settings) -> Vec<&'static str
         ),
         (now.preroll != then.preroll, "settings-preroll"),
         (now.postroll != then.postroll, "settings-postroll"),
+        (now.shortcuts != then.shortcuts, "settings-tab-shortcuts"),
         (
             now.hidden_columns != then.hidden_columns,
             "settings-restore-columns",
@@ -1419,9 +1572,15 @@ fn path(ui: &mut egui::Ui, shown: &str, rtl: bool) {
 /// The width of the widest of these labels in this language, for their
 /// controls to line up
 fn label_width(ui: &egui::Ui, catalog: &Catalog, ids: &[&str], rtl: bool) -> f32 {
+    let texts: Vec<String> = ids.iter().map(|id| catalog.text(id)).collect();
+    texts_width(ui, &texts, rtl)
+}
+
+/// The width of the widest of `texts` as labels
+fn texts_width(ui: &egui::Ui, texts: &[String], rtl: bool) -> f32 {
     let mut widest: f32 = 0.;
-    for id in ids {
-        let label = text::widget_text(ui.ctx(), &catalog.text(id), rtl, None, Look::Plain);
+    for text in texts {
+        let label = text::widget_text(ui.ctx(), text, rtl, None, Look::Plain);
         let galley = label.into_galley(
             ui,
             Some(egui::TextWrapMode::Extend),

@@ -87,6 +87,7 @@ mod platform;
 mod preview;
 mod scoreboard;
 mod settings;
+mod shortcuts;
 mod text;
 mod theme;
 mod timeline;
@@ -203,6 +204,7 @@ fn main() -> eframe::Result {
                     Some("library") => SettingsTab::Library,
                     Some("viewer") => SettingsTab::Viewer,
                     Some("clips") => SettingsTab::Clips,
+                    Some("shortcuts") => SettingsTab::Shortcuts,
                     _ => SettingsTab::General,
                 }
             }
