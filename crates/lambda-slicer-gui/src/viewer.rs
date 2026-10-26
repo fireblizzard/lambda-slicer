@@ -42,7 +42,7 @@ use lambda_slicer_core::container::{Limits, read_header};
 use lambda_slicer_playback::PresentedFrame;
 use lambda_slicer_playback::animation::{Flash, Holder};
 use lambda_slicer_playback::controller::{Command, Controller, LoopRange, Reply, Stamp};
-use lambda_slicer_playback::hud::{Countdown, WAITING};
+use lambda_slicer_playback::hud::{Countdown, LeftOut, WAITING};
 use lambda_slicer_playback::particles::{STREAK_COLOR, STREAK_WIDTH};
 use lambda_slicer_playback::scene::{
     self, Entity, EntityId, HIGHEST_BOB, LOWEST_BOB, PlayerView, view_model_for, weapon_model_for,
@@ -2404,8 +2404,11 @@ impl Viewer {
                             let map = frame.map.as_deref();
                             let size = self.settings.text_size;
                             let colour = rgb(self.settings.text_color);
-                            self.chat
-                                .draw(ui, rect, &frame.chat, map, library, size, colour);
+                            let lines = frame.chat(LeftOut {
+                                places: !self.settings.chat_places,
+                                long_jump: !self.settings.chat_long_jump,
+                            });
+                            self.chat.draw(ui, rect, lines, map, library, size, colour);
                         }
                     }
                     // The recorder's speeds as recorded while they play,

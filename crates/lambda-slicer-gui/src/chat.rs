@@ -18,7 +18,7 @@ use std::collections::HashMap;
 
 use eframe::egui::{self, Color32, Pos2, Rect};
 use lambda_slicer_audio::library::Library;
-use lambda_slicer_playback::hud::ChatLine;
+use lambda_slicer_playback::hud::{ChatLine, PLACE_CODES};
 
 use crate::kill_feed::{add_tagged, team_colour};
 
@@ -36,9 +36,6 @@ const TEXT_SIZE: f32 = 13.;
 
 /// Lines the chat makes room for, its five and two more
 const ROOM_LINES: f32 = 7.;
-
-/// The codes a sender's place stands in for
-const PLACE_CODES: [&str; 4] = ["%l", "%L", "%d", "%D"];
 
 /// A map's places, by name and position
 type Places = Vec<(String, [f32; 3])>;

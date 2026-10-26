@@ -33,7 +33,7 @@ use crate::decals::{Decal, Decals};
 use crate::events::angle_vectors;
 use crate::events::{ATTN_NORM, Action, ClientEvent, Events, PITCH_NORM, SoundCall, handle};
 use crate::gauss;
-use crate::hud::{ChatLine, Countdown, DeathNotice, Hud};
+use crate::hud::{ChatLine, Countdown, DeathNotice, Hud, LeftOut};
 use crate::hud_messages::{HudMessage, ShownMessage};
 use crate::particles::Particles;
 use crate::scene::{self, Camera, Entity, Movement, PlayerView, Scene, Viewmodel};
@@ -109,8 +109,9 @@ pub struct PresentedFrame {
     pub countdown: Option<Countdown>,
     /// The kill feed's lines, oldest first
     pub death_notices: Vec<DeathNotice>,
-    /// The chat's lines, oldest first
-    pub chat: Vec<ChatLine>,
+    /// The chat's lines, oldest first, as each choice of lines left out
+    /// has them. [`PresentedFrame::chat`] picks one
+    pub chats: [Vec<ChatLine>; 4],
     /// AG's messages on how the match goes
     pub announced: Announced,
     /// The recording player's health, armour and ammo
@@ -137,6 +138,14 @@ type Hulls = Box<dyn Fn(&str) -> Option<Arc<Hull>> + Send>;
 type SpriteFrames = Box<dyn Fn(&str) -> Option<u32> + Send>;
 type DecalIndex = Box<dyn Fn(&str) -> Option<u16> + Send>;
 type Titles = Box<dyn Fn(&str) -> Option<HudMessage> + Send>;
+
+impl PresentedFrame {
+    /// The chat's lines, oldest first, as they would be had the lines
+    /// `left_out` leaves out never been sent
+    pub fn chat(&self, left_out: LeftOut) -> &[ChatLine] {
+        &self.chats[left_out.index()]
+    }
+}
 
 pub struct Playback {
     path: Arc<Path>,
@@ -756,7 +765,7 @@ impl Playback {
             beams: state.beams.clone(),
             countdown: state.hud.countdown(at).cloned(),
             death_notices: state.hud.death_notices(at),
-            chat: state.hud.chat(at),
+            chats: state.hud.chats(at),
             announced: state.hud.announced(at),
             status: state.hud.status(&state.scene.camera, lit),
             pickups: state.hud.pickups(at),

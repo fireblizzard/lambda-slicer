@@ -244,6 +244,11 @@ pub struct ViewerSettings {
     pub weapon_bob: Option<f32>,
     pub crosshair: bool,
     pub chat: bool,
+    /// Whether the chat shows the lines naming their sender's place, and
+    /// those saying whether they have the long jump module, which players'
+    /// binds send often, or leaves them out as if never sent
+    pub chat_places: bool,
+    pub chat_long_jump: bool,
     /// Whether the recorder's health, armour, ammo and pickups show, and
     /// their size against the game's
     pub vitals: bool,
@@ -323,6 +328,8 @@ impl Default for ViewerSettings {
             weapon_bob: None,
             crosshair: true,
             chat: true,
+            chat_places: true,
+            chat_long_jump: true,
             vitals: true,
             vitals_size: 0.6,
             free_vitals: false,

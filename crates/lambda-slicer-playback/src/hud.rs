@@ -25,7 +25,10 @@
 //! that player, to be drawn in their team's colour. Five lines show at
 //! most, the oldest scrolled away for a sixth, and the top line goes five
 //! seconds after it reached the top. AG's `Location` is a player's entity
-//! and position, which a line's `%l` names (OpenAG's `CHudLocation`)
+//! and position, which a line's `%l` names (OpenAG's `CHudLocation`). The
+//! chat is also kept as it would be without the lines that name a place,
+//! or that say whether the sender has the long jump module, or both, for
+//! those who hide them
 //!
 //! `GameTitle` shows the game's logo, as a new singleplayer game starts.
 //! Its place, colour and times are the `GAMETITLE` message of `titles.txt`,
@@ -58,6 +61,14 @@ const NOTICE_SHOWN: f64 = 6.;
 /// seconds (`hud_saytext_time`)
 const CHAT_LINES: usize = 5;
 const CHAT_SHOWN: f64 = 5.;
+
+/// The codes a line of chat names its sender's place with, which the
+/// client fills in
+pub const PLACE_CODES: [&str; 4] = ["%l", "%L", "%d", "%D"];
+
+/// What AG's server writes in a line for whether its sender has the long
+/// jump module
+const LONG_JUMP: [&str; 2] = ["got LJ", "no LJ"];
 
 /// The seconds that mean the match waits for its players
 pub const WAITING: i8 = 50;
@@ -125,6 +136,112 @@ pub struct ChatLine {
     pub place: Option<[f32; 3]>,
 }
 
+impl ChatLine {
+    /// Whether the line names its sender's place, as players' binds for
+    /// telling their team where they are do
+    pub fn names_place(&self) -> bool {
+        PLACE_CODES.iter().any(|code| self.text.contains(code))
+    }
+
+    /// Whether the line says if its sender has the long jump module, as
+    /// players' binds for telling their team do. Colour codes may come
+    /// between the words
+    pub fn says_long_jump(&self) -> bool {
+        let plain = without_colours(&self.text);
+        LONG_JUMP.iter().any(|words| plain.contains(words))
+    }
+}
+
+/// `text` without AG's colour codes, a `^` and a digit
+fn without_colours(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut chars = text.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '^' && chars.peek().is_some_and(char::is_ascii_digit) {
+            chars.next();
+            continue;
+        }
+        out.push(c);
+    }
+    out
+}
+
+/// Which lines the chat leaves out, as if they were never sent
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct LeftOut {
+    /// The lines naming their sender's place
+    pub places: bool,
+    /// The lines saying whether their sender has the long jump module
+    pub long_jump: bool,
+}
+
+impl LeftOut {
+    const ALL: [LeftOut; 4] = [
+        LeftOut {
+            places: false,
+            long_jump: false,
+        },
+        LeftOut {
+            places: true,
+            long_jump: false,
+        },
+        LeftOut {
+            places: false,
+            long_jump: true,
+        },
+        LeftOut {
+            places: true,
+            long_jump: true,
+        },
+    ];
+
+    /// Where in [`LeftOut::ALL`] it is
+    pub(crate) fn index(self) -> usize {
+        usize::from(self.places) + 2 * usize::from(self.long_jump)
+    }
+
+    fn leaves_out(self, line: &ChatLine) -> bool {
+        (self.places && line.names_place()) || (self.long_jump && line.says_long_jump())
+    }
+}
+
+/// Lines of chat, oldest first, and when the top one scrolls away
+#[derive(Clone, Debug, Default, PartialEq)]
+struct ChatLines {
+    lines: VecDeque<ChatLine>,
+    scroll_at: SourceTime,
+}
+
+impl ChatLines {
+    /// Add `line` at `time`, the oldest scrolled away past five
+    fn push(&mut self, line: ChatLine, time: SourceTime) {
+        self.scroll(time);
+        if self.lines.is_empty() {
+            self.scroll_at = SourceTime(time.0 + CHAT_SHOWN);
+        }
+        self.lines.push_back(line);
+        while self.lines.len() > CHAT_LINES {
+            self.lines.pop_front();
+        }
+    }
+
+    /// Scroll the top lines away until `at`, each five seconds after the
+    /// one before it
+    fn scroll(&mut self, at: SourceTime) {
+        while !self.lines.is_empty() && at >= self.scroll_at {
+            self.lines.pop_front();
+            self.scroll_at = SourceTime(self.scroll_at.0 + CHAT_SHOWN);
+        }
+    }
+
+    /// The lines at `at`, oldest first
+    fn at(&self, at: SourceTime) -> Vec<ChatLine> {
+        let mut shown = self.clone();
+        shown.scroll(at);
+        shown.lines.into()
+    }
+}
+
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Hud {
     countdown: Option<Countdown>,
@@ -135,9 +252,9 @@ pub struct Hud {
     teams: BTreeMap<u8, String>,
     /// The kill feed, oldest first
     notices: VecDeque<DeathNotice>,
-    /// The chat, oldest first, and when its top line scrolls away
-    chat: VecDeque<ChatLine>,
-    scroll_at: SourceTime,
+    /// The chat as each choice of lines left out has it, in the order of
+    /// [`LeftOut::ALL`]
+    chats: [ChatLines; 4],
     /// Each player's place by entity, as `Location` gave it
     places: BTreeMap<u8, [f32; 3]>,
     /// The time left, sudden death, the next map, timeouts, pauses and votes
@@ -333,34 +450,29 @@ impl Hud {
             name = Some((start..start + player.name.len(), team));
         }
 
-        self.scroll(time);
-        if self.chat.is_empty() {
-            self.scroll_at = SourceTime(time.0 + CHAT_SHOWN);
-        }
-        self.chat.push_back(ChatLine {
+        let line = ChatLine {
             text,
             name,
             place: self.places.get(&sender).copied(),
-        });
-        while self.chat.len() > CHAT_LINES {
-            self.chat.pop_front();
+        };
+        for (left_out, chat) in LeftOut::ALL.into_iter().zip(&mut self.chats) {
+            if !left_out.leaves_out(&line) {
+                chat.push(line.clone(), time);
+            }
         }
     }
 
-    /// Scroll the chat's top lines away until `at`, each five seconds after
-    /// the one before it
-    fn scroll(&mut self, at: SourceTime) {
-        while !self.chat.is_empty() && at >= self.scroll_at {
-            self.chat.pop_front();
-            self.scroll_at = SourceTime(self.scroll_at.0 + CHAT_SHOWN);
-        }
+    /// The chat's lines at `at`, oldest first, as they would be had the
+    /// lines `left_out` leaves out never been sent, which then take no room
+    /// and no time
+    pub fn chat(&self, at: SourceTime, left_out: LeftOut) -> Vec<ChatLine> {
+        self.chats[left_out.index()].at(at)
     }
 
-    /// The chat's lines at `at`, oldest first
-    pub fn chat(&self, at: SourceTime) -> Vec<ChatLine> {
-        let mut shown = self.clone();
-        shown.scroll(at);
-        shown.chat.into()
+    /// The chat's lines at `at` as each choice of lines left out has them,
+    /// in the order of [`LeftOut::ALL`]
+    pub fn chats(&self, at: SourceTime) -> [Vec<ChatLine>; 4] {
+        LeftOut::ALL.map(|left_out| self.chat(at, left_out))
     }
 
     /// The recording player's health, armour, ammo and flashlight as the
@@ -533,7 +645,7 @@ mod tests {
         // The first scrolled away for the sixth, then the top one five
         // seconds after the first line came, and every five seconds after
         let texts = |at: f64| -> Vec<String> {
-            hud.chat(SourceTime(at))
+            hud.chat(SourceTime(at), LeftOut::default())
                 .into_iter()
                 .map(|l| l.text)
                 .collect()
@@ -558,9 +670,37 @@ mod tests {
 
         hud.places.insert(player, place);
         hud.say(&decoder, b"\x04\x02(T) naz: at %l\n\0", SourceTime(1.));
-        let line = &hud.chat(SourceTime(1.))[0];
+        let line = &hud.chat(SourceTime(1.), LeftOut::default())[0];
         assert_eq!(line.text, "(T) naz: at %l");
         assert_eq!(line.place, Some(place));
+    }
+
+    #[test]
+    fn lines_naming_a_place_or_the_long_jump_can_be_left_out_of_the_chat() {
+        let decoder = Decoder::new();
+        let mut hud = Hud::default();
+        let lines: [&[u8]; 4] = [
+            b"\x04\x02(T) naz: ^8{^2%L^8} ^8{^5100^8/^50^8}\n\0",
+            b"\x04\x02naz: gg\n\0",
+            b"\x04\x02(T) naz: ^8(^6got ^6LJ^8)\n\0",
+            b"\x04\x02(T) naz: Recharging %d no LJ\n\0",
+        ];
+        for (k, body) in lines.into_iter().enumerate() {
+            hud.say(&decoder, body, SourceTime(k as f64));
+        }
+
+        let texts = |places, long_jump| -> Vec<String> {
+            let left_out = LeftOut { places, long_jump };
+            let chat = hud.chat(SourceTime(4.), left_out);
+            chat.into_iter().map(|l| l.text).collect()
+        };
+        assert_eq!(texts(false, false).len(), 4);
+        assert_eq!(texts(true, false), ["naz: gg", "(T) naz: ^8(^6got ^6LJ^8)"]);
+        assert_eq!(
+            texts(false, true),
+            ["(T) naz: ^8{^2%L^8} ^8{^5100^8/^50^8}", "naz: gg"]
+        );
+        assert_eq!(texts(true, true), ["naz: gg"]);
     }
 
     #[test]

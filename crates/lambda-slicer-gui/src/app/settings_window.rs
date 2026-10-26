@@ -857,6 +857,18 @@ impl App {
             ui.checkbox(&mut viewer.chat, t("settings-chat"));
         });
         layout::row(ui, rtl, |ui| {
+            ui.add_enabled_ui(viewer.chat, |ui| {
+                ui.checkbox(&mut viewer.chat_places, t("settings-chat-places"));
+            });
+            widgets::help(ui, &catalog.text("settings-chat-places-hint"), rtl);
+        });
+        layout::row(ui, rtl, |ui| {
+            ui.add_enabled_ui(viewer.chat, |ui| {
+                ui.checkbox(&mut viewer.chat_long_jump, t("settings-chat-long-jump"));
+            });
+            widgets::help(ui, &catalog.text("settings-chat-long-jump-hint"), rtl);
+        });
+        layout::row(ui, rtl, |ui| {
             ui.checkbox(&mut viewer.vitals, t("settings-vitals"));
         });
         layout::row(ui, rtl, |ui| {
@@ -1439,6 +1451,14 @@ fn changed_settings(current: &Settings, restored: &Settings) -> Vec<&'static str
         (view.weapon_bob != first.weapon_bob, "settings-weapon-bob"),
         (view.crosshair != first.crosshair, "settings-crosshair"),
         (view.chat != first.chat, "settings-chat"),
+        (
+            view.chat_places != first.chat_places,
+            "settings-chat-places",
+        ),
+        (
+            view.chat_long_jump != first.chat_long_jump,
+            "settings-chat-long-jump",
+        ),
         (view.vitals != first.vitals, "settings-vitals"),
         (
             view.vitals_size != first.vitals_size,

@@ -164,7 +164,11 @@ default. Low health and weapons out of ammo stay red, the server's own HUD text 
 it sends, and the full scoreboard keeps its own, as in the game. Text colour colours chat
 messages, lines no player sent, and the position and view angles, as `con_color` does in the game,
 its orange by default. Names keep their team's colour, and the kill feed is not changed, as in the
-game. Show scoreboard shows the
+game. Untick Show messages that give a location to leave out of the chat every message with `%l`,
+`%L`, `%d` or `%D` in it, the codes players' binds use to tell their team where they are. The chat
+then shows as if those were never sent, so they take none of its five lines. Untick Show messages
+that say "got LJ" or "no LJ" to do the same with the messages saying whether a player has the long
+jump module, which AG's server writes in for a bind's code. Both still show in the event list. Show scoreboard shows the
 game's scoreboard over the middle of the view while the recorder holds its key, and at intermission
 whoever's view is shown, only in fullscreen by default, always, or never. It's the game's size,
 wider on a wide view, and lists each team with its count of players and its players best first, all
