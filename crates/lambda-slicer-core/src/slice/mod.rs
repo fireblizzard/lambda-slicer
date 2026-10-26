@@ -5,6 +5,7 @@
 //! [`naming`] suggests file names and the console command for a result
 
 pub mod controls;
+pub mod marks;
 pub mod naming;
 pub mod ongoing;
 pub mod output;

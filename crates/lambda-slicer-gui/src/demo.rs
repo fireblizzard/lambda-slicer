@@ -918,7 +918,9 @@ impl DemoView {
             });
         }
 
-        let job = ExportJob::start(self.path.clone(), self.export_dir(), items, ctx.clone());
+        let decals = self.viewer.as_ref().and_then(|v| v.decal_source());
+        let (path, folder) = (self.path.clone(), self.export_dir());
+        let job = ExportJob::start(path, folder, items, decals, ctx.clone());
         self.export = Some(job);
     }
 

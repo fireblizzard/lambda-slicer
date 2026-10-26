@@ -17,6 +17,7 @@
 //! Each clip's range and file name are taken when the job starts, so editing
 //! a clip later never makes its result look like an export of the new range
 
+use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -26,13 +27,61 @@ use eframe::egui;
 use lambda_slicer_core::container::Limits;
 use lambda_slicer_core::message::{Coded, Message};
 use lambda_slicer_core::slice::ExportError;
+use lambda_slicer_core::slice::marks::{Mark, MarkTexture};
 use lambda_slicer_core::slice::naming::{
     clip_file_name, free_path, named_clip_file_name, playdemo,
 };
-use lambda_slicer_core::slice::restart::{nearest_start, run_restart_until};
+use lambda_slicer_core::slice::restart::{nearest_start, run_restart_marked};
 use lambda_slicer_core::timeline::time::DemoTime;
+use lambda_slicer_playback::GameFiles;
+use lambda_slicer_playback::decals::DecalName;
+use lambda_slicer_playback::playback::Playback;
+use lambda_slicer_playback::time::SourceTime;
+use lambda_slicer_playback::worker::Loaded;
 
 use crate::clips::Clip;
+
+/// The demo as the viewer loaded it and the game's files, which a clip's
+/// export plays to the clip's start to find every decal there
+#[derive(Clone)]
+pub struct DecalSource {
+    pub loaded: Loaded,
+    pub files: GameFiles,
+}
+
+/// Every decal `playback` has on the map, as a clip places them again. One
+/// on a brush entity is where the brush stands now, and one on an entity
+/// gone from the map is left out, as are the map's own
+fn marks(playback: &Playback) -> Vec<Mark> {
+    let entities = &playback.scene().entities;
+    let mut out = Vec::new();
+    for decal in playback.decals().list().iter() {
+        if decal.map {
+            continue;
+        }
+        let origin = if decal.entity == 0 {
+            decal.origin
+        } else {
+            let Some(e) = entities.iter().find(|e| e.id.number == decal.entity) else {
+                continue;
+            };
+            [0, 1, 2].map(|k| decal.origin[k] + e.origin[k])
+        };
+        let texture = match &decal.name {
+            DecalName::Number(number) => MarkTexture::Number(*number),
+            DecalName::Named(name) => MarkTexture::Named {
+                name: name.to_string(),
+                place: decal.texture,
+            },
+        };
+        out.push(Mark {
+            texture,
+            entity: decal.entity,
+            origin,
+        });
+    }
+    out
+}
 
 /// A clip by its requested range and its part, which is what its export
 /// depends on
@@ -123,11 +172,13 @@ pub struct ExportJob {
 }
 
 impl ExportJob {
-    /// Export `clips` of `source` into `folder`
+    /// Export `clips` of `source` into `folder`, with every decal at each
+    /// clip's start that `decals` finds, or the server's own without it
     pub fn start(
         source: PathBuf,
         folder: PathBuf,
         clips: Vec<ExportItem>,
+        decals: Option<DecalSource>,
         ctx: egui::Context,
     ) -> Self {
         let cancel = Arc::new(AtomicBool::new(false));
@@ -137,6 +188,30 @@ impl ExportJob {
         std::thread::Builder::new()
             .name("clip export".into())
             .spawn(move || {
+                // One playback for every clip, opened when first needed and
+                // stopping when the job is cancelled
+                let playback: RefCell<Option<Playback>> = RefCell::new(None);
+                let open = |source: &DecalSource| {
+                    let loaded = &source.loaded;
+                    let checkpoints = loaded.checkpoints.clone();
+                    let mut playback =
+                        Playback::open_with(&loaded.demo, loaded.limits, checkpoints).ok()?;
+                    playback.set_game_files(&source.files);
+                    let cancel = thread_cancel.clone();
+                    playback.set_interrupt(move || cancel.load(Ordering::Relaxed));
+                    Some(playback)
+                };
+                let marks_at = |time: f64| {
+                    let source = decals.as_ref()?;
+                    let mut slot = playback.borrow_mut();
+                    if slot.is_none() {
+                        *slot = open(source);
+                    }
+                    let playback = slot.as_mut()?;
+                    playback.advance_to(SourceTime(time)).ok()?;
+                    Some(marks(playback))
+                };
+
                 for item in clips {
                     let (start, end, part) = item.range;
                     if thread_cancel.load(Ordering::Relaxed) {
@@ -150,8 +225,20 @@ impl ExportJob {
                     // A panic fails this clip, not the job
                     let limits = Limits::default();
                     let stop = &*thread_cancel;
-                    let run =
-                        || run_restart_until(&source, &dest, start, Some(end), part, limits, stop);
+                    let run = || {
+                        let marks_at: &dyn Fn(f64) -> Option<Vec<Mark>> = &marks_at;
+                        let dest = dest.as_path();
+                        run_restart_marked(
+                            &source,
+                            dest,
+                            start,
+                            Some(end),
+                            part,
+                            limits,
+                            stop,
+                            Some(marks_at),
+                        )
+                    };
                     let result = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(run)) {
                         Ok(Err(ExportError::Stopped)) => {
                             let _ = tx.send(Event::Cancelled(item.id));

@@ -72,6 +72,7 @@ use crate::chat::Chat;
 use crate::content::GameFolders;
 use crate::crosshair::Crosshairs;
 use crate::decals::DecalCache;
+use crate::export::DecalSource;
 use crate::free_camera::{FreeCamera, Held};
 use crate::hud_sprites::HudSprites;
 use crate::i18n::Catalog;
@@ -1655,6 +1656,18 @@ impl Viewer {
             view,
             draw,
             other_map,
+        })
+    }
+
+    /// The demo as loaded and the game's files, for a clip's export to play
+    /// it to the clip's start and find every decal there. None without the
+    /// game's files, as most decals are traced through the map
+    pub fn decal_source(&self) -> Option<DecalSource> {
+        let library = self.library.as_ref()?;
+        let loaded = self.worker.loaded()?;
+        Some(DecalSource {
+            loaded,
+            files: library.game_files(),
         })
     }
 

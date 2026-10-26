@@ -14,7 +14,8 @@
 //! inferred bases or fall in a run the client dropped as too old.
 //! Persistent state that changed after LOADING (user info, light styles,
 //! HUD messages) is replayed at the start of the bootstrap group, see
-//! [`super::persistent`]
+//! [`super::persistent`], and the decals on the walls after it, see
+//! [`super::marks`]
 //!
 //! A slice starts at the first frame group at or after its start. When the
 //! demo's clock starts over in a later session, two sessions can share a
@@ -38,6 +39,7 @@ use std::sync::atomic::AtomicBool;
 
 use serde::Serialize;
 
+use super::marks::{self, Mark, mark_message};
 use super::ongoing::{Ongoing, PendingSounds};
 use super::output::{Counting, Published, io_err, publish_new, to_i32};
 use super::persistent::Persistent;
@@ -111,6 +113,8 @@ pub struct RestartReport {
     /// Effects under way at the start that the clip leaves out, gibs and
     /// thrown models still in the air
     pub left_out: Vec<String>,
+    /// Decals placed again at the start
+    pub decals: usize,
     pub persistent_bytes: usize,
     pub bootstrap_bytes: usize,
     pub kept_records: u64,
@@ -148,6 +152,8 @@ struct Plan {
     notes: Vec<String>,
     /// One line per effect under way at the start that is left out
     left_out: Vec<String>,
+    /// The server's decal messages before the start, oldest first
+    decals: Vec<Vec<u8>>,
     /// (snapshot, the source record that carried it) per bootstrap frame
     bootstrap: Vec<(Arc<Snapshot>, NetworkFrame)>,
     /// The network records that set up the start's session, when it is a
@@ -367,6 +373,7 @@ fn plan(
                 late: carried.messages,
                 notes: carried.notes,
                 left_out: carried.left_out,
+                decals: carried.decals,
                 bootstrap: Vec::new(),
                 setup_map: start_setup.as_ref().and(session_map.clone()),
                 setup: start_setup,
@@ -653,10 +660,18 @@ fn rebased(p: &Plan, time: f32) -> u32 {
 struct Written {
     bootstrap_bytes: usize,
     stats: EncodeStats,
+    /// Records written between the bootstrap group and the kept groups
+    after_bootstrap: usize,
+    decals: usize,
 }
 
+/// Every decal on the map before a clip's start, from a caller that played
+/// the source there, given the time of the last group before the start.
+/// None leaves the server's own decals to be placed
+pub type MarksAt<'a> = &'a dyn Fn(f64) -> Option<Vec<Mark>>;
+
 /// Write the clip `p` plans of the demo at `path`, marked as a clip of the
-/// demo named `origin`
+/// demo named `origin`, with the decals `marks` finds before its start
 fn write(
     path: &Path,
     out: &mut File,
@@ -664,6 +679,7 @@ fn write(
     origin: &str,
     limits: Limits,
     stop: &AtomicBool,
+    marks: Option<MarksAt>,
 ) -> Result<Written, ExportError> {
     let mut reader = open(path, limits)?;
     let mut d = Decoder::new();
@@ -794,11 +810,30 @@ fn write(
         put(&mut w, &zero(f.body.clone(), f.tag))?;
     }
 
+    // The decals on the walls, every one a caller found before the start or
+    // else the server's own, placed once the bootstrap brought their
+    // entities
+    let previous = f64::from(p.first_time) - p.lead;
+    let placed: Vec<Vec<u8>> = match marks.and_then(|m| m(previous)) {
+        Some(list) => list
+            .iter()
+            .filter_map(|m| mark_message(m, d.resources()))
+            .collect(),
+        None => p.decals.clone(),
+    };
+    let decal_records = marks::records(&placed);
+
     // HUD elements time their display from the HUD clock, which only moves
     // when a frame is drawn. Read in the bootstrap group, a message would be
     // timed from the clock before the restart and expire at once, so HUD
-    // messages arrive in a group of their own once a frame was drawn
-    let hud_group = i32::from(!p.hud.is_empty() || !p.late.is_empty());
+    // messages arrive in a group of their own once a frame was drawn. The
+    // decals come in the same group
+    let late = [p.late.as_slice(), p.hud.as_slice()].concat();
+    let mut group_records = decal_records;
+    if !late.is_empty() {
+        group_records.push(late);
+    }
+    let hud_group = i32::from(!group_records.is_empty());
     if hud_group > 0 {
         // The newest bootstrap frame's numbers, so the sequence never steps back
         let newest = p.bootstrap.last().map(|(_, r)| r);
@@ -807,24 +842,26 @@ fn write(
                 "no record before the start to carry HUD state".into(),
             ));
         };
-        let network = NetworkFrame {
-            demo_info: record.demo_info.clone(),
-            sequence: record.sequence,
-            message: [p.late.as_slice(), p.hud.as_slice()].concat(),
-        };
         let lead = f32::from_bits(rebased(p, p.first_time));
-        put(
-            &mut w,
-            &Frame {
-                tag: tag::NETWORK,
-                time_bits: (lead / 2.).to_bits(),
-                frame_number: 1,
-                body: FrameBody::Network(Box::new(network)),
-            },
-        )?;
+        for message in &group_records {
+            let network = NetworkFrame {
+                demo_info: record.demo_info.clone(),
+                sequence: record.sequence,
+                message: message.clone(),
+            };
+            put(
+                &mut w,
+                &Frame {
+                    tag: tag::NETWORK,
+                    time_bits: (lead / 2.).to_bits(),
+                    frame_number: 1,
+                    body: FrameBody::Network(Box::new(network)),
+                },
+            )?;
+        }
     }
 
-    let persistent_records = u64::from(!p.persistent.is_empty()) + hud_group as u64;
+    let persistent_records = u64::from(!p.persistent.is_empty()) + group_records.len() as u64;
     let mut network_records = p.bootstrap.len() as u64 + persistent_records;
 
     // Frame numbers count on from the bootstrap group, and on from the last
@@ -888,6 +925,8 @@ fn write(
     Ok(Written {
         bootstrap_bytes,
         stats,
+        after_bootstrap: group_records.len(),
+        decals: placed.len(),
     })
 }
 
@@ -1050,10 +1089,11 @@ fn validate(
     source: &Path,
     output: &Path,
     p: &Plan,
-    approximations: &[Approximation],
+    written: &Written,
     limits: Limits,
     stop: &AtomicBool,
 ) -> Result<(RestartValidation, Option<String>), ExportError> {
+    let approximations = written.stats.approximations.as_slice();
     let mut first_unexplained: Option<String> = None;
     let mut src = open(source, limits)?;
     let mut src_d = Decoder::new();
@@ -1066,9 +1106,8 @@ fn validate(
     // Output network records in order, decoding the bootstrap group as it
     // passes. The kept records pair up with the source's one for one
     let mut out_frames = out.frames(1)?;
-    let late = !p.hud.is_empty() || !p.late.is_empty();
     let mut bootstrap_left =
-        p.bootstrap.len() + usize::from(!p.persistent.is_empty()) + usize::from(late);
+        p.bootstrap.len() + usize::from(!p.persistent.is_empty()) + written.after_bootstrap;
     let mut next_output = |out_d: &mut Decoder| -> Result<Option<NetworkFrame>, ExportError> {
         for item in out_frames.by_ref() {
             let lf = item?;
@@ -1182,7 +1221,7 @@ fn check(
 ) -> Result<f32, ExportError> {
     let p = plan(source, start, end, part, limits, stop)?;
     let mut out = tempfile::tempfile_in(scratch).map_err(io_err(scratch))?;
-    write(source, &mut out, &p, "", limits, stop)?;
+    write(source, &mut out, &p, "", limits, stop, None)?;
     Ok(p.first_time)
 }
 
@@ -1326,6 +1365,22 @@ pub fn run_restart_until(
     limits: Limits,
     stop: &AtomicBool,
 ) -> Result<RestartReport, ExportError> {
+    run_restart_marked(source, dest, start, end, part, limits, stop, None)
+}
+
+/// [`run_restart_until`] placing the decals `marks` finds before the start,
+/// every one there rather than only the server's own
+#[allow(clippy::too_many_arguments)]
+pub fn run_restart_marked(
+    source: &Path,
+    dest: &Path,
+    start: DemoTime,
+    end: Option<DemoTime>,
+    part: Option<u32>,
+    limits: Limits,
+    stop: &AtomicBool,
+    marks: Option<MarksAt>,
+) -> Result<RestartReport, ExportError> {
     // Every pass reads the hashed snapshot, never the source path again, so
     // the name the clip is marked with is taken now
     let planned: RefCell<Option<(PathBuf, Plan, Written)>> = RefCell::new(None);
@@ -1347,7 +1402,7 @@ pub fn run_restart_until(
             }
 
             let p = plan(snapshot, start, end, part, limits, stop)?;
-            let written = write(snapshot, out, &p, &origin, limits, stop)?;
+            let written = write(snapshot, out, &p, &origin, limits, stop, marks)?;
             *planned.borrow_mut() = Some((snapshot.to_path_buf(), p, written));
             Ok(())
         },
@@ -1366,8 +1421,7 @@ pub fn run_restart_until(
             let Some((snapshot, p, written)) = planned.as_ref() else {
                 return Err(ExportError::Validation("no plan".into()));
             };
-            let approximations = &written.stats.approximations;
-            let (v, first) = validate(snapshot, tmp, p, approximations, limits, stop)?;
+            let (v, first) = validate(snapshot, tmp, p, written, limits, stop)?;
             if v.other_differences > 0 {
                 return Err(ExportError::Validation(format!(
                     "{} decoded fields differ from the source, first {}",
@@ -1398,6 +1452,7 @@ pub fn run_restart_until(
         expired_notices: p.expired_notices,
         carried: p.notes.clone(),
         left_out: p.left_out.clone(),
+        decals: written.decals,
         persistent_bytes: p.persistent.len() + p.hud.len(),
         bootstrap_bytes: written.bootstrap_bytes,
         kept_records: p.kept_records,

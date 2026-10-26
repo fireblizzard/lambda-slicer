@@ -205,6 +205,7 @@ mod tests {
         Decal {
             id,
             texture: 0,
+            name: lambda_slicer_playback::decals::DecalName::Number(0),
             model: None,
             entity: 0,
             origin: [0.; 3],

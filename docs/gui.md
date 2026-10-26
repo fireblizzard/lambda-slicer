@@ -313,6 +313,11 @@ dismissed.
   to 5 seconds earlier and later, nearest first and earlier before later, a later one keeping at
   least half the clip. The card then offers the nearest that works, such as 0.3 s earlier, with
   Start there and export, which moves the clip's start there and exports it again.
+- **Marks on the walls.** A clip starts with the blood, scorches and bullet, gauss and crowbar
+  marks the walls had at its start, as the game shows them. The export plays the demo up to the
+  start to find them, which needs the game folder set in Settings. Without it, only the blood and
+  scorches the server sent are kept. Players' sprays, and marks on something already gone, such as
+  a broken window, are left out.
 - **Parts.** A level or map change, or a reconnect, starts a new part of the demo. A clip can start
   in any part once its map has loaded, and keeps which part it's in as well as its times. A clip
   goes on across a map change or reconnect, and the game loads the next map partway through it as

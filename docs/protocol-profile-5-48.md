@@ -442,7 +442,7 @@ sample (15 one-shot weapon events, 4 with a lifecycle, 28 temp entity kinds):
 | HUD text (`TE_TEXTMESSAGE`) | The latest per text channel, still showing at the start: sent again with no fade-in and the remaining hold and fade-out |
 | Gibs, thrown models, projectiles | Still moving at the start: left out, since they cannot be restarted where they are, and listed in the report's `left_out` |
 | Train sounds | Nothing. The engine starts a sound that a pitch or volume change finds not playing, and trains send such a change every think |
-| Decals | Not yet ([known limitations](limitations.md)) |
+| Decals | Every decal on the map before the start, oldest first and at most the newest 4096, placed again as `TE_WORLDDECAL` or `TE_DECAL` (or their high kinds) in records of up to 16 KB, in the group after the bootstrap. The GUI plays the source to the start to find every one, those the client makes from events too, and numbers each by its name in the session's resources. Without the game's files the server's own decal messages are sent again. Map decals come with the session's setup, sprays and decals on an entity gone by the start are left out |
 | Unknown event script or temp entity kind | The export is refused |
 
 Network messages of carried effects go in the record after the bootstrap group, with the HUD

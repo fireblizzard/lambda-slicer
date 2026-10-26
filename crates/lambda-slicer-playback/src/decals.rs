@@ -36,12 +36,22 @@ mod kind {
     pub const DECAL_HIGH: u8 = 118;
 }
 
+/// What the game made a decal by, for a clip to make it again
+#[derive(Clone, Debug, PartialEq)]
+pub enum DecalName {
+    /// The server's number for it in the session, from its message
+    Number(u16),
+    /// Its name in `decals.wad`, from the game's own code
+    Named(Arc<str>),
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct Decal {
     /// Unique within one playback, in the order they were made
     pub id: u64,
     /// Its place in `decals.wad`'s directory
     pub texture: u16,
+    pub name: DecalName,
     /// The brush model it is on, `*1` and on, none for the world
     pub model: Option<Arc<str>>,
     /// The entity carrying that brush, 0 for the world
@@ -115,15 +125,18 @@ impl Decals {
 
         let entity = u16::try_from(entity).unwrap_or(0);
         let map = kind == kind::BSP_DECAL;
-        self.shoot(texture, entity, origin, named, map, scene);
+        let name = DecalName::Number(number);
+        self.shoot(texture, name, entity, origin, named, map, scene);
     }
 
-    /// A decal of texture `texture` aimed at `origin` on entity `entity`,
-    /// the world when 0, its brush named by `named` or by the entity. `map`
-    /// says the map placed it
+    /// A decal of texture `texture`, made by `name`, aimed at `origin` on
+    /// entity `entity`, the world when 0, its brush named by `named` or by
+    /// the entity. `map` says the map placed it
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn shoot(
         &mut self,
         texture: u16,
+        name: DecalName,
         entity: u16,
         origin: [f32; 3],
         named: Option<Arc<str>>,
@@ -153,6 +166,7 @@ impl Decals {
         list.push_back(Decal {
             id: self.next_id,
             texture,
+            name,
             model,
             entity,
             origin,

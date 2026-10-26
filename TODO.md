@@ -7,7 +7,7 @@
 - [ ] Add 3rd person camera
 - [ ] Support randomly tiled textures
 - [ ] For events scheduled before the start of a clip, send it again in the clip with the time it had left
-- [ ] Fix walls starting clean on a clip that you play in the game, replay decals at that point
+- [x] Fix walls starting clean on a clip that you play in the game, replay decals at that point
 - [ ] Fix gauss balls and glows
 - [ ] Support `remap` textures
 - [x] Add blending between animations

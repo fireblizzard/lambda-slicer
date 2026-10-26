@@ -29,7 +29,7 @@ use crate::bullets;
 use crate::checkpoint::{self, Checkpoint, Checkpoints, State};
 use crate::controller::{CameraMode, Stamp};
 use crate::damage::DamageShown;
-use crate::decals::{Decal, Decals};
+use crate::decals::{Decal, DecalName, Decals};
 use crate::events::angle_vectors;
 use crate::events::{ATTN_NORM, Action, ClientEvent, Events, PITCH_NORM, SoundCall, handle};
 use crate::gauss;
@@ -928,7 +928,8 @@ fn dispatch(event: &ClientEvent, decoder: &Decoder, scene: &mut Scene, effects: 
                 }
                 for (name, entity, at) in impacts.decals {
                     if let Some(texture) = decal_index(name) {
-                        decals.shoot(texture, entity, at, None, false, scene);
+                        let made = DecalName::Named(Arc::from(name));
+                        decals.shoot(texture, made, entity, at, None, false, scene);
                     }
                 }
                 for (start, end, seed) in impacts.tracers {
@@ -946,7 +947,8 @@ fn dispatch(event: &ClientEvent, decoder: &Decoder, scene: &mut Scene, effects: 
                 }
                 for (name, entity, at) in out.impacts.decals {
                     if let Some(texture) = decal_index(name) {
-                        decals.shoot(texture, entity, at, None, false, scene);
+                        let made = DecalName::Named(Arc::from(name));
+                        decals.shoot(texture, made, entity, at, None, false, scene);
                     }
                 }
                 for (at, seed) in out.impacts.dust {

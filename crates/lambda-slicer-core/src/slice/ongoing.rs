@@ -22,9 +22,12 @@
 //! Event loops whose updates restart a stopped sound need nothing. The
 //! engine starts a sound that a pitch or volume change finds not playing,
 //! and trains send such an update every think. Decals are lasting world
-//! state rather than an effect, and clips don't carry them yet
-//! (`docs/limitations.md`)
+//! state rather than an effect. The server's own are kept here for
+//! [`super::marks`]
 
+use std::collections::VecDeque;
+
+use super::marks::MAX_DECALS;
 use crate::container::{Frame, FrameBody};
 use crate::protocol::delta::StructState;
 use crate::protocol::messages::{Message, ParsedMessage, Resource};
@@ -62,6 +65,10 @@ const LIFECYCLE_EVENTS: &[&[u8]] = &[
     b"events/train.sc",
 ];
 
+/// The map's decals and players' sprays
+const TE_BSP_DECAL: u8 = 13;
+const TE_PLAYER_DECAL: u8 = 112;
+
 /// `svc_sound` flags
 const SND_STOP: u16 = 1 << 5;
 const SND_CHANGE: u16 = (1 << 6) | (1 << 7);
@@ -73,7 +80,7 @@ const CHAN_STATIC: u8 = 6;
 enum Lasting {
     /// Over within its own short animation
     Instant,
-    /// Lasting world state, not carried yet (`docs/limitations.md`)
+    /// Lasting world state, placed again by [`super::marks`]
     Decal,
     /// A life byte at this body offset, in tenths of a second, so it can be
     /// sent again with the remaining life. With `entity`, the effect is
@@ -188,6 +195,8 @@ pub struct Carried {
     /// One line per effect still under way that the clip leaves out, for
     /// the report
     pub left_out: Vec<String>,
+    /// The server's decal messages, oldest first
+    pub decals: Vec<Vec<u8>>,
 }
 
 /// What becomes of a temp entity under way at the start
@@ -282,6 +291,8 @@ pub struct Ongoing {
     egon: Option<Frame>,
     sounds: Vec<Started>,
     temps: Vec<Temp>,
+    /// The server's decal messages, the newest the engine keeps
+    decals: VecDeque<Vec<u8>>,
     /// The first effect with no restart handling, or of unknown kind
     pub blocker: Option<String>,
 }
@@ -361,7 +372,18 @@ impl Ongoing {
                     self.blocker
                         .get_or_insert(format!("temp entity kind {kind}"));
                 }
-                Some(Lasting::Instant | Lasting::Decal) => {}
+                Some(Lasting::Instant) => {}
+                // The map's own come with the session's setup, and a spray
+                // needs its player's logo
+                Some(Lasting::Decal) if matches!(*kind, TE_BSP_DECAL | TE_PLAYER_DECAL) => {}
+                Some(Lasting::Decal) => {
+                    if let Some(b) = bytes() {
+                        if self.decals.len() >= MAX_DECALS {
+                            self.decals.pop_front();
+                        }
+                        self.decals.push_back(b);
+                    }
+                }
                 Some(Lasting::KillBeam) => {
                     let entity = body.get(..2).map(|b| u16::from_le_bytes([b[0], b[1]]));
                     self.temps.retain(|t| attached(t) != entity);
@@ -430,7 +452,10 @@ impl Ongoing {
             return Err(b);
         }
 
-        let mut carried = Carried::default();
+        let mut carried = Carried {
+            decals: self.decals.drain(..).collect(),
+            ..Carried::default()
+        };
         self.carry_charge(start, &mut carried);
         if let Some(fire) = &self.egon {
             let mut startup = fire.clone();
