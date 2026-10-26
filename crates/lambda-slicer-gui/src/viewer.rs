@@ -1860,6 +1860,19 @@ impl Viewer {
         self.drawn_at = None;
     }
 
+    /// Paused where the demo ends, as playing to its end leaves it
+    fn paused_at_end(&self) -> bool {
+        if self.controller.clock().playing() {
+            return false;
+        }
+        let Some(frame) = &self.frame else {
+            return false;
+        };
+
+        let now = self.controller.time(self.wall());
+        frame.end && now >= frame.at
+    }
+
     /// Playing on the way it went last, rewinding again after a pause while
     /// rewinding, unless the rewind reached the start
     fn play_on(&self) -> Command {
@@ -1958,9 +1971,13 @@ impl Viewer {
         let let_go = self.hold(&ctx, &clicked);
 
         // A click on the view pauses, or plays on the way it went last,
-        // unless it let go of a hold
+        // unless it let go of a hold. Paused at the end, it plays again
+        // from the start
         if clicked.clicked() && !let_go {
             let now = self.controller.time(self.wall()).0;
+            if self.paused_at_end() {
+                self.command(Command::SeekTo(SourceTime::ZERO));
+            }
             let command = if self.controller.clock().playing() {
                 Command::Pause
             } else {
