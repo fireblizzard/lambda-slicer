@@ -118,6 +118,8 @@ pub struct PresentedFrame {
     pub damage: DamageShown,
     /// The text the server placed on the HUD
     pub hud_messages: Vec<ShownMessage>,
+    /// The game's logo, while it shows
+    pub game_title: Option<ShownMessage>,
     /// The weapon menu, while the recording player has it open
     pub weapon_menu: Option<MenuShown>,
     /// The small scoreboard's rows, highest first
@@ -753,6 +755,7 @@ impl Playback {
             pickups: state.hud.pickups(at),
             damage: state.hud.damage(at),
             hud_messages: state.hud.messages(at),
+            game_title: state.hud.game_title_at(at),
             weapon_menu: state.hud.weapon_menu(&state.scene.camera),
             scores: state.hud.scores(&state.decoder),
             board: state.hud.board(&state.decoder),

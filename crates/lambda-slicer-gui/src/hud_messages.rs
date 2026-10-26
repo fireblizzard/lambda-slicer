@@ -10,9 +10,18 @@
 //! time, each starting in the second colour and settling into the first.
 //! The flicker of the flickering effect is left out. Text is sized to the
 //! view as the game's 640 by 480 screen would be, as the chat is
+//!
+//! The game's logo is `title_half` and `title_life` of `sprites/hud.txt`
+//! side by side, placed as a message is, added to the picture in the
+//! colour of its message and as bright as its fades make it (HLSDK's
+//! `CHudMessage::Draw` and `FadeBlend`)
 
 use eframe::egui::{self, Color32, Pos2, Rect};
+use lambda_slicer_audio::library::Library;
 use lambda_slicer_playback::hud_messages::{HudMessage, ShownMessage, WRITE_OUT};
+
+use crate::hud_sprites::{HUD_LIST, HudSprites};
+use crate::vitals::{Painter, scaled};
 
 /// The game's screen height the HUD is laid out on
 const SCREEN_HEIGHT: f32 = 480.;
@@ -99,6 +108,55 @@ fn place(share: f32, size: f32, whole: f32, room: f32) -> f32 {
     at.min(room - size).max(0.)
 }
 
+/// How bright the logo is at `since` seconds, of 255 (`FadeBlend`)
+fn title_brightness(message: &HudMessage, since: f32) -> f32 {
+    let fade_out_from = message.fade_in + message.hold;
+    let blend = if since < message.fade_in {
+        1. - (message.fade_in - since) / message.fade_in
+    } else if since > fade_out_from && message.fade_out > 0. {
+        1. - (since - fade_out_from) / message.fade_out
+    } else if since > fade_out_from {
+        0.
+    } else {
+        1.
+    };
+    blend.max(0.) * 255.
+}
+
+/// The game's logo over the view at `rect`, its sprites read from `library`
+pub fn draw_title(
+    ui: &egui::Ui,
+    sprites: &mut HudSprites,
+    library: &Library,
+    rect: Rect,
+    title: &ShownMessage,
+) {
+    let mut p = Painter::new(ui, sprites, library, rect, 1.);
+    let (Some(half), Some(life)) = (
+        p.icon(HUD_LIST, "title_half"),
+        p.icon(HUD_LIST, "title_life"),
+    ) else {
+        return;
+    };
+
+    // Both halves stand on one row, placed as one
+    let half_width = half.size_vec2().x;
+    let width = half_width + life.size_vec2().x;
+    let height = half.size_vec2().y;
+    let screen = p.screen();
+    let message = &title.message;
+    let x = place(message.x, width, width, screen.x);
+    let y = place(message.y, height, height, screen.y);
+
+    let [r, g, b] = message.colour;
+    let tint = scaled(
+        Color32::from_rgb(r, g, b),
+        title_brightness(message, title.since),
+    );
+    p.draw(&half, x, y, tint, 0.);
+    p.draw(&life, x + half_width, y, tint, 0.);
+}
+
 /// `messages` over the view at `rect`
 pub fn draw(ui: &egui::Ui, rect: Rect, messages: &[ShownMessage]) {
     let scale = rect.height() / SCREEN_HEIGHT;
@@ -162,6 +220,15 @@ mod tests {
         assert_eq!(faded(&m, 1.), 0.);
         assert_eq!(faded(&m, 3.), 127.5);
         assert_eq!(letter_colours(&m, 1.).len(), 3);
+    }
+
+    #[test]
+    fn the_logo_brightens_holds_and_dims() {
+        let m = message(0);
+        assert_eq!(title_brightness(&m, 0.25), 127.5);
+        assert_eq!(title_brightness(&m, 1.), 255.);
+        assert_eq!(title_brightness(&m, 3.), 127.5);
+        assert_eq!(title_brightness(&m, 4.), 0.);
     }
 
     #[test]

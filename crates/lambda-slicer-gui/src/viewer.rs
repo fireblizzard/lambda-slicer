@@ -2355,6 +2355,10 @@ impl Viewer {
                         }
                         if self.settings.hud_messages {
                             crate::hud_messages::draw(ui, rect, &frame.hud_messages);
+                            if let Some(title) = &frame.game_title {
+                                let sprites = &mut self.vitals;
+                                crate::hud_messages::draw_title(ui, sprites, library, rect, title);
+                            }
                         }
                         if self.settings.chat {
                             let map = frame.map.as_deref();

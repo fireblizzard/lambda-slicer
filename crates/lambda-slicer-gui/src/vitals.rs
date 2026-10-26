@@ -178,7 +178,7 @@ impl<'a> Painter<'a> {
     }
 
     /// The game's screen as wide and as high as the view makes it
-    fn screen(&self) -> Vec2 {
+    pub(crate) fn screen(&self) -> Vec2 {
         self.rect.size() / self.scale
     }
 

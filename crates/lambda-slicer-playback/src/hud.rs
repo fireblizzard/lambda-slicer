@@ -26,6 +26,11 @@
 //! most, the oldest scrolled away for a sixth, and the top line goes five
 //! seconds after it reached the top. AG's `Location` is a player's entity
 //! and position, which a line's `%l` names (OpenAG's `CHudLocation`)
+//!
+//! `GameTitle` shows the game's logo, as a new singleplayer game starts.
+//! Its place, colour and times are the `GAMETITLE` message of `titles.txt`,
+//! and without that message the client shows no logo (HLSDK's
+//! `CHudMessage::MsgFunc_GameTitle`)
 
 use std::collections::{BTreeMap, VecDeque};
 
@@ -152,6 +157,9 @@ pub struct Hud {
     /// name
     pings: BTreeMap<u8, (u32, u32)>,
     server: String,
+    /// The game's logo, with the message giving its place, colour and
+    /// times, and when it started
+    game_title: Option<(HudMessage, SourceTime)>,
 }
 
 /// A string ending at its first nought, and what follows it
@@ -238,6 +246,10 @@ impl Hud {
                 self.damage.message(body, time, origin, angles);
                 return None;
             }
+            "GameTitle" => {
+                self.game_title(titles, time);
+                return None;
+            }
             "HudText" => {
                 // The name is looked up without a leading `#`, and shown
                 // with it when the file lacks it
@@ -271,6 +283,13 @@ impl Hud {
     }
 
     /// A `DeathMsg`, the killer's and the victim's entities and the weapon
+    /// The game's logo from `time`, when `titles.txt` has its message
+    fn game_title(&mut self, titles: &dyn Fn(&str) -> Option<HudMessage>, time: SourceTime) {
+        if let Some(message) = titles("GAMETITLE") {
+            self.game_title = Some((message, time));
+        }
+    }
+
     fn death(&mut self, decoder: &Decoder, body: &[u8], time: SourceTime) {
         let (Some(&killer), Some(&victim)) = (body.first(), body.get(1)) else {
             return;
@@ -383,6 +402,20 @@ impl Hud {
         self.messages.at(at)
     }
 
+    /// The game's logo while it shows at `at`
+    pub fn game_title_at(&self, at: SourceTime) -> Option<ShownMessage> {
+        let (message, start) = self.game_title.as_ref()?;
+        let since = (at.0 - start.0) as f32;
+        if since < 0. || since > message.length() {
+            return None;
+        }
+
+        Some(ShownMessage {
+            message: message.clone(),
+            since,
+        })
+    }
+
     /// What the recording player picked up and still shows at `at`
     pub fn pickups(&self, at: SourceTime) -> Vec<status::Pickup> {
         self.status.pickups(at)
@@ -426,6 +459,31 @@ mod tests {
         body.extend(weapon.as_bytes());
         body.push(0);
         body
+    }
+
+    #[test]
+    fn the_logo_shows_for_its_messages_times_only_with_its_message() {
+        let mut hud = Hud::default();
+        hud.game_title(&|_| None, SourceTime(1.));
+        assert_eq!(hud.game_title_at(SourceTime(2.)), None);
+
+        let title = HudMessage {
+            x: -1.,
+            y: -1.,
+            effect: 0,
+            colour: [180; 3],
+            colour2: [0; 3],
+            fade_in: 1.,
+            fade_out: 1.5,
+            hold: 3.,
+            settle: 0.,
+            text: "Half-Life".into(),
+        };
+        let titles = |name: &str| (name == "GAMETITLE").then(|| title.clone());
+        hud.game_title(&titles, SourceTime(1.));
+        assert_eq!(hud.game_title_at(SourceTime(0.5)), None);
+        assert_eq!(hud.game_title_at(SourceTime(3.)).unwrap().since, 2.);
+        assert_eq!(hud.game_title_at(SourceTime(7.)), None);
     }
 
     #[test]

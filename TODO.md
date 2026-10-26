@@ -20,7 +20,7 @@
 - [x] Add weapon bob
 - [x] Support scrolling textures
 - [ ] Support randomly tiled textures
-- [ ] Support GameTitle message, like the HALF-LIFE logo when you start a new singleplayer game
+- [x] Support GameTitle message, like the HALF-LIFE logo when you start a new singleplayer game
 - [ ] For events scheduled before the start of a clip, send it again in the clip with the time it had left
 - [ ] Fix walls starting clean on a clip that you play in the game, replay decals at that point
 - [x] Don't refuse clips, offer to start the clip at the nearest moment that works, like 0.3s earlier

@@ -99,6 +99,7 @@ const TRANSIENT: &[&str] = &[
     "CheatCheck",
     "Damage",
     "DeathMsg",
+    "GameTitle",
     "HudText",
     "ItemPickup",
     "MOTD",

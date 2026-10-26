@@ -1,5 +1,6 @@
 //! Development probe that lists each `HudText` message of the given demos,
-//! with its time in the playback and the name it sends
+//! with its time in the playback and the name it sends, and each
+//! `GameTitle`, which shows the game's logo
 //!
 //! `hudtext_probe DEMO...`
 
@@ -17,6 +18,14 @@ fn main() {
                 return;
             };
             let named = d.user_message(*id).map(|u| u.name_lossy());
+            if named.as_deref() == Some("GameTitle") {
+                println!(
+                    "  {:>9.3} s  part {}  GameTitle {body:?}",
+                    at.time(),
+                    at.entry
+                );
+                return;
+            }
             if named.as_deref() != Some("HudText") {
                 return;
             }

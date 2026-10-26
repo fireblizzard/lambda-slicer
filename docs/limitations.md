@@ -36,7 +36,8 @@ Other things:
 - Bullet holes, blood and sprays made before a clip's start aren't in the clip.
 - Gibs and other debris still flying at a clip's start aren't in the clip. The command line's
   report lists what was left out.
-- A chapter title or other text from `titles.txt` showing at a clip's start isn't in the clip.
+- A chapter title, the HALF-LIFE logo or other text from `titles.txt` showing at a clip's start
+  isn't in the clip.
 - An event the game scheduled just before the start, to play just after it,
   is lost. It's usually a sound or effect a few milliseconds long.
 - Each frame of a demo carries a little data from the game's client, which
@@ -49,8 +50,6 @@ Other things:
 
 Not shown or played yet:
 
-- The big HALF-LIFE logo at the start of a new game. Chapter titles and other text from
-  `titles.txt` do show.
 - Particles: the streaks of sparks, the flicker of explosions and the dust of bullet impacts.
 - Recorded voice chat and room echoes.
 - In sentences (speech made of words, like the HEV suit's or soldiers'), a word's pitch is a
