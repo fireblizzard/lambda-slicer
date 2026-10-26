@@ -287,6 +287,7 @@ impl Section {
                 "settings-scores",
                 "settings-score-rows",
                 "settings-scoreboard",
+                "settings-scoreboard-playing",
             ],
             Section::Chat => &[
                 "settings-chat",
@@ -1826,6 +1827,9 @@ impl Viewing<'_> {
                     });
             });
         }
+        let on = viewer.scoreboard != ScoreboardShown::Off;
+        let playing = &mut viewer.scoreboard_playing;
+        self.check(ui, playing, "settings-scoreboard-playing", None, on);
     }
 
     /// The chat, and whether it shows the lines players' binds send
@@ -2175,6 +2179,10 @@ fn changed_settings(current: &Settings, restored: &Settings) -> Vec<&'static str
         (view.scores != first.scores, "settings-scores"),
         (view.score_rows != first.score_rows, "settings-score-rows"),
         (view.scoreboard != first.scoreboard, "settings-scoreboard"),
+        (
+            view.scoreboard_playing != first.scoreboard_playing,
+            "settings-scoreboard-playing",
+        ),
         (
             view.speedometer != first.speedometer,
             "settings-speedometer",

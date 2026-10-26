@@ -686,6 +686,7 @@ settings-scoreboard = 录制者按住记分板键时以及地图结束时显示�
 settings-scoreboard-off = 关
 settings-scoreboard-fullscreen = 仅全屏时
 settings-scoreboard-always = 开
+settings-scoreboard-playing = 仅在录制者游戏时显示，观战时不显示
 settings-server-settings = 在右上角显示服务器设置
 settings-text-size = 聊天、击杀信息和服务器设置的大小
 settings-hud-color = HUD 颜色

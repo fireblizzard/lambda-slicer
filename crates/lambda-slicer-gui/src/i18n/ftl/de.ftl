@@ -716,6 +716,7 @@ settings-scoreboard = Scoreboard zeigen, solange der aufnehmende Spieler die Tas
 settings-scoreboard-off = Aus
 settings-scoreboard-fullscreen = Nur im Vollbild
 settings-scoreboard-always = An
+settings-scoreboard-playing = Nur wenn der aufnehmende Spieler spielt, nicht wenn er zuschaut
 settings-server-settings = Servereinstellungen oben rechts zeigen
 settings-text-size = Größe von Chat, Killfeed und Servereinstellungen
 settings-hud-color = HUD-Farbe

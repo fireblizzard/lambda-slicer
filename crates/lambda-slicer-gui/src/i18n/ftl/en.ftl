@@ -714,6 +714,7 @@ settings-scoreboard = Show scoreboard while the recorder holds its key, and at i
 settings-scoreboard-off = Off
 settings-scoreboard-fullscreen = Only in fullscreen
 settings-scoreboard-always = On
+settings-scoreboard-playing = Only while the recorder is playing, not spectating
 settings-server-settings = Show the server's settings at the top right
 settings-text-size = Size of the chat, kill feed and server's settings
 settings-hud-color = HUD colour

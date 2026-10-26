@@ -788,6 +788,7 @@ settings-scoreboard = إظهار لوحة النتائج ما دام المسج�
 settings-scoreboard-off = معطّلة
 settings-scoreboard-fullscreen = في ملء الشاشة فقط
 settings-scoreboard-always = مفعّلة
+settings-scoreboard-playing = فقط عندما يلعب المسجِّل، لا عندما يشاهد
 settings-server-settings = إظهار إعدادات السيرفر أعلى اليمين
 settings-text-size = حجم الدردشة وقائمة القتلات وإعدادات السيرفر
 settings-hud-color = لون HUD

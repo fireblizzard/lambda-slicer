@@ -747,6 +747,7 @@ settings-scoreboard = Rodyti rezultatų lentelę, kol įrašantysis laiko jos kl
 settings-scoreboard-off = Išjungta
 settings-scoreboard-fullscreen = Tik per visą ekraną
 settings-scoreboard-always = Įjungta
+settings-scoreboard-playing = Tik kai įrašantysis žaidžia, ne stebi
 settings-server-settings = Rodyti serverio nustatymus viršuje dešinėje
 settings-text-size = Čato, kill feed ir serverio nustatymų dydis
 settings-hud-color = HUD spalva

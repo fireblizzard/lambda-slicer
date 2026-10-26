@@ -698,6 +698,7 @@ settings-scoreboard = Kaydeden kişi skor tablosu tuşunu basılı tutarken ve h
 settings-scoreboard-off = Kapalı
 settings-scoreboard-fullscreen = Yalnızca tam ekranda
 settings-scoreboard-always = Açık
+settings-scoreboard-playing = Yalnızca kaydeden oynarken, izleyiciyken değil
 settings-server-settings = Sunucu ayarlarını sağ üstte göster
 settings-text-size = Sohbet, kill feed ve sunucu ayarları boyutu
 settings-hud-color = HUD rengi

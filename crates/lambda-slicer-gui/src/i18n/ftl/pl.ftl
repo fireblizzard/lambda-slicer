@@ -747,6 +747,7 @@ settings-scoreboard = Pokazuj tabelę wyników, gdy nagrywający trzyma jej klaw
 settings-scoreboard-off = Wyłączona
 settings-scoreboard-fullscreen = Tylko na pełnym ekranie
 settings-scoreboard-always = Włączona
+settings-scoreboard-playing = Tylko gdy nagrywający gra, a nie obserwuje
 settings-server-settings = Pokazuj ustawienia serwera w prawym górnym rogu
 settings-text-size = Rozmiar czatu, kill feedu i ustawień serwera
 settings-hud-color = Kolor HUD-u

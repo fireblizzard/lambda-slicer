@@ -737,6 +737,7 @@ settings-scoreboard = Mostrar la tabla de puntajes mientras quien grabó mantien
 settings-scoreboard-off = Desactivada
 settings-scoreboard-fullscreen = Solo en pantalla completa
 settings-scoreboard-always = Activada
+settings-scoreboard-playing = Solo mientras quien grabó está jugando, no de espectador
 settings-server-settings = Mostrar la config del server arriba a la derecha
 settings-text-size = Tamaño del chat, el kill feed y la config del server
 settings-hud-color = Color del HUD

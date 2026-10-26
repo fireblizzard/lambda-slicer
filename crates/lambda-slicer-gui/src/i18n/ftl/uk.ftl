@@ -747,6 +747,7 @@ settings-scoreboard = Показувати таблицю рахунку, пок
 settings-scoreboard-off = Вимкнено
 settings-scoreboard-fullscreen = Лише на весь екран
 settings-scoreboard-always = Увімкнено
+settings-scoreboard-playing = Лише коли автор запису грає, а не спостерігає
 settings-server-settings = Показувати налаштування сервера праворуч угорі
 settings-text-size = Розмір чату, стрічки вбивств і налаштувань сервера
 settings-hud-color = Колір HUD

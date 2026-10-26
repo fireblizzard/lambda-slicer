@@ -737,6 +737,7 @@ settings-scoreboard = Afficher le tableau des scores tant que le joueur qui a en
 settings-scoreboard-off = Désactivé
 settings-scoreboard-fullscreen = Seulement en plein écran
 settings-scoreboard-always = Activé
+settings-scoreboard-playing = Seulement quand le joueur qui a enregistré est en jeu, pas en spectateur
 settings-server-settings = Afficher les réglages du serveur en haut à droite
 settings-text-size = Taille du chat, du kill feed et des réglages du serveur
 settings-hud-color = Couleur du HUD

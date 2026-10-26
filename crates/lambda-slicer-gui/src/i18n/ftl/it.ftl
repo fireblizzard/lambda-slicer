@@ -733,6 +733,7 @@ settings-scoreboard = Mostra la classifica mentre chi registra tiene premuto il 
 settings-scoreboard-off = Disattivata
 settings-scoreboard-fullscreen = Solo a schermo intero
 settings-scoreboard-always = Attivata
+settings-scoreboard-playing = Solo quando chi registra è in gioco, non da spettatore
 settings-server-settings = Mostra le impostazioni del server in alto a destra
 settings-text-size = Dimensione della chat, del kill feed e delle impostazioni del server
 settings-hud-color = Colore dell’HUD

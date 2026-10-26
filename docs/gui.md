@@ -171,7 +171,8 @@ then shows as if those were never sent, so they take none of its five lines. Unt
 that say "got LJ" or "no LJ" to do the same with the messages saying whether a player has the long
 jump module, which AG's server writes in for a bind's code. Both still show in the event list. Show scoreboard shows the
 game's scoreboard over the middle of the view while the recorder holds its key, and at intermission
-whoever's view is shown, only in fullscreen by default, always, or never. It's the game's size,
+whoever's view is shown, always by default, only in fullscreen, or never. Only while the recorder is
+playing, on by default, leaves it out while the recorder spectates. It's the game's size,
 wider on a wide view, and lists each team with its count of players and its players best first, all
 in its colour and names coloured further as AG's colour codes say, with the server's name at the top
 and the spectators under everyone, the recorder's row lit. Each player's SteamID shows as the game

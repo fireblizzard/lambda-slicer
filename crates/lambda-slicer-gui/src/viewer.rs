@@ -2461,9 +2461,11 @@ impl Viewer {
 
                     // The game shows the full scoreboard while its key is
                     // held and at intermission, over everything else. Only
-                    // the recorder's keys are known
+                    // the recorder's keys are known, and a spectating
+                    // recorder's can be left out
                     let held = eyes == Eyes::Recorder && frame.recorder.scores_held;
-                    let shows = self.settings.scoreboard.shows(self.fullscreen);
+                    let spectating = frame.recorder.spectating && self.settings.scoreboard_playing;
+                    let shows = self.settings.scoreboard.shows(self.fullscreen) && !spectating;
                     if shows && (held || frame.recorder.intermission) {
                         crate::scoreboard::draw(ui, rect, catalog, &frame.board);
                     }

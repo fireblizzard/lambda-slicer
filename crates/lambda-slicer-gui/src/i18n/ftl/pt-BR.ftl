@@ -737,6 +737,7 @@ settings-scoreboard = Mostrar o placar enquanto quem gravou segura a tecla dele,
 settings-scoreboard-off = Desligado
 settings-scoreboard-fullscreen = Só em tela cheia
 settings-scoreboard-always = Ligado
+settings-scoreboard-playing = Só enquanto quem gravou está jogando, não espectando
 settings-server-settings = Mostrar as configurações do servidor no canto superior direito
 settings-text-size = Tamanho do chat, do kill feed e das configurações do servidor
 settings-hud-color = Cor do HUD

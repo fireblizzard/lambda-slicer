@@ -180,8 +180,8 @@ impl SpeedAxes {
 #[serde(rename_all = "snake_case")]
 pub enum ScoreboardShown {
     Off,
-    #[default]
     Fullscreen,
+    #[default]
     Always,
 }
 
@@ -263,6 +263,9 @@ pub struct ViewerSettings {
     /// When the full scoreboard shows over the view while the recorder
     /// holds its key, and at intermission
     pub scoreboard: ScoreboardShown,
+    /// Whether the full scoreboard waits for the recorder to be playing,
+    /// leaving it out while they spectate
+    pub scoreboard_playing: bool,
     /// Whether the server's settings show at the top right when it sends
     /// them
     pub server_settings: bool,
@@ -335,7 +338,8 @@ impl Default for ViewerSettings {
             free_vitals: false,
             scores: true,
             score_rows: 4,
-            scoreboard: ScoreboardShown::Fullscreen,
+            scoreboard: ScoreboardShown::Always,
+            scoreboard_playing: true,
             server_settings: true,
             text_size: 0.92,
             hud_color: [255, 160, 0],

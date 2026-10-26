@@ -716,6 +716,7 @@ settings-scoreboard = Näytä tulostaulu, kun tallentaja pitää sen näppäint�
 settings-scoreboard-off = Pois
 settings-scoreboard-fullscreen = Vain koko näytössä
 settings-scoreboard-always = Päällä
+settings-scoreboard-playing = Vain kun tallentaja pelaa, ei katsojana
 settings-server-settings = Näytä serverin asetukset oikeassa yläkulmassa
 settings-text-size = Chatin, killfeedin ja serverin asetusten koko
 settings-hud-color = HUDin väri

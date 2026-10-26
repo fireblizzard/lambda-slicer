@@ -18,7 +18,7 @@
 - [ ] Add library filter for moments where a player is going at 1000 ups (customizable speed) for longer than 10s (customizable duration)
 - [ ] Add support for HLKZ, showing things like run times in a demo, jump/strafing stats and so on. Add its own tab next to Matches, it should show only demos where the player presses either the start button or the end button, or both, and also demos with the custom hudmessage that shows the HLKZ timer (or any other clue that tells us it was HLKZ)
 - [x] Add an option to change the HUD color (HP/AP, ammo, item pickups, weapon selection, timer, votes, server settings, custom hudmessages..., equivalent to `hud_color` game cvar) and another to change the text color (chat and kill feed, equivalent to `con_color` game cvar, i think it only applies to the kill feed when it's not teamplay, i'm not sure)
-- [ ] Add a setting for the in-player scoreboard to show it only if the recorder was playing and not spectating. This should be the new default
+- [x] Add a setting for the in-player scoreboard to show it only if the recorder was playing and not spectating. This should be the new default
 - [ ] Add an easy way to clip a demo by map, so if a demo has 3 maps in it, make 3 clips from the beginning of each map until the end of it
 - [ ] Add a button to export the demo info to a text file, with the map, date, player names at the top, then the scoreboard and then the filtered event list
 - [ ] Find chat messages across the whole library, like words or parts of a message, with filters like sender and map
