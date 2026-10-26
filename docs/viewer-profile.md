@@ -515,6 +515,7 @@ and 338 of them loop.
 |---|---|
 | Loops | a `cue ` chunk makes a sound loop from the sample offset 32 bytes past the chunk's header, and a following `LIST` chunk labelled `mark` gives the loop's length (`GetWavinfo`) |
 | Names | `sound/<name>`, a leading `*` dropped |
+| Sentences | a `!` name, or a sentence's number, is a line of `sound/sentences.txt`, its lines starting with `/` left out. Its words are files of the folder before its last `/`, or `vox/`, and `,` and `.` are `_comma` and `_period`. They are joined into one sound with no gap, at the highest rate among them, the quiet at each word's ends trimmed (up to 255 samples below 512). Parentheses after a word, or on their own for the words after them, give the volume `v`, pitch `p`, start `s`, end `e` and skipped share `t` in percent. A word's pitch changes its speed, the game adds its difference to the sound's pitch instead, and `t` drops that share of every 20 ms of the word |
 | Position | where a channel is in its sample is playback's cursor, its pitch integrated over time, read between stored samples linearly at any rate |
 | Placement | a sound from the entity the listener views from plays at full volume on both sides. Any other fades with distance times its attenuation over 1000 units, and moves between the ears by how far it lies to the listener's right, twice as loud on one side at most (`S_Spatialize`) |
 | Mix | every channel added and scaled by a master volume, then clipped to full scale |
@@ -528,7 +529,7 @@ recorder's view:
 | `ray_vs_alex_cross.dem`, spectator | 15 to 30 s | 0.23 s | 22 | 1,437 of 1.4 million |
 | `run_92.dem`, singleplayer | 6 to 22 s | 0.40 s | 90 | 12,581 of 1.5 million |
 
-Not yet: sentences and room effects.
+Not yet: room effects.
 
 ## Sound output
 

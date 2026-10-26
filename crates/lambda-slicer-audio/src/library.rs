@@ -2,9 +2,10 @@
 //! each through its search path
 //!
 //! A sample named `weapons/gauss2.wav` is `sound/weapons/gauss2.wav`. A
-//! leading `*`, which marks a sound the game streams, is dropped. Sentences
-//! (`!` names and sentence numbers) are not resolved to their words yet, so
-//! they have no samples. A sound or model that cannot be read is remembered
+//! leading `*`, which marks a sound the game streams, is dropped. A
+//! sentence, by its `!` name or its number, is its words of
+//! `sound/sentences.txt` joined into one sound, as [`sentence`] tells.
+//! A sound or model that cannot be read is remembered
 //! as missing, so it is not read again. Of a model only its main file is
 //! read, which describes every sequence and its events. Of a map only its
 //! node tree and its faces' texture extents and materials are kept, for
@@ -26,13 +27,19 @@ use lambda_slicer_playback::audio::{SoundLength, SoundLengths, SoundName};
 use lambda_slicer_playback::hud_messages::{HudMessage, parse_titles};
 use lambda_slicer_playback::trace::{Child, Hull, HullFace, PlayerHulls, SOLID};
 
+use crate::sentence::{self, Sentences};
+
 /// `STUDIO_LOOPING`
 const STUDIO_LOOPING: i32 = 1;
 
 pub struct Library {
     search: SearchPath,
     limits: Limits,
+    /// Sound files by their names, and sentences by `!` and their names or
+    /// numbers in lowercase
     sounds: Mutex<HashMap<Arc<str>, Option<Arc<Sound>>>>,
+    /// `sentences.txt`, read once
+    sentences: Mutex<Option<Arc<Sentences>>>,
     /// The sound files that could not be read, and why
     missing_sounds: Mutex<std::collections::BTreeMap<String, String>>,
     sequences: Mutex<HashMap<String, Option<Arc<[Sequence]>>>>,
@@ -52,6 +59,7 @@ impl Library {
             search,
             limits,
             sounds: Mutex::new(HashMap::new()),
+            sentences: Mutex::new(None),
             missing_sounds: Mutex::new(std::collections::BTreeMap::new()),
             sequences: Mutex::new(HashMap::new()),
             hulls: Mutex::new(HashMap::new()),
@@ -102,11 +110,18 @@ impl Library {
             .clone()
     }
 
-    /// The samples of `name`, none when it is a sentence or cannot be read
+    /// The samples of `name`, none when it cannot be read
     pub fn sound(&self, name: &SoundName) -> Option<Arc<Sound>> {
-        let SoundName::File(file) = name else {
-            return None;
-        };
+        match name {
+            SoundName::File(file) => self.file(file),
+            SoundName::Sentence(number) => self.sentence(&number.to_string()),
+            SoundName::SentenceName(name) => self.sentence(name.trim_start_matches('!')),
+            SoundName::Unlisted(_) => None,
+        }
+    }
+
+    /// The sound file `file`, relative to `sound/`
+    fn file(&self, file: &Arc<str>) -> Option<Arc<Sound>> {
         let mut sounds = self.sounds.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(known) = sounds.get(file) {
             return known.clone();
@@ -131,6 +146,60 @@ impl Library {
         };
         sounds.insert(file.clone(), sound.clone());
         sound
+    }
+
+    /// The sentence `name`, `!` left out, its words joined. A word that
+    /// cannot be read is left out of it
+    fn sentence(&self, name: &str) -> Option<Arc<Sound>> {
+        let key: Arc<str> = Arc::from(format!("!{}", name.to_ascii_lowercase()));
+        let sounds = self.sounds.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(known) = sounds.get(&key) {
+            return known.clone();
+        }
+        // The words are read through the same map
+        drop(sounds);
+
+        let sentences = self.sentences();
+        let Some(text) = sentences.find(name) else {
+            let mut missing = self
+                .missing_sounds
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            let reason = "not in sound/sentences.txt".to_owned();
+            missing.insert(format!("sentence !{name}"), reason);
+            self.remember(key, None);
+            return None;
+        };
+
+        let mut read = Vec::new();
+        for word in sentence::words(text) {
+            if let Some(sound) = self.file(&Arc::from(word.file)) {
+                read.push((sound, word.params));
+            }
+        }
+        let words: Vec<_> = read
+            .iter()
+            .map(|(sound, params)| (&**sound, *params))
+            .collect();
+        let sound = sentence::join(&words).map(Arc::new);
+        self.remember(key, sound.clone());
+        sound
+    }
+
+    fn remember(&self, key: Arc<str>, sound: Option<Arc<Sound>>) {
+        let mut sounds = self.sounds.lock().unwrap_or_else(|e| e.into_inner());
+        sounds.insert(key, sound);
+    }
+
+    /// The game's sentences, read once from `sound/sentences.txt`
+    fn sentences(&self) -> Arc<Sentences> {
+        let mut known = self.sentences.lock().unwrap_or_else(|e| e.into_inner());
+        known
+            .get_or_insert_with(|| {
+                let text = self.read("sound/sentences.txt").unwrap_or_default();
+                Arc::new(Sentences::parse(&String::from_utf8_lossy(&text)))
+            })
+            .clone()
     }
 
     /// The sound files asked for so far that could not be read, and why

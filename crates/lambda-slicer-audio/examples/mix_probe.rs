@@ -87,7 +87,7 @@ fn main() {
             match (&c.sound, library.sound(&c.sound)) {
                 (SoundName::File(name), Some(_)) => heard.insert(name.to_string()),
                 (other, None) => missing.insert(format!("{other:?}")),
-                _ => false,
+                (sentence, Some(_)) => heard.insert(format!("{sentence:?}")),
             };
         }
         let sound = |name: &SoundName| library.sound(name);

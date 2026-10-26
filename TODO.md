@@ -33,7 +33,7 @@
 - [ ] Support `remap` textures
 - [ ] Add blending between animations
 - [x] Add dynamic lights
-- [ ] Read `sentences.txt` and play the words to hear what the NPCs say
+- [x] Read `sentences.txt` and play the words to hear what the NPCs say
 - [x] Fix aimpunch kicking the weapon
 - [ ] Add voice chat audio to hear what players were saying in the demo
 - [ ] Support room echoes

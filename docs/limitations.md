@@ -52,8 +52,10 @@ Not shown or played yet:
 - The big HALF-LIFE logo at the start of a new game. Chapter titles and other text from
   `titles.txt` do show.
 - Particles: the streaks of sparks, the flicker of explosions and the dust of bullet impacts.
-- Recorded voice chat, sentences (speech made of words, like the HEV suit's or soldiers') and
-  room echoes.
+- Recorded voice chat and room echoes.
+- In sentences (speech made of words, like the HEV suit's or soldiers'), a word's pitch is a
+  little off when the whole sentence's pitch is changed too, and words sped up with `t` skip
+  evenly rather than as the game does.
 - The tripmine's and snark's own effects.
 - The weapon in view sits a little higher and larger than in the game.
 - Models: render effects other than the glow shell, textures recoloured by name (`remap`),
