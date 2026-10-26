@@ -387,6 +387,22 @@ Before the index covers the demo, the first seek of a drag plays from the neares
 start at worst. A seek a newer one stops leaves playback where it got to, and the next goes on from
 there, so the drag still catches up.
 
+### Seek bar preview
+
+Hovering the time bar shows the moment under the pointer above it, 240 points wide in the view's
+shape, with its time under it. A thread of its own keeps a playback that shares the worker's
+checkpoints, so each moment is played to from the checkpoint before it, and only the newest
+moment asked for is answered, a seek a newer one replaces stopping between groups.
+
+| Part | How |
+|---|---|
+| Picture | drawn as the view would show that moment, from the same eyes and with the same settings, into targets of its own with the view's next frame. Its commands are sent before the view's, as both use the same buffers |
+| Models | the moment's models are asked for as the view's are, and the picture is drawn again as each one loads |
+| Muzzle flashes | only those still lasting at that moment |
+| Walls' marks | the decals the view shows now, not those of that moment, on the view's map |
+| Another map | that map is read too, and kept for the next hover until the view's own map becomes it. The time shows alone until it is ready. Its moment has no marks on the walls |
+| While dragging | nothing over the bar, as the view itself shows the moment |
+
 ### What is drawn
 
 | Part | How |

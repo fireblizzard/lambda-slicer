@@ -51,7 +51,7 @@
 - [ ] Add support for HLKZ, showing things like run times in a demo, jump/strafing stats and so on
 - [x] Find demos of players by name or SteamID
 - [ ] Add an option to change the HUD color (HP/AP, ammo, item pickups, weapon selection, timer, votes, server settings, custom hudmessages..., equivalent to `hud_color` game cvar) and another to change the text color (chat and kill feed, equivalent to `con_color` game cvar, i think it only applies to the kill feed when it's not teamplay, i'm not sure)
-- [ ] When hovering the seek bar, show a small preview of that moment
+- [x] When hovering the seek bar, show a small preview of that moment
 - [x] When the video player has paused due to reaching the end of the demo, left click on it should restart it (back to 00:00:00.000)
 
 # Ideas for later

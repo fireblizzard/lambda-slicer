@@ -17,6 +17,11 @@
 //! with its entity's transform and render mode, every lightmap weighed by
 //! its light style's brightness, and animated textures at their frame for
 //! the time
+//!
+//! A preview, a small picture of another moment, is drawn the same way into
+//! targets of its own, so the view's picture stays as it is. A moment on
+//! another map is drawn with that map's world and sky, which the scene
+//! keeps beside the view's
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -908,10 +913,27 @@ struct SkyGpu {
     faces: Vec<wgpu::BindGroup>,
 }
 
+/// A map's world, sky and decals on the GPU, with the bytes they hold
+#[derive(Default)]
+struct MapSlot {
+    world: Option<WorldGpu>,
+    world_bytes: u64,
+    sky: Option<SkyGpu>,
+    sky_bytes: u64,
+    decals: Option<DecalGpu>,
+}
+
 struct Targets {
     size: [u32; 2],
     color_view: wgpu::TextureView,
     depth_view: wgpu::TextureView,
+}
+
+impl Targets {
+    /// Bytes of the colour and the depth, four of each a pixel
+    fn bytes(&self) -> u64 {
+        u64::from(self.size[0]) * u64::from(self.size[1]) * 8
+    }
 }
 
 struct Pipelines {
@@ -959,9 +981,12 @@ pub struct Scene {
     instances: Option<wgpu::Buffer>,
     instance_capacity: u64,
     targets: Option<Targets>,
-    /// Bytes of every buffer and texture made here, targets included
+    /// The preview's targets, once one was drawn
+    preview: Option<Targets>,
+    /// The preview's own map, when it shows another than the view's
+    other_map: MapSlot,
+    /// Bytes of every buffer and texture made here, but the targets
     gpu_bytes: u64,
-    target_bytes: u64,
 }
 
 fn texture_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
@@ -1371,13 +1396,16 @@ impl Scene {
             instances: None,
             instance_capacity: 0,
             targets: None,
-            target_bytes: 0,
+            preview: None,
+            other_map: MapSlot::default(),
         }
     }
 
     /// Bytes of buffers and textures this scene holds on the GPU
     pub fn gpu_bytes(&self) -> u64 {
-        self.gpu_bytes + self.target_bytes
+        let targets = [&self.targets, &self.preview];
+        let target_bytes: u64 = targets.into_iter().flatten().map(Targets::bytes).sum();
+        self.gpu_bytes + target_bytes
     }
 
     fn texture(
@@ -1765,6 +1793,11 @@ impl Scene {
         self.targets.as_ref().map(|t| &t.color_view)
     }
 
+    /// The preview's colour target, once one was drawn
+    pub fn preview_view(&self) -> Option<&wgpu::TextureView> {
+        self.preview.as_ref().map(|t| &t.color_view)
+    }
+
     fn ensure_targets(&mut self, device: &wgpu::Device, size: [u32; 2]) {
         let size = [size[0].max(1), size[1].max(1)];
         if self.targets.as_ref().is_some_and(|t| t.size == size) {
@@ -1798,7 +1831,6 @@ impl Scene {
             ),
             depth_view: target(DEPTH_FORMAT, wgpu::TextureUsages::RENDER_ATTACHMENT),
         });
-        self.target_bytes = u64::from(size[0]) * u64::from(size[1]) * 8;
     }
 
     /// Every instance's corners in one buffer, and where each instance
@@ -1962,6 +1994,68 @@ impl Scene {
             batches: mesh.batches.clone(),
             bytes,
         });
+    }
+
+    /// One frame at `size` of `draw` into the preview's own targets, the
+    /// view's left as they are, on the preview's own map when `other_map`
+    /// and the view's otherwise. Returns whether the preview's targets were
+    /// made again, and the commands. They must be submitted before another
+    /// frame is drawn, as both send their corners through the same buffers
+    pub fn render_preview(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        size: [u32; 2],
+        view: &View,
+        draw: &DrawList,
+        other_map: bool,
+    ) -> (bool, wgpu::CommandBuffer) {
+        // The view's targets, and its map when the preview has its own,
+        // step aside while the preview is drawn
+        std::mem::swap(&mut self.targets, &mut self.preview);
+        if other_map {
+            self.swap_maps();
+        }
+        let drawn = self.render(device, queue, size, view, draw);
+        if other_map {
+            self.swap_maps();
+        }
+        std::mem::swap(&mut self.targets, &mut self.preview);
+        drawn
+    }
+
+    /// The world and its own sky the preview draws a moment of another map
+    /// with, none to let them go
+    pub fn set_preview_map(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        map: Option<(&WorldMesh, Option<&[Rgba; 6]>)>,
+    ) {
+        self.swap_maps();
+        match map {
+            Some((world, sky)) => {
+                self.set_world(device, queue, world);
+                self.set_sky(device, queue, sky);
+            }
+            None => {
+                self.world = None;
+                self.gpu_bytes -= self.world_bytes;
+                self.world_bytes = 0;
+                self.set_sky(device, queue, None);
+            }
+        }
+        self.swap_maps();
+    }
+
+    /// Trade the view's map for the preview's own
+    fn swap_maps(&mut self) {
+        let other = &mut self.other_map;
+        std::mem::swap(&mut self.world, &mut other.world);
+        std::mem::swap(&mut self.world_bytes, &mut other.world_bytes);
+        std::mem::swap(&mut self.sky, &mut other.sky);
+        std::mem::swap(&mut self.sky_bytes, &mut other.sky_bytes);
+        std::mem::swap(&mut self.decals, &mut other.decals);
     }
 
     /// One frame at `size` of everything in `draw`. Returns whether the

@@ -129,6 +129,7 @@ working. With it, the demo plays with the game's files, and the HUD shows as the
 Under the picture are the seek bar and the controls: back to the start, rewind, 10 seconds back,
 one frame back, play, one frame forward, 10 seconds forward, the speed, free camera, zoom, player
 names, light up everything, see through walls, the volume, the picture settings and full screen.
+Hovering the seek bar shows a small picture of that moment above it, with its time.
 The speed goes from 0.01× to 100×, one step at a time with its minus and plus buttons, the − and
 + keys or the mouse wheel over it, and clicking it goes back to 1×. Holding the left button on the
 picture plays twice as fast until you let go, from a pause too, which then pauses again.

@@ -14,6 +14,11 @@
 //! from a playback of its own that shares the worker's checkpoints and
 //! heard from the recorder's view. Shown only once the Half-Life folder is
 //! known, from the settings or from `--game`
+//!
+//! The seek bar shows a small picture of the moment under the pointer,
+//! played to by a thread of its own that shares the worker's checkpoints
+//! too, and drawn as the view would show it there. A moment on another
+//! map is drawn once that map is read too
 
 use std::collections::hash_map::Entry;
 use std::collections::{BTreeMap, HashMap};
@@ -69,6 +74,7 @@ use crate::hud_sprites::HudSprites;
 use crate::i18n::Catalog;
 use crate::kill_feed::KillFeed;
 use crate::layout;
+use crate::preview::Previews;
 use crate::settings::ViewerSettings;
 use crate::text::{self, Look};
 use crate::theme;
@@ -345,6 +351,45 @@ struct Resources {
     scene: Scene,
     blit: Blit,
     blit_group: Option<wgpu::BindGroup>,
+    /// The seek bar's preview, once one was drawn
+    preview_group: Option<wgpu::BindGroup>,
+}
+
+/// The seek bar's preview of the moment under the pointer
+#[derive(Default)]
+struct Preview {
+    /// How many moments were asked for, numbering each ask
+    asks: u64,
+    /// The moment of the last ask
+    asked: Option<f64>,
+    /// The newest frame answered
+    frame: Option<Box<PresentedFrame>>,
+    /// Whether the view's next frame draws it again, as it is new or a
+    /// model it shows has loaded since
+    redraw: bool,
+    /// The size the picture was last drawn at, in pixels, while it shows a
+    /// moment of this hover
+    drawn: Option<[u32; 2]>,
+}
+
+/// The map the seek bar's preview draws a moment of another map with, kept
+/// from one hover to the next
+#[derive(Default)]
+struct PreviewMap {
+    /// The map on the GPU for it, and its light for the models
+    loaded: Option<(String, Arc<LightTree>)>,
+    loading: Option<String>,
+    /// The last map that could not be read for it
+    failed: Option<String>,
+}
+
+impl PreviewMap {
+    /// Whether `map` is still to be asked for
+    fn wants(&self, map: &str) -> bool {
+        let named = |name: &Option<String>| name.as_deref() == Some(map);
+        let loaded = self.loaded.as_ref().is_some_and(|(name, _)| name == map);
+        !loaded && !named(&self.loading) && !named(&self.failed)
+    }
 }
 
 pub struct Viewer {
@@ -465,6 +510,11 @@ pub struct Viewer {
     transport_widths: TransportWidths,
     /// Maps, models, sprites and skies that could not be read, and why
     missing: std::collections::BTreeMap<String, String>,
+    /// The thread that plays to the seek bar's previews, none without the
+    /// game's files
+    previews: Option<Previews>,
+    preview: Preview,
+    preview_map: PreviewMap,
 }
 
 /// The demo's game folder, from its header
@@ -507,6 +557,7 @@ impl Viewer {
                 scene: Scene::new(device),
                 blit: Blit::new(device, render_state.target_format),
                 blit_group: None,
+                preview_group: None,
             };
             render_state
                 .renderer
@@ -539,6 +590,10 @@ impl Viewer {
         // Why the sound device could not be opened, shown under the view
         let sound_error = std::cell::RefCell::new(None);
         let glow_library = library.clone();
+        let previews = library.as_ref().map(|l| {
+            let repaint = ctx.clone();
+            Previews::spawn(l.game_files(), move || repaint.request_repaint())
+        });
         let sound = library.filter(|_| !quiet).and_then(|l| {
             let tap = std::env::var_os("LAMBDA_SLICER_SOUND_TAP").map(PathBuf::from);
             Device::open(l, tap, skew_path())
@@ -655,6 +710,9 @@ impl Viewer {
             chat: Chat::default(),
             vitals: HudSprites::default(),
             transport_widths: TransportWidths::default(),
+            previews,
+            preview: Preview::default(),
+            preview_map: PreviewMap::default(),
         }
     }
 
@@ -790,6 +848,16 @@ impl Viewer {
         self.settle_pov();
         self.follow_played();
 
+        // Only the answer to the last ask is drawn
+        if let Some(previews) = &self.previews {
+            for answer in previews.answers() {
+                if answer.number == self.preview.asks && self.preview.asked.is_some() {
+                    self.preview.frame = Some(answer.frame);
+                    self.preview.redraw = true;
+                }
+            }
+        }
+
         // The player the command line asked to follow, once the analysis
         // has ranked the players
         if let Some(place) = self.follow_at
@@ -831,6 +899,17 @@ impl Viewer {
                     self.sky = Some(world.sky.clone());
                     self.decals.set_world(Arc::new(world));
                     resources.scene.set_sky(device, queue, sky.as_ref());
+
+                    // The preview's own map is the view's now, or soon will be
+                    let previewed = self.preview_map.loaded.as_ref().map(|(map, _)| map);
+                    if previewed == Some(&name) {
+                        resources.scene.set_preview_map(device, queue, None);
+                        self.preview_map.loaded = None;
+                    }
+                    if self.preview_map.loading.as_ref() == Some(&name) {
+                        self.preview_map.loading = None;
+                    }
+
                     self.map = Some(name);
                     self.map_loading = None;
                 }
@@ -842,6 +921,22 @@ impl Viewer {
                     self.light = None;
                     self.map_loading = None;
                     self.map_failed = Some((name, e));
+                }
+                Loaded::Map(name, Ok(map)) if self.preview_map.loading.as_ref() == Some(&name) => {
+                    let LoadedMap { mut world, sky } = *map;
+                    let light = Arc::new(std::mem::take(&mut world.light));
+                    let map = Some((&world, sky.as_ref().ok()));
+                    resources.scene.set_preview_map(device, queue, map);
+                    self.preview_map = PreviewMap {
+                        loaded: Some((name, light)),
+                        ..PreviewMap::default()
+                    };
+                    self.preview.redraw |= self.preview.frame.is_some();
+                }
+                Loaded::Map(name, Err(e)) if self.preview_map.loading.as_ref() == Some(&name) => {
+                    eprintln!("viewer: preview's map {name}, {e}");
+                    self.preview_map.loading = None;
+                    self.preview_map.failed = Some(name);
                 }
                 Loaded::Map(..) => {}
                 Loaded::Sky(name, sky) => {
@@ -861,10 +956,12 @@ impl Viewer {
                     let handle = resources.scene.add_model(device, queue, &loaded.mesh);
                     self.models
                         .insert(model, Slot::Ready(Arc::from(loaded), handle));
+                    self.preview.redraw |= self.preview.frame.is_some();
                 }
                 Loaded::Model(model, Outcome::Sprite(sprite)) => {
                     let handle = resources.scene.add_sprite(device, queue, &sprite);
                     self.models.insert(model, Slot::Sprite(handle));
+                    self.preview.redraw |= self.preview.frame.is_some();
                 }
                 Loaded::Model(model, Outcome::Failed(e)) => {
                     self.missing.insert(model_file(&model), e);
@@ -891,6 +988,17 @@ impl Viewer {
             self.map_loading = Some(map);
         }
 
+        // The map of the moment the seek bar previews, when it is another
+        let previewed = self.preview.frame.as_ref().and_then(|f| f.map.as_deref());
+        if let Some(map) = previewed.map(map_name)
+            && self.map.as_ref() != Some(&map)
+            && self.map_loading.as_ref() != Some(&map)
+            && self.preview_map.wants(&map)
+        {
+            let _ = loader.requests.send(Asset::Map(map.clone()));
+            self.preview_map.loading = Some(map);
+        }
+
         // The sky the server names, once the map's own is drawn
         if let Some(sky) = frame.sky.as_deref()
             && self.map_loading.is_none()
@@ -904,8 +1012,12 @@ impl Viewer {
             self.sky_loading = Some(sky.to_owned());
         }
 
-        let eyes = self.eyes(frame);
-        for model in wanted(frame, &self.models, eyes) {
+        // The models of the moment the seek bar previews too
+        let mut models = wanted(frame, &self.models, self.eyes(frame));
+        if let Some(preview) = &self.preview.frame {
+            models.extend(wanted(preview, &self.models, self.eyes(preview)));
+        }
+        for model in models {
             if let Entry::Vacant(slot) = self.models.entry(model) {
                 let _ = loader.requests.send(Asset::Model(slot.key().clone()));
                 slot.insert(Slot::Loading);
@@ -1246,16 +1358,20 @@ impl Viewer {
         }
     }
 
-    /// Everything drawn this frame, models posed and skinned
-    fn draw_list(&self) -> DrawList {
-        let Some(frame) = &self.frame else {
-            return DrawList::default();
-        };
+    /// Everything drawn of `frame`, models posed and skinned and lit by the
+    /// map's `light`. The muzzle flashes fired after `flashes_since` show
+    /// however short, those before only while they last
+    fn draw_list(
+        &self,
+        frame: &PresentedFrame,
+        flashes_since: f64,
+        light: Option<&LightTree>,
+    ) -> DrawList {
         let styles = light_styles(frame);
         // What is under a model, brightened by the dynamic lights near it
         let lights = dynamic_lights(frame);
         let light_at = |point: [f32; 3]| {
-            let under = self.light.as_ref().and_then(|tree| tree.at(point, &styles));
+            let under = light.and_then(|tree| tree.at(point, &styles));
             match under {
                 Some(colour) => ModelLight::from_point(lit_by(colour, point, &lights)),
                 None => ModelLight::UNLIT,
@@ -1283,10 +1399,10 @@ impl Viewer {
         let mut silhouettes = Vec::new();
         let mut shells = Vec::new();
         let mut sprites = Vec::new();
-        let since = if self.flashes_to > frame.at.0 {
+        let since = if flashes_since > frame.at.0 {
             f64::NEG_INFINITY
         } else {
-            self.flashes_to
+            flashes_since
         };
         let flashes: Vec<&Flash> = frame
             .flashes
@@ -1486,6 +1602,98 @@ impl Viewer {
             shells,
             viewmodel_shells,
         }
+    }
+
+    /// The preview's newest moment to draw with the view's next frame, in
+    /// the view's shape. None when there is no new one, or its map is not
+    /// read yet, which leaves the picture without one until it is
+    fn preview_drawing(&mut self, aspect: f32, pixels_per_point: f32) -> Option<PreviewDrawing> {
+        if !self.preview.redraw {
+            return None;
+        }
+        let frame = self.preview.frame.as_deref()?;
+        self.preview.redraw = false;
+        let map = frame.map.as_deref().map(map_name);
+        let (light, other_map) = if map.is_some() && map == self.map {
+            (self.light.clone(), false)
+        } else {
+            match &self.preview_map.loaded {
+                Some((name, light)) if map.as_ref() == Some(name) => (Some(light.clone()), true),
+                _ => {
+                    self.preview.drawn = None;
+                    return None;
+                }
+            }
+        };
+
+        let width = (PREVIEW_WIDTH * pixels_per_point).round().max(1.);
+        let pixels = [width as u32, (width / aspect).round().max(1.) as u32];
+        let view = View {
+            fullbright: self.fullbright,
+            ..view(frame, self.eye(frame), aspect, self.fov(), &self.settings)
+        };
+        // Its muzzle flashes only while they last, as no frame came before
+        let mut draw = self.draw_list(frame, frame.at.0, light.as_deref());
+        // The marks on the walls are the view's map's
+        if other_map {
+            draw.decals = None;
+        }
+        self.preview.drawn = Some(pixels);
+        Some(PreviewDrawing {
+            pixels,
+            view,
+            draw,
+            other_map,
+        })
+    }
+
+    /// Ask for the preview of the moment `time`, unless it was the last
+    /// asked for
+    fn ask_preview(&mut self, time: f64) {
+        let (Some(previews), Some(demo)) = (&self.previews, self.worker.loaded()) else {
+            return;
+        };
+        if self.preview.asked == Some(time) {
+            return;
+        }
+
+        self.preview.asks += 1;
+        self.preview.asked = Some(time);
+        previews.ask(self.preview.asks, demo, SourceTime(time));
+    }
+
+    /// The picture of the moment under the pointer above the seek bar, with
+    /// the moment's time under it, at `x` along the bar and kept within
+    /// `track`. Only the time until the picture has been drawn
+    fn preview_ui(&self, ui: &Ui, x: f32, track: egui::Rect, time: &str) {
+        let width = PREVIEW_WIDTH + 2. * PREVIEW_MARGIN;
+        let x = x.clamp(
+            track.left() + width / 2.,
+            (track.right() - width / 2.).max(track.left()),
+        );
+        let pixels_per_point = ui.pixels_per_point();
+        egui::Area::new(egui::Id::unique("seek preview"))
+            .order(egui::Order::Tooltip)
+            .interactable(false)
+            .pivot(egui::Align2::CENTER_BOTTOM)
+            .fixed_pos(egui::pos2(x, track.top() - PREVIEW_GAP))
+            .show(ui.ctx(), |ui| {
+                egui::Frame::popup(ui.style())
+                    .inner_margin(PREVIEW_MARGIN)
+                    .show(ui, |ui| {
+                        ui.vertical_centered(|ui| {
+                            if let Some([w, h]) = self.preview.drawn {
+                                let size = egui::vec2(w as f32, h as f32) / pixels_per_point;
+                                let (rect, _) = ui.allocate_exact_size(size, Sense::hover());
+                                ui.painter().add(egui_wgpu::Callback::new_paint_callback(
+                                    rect,
+                                    PreviewPicture,
+                                ));
+                            }
+                            ui.monospace(time);
+                        });
+                    });
+            });
     }
 
     /// The frame's beams, trails and tracers as strips to draw
@@ -2031,6 +2239,9 @@ impl Viewer {
         }
 
         let capture_size = self.capture_size;
+        // The seek bar's preview in the view's shape
+        let aspect = rect.width() / rect.height().max(1.);
+        let preview = self.preview_drawing(aspect, ui.pixels_per_point());
         let mut drawn = 0;
         let mut drawn_at = None;
         if let Some((map, error)) = self.failed_map() {
@@ -2050,22 +2261,18 @@ impl Viewer {
                         (rect.width() * ui.pixels_per_point()).round().max(1.) as u32,
                         (rect.height() * ui.pixels_per_point()).round().max(1.) as u32,
                     ]);
-                    let draw = self.draw_list();
+                    let draw = self.draw_list(frame, self.flashes_to, self.light.as_deref());
                     drawn_at = Some(frame.at.0);
                     drawn = draw.instances.len() + draw.sprites.len() + draw.viewmodel.len();
+                    let aspect = pixels[0] as f32 / pixels[1] as f32;
                     let callback = Frame {
                         pixels,
                         view: View {
                             fullbright: self.fullbright,
-                            ..view(
-                                frame,
-                                self.eye(frame),
-                                pixels[0] as f32 / pixels[1] as f32,
-                                self.fov(),
-                                &self.settings,
-                            )
+                            ..view(frame, self.eye(frame), aspect, self.fov(), &self.settings)
                         },
                         draw,
+                        preview,
                     };
                     ui.painter()
                         .add(egui_wgpu::Callback::new_paint_callback(rect, callback));
@@ -2549,10 +2756,20 @@ impl Viewer {
             );
         }
 
-        // The moment under the pointer
-        if let Some(pointer) = response.hover_pos() {
-            let at = clock(time_at(pointer.x), end > HOUR);
-            response.on_hover_text_at_pointer(at);
+        // The moment under the pointer and its picture, but while a drag
+        // already shows it in the view
+        match response.hover_pos() {
+            Some(pointer) if !response.dragged() => {
+                let at = time_at(pointer.x);
+                self.ask_preview(at);
+                self.preview_ui(ui, pointer.x, track, &clock(at, end > HOUR));
+            }
+            _ => {
+                self.preview = Preview {
+                    asks: self.preview.asks,
+                    ..Preview::default()
+                };
+            }
         }
     }
 
@@ -3705,6 +3922,12 @@ const SEEK_TRACK: f32 = 4.;
 const SEEK_TRACK_ACTIVE: f32 = 6.;
 const SEEK_KNOB: f32 = 6.;
 
+/// The seek bar's preview's width, the room around it and how far above
+/// the bar it stands, in points
+const PREVIEW_WIDTH: f32 = 240.;
+const PREVIEW_MARGIN: f32 = 4.;
+const PREVIEW_GAP: f32 = 8.;
+
 /// Room either side of the speed between its buttons, and the volume
 /// slider's width
 const RATE_PADDING: f32 = 2.;
@@ -4073,11 +4296,40 @@ fn view_projection(
     camera.view_projection(aspect, 4., 8192.)
 }
 
-/// One frame of the scene, drawn offscreen in `prepare` and shown in `paint`
+/// One frame of the scene, drawn offscreen in `prepare` and shown in `paint`,
+/// and the seek bar's preview drawn first when it has a new moment
 struct Frame {
     pixels: [u32; 2],
     view: View,
     draw: DrawList,
+    preview: Option<PreviewDrawing>,
+}
+
+/// A moment of the seek bar's preview, to draw at `pixels`, on the
+/// preview's own map when `other_map`
+struct PreviewDrawing {
+    pixels: [u32; 2],
+    view: View,
+    draw: DrawList,
+    other_map: bool,
+}
+
+/// The seek bar's preview as last drawn, shown in `paint`
+struct PreviewPicture;
+
+impl CallbackTrait for PreviewPicture {
+    fn paint(
+        &self,
+        _info: egui::PaintCallbackInfo,
+        pass: &mut wgpu::RenderPass<'static>,
+        resources: &CallbackResources,
+    ) {
+        if let Some(r) = resources.get::<Resources>()
+            && let Some(group) = &r.preview_group
+        {
+            r.blit.paint(pass, group);
+        }
+    }
 }
 
 impl CallbackTrait for Frame {
@@ -4092,6 +4344,21 @@ impl CallbackTrait for Frame {
         let Some(r) = resources.get_mut::<Resources>() else {
             return Vec::new();
         };
+
+        // The preview is sent at once, before the view's frame sends its
+        // corners through the same buffers
+        if let Some(p) = &self.preview {
+            let (resized, commands) =
+                r.scene
+                    .render_preview(device, queue, p.pixels, &p.view, &p.draw, p.other_map);
+            queue.submit([commands]);
+            if (resized || r.preview_group.is_none())
+                && let Some(view) = r.scene.preview_view()
+            {
+                r.preview_group = Some(r.blit.bind_group(device, view));
+            }
+        }
+
         let (resized, commands) =
             r.scene
                 .render(device, queue, self.pixels, &self.view, &self.draw);
