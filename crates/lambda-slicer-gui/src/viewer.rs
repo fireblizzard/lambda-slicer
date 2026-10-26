@@ -39,7 +39,7 @@ use lambda_slicer_playback::animation::{Flash, Holder};
 use lambda_slicer_playback::controller::{Command, Controller, LoopRange, Reply, Stamp};
 use lambda_slicer_playback::hud::{Countdown, WAITING};
 use lambda_slicer_playback::scene::{
-    self, Entity, EntityId, PlayerView, view_model_for, weapon_model_for,
+    self, Entity, EntityId, HIGHEST_BOB, LOWEST_BOB, PlayerView, view_model_for, weapon_model_for,
 };
 use lambda_slicer_playback::tempents::{DynamicLight, Tint};
 use lambda_slicer_playback::time::{BOOST, RATES, Rate, SourceTime};
@@ -48,12 +48,12 @@ use lambda_slicer_playback::worker::Worker;
 use lambda_slicer_render::Rgba;
 use lambda_slicer_render::camera::{Camera, Matrix};
 use lambda_slicer_render::gpu::{
-    Blit, Brush, DrawList, Instance, MOST_LIGHTS, ModelHandle, RenderMode, Scene, SpriteHandle,
-    SpriteInstance, Streak, StreakPoint, View, WorldLight,
+    Blit, Brush, DrawList, Instance, MOST_LIGHTS, ModelHandle, RenderMode, Scene, Shell,
+    SpriteHandle, SpriteInstance, Streak, StreakPoint, View, WorldLight,
 };
 use lambda_slicer_render::light::{LightTree, ModelLight};
 use lambda_slicer_render::load::{self, EntityPose, GaitPose, LoadError, LoadedModel};
-use lambda_slicer_render::model::{Eye, ModelMesh, ModelVertex};
+use lambda_slicer_render::model::{Eye, ModelMesh, ModelVertex, shell_distance};
 use lambda_slicer_render::world::{self, WorldMesh};
 
 use fluent_bundle::FluentValue;
@@ -77,6 +77,13 @@ use crate::widgets::{Icon, IconButton, PlayButton};
 
 /// `EF_NODRAW`, an entity the game does not draw
 const NO_DRAW: i64 = 128;
+
+/// `kRenderFxGlowShell`, a model drawn again a little bigger in its
+/// render colour, as AG's CTF flags and their carriers are
+const GLOW_SHELL: i64 = 19;
+
+/// The texture a glow shell reflects
+const SHELL_SPRITE: &str = "sprites/shellchrome.spr";
 
 /// The field of view when a recording names none
 const DEFAULT_FOV: f32 = 90.;
@@ -1258,8 +1265,23 @@ impl Viewer {
         let (eye_origin, eye_angles) = self.eye(frame);
         let eye = Eye::new(eye_origin, eye_angles);
         let eyes = self.eyes(frame);
+        // A glow shell reflects a point turning around the world instead
+        let shell_eye = Eye::shell(frame.client_time, eye.right);
+        let shell_sprite = match self.models.get(&ModelRef::File(SHELL_SPRITE.to_owned())) {
+            Some(Slot::Sprite(handle)) => Some((*handle, 0)),
+            _ => None,
+        };
+        let shell = |look: Option<ShellLook>, mesh: &ModelMesh, bones: &[BoneTransform]| {
+            let (look, sprite) = (look?, shell_sprite?);
+            Some(Shell {
+                sprite,
+                color: look.color,
+                vertices: mesh.shell(bones, &shell_eye, look.distance),
+            })
+        };
         let mut instances = Vec::new();
         let mut silhouettes = Vec::new();
+        let mut shells = Vec::new();
         let mut sprites = Vec::new();
         let since = if self.flashes_to > frame.at.0 {
             f64::NEG_INFINITY
@@ -1324,6 +1346,7 @@ impl Viewer {
                 amount: drawn.amount,
             });
             place(Holder::Entity(drawn.id), model, &bones);
+            shells.extend(shell(drawn.shell, &model.mesh, &bones));
             // Shown again where walls hide it, a player in its top colour
             let tint = match drawn.pose.player {
                 true if self.settings.see_through => Some(team_tint(drawn.top_color)),
@@ -1342,6 +1365,7 @@ impl Viewer {
                     mode: drawn.mode,
                     amount: drawn.amount,
                 });
+                shells.extend(shell(drawn.shell, &weapon.mesh, &weapon_bones));
             }
             if let Some(tint) = tint {
                 for instance in &instances[first..] {
@@ -1402,8 +1426,9 @@ impl Viewer {
         // whose muzzle flashes and beams then come from it. A free camera
         // shows none
         let mut viewmodel = Vec::new();
+        let mut viewmodel_shells = Vec::new();
         if self.settings.viewmodel
-            && let Some((_, pose)) = viewmodel_pose(frame, eyes)
+            && let Some((_, pose)) = viewmodel_pose(frame, eyes, self.settings.weapon_bob)
             && let Some(Slot::Ready(model, handle)) = viewmodel_ref(frame, &self.models, eyes)
                 .as_ref()
                 .and_then(|m| self.models.get(m))
@@ -1416,6 +1441,8 @@ impl Viewer {
                 mode: RenderMode::Normal,
                 amount: 1.,
             });
+            let look = viewmodel_shell(frame, eyes);
+            viewmodel_shells.extend(shell(look, &model.mesh, &bones));
             let holder = match eyes {
                 Eyes::Player(id) => Holder::Entity(id),
                 _ => Holder::Viewmodel,
@@ -1456,6 +1483,8 @@ impl Viewer {
             silhouettes,
             decals: self.decals.mesh(),
             streaks: self.streaks(frame, &guns),
+            shells,
+            viewmodel_shells,
         }
     }
 
@@ -2071,7 +2100,7 @@ impl Viewer {
                     if let Some(library) = &self.library {
                         let weapon = match eyes {
                             Eyes::Recorder => weapon_in_view(frame).map(str::to_owned),
-                            _ => viewmodel_pose(frame, eyes).map(|(path, _)| path),
+                            _ => viewmodel_pose(frame, eyes, Some(0.)).map(|(path, _)| path),
                         };
                         if self.settings.crosshair
                             && let Some(weapon) = weapon
@@ -3175,6 +3204,45 @@ struct Drawn {
     mode: RenderMode,
     amount: f32,
     color: [f32; 3],
+    shell: Option<ShellLook>,
+}
+
+/// How an entity's glow shell looks, its colour 0 to 1 and how far it
+/// stands out
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct ShellLook {
+    color: [f32; 3],
+    distance: f32,
+}
+
+/// The glow shell `e` has, if any
+fn shell_look(e: &Entity) -> Option<ShellLook> {
+    if e.render_fx != GLOW_SHELL {
+        return None;
+    }
+    Some(ShellLook {
+        color: e.render_color.map(|c| f32::from(c) / 255.),
+        distance: shell_distance(e.render_amount.clamp(0, 255) as f32),
+    })
+}
+
+/// The glow shell of the weapon in view through `eyes`, the one the player
+/// whose eyes they are has, as AG's client gives it (`StudioDrawModel`)
+fn viewmodel_shell(frame: &PresentedFrame, eyes: Eyes) -> Option<ShellLook> {
+    let number = match eyes {
+        Eyes::Recorder => {
+            let viewer = frame.recorder.view_entity.unwrap_or(frame.local_entity);
+            if frame.recorder.observer_mode == OBS_IN_EYE {
+                u16::try_from(frame.recorder.observer_target).ok()?
+            } else {
+                viewer
+            }
+        }
+        Eyes::Player(id) => id.number,
+        Eyes::Free => return None,
+    };
+    let holder = frame.entities.iter().find(|e| e.id.number == number)?;
+    shell_look(holder)
 }
 
 /// Which model each drawn entity uses and how it is posed. Players use the
@@ -3261,6 +3329,7 @@ fn drawn(frame: &PresentedFrame, models: &HashMap<ModelRef, Slot>, eyes: Eyes) -
                 _ => e.render_amount.clamp(0, 255) as f32 / 255.,
             },
             color: e.render_color.map(|c| f32::from(c) / 255.),
+            shell: shell_look(e),
             pose: EntityPose {
                 sequence: e.sequence.max(0) as usize,
                 cycle: f64::from(e.frame),
@@ -3286,7 +3355,10 @@ fn drawn(frame: &PresentedFrame, models: &HashMap<ModelRef, Slot>, eyes: Eyes) -
 /// viewmodel, muzzle flashes, temporary entities and beams, as the models
 /// in `models` say their variations
 fn wanted(frame: &PresentedFrame, models: &HashMap<ModelRef, Slot>, eyes: Eyes) -> Vec<ModelRef> {
-    let drawn = drawn(frame, models, eyes)
+    let drawn = drawn(frame, models, eyes);
+    let shelled = drawn.iter().any(|d| d.shell.is_some()) || viewmodel_shell(frame, eyes).is_some();
+    let shell = shelled.then(|| ModelRef::File(SHELL_SPRITE.to_owned()));
+    let drawn = drawn
         .into_iter()
         .flat_map(|d| std::iter::once(d.model).chain(d.weapon));
     let flashes = frame.flashes.iter().map(|f| flash_sprite(f.sprite));
@@ -3309,6 +3381,7 @@ fn wanted(frame: &PresentedFrame, models: &HashMap<ModelRef, Slot>, eyes: Eyes) 
         .map(|s| ModelRef::File(s.to_owned()));
     drawn
         .chain(viewmodel_ref(frame, models, eyes))
+        .chain(shell)
         .chain(flashes)
         .chain(temp)
         .chain(beam_sprites)
@@ -3322,7 +3395,7 @@ fn viewmodel_ref(
     models: &HashMap<ModelRef, Slot>,
     eyes: Eyes,
 ) -> Option<ModelRef> {
-    let (path, _) = viewmodel_pose(frame, eyes)?;
+    let (path, _) = viewmodel_pose(frame, eyes, Some(0.))?;
     let body = match eyes {
         Eyes::Recorder => frame.viewmodel.map_or(0, |a| i64::from(a.body)),
         _ => 0,
@@ -3714,10 +3787,17 @@ fn weapon_in_view(frame: &PresentedFrame) -> Option<&str> {
 /// The first-person weapon seen through `eyes` and its pose, at the view's
 /// origin and angles, the pitch turned the other way as the game gives it
 /// to a viewmodel. The recorder's plays the last weapon animation from
-/// when it started, and is none whenever [`weapon_in_view`] is. A followed
-/// player's is the one in their hand, idle, as their animations are not
-/// in the demo. A free camera has none
-fn viewmodel_pose(frame: &PresentedFrame, eyes: Eyes) -> Option<(String, EntityPose)> {
+/// when it started, and is none whenever [`weapon_in_view`] is. It takes
+/// their aim without the kick the view has, a unit under the view, and
+/// bobs by the `cl_bob` of `bob`, or as recorded for none
+/// (`V_CalcNormalRefdef`). A followed player's is the
+/// one in their hand, idle, as their animations are not in the demo. A
+/// free camera has none
+fn viewmodel_pose(
+    frame: &PresentedFrame,
+    eyes: Eyes,
+    bob: Option<f32>,
+) -> Option<(String, EntityPose)> {
     let (path, sequence, elapsed, (origin, angles)) = match eyes {
         Eyes::Recorder => {
             let camera = &frame.recorder;
@@ -3725,7 +3805,16 @@ fn viewmodel_pose(frame: &PresentedFrame, eyes: Eyes) -> Option<(String, EntityP
             let animation = frame.viewmodel?;
             let sequence = animation.sequence.max(0) as usize;
             let elapsed = frame.at.0 - animation.started.0;
-            (path, sequence, elapsed, (camera.origin, camera.angles))
+            let bob = match bob {
+                Some(amount) => game_bob(amount, frame.at.0, camera.velocity),
+                None => camera.bob,
+            };
+            (
+                path,
+                sequence,
+                elapsed,
+                bobbed(camera.origin, camera.aim, bob),
+            )
         }
         Eyes::Player(id) => {
             let player = followed(frame, id.number)?;
@@ -3749,6 +3838,42 @@ fn viewmodel_pose(frame: &PresentedFrame, eyes: Eyes) -> Option<(String, EntityP
     };
     Some((path.to_owned(), pose))
 }
+
+/// The weapon in view's place for a view at `origin` aiming at `aim`, a
+/// unit under the view, `bob` units of bob along the aim and tilted by it.
+/// The bob's height is the view's own, already in `origin`
+/// (`V_CalcNormalRefdef`)
+fn bobbed(origin: [f32; 3], aim: [f32; 3], bob: f32) -> ([f32; 3], [f32; 3]) {
+    let (forward, _, _) = lambda_slicer_render::camera::angle_vectors(aim);
+    let mut at = [0, 1, 2].map(|k| origin[k] + bob * 0.4 * forward[k]);
+    at[2] -= 1.;
+
+    // The tilt is of the weapon's pitch, which is the aim's turned over
+    let [pitch, yaw, roll] = aim;
+    (at, [pitch + bob * 0.3, yaw - bob * 0.5, roll - bob])
+}
+
+/// The bob of a player moving at `velocity` at `time`, as a `cl_bob` of
+/// `amount` and the game's default `cl_bobcycle` and `cl_bobup` make it. A
+/// share of `amount` times the speed along the ground, rising for the first
+/// half of each 0.8 s and falling for the rest (`V_CalcBob`)
+fn game_bob(amount: f32, time: f64, velocity: [f32; 3]) -> f32 {
+    use std::f64::consts::PI;
+    let cycle = time.rem_euclid(BOB_CYCLE) / BOB_CYCLE;
+    let cycle = if cycle < BOB_UP {
+        PI * cycle / BOB_UP
+    } else {
+        PI + PI * (cycle - BOB_UP) / (1. - BOB_UP)
+    };
+    let [x, y, _] = velocity.map(f64::from);
+    let bob = (x * x + y * y).sqrt() * f64::from(amount);
+    let bob = bob * 0.3 + bob * 0.7 * cycle.sin();
+    (bob as f32).clamp(LOWEST_BOB, HIGHEST_BOB)
+}
+
+/// The game's default `cl_bobcycle` and `cl_bobup`
+const BOB_CYCLE: f64 = 0.8;
+const BOB_UP: f64 = 0.5;
 
 /// Every light style's brightness at the frame's client time
 fn light_styles(frame: &PresentedFrame) -> [f32; 64] {
@@ -4488,6 +4613,33 @@ mod tests {
             ..in_eye
         };
         assert_eq!(name(&roaming), None);
+    }
+
+    #[test]
+    fn the_game_bobs_by_a_share_of_the_speed_rising_then_falling() {
+        assert_eq!(game_bob(0.01, 0.3, [0.; 3]), 0.);
+        assert_eq!(game_bob(0., 0.2, [300., 0., 0.]), 0.);
+
+        // At 300 units a second, a third of the 3 units as the cycle starts,
+        // all of them a quarter in, and no more than 4 however fast
+        let close = |a: f32, b: f32| (a - b).abs() < 1e-4;
+        assert!(close(game_bob(0.01, 0., [300., 0., 50.]), 0.9));
+        assert!(close(game_bob(0.01, 0.2, [0., 300., 0.]), 3.));
+        assert!(close(game_bob(0.01, 1.0, [0., 300., 0.]), 3.));
+        assert!(close(game_bob(0.005, 0.2, [0., 300., 0.]), 1.5));
+        assert_eq!(game_bob(0.01, 0.2, [2000., 0., 0.]), HIGHEST_BOB);
+    }
+
+    #[test]
+    fn the_weapon_sits_a_unit_under_the_view_and_bob_pushes_and_tilts_it() {
+        let (at, angles) = bobbed([0., 0., 100.], [10., 90., 0.], 0.);
+        assert_eq!(at, [0., 0., 99.]);
+        assert_eq!(angles, [10., 90., 0.]);
+
+        // Looking along x, 2 units of bob push it 0.8 along and tilt it
+        let (at, angles) = bobbed([0.; 3], [0.; 3], 2.);
+        assert!((at[0] - 0.8).abs() < 1e-5 && at[1].abs() < 1e-5);
+        assert_eq!(angles, [0.6, -1., -2.]);
     }
 
     fn playback(playing: bool, backward: bool, stop_at: Option<f64>) -> Playback {

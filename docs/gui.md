@@ -339,7 +339,7 @@ run. Every change applies at once. A setting that needs explaining has a `(?)` b
 - **Library.** The library folders, the tab at start, the order at start, the filters at start,
   leaving out short maps with no kills, where the library is kept and Clear library.
 - **Demo viewer.** The picture (the game's gamma settings), the view (field of view, zoomed field
-  of view, the weapon in view), each part of the HUD, seeing players through walls, how many
+  of view, the weapon in view and its bob), each part of the HUD, seeing players through walls, how many
   decals stay, and the sound.
 - **Clips.** The export folder, how files are named, and the clip padding.
 

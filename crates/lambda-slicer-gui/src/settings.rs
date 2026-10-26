@@ -234,8 +234,11 @@ pub struct ViewerSettings {
     /// Degrees across the view's width while zoomed in, as `default_fov`
     /// would set them in the game
     pub zoom_fov: f32,
-    /// Whether the weapon in view is drawn, its crosshair and the chat
+    /// Whether the weapon in view is drawn, how it bobs, its crosshair and
+    /// the chat
     pub viewmodel: bool,
+    /// The `cl_bob` the weapon in view bobs by, none for the recorder's own
+    pub weapon_bob: Option<f32>,
     pub crosshair: bool,
     pub chat: bool,
     /// Whether the recorder's health, armour, ammo and pickups show, and
@@ -304,6 +307,7 @@ impl Default for ViewerSettings {
             fov: None,
             zoom_fov: 30.,
             viewmodel: true,
+            weapon_bob: None,
             crosshair: true,
             chat: true,
             vitals: true,
@@ -356,6 +360,10 @@ impl ViewerSettings {
                 .fov
                 .filter(|f| f.is_finite())
                 .map(|f| f.clamp(FOV.0, FOV.1)),
+            weapon_bob: self
+                .weapon_bob
+                .filter(|b| b.is_finite())
+                .map(|b| b.clamp(WEAPON_BOB.0, WEAPON_BOB.1)),
             zoom_fov: within(self.zoom_fov, default.zoom_fov, FOV.0, FOV.1),
             volume: within(self.volume, default.volume, 0., 1.),
             vitals_size: within(
@@ -374,6 +382,11 @@ impl ViewerSettings {
 
 /// The fields of view the viewer takes, in degrees
 pub const FOV: (f32, f32) = (10., 150.);
+
+/// The `cl_bob` the weapon in view takes, and the game's default. Past a
+/// few hundredths the bob reaches the game's limit at a run anyway
+pub const WEAPON_BOB: (f32, f32) = (0., 0.05);
+pub const GAME_BOB: f32 = 0.01;
 
 /// The most rows the small scoreboard takes, the game's most players
 pub const MAX_SCORE_ROWS: usize = 32;

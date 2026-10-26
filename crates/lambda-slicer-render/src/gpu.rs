@@ -11,7 +11,7 @@
 //! A frame draws the opaque world and brush entities, then studio models,
 //! then the sky wherever nothing was drawn, then translucent studio models,
 //! the additive textures of solid ones, brush entities and sprites together
-//! from the furthest in. The viewmodel
+//! from the furthest in, and glow shells added over them. The viewmodel
 //! comes last, in a pass of its own with the depth cleared, so it never
 //! sinks into a wall. Each BSP model is drawn
 //! with its entity's transform and render mode, every lightmap weighed by
@@ -29,7 +29,7 @@ use crate::gamma::Gamma;
 use lambda_slicer_assets::sprite::{self, Orientation};
 
 use crate::camera::{Matrix, angle_vectors, entity_matrix};
-use crate::model::{ModelMesh, ModelVertex};
+use crate::model::{ModelMesh, ModelVertex, ShellVertex};
 use crate::world::{Animation, Batch, FULL_BRIGHT, WorldMesh, WorldVertex};
 
 pub const COLOR_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
@@ -630,6 +630,8 @@ impl Instance {
 
 struct SpriteFrame {
     texture: wgpu::BindGroup,
+    /// The same texture repeating past its edges, for a glow shell
+    repeating: wgpu::BindGroup,
     origin: [i32; 2],
     size: [u32; 2],
 }
@@ -680,6 +682,20 @@ pub struct DrawList {
     pub decals: Option<Arc<DecalMesh>>,
     /// Beams, trails and tracers, added over everything else translucent
     pub streaks: Vec<Streak>,
+    /// Glow shells, added over everything else, and the viewmodel's
+    pub shells: Vec<Shell>,
+    pub viewmodel_shells: Vec<Shell>,
+}
+
+/// A model's glow shell drawn this frame, its sprite's frame added in its
+/// colour wherever the shell faces the view (`kRenderFxGlowShell`)
+#[derive(Clone, Debug, PartialEq)]
+pub struct Shell {
+    pub sprite: (SpriteHandle, usize),
+    /// 0 to 1
+    pub color: [f32; 3],
+    /// Three corners a triangle
+    pub vertices: Vec<ShellVertex>,
 }
 
 /// A beam, trail or tracer drawn this frame, a strip along its points
@@ -911,6 +927,7 @@ struct Pipelines {
     sprite_blend: wgpu::RenderPipeline,
     sprite_add: wgpu::RenderPipeline,
     sprite_glow: wgpu::RenderPipeline,
+    shell: wgpu::RenderPipeline,
 }
 
 pub struct Scene {
@@ -1311,6 +1328,21 @@ impl Scene {
                 false,
                 wgpu::CompareFunction::Always,
             ),
+            // Only the faces turned to the view, as the game draws a model
+            shell: pipeline(
+                "shell",
+                "sprite",
+                &[Some(&uniforms_layout), Some(&texture_layout)],
+                wgpu::VertexBufferLayout {
+                    array_stride: std::mem::size_of::<SpriteVertex>() as u64,
+                    step_mode: wgpu::VertexStepMode::Vertex,
+                    attributes: &SPRITE_ATTRIBUTES,
+                },
+                Some(added_by_alpha),
+                false,
+                less,
+                Some(wgpu::Face::Back),
+            ),
         };
 
         Self {
@@ -1355,6 +1387,17 @@ impl Scene {
         image: &Rgba,
         repeat: bool,
     ) -> wgpu::BindGroup {
+        let view = self.texture_view(device, queue, image);
+        self.bind_texture(device, &view, repeat)
+    }
+
+    /// `image` uploaded, counted in the bytes held
+    fn texture_view(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        image: &Rgba,
+    ) -> wgpu::TextureView {
         let texture = device.create_texture_with_data(
             queue,
             &wgpu::TextureDescriptor {
@@ -1375,14 +1418,23 @@ impl Scene {
             &image.pixels,
         );
         self.gpu_bytes += image.pixels.len() as u64;
-        let view = texture.create_view(&Default::default());
+        texture.create_view(&Default::default())
+    }
+
+    /// A texture's binding, repeating past its edges or held at them
+    fn bind_texture(
+        &self,
+        device: &wgpu::Device,
+        view: &wgpu::TextureView,
+        repeat: bool,
+    ) -> wgpu::BindGroup {
         device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("viewer texture"),
             layout: &self.texture_layout,
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&view),
+                    resource: wgpu::BindingResource::TextureView(view),
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
@@ -1536,8 +1588,10 @@ impl Scene {
                         vec![0; 4]
                     },
                 };
+                let view = self.texture_view(device, queue, &image);
                 SpriteFrame {
-                    texture: self.texture(device, queue, &image, false),
+                    texture: self.bind_texture(device, &view, false),
+                    repeating: self.bind_texture(device, &view, true),
                     origin: f.origin,
                     size: [f.width, f.height],
                 }
@@ -1553,8 +1607,8 @@ impl Scene {
 
     /// Every sprite's corners in one buffer, each sprite's pipeline and
     /// place in it, the furthest first
-    /// Every sprite's quad from the furthest in, then every streak's, and
-    /// where each begins in the buffer
+    /// Every sprite's quad from the furthest in, then every streak's, then
+    /// every shell's, and where each begins in the buffer
     #[allow(clippy::type_complexity)]
     fn upload_sprites(
         &mut self,
@@ -1563,7 +1617,12 @@ impl Scene {
         view: &View,
         sprites: &[SpriteInstance],
         streaks: &[Streak],
-    ) -> (Vec<(usize, SpritePass, u32)>, Vec<(usize, u32, u32)>) {
+        shells: &[&Shell],
+    ) -> (
+        Vec<(usize, SpritePass, u32)>,
+        Vec<(usize, u32, u32)>,
+        Vec<(u32, u32)>,
+    ) {
         let mut quads: Vec<(f32, usize, SpritePass, [SpriteVertex; 6])> = sprites
             .iter()
             .enumerate()
@@ -1599,8 +1658,24 @@ impl Scene {
             strips.push((i, first, vertices.len() as u32));
             first += vertices.len() as u32;
         }
+        let mut shell_ranges = Vec::with_capacity(shells.len());
+        for shell in shells {
+            let [r, g, b] = shell.color;
+            let vertices: Vec<SpriteVertex> = shell
+                .vertices
+                .iter()
+                .map(|v| SpriteVertex {
+                    position: v.position,
+                    uv: v.uv,
+                    color: [r, g, b, 1.],
+                })
+                .collect();
+            bytes.extend_from_slice(bytemuck::cast_slice(&vertices));
+            shell_ranges.push((first, vertices.len() as u32));
+            first += vertices.len() as u32;
+        }
         if bytes.is_empty() {
-            return (order, strips);
+            return (order, strips, shell_ranges);
         }
         if bytes.len() as u64 > self.sprite_capacity {
             let capacity = (bytes.len() as u64).next_power_of_two();
@@ -1616,7 +1691,29 @@ impl Scene {
         if let Some(buffer) = &self.sprite_vertices {
             queue.write_buffer(buffer, 0, &bytes);
         }
-        (order, strips)
+        (order, strips, shell_ranges)
+    }
+
+    /// Glow shells, each the first or `ranges` in the sprite buffer, which
+    /// is set
+    fn draw_shells(
+        &self,
+        pass: &mut wgpu::RenderPass<'_>,
+        shells: &[Shell],
+        ranges: &[(u32, u32)],
+    ) {
+        pass.set_pipeline(&self.pipelines.shell);
+        for (shell, &(first, count)) in shells.iter().zip(ranges) {
+            let (sprite, frame) = shell.sprite;
+            let texture = self
+                .sprites
+                .get(sprite.0)
+                .and_then(|gpu| gpu.frames.get(frame % gpu.frames.len().max(1)));
+            if let Some(texture) = texture {
+                pass.set_bind_group(1, &texture.repeating, &[]);
+                pass.draw(first..first + count, 0..1);
+            }
+        }
     }
 
     /// The last frame drawn, read back from the GPU, waiting for it. For
@@ -1920,8 +2017,10 @@ impl Scene {
         if self.dot.is_none() && draw.streaks.iter().any(|s| s.sprite.is_none()) {
             self.dot = Some(self.texture(device, queue, &dot(), false));
         }
-        let (sprites, streaks) =
-            self.upload_sprites(device, queue, view, &draw.sprites, &draw.streaks);
+        let shells: Vec<&Shell> = draw.shells.iter().chain(&draw.viewmodel_shells).collect();
+        let (sprites, streaks, shell_ranges) =
+            self.upload_sprites(device, queue, view, &draw.sprites, &draw.streaks, &shells);
+        let (shell_ranges, viewmodel_shell_ranges) = shell_ranges.split_at(draw.shells.len());
         self.upload_objects(device, queue, brushes);
         self.upload_decals(device, queue, draw.decals.as_deref());
 
@@ -2149,6 +2248,12 @@ impl Scene {
                     }
                 }
             }
+            if let Some(buffer) = &self.sprite_vertices
+                && !shell_ranges.is_empty()
+            {
+                pass.set_vertex_buffer(0, buffer.slice(..));
+                self.draw_shells(&mut pass, &draw.shells, shell_ranges);
+            }
         }
 
         // Silhouettes over everything but the viewmodel, where hidden
@@ -2232,6 +2337,12 @@ impl Scene {
                         self.draw_instance(&mut pass, instance, *start, Part::All);
                     }
                 }
+            }
+            if let Some(buffer) = &self.sprite_vertices
+                && !viewmodel_shell_ranges.is_empty()
+            {
+                pass.set_vertex_buffer(0, buffer.slice(..));
+                self.draw_shells(&mut pass, &draw.viewmodel_shells, viewmodel_shell_ranges);
             }
         }
         (resized, encoder.finish())

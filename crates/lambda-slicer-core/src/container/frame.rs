@@ -143,6 +143,11 @@ impl NetworkFrame {
     pub fn info_viewheight(&self) -> [f32; 3] {
         vec3_at(&self.demo_info[..], 116)
     }
+    /// The recorder's own aim, before the kick of shots and hits the view
+    /// angles carry
+    pub fn info_cl_viewangles(&self) -> [f32; 3] {
+        vec3_at(&self.demo_info[..], 132)
+    }
     pub fn info_health(&self) -> i32 {
         i32_at(&self.demo_info[..], 144)
     }

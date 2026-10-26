@@ -444,6 +444,7 @@ compared with the game ([comparison](viewer-validation.md)):
 | Texture flags | as the engine's studio renderer draws them: an additive texture of a solid model added over the scene with the translucent things, writing no depth, a chrome one's coordinates from its normal against two vectors square to the line from the eye to its bone (`R_StudioSetupChrome`), and a flat-shaded one lit by the ambient level and 0.8 of the shade whatever its normal. AG's viewmodels in the surveyed install mark every texture additive, so they show see-through as in the game |
 | Body and skin | each entity's body and skin choose the submodel of each body part (`(body / base) % models`) and the skin family, as `StudioSetupModel` does. A body past the model's own is the first's, and each combination is read once, after the model's first body is in. Players' models take theirs in their team colours, from the stock model when theirs is not installed. The viewmodel takes the body of its last animation |
 | Render modes | normal models solid. Colour, texture and alpha modes blended by the render amount, glow and additive modes added by it, each lit as a solid model and without the render colour, which the game's studio drawing takes only for its glow shell. Translucent models are drawn after the sky together with translucent brushes and sprites, all from the furthest in, and one at amount 0 is not drawn. A player's weapon is drawn as the player is |
+| Glow shell | a model whose entity has `kRenderFxGlowShell`, as AG's CTF flags and their carriers do, drawn again with every point pushed out along the average of its normals by a 128th of a unit per render amount, at least one. Every texture of the copy is `sprites/shellchrome.spr` added over the scene in the render colour, its chrome coordinates reflecting a point 4000 units out that turns around the world at the game's default `r_glowshellfreq` of 2.2, rising and falling a third as fast, in place of the eye. Only the faces turned to the view are drawn. A carrier's weapon has it too, and so does the weapon in view while the player whose eyes it is from has one, as AG's client does |
 | Team colours | a player model's `DM_Base` textures with palette entries 160 to 191 turned to the top colour's hue and 80 to 111 to the bottom colour's, each keeping its brightness and saturation, as the game's `PaletteHueReplace` does. The surveyed AG install's own player models have no such textures |
 
 The leg state lives in playback's scene, so checkpoints keep it and a seek reaches the same legs as
@@ -455,8 +456,8 @@ to running, for example.
 **Observed:** AG's `w_weaponbox.mdl`, the box a player drops on death, has a black and white
 texture, so it looks like the checker drawn for a missing texture.
 
-Not drawn yet: `remap` textures, sequence transitions, mouth movement, render effects such as the
-glow shell, and the sky's light on models.
+Not drawn yet: `remap` textures, sequence transitions, mouth movement, render effects other than
+the glow shell, and the sky's light on models.
 
 ### Viewmodel and sprites
 
@@ -467,12 +468,11 @@ glow shell, and the sky's light on models.
 |---|---|
 | Viewmodel | the model the recorder's client data names (`viewmodel`), or through a player's eyes the viewmodel of that player's weapon model (`V_FindViewModelByWeaponModel`), starting at its first animation when the weapon changes, playing the last weapon animation, from a record or a message, from when it started. At the view's origin and angles, the pitch turned the other way as the game gives it to a viewmodel, and lit by the light under the eye. Drawn last against a cleared depth, so it never sinks into a wall |
 | Viewmodel hidden | while the recorder's health is 0 or less, at intermission, and while spectating other than through a player's eyes |
+| Kick and bob | the recorded view angles already carry the kick of shots and hits, and the recorded view height the recorder's bob, as their client added them. The recorder's viewmodel takes their aim without the kick (`cl_viewangles`), so it stays put while the view kicks, a unit under the view. It bobs by the recorder's own bob, the view's height over their eyes' within the game's -7 to 4: pushed 0.4 of it along the aim and tilted 0.3 of it in pitch, half in yaw and all of it in roll (`V_CalcNormalRefdef`). Settings can instead set a `cl_bob` of their own, 0 for none and 0.01 by default, and work the bob out from it, the game's `cl_bobcycle` 0.8 and `cl_bobup` 0.5 and the recorder's speed along the ground (`V_CalcBob`). A water level or a step up also lifts the view, which is then taken for bob. Through another player's eyes the weapon neither kicks nor bobs |
 | Sprites | `IDSP` version 2, single frames and frame groups, in normal, additive, index-alpha and alpha-tested formats. Every sprite in the surveyed install reads (268, AG's sprite items included) |
 | Sprite entities | an entity whose model is a `.spr`, or one of AG's sprites under a `.mdl` name, at its frame and scale (0 meaning 1) |
 | Orientation | facing the view, facing the view upright, facing the camera's position upright, turned by the entity's angles, or facing the view rolled by the entity, as the five `SPR_` types say |
 | Render modes | normal and alpha modes cut out at half alpha, except an index-alpha sprite in normal mode, blended by its texels' alpha, texture and colour modes blended by the render amount, additive mode added, and glow added without depth, fading as 19000 over the squared distance between 0.05 and 1, and grown by its distance over 200 to keep its size on screen unless it is steady. A glow the world hides from the eye, the line to it stopping more than 8 units short, is not drawn, brush entities and models hiding none (`R_SpriteGlowBlend`). Every mode takes the render colour, white when it is black, as Xash3D says the engine's sprite drawing does (at first only additive and glowing sprites did). Drawn together with translucent models and brushes, all from the furthest in |
-
-Not drawn yet: the bob the game adds to the viewmodel.
 
 **Measured (2026-10-18)** with `--viewer-bench 10`, playing from 20 s in a 1920 by 1080 window with
 the view 1098 by 950 pixels, while the library scan ran:
@@ -633,7 +633,7 @@ matches `mix_probe`: 150 windows of 50 ms with sound, ratio 0.714 at the median,
 With shells, the first 300 s of `naz_crossfire_pb_01.dem` throw out 28, one for each glock shot,
 the recorder's and the opponent's. None falls more than 200 units, and the 300 s still mix in 3.2 s.
 
-Not yet: the tripmine's and snark's handlers, which trace first, the view's punch, sparks (event 5002), and
+Not yet: the tripmine's and snark's handlers, which trace first, sparks (event 5002), and
 the lights of muzzle flashes and `EF_MUZZLEFLASH`.
 
 ## Temporary entities
@@ -808,8 +808,7 @@ which the punch through needs to find the wall's far side.
 **Observed:** in `stalkx_naz_248.dem` the recorder's gauss shots draw from the viewmodel's barrel,
 reflect off walls at a glancing angle, and leave glows and balls where they land.
 
-Not yet: the beams' noise, the Egon's for other players, the lights of the gauss and Egon, and the
-view's punch.
+Not yet: the beams' noise, the Egon's for other players, and the lights of the gauss and Egon.
 
 ## Seeking with effects
 

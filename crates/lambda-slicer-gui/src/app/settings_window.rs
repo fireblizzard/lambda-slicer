@@ -14,8 +14,8 @@ use crate::i18n::{Catalog, Locale};
 use crate::layout;
 use crate::library::{self, parse_number};
 use crate::settings::{
-    FOV, MAX_PADDING, MAX_SCORE_ROWS, SPREE_LEAST, SPREE_MOST, ScoreboardShown, Settings,
-    SpeedAxes, TEXT_SIZE, VITALS_SIZE, ViewerSettings,
+    FOV, GAME_BOB, MAX_PADDING, MAX_SCORE_ROWS, SPREE_LEAST, SPREE_MOST, ScoreboardShown, Settings,
+    SpeedAxes, TEXT_SIZE, VITALS_SIZE, ViewerSettings, WEAPON_BOB,
 };
 use crate::text::{self, Look};
 use crate::theme;
@@ -39,6 +39,9 @@ const PICTURE_STEP: f64 = 0.01;
 const PICTURE_DECIMALS: usize = 2;
 const FOV_STEP: f64 = 0.5;
 const FIRST_FOV: f32 = 90.;
+/// How a drag changes the weapon's bob, and the decimals it shows
+const BOB_STEP: f64 = 0.0005;
+const BOB_DECIMALS: usize = 3;
 
 /// The step and decimals of a clip's padding
 const PADDING_STEP: f64 = 0.1;
@@ -804,6 +807,30 @@ impl App {
         layout::row(ui, rtl, |ui| {
             ui.checkbox(&mut viewer.viewmodel, t("settings-viewmodel"));
         });
+        // The bob is the weapon's, so it goes with it
+        ui.add_enabled_ui(viewer.viewmodel, |ui| {
+            layout::row(ui, rtl, |ui| {
+                let mut recorded = viewer.weapon_bob.is_none();
+                if ui
+                    .checkbox(&mut recorded, t("settings-weapon-bob-recorded"))
+                    .changed()
+                {
+                    viewer.weapon_bob = (!recorded).then_some(GAME_BOB);
+                }
+            });
+            if let Some(bob) = &mut viewer.weapon_bob {
+                let width = label_width(ui, catalog, &["settings-weapon-bob"], rtl);
+                field(ui, catalog, "settings-weapon-bob", width, rtl, |ui| {
+                    ui.add(
+                        egui::DragValue::new(bob)
+                            .range(WEAPON_BOB.0..=WEAPON_BOB.1)
+                            .speed(BOB_STEP)
+                            .custom_formatter(|v, _| catalog.number(v, BOB_DECIMALS))
+                            .custom_parser(parse_number),
+                    );
+                });
+            }
+        });
         layout::row(ui, rtl, |ui| {
             ui.checkbox(&mut viewer.crosshair, t("settings-crosshair"));
         });
@@ -1237,6 +1264,7 @@ fn changed_settings(current: &Settings, restored: &Settings) -> Vec<&'static str
         (view.fov != first.fov, "settings-fov"),
         (view.zoom_fov != first.zoom_fov, "settings-zoom-fov"),
         (view.viewmodel != first.viewmodel, "settings-viewmodel"),
+        (view.weapon_bob != first.weapon_bob, "settings-weapon-bob"),
         (view.crosshair != first.crosshair, "settings-crosshair"),
         (view.chat != first.chat, "settings-chat"),
         (view.vitals != first.vitals, "settings-vitals"),

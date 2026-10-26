@@ -11,6 +11,11 @@
 //! flat-shaded one is lit by the ambient light and most of the shade
 //! whatever its normal. Additive textures come last, for the renderer to
 //! add over the scene
+//!
+//! A glow shell is the model again, every point pushed out along the
+//! average of its normals and every texture a chrome one, reflecting a
+//! point that circles far around the world in place of the eye
+//! (`R_StudioRenderModel`, `R_StudioBuildNormalTable`)
 
 use lambda_slicer_assets::xenoxide::studio::StudioRenderAsset;
 use lambda_slicer_assets::xenoxide::studio_pose::BoneTransform;
@@ -37,11 +42,21 @@ struct Corner {
     point: usize,
     normal: usize,
     uv: [f32; 2],
-    /// On a chrome texture, 32 over its width and height, which scale its
+    /// 32 over its texture's width and height, which scale chrome
     /// coordinates
-    chrome: Option<[f32; 2]>,
+    scale: [f32; 2],
+    /// On a chrome texture
+    chrome: bool,
     /// On a flat-shaded texture
     flat: bool,
+}
+
+/// A corner of a glow shell, pushed out from its model, and where it is
+/// on the shell's texture
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ShellVertex {
+    pub position: [f32; 3],
+    pub uv: [f32; 2],
 }
 
 /// Where a model is seen from, which chrome textures reflect
@@ -57,6 +72,24 @@ impl Eye {
         let (_, right, _) = angle_vectors(angles);
         Self { origin, right }
     }
+
+    /// What a glow shell reflects at client time `time` for a view whose
+    /// right is `right`, a point 4000 units out that turns around the
+    /// world, rising and falling a third as fast (`r_glowshellfreq`)
+    pub fn shell(time: f64, right: [f32; 3]) -> Self {
+        let turn = SHELL_FREQUENCY * time;
+        let origin = [turn.cos(), turn.sin(), (turn * 0.33).cos()].map(|c| (c * 4000.) as f32);
+        Self { origin, right }
+    }
+}
+
+/// How fast a glow shell's reflection turns, the game's `r_glowshellfreq`
+const SHELL_FREQUENCY: f64 = 2.2;
+
+/// How far a glow shell stands out from its model for its entity's render
+/// amount, 0 to 255, a 128th of a unit each and at least one
+pub fn shell_distance(amount: f32) -> f32 {
+    amount.max(1.) / 128.
 }
 
 /// `STUDIO_NF_FLATSHADE`, lit the same whatever the normal
@@ -205,14 +238,14 @@ impl ModelMesh {
                     (t.width.max(1) as f32, t.height.max(1) as f32)
                 });
                 let flag = flags.get(texture).copied().unwrap_or(0);
-                let chrome = (flag & CHROME != 0).then_some([32. / w, 32. / h]);
                 for triangle in &mesh.triangles {
                     for c in triangle {
                         per_texture[texture].push(Corner {
                             point: point_base + c.vertex,
                             normal: normal_base + c.normal,
                             uv: [f32::from(c.s) / w, f32::from(c.t) / h],
-                            chrome,
+                            scale: [32. / w, 32. / h],
+                            chrome: flag & CHROME != 0,
                             flat: flag & FLATSHADE != 0,
                         });
                     }
@@ -262,18 +295,7 @@ impl ModelMesh {
     /// textures reflecting as seen from `eye`. A bone the pose lacks leaves
     /// its points where the model stores them
     pub fn skin(&self, bones: &[BoneTransform], light: &ModelLight, eye: &Eye) -> Vec<ModelVertex> {
-        // Each bone's chrome vectors, made once a bone
-        let mut chrome: Vec<Option<([f32; 3], [f32; 3])>> = vec![None; bones.len()];
-        let apply = |p: [f32; 3], bone: usize, translate: bool| -> [f32; 3] {
-            let Some(m) = bones.get(bone) else {
-                return p;
-            };
-            let p = p.map(f64::from);
-            let row = |r: &[f64; 4]| {
-                r[0] * p[0] + r[1] * p[1] + r[2] * p[2] + if translate { r[3] } else { 0. }
-            };
-            [row(&m[0]) as f32, row(&m[1]) as f32, row(&m[2]) as f32]
-        };
+        let mut chrome = ChromeAxes::new(bones, eye);
         self.corners
             .iter()
             .map(|c| {
@@ -283,22 +305,14 @@ impl ModelMesh {
                     .get(c.normal)
                     .copied()
                     .unwrap_or(([0., 0., 1.], 0));
-                let n = apply(normal, normal_bone, false);
-                let length = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt().max(1e-6);
-                let normal = n.map(|v| v / length);
-                let uv = match (c.chrome, bones.get(normal_bone)) {
-                    (Some(scale), Some(m)) => {
-                        let (right, up) = *chrome[normal_bone].get_or_insert_with(|| {
-                            chrome_axes([m[0][3], m[1][3], m[2][3]].map(|v| v as f32), eye)
-                        });
-                        let dot =
-                            |a: [f32; 3]| a[0] * normal[0] + a[1] * normal[1] + a[2] * normal[2];
-                        [(dot(right) + 1.) * scale[0], (dot(up) + 1.) * scale[1]]
-                    }
-                    _ => c.uv,
+                let normal = normalize(transform(bones, normal, normal_bone, false));
+                let uv = if c.chrome {
+                    chrome.uv(normal_bone, normal, c.scale).unwrap_or(c.uv)
+                } else {
+                    c.uv
                 };
                 ModelVertex {
-                    position: apply(point, bone, true),
+                    position: transform(bones, point, bone, true),
                     normal,
                     uv,
                     light: if c.flat {
@@ -313,6 +327,84 @@ impl ModelMesh {
     }
 }
 
+impl ModelMesh {
+    /// The model's glow shell posed by `bones`, every point `distance`
+    /// units out along the average of its normals, so the shell holds
+    /// together, and every texture a chrome one reflecting `eye`
+    pub fn shell(&self, bones: &[BoneTransform], eye: &Eye, distance: f32) -> Vec<ShellVertex> {
+        let mut smooth = vec![[0.; 3]; self.points.len()];
+        for c in &self.corners {
+            let (Some(&(normal, bone)), Some(sum)) =
+                (self.normals.get(c.normal), smooth.get_mut(c.point))
+            else {
+                continue;
+            };
+            let n = normalize(transform(bones, normal, bone, false));
+            for k in 0..3 {
+                sum[k] += n[k];
+            }
+        }
+        let smooth: Vec<[f32; 3]> = smooth.into_iter().map(normalize).collect();
+
+        let mut chrome = ChromeAxes::new(bones, eye);
+        self.corners
+            .iter()
+            .map(|c| {
+                let (point, bone) = self.points.get(c.point).copied().unwrap_or(([0.; 3], 0));
+                let normal = smooth.get(c.point).copied().unwrap_or([0., 0., 1.]);
+                let at = transform(bones, point, bone, true);
+                ShellVertex {
+                    position: [0, 1, 2].map(|k| at[k] + normal[k] * distance),
+                    uv: chrome.uv(bone, normal, c.scale).unwrap_or(c.uv),
+                }
+            })
+            .collect()
+    }
+}
+
+/// `p` moved by bone `bone` of `bones`, turned only unless `translate`. A
+/// bone the pose lacks leaves it where the model stores it
+fn transform(bones: &[BoneTransform], p: [f32; 3], bone: usize, translate: bool) -> [f32; 3] {
+    let Some(m) = bones.get(bone) else {
+        return p;
+    };
+    let p = p.map(f64::from);
+    let row = |r: &[f64; 4]| {
+        let shift = if translate { r[3] } else { 0. };
+        r[0] * p[0] + r[1] * p[1] + r[2] * p[2] + shift
+    };
+    [row(&m[0]) as f32, row(&m[1]) as f32, row(&m[2]) as f32]
+}
+
+/// Each bone's chrome vectors as seen from an eye, made once a bone
+struct ChromeAxes<'a> {
+    bones: &'a [BoneTransform],
+    eye: &'a Eye,
+    made: Vec<Option<([f32; 3], [f32; 3])>>,
+}
+
+impl<'a> ChromeAxes<'a> {
+    fn new(bones: &'a [BoneTransform], eye: &'a Eye) -> Self {
+        Self {
+            bones,
+            eye,
+            made: vec![None; bones.len()],
+        }
+    }
+
+    /// The chrome coordinates of `normal` on bone `bone`, scaled by
+    /// `scale`. None for a bone the pose lacks
+    fn uv(&mut self, bone: usize, normal: [f32; 3], scale: [f32; 2]) -> Option<[f32; 2]> {
+        let m = self.bones.get(bone)?;
+        let eye = self.eye;
+        let (right, up) = *self.made[bone].get_or_insert_with(|| {
+            chrome_axes([m[0][3], m[1][3], m[2][3]].map(|v| v as f32), eye)
+        });
+        let dot = |a: [f32; 3]| a[0] * normal[0] + a[1] * normal[1] + a[2] * normal[2];
+        Some([(dot(right) + 1.) * scale[0], (dot(up) + 1.) * scale[1]])
+    }
+}
+
 fn cross(a: [f32; 3], b: [f32; 3]) -> [f32; 3] {
     [
         a[1] * b[2] - a[2] * b[1],
@@ -323,7 +415,7 @@ fn cross(a: [f32; 3], b: [f32; 3]) -> [f32; 3] {
 
 fn normalize(v: [f32; 3]) -> [f32; 3] {
     let length = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
-    if length > 0. {
+    if length > 1e-6 {
         v.map(|c| c / length)
     } else {
         v
@@ -418,6 +510,35 @@ mod tests {
         let dot = |a: [f32; 3]| a[0] * normal[0] + a[1] * normal[1] + a[2] * normal[2];
         assert_eq!((dot(right) + 1.) * 32. / 64., 0.5);
         assert_eq!((dot(up) + 1.) * 32. / 64., 0.5);
+    }
+
+    #[test]
+    fn a_shell_stands_out_along_the_normals_and_reflects_on_every_texture() {
+        let mesh = flagged();
+        let bone: BoneTransform = [[1., 0., 0., 100.], [0., 1., 0., 0.], [0., 0., 1., 0.]];
+        let bones = vec![bone; 4];
+        let eye = Eye::new([0.; 3], [0.; 3]);
+        let skinned = mesh.skin(&bones, &ModelLight::UNLIT, &eye);
+        let shell = mesh.shell(&bones, &eye, shell_distance(50.));
+        assert_eq!(shell.len(), skinned.len());
+
+        // Pushed back toward the eye along the plate's normal, -x
+        let out = skinned[0].position[0] - shell[0].position[0];
+        assert!((out - 50. / 128.).abs() < 1e-4);
+        assert_eq!(shell[0].position[1..], skinned[0].position[1..]);
+
+        // The flat texture reflects too, the middle of its 4 by 2 texture
+        // scaled by 32 over its size
+        assert_eq!(shell[0].uv, [8., 16.]);
+        assert_eq!(shell_distance(0.), 1. / 128.);
+    }
+
+    #[test]
+    fn the_shell_reflects_a_point_circling_far_around_the_world() {
+        let start = Eye::shell(0., [0., -1., 0.]);
+        assert_eq!(start.origin, [4000., 0., 4000.]);
+        let later = Eye::shell(std::f64::consts::FRAC_PI_2 / SHELL_FREQUENCY, [0., -1., 0.]);
+        assert!(later.origin[0].abs() < 1e-3 && (later.origin[1] - 4000.).abs() < 1e-3);
     }
 
     #[test]

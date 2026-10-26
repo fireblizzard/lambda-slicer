@@ -550,9 +550,10 @@ fn side_table(
         let headshots = player
             .headshots
             .map_or_else(|| UNKNOWN.to_string(), |h| h.to_string());
-        let ping = player
-            .ping
-            .map_or_else(|| UNKNOWN.to_string(), |(ping, loss)| format!("{ping}/{loss}"));
+        let ping = player.ping.map_or_else(
+            || UNKNOWN.to_string(),
+            |(ping, loss)| format!("{ping}/{loss}"),
+        );
         let kd = kills_per_death(player.frags, player.deaths);
         let numbers = [
             accuracy,

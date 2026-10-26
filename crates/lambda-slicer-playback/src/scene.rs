@@ -21,7 +21,10 @@
 //!
 //! The camera is the view the client rendered when it wrote each network
 //! record, from the record's `ref_params_t`, with the field of view of the
-//! last client data record
+//! last client data record. Its angles carry the kick of shots and hits
+//! and its height the recorder's bob, as the client added them
+//! (`V_CalcNormalRefdef`), so the weapon in view can be placed as the
+//! client placed it, from the aim without the kick and with the same bob
 
 use std::collections::VecDeque;
 
@@ -196,6 +199,11 @@ pub struct Camera {
     /// crouched, as the frame recorded it
     pub player_origin: [f32; 3],
     pub angles: [f32; 3],
+    /// The recorder's own aim, without the kick `angles` has
+    pub aim: [f32; 3],
+    /// How far the recorder's bob raised the view, 0 for a recorder whose
+    /// `cl_bob` is 0, from the view's height over their eyes'
+    pub bob: f32,
     /// From client data records, which some recordings lack
     pub fov: Option<f32>,
     pub view_entity: Option<u16>,
@@ -225,6 +233,10 @@ pub struct Camera {
     /// Whether the recorder holds the key that shows the scoreboard
     pub scores_held: bool,
 }
+
+/// The lowest and highest the game's bob goes (`V_CalcBob`)
+pub const LOWEST_BOB: f32 = -7.;
+pub const HIGHEST_BOB: f32 = 4.;
 
 /// The button bit of the key that shows the scoreboard (`IN_SCORE`)
 const IN_SCORE: u16 = 1 << 15;
@@ -600,10 +612,16 @@ impl Scene {
             }
         }
 
+        // The bob is what is left of the view's height over the eyes', as
+        // far as the game's bob goes
+        let (origin, player_origin) = (frame.info_vieworg(), frame.info_simorg());
+        let raised = origin[2] - player_origin[2] - frame.info_viewheight()[2];
         let camera = Camera {
-            origin: frame.info_vieworg(),
-            player_origin: frame.info_simorg(),
+            origin,
+            player_origin,
             angles: frame.info_viewangles(),
+            aim: frame.info_cl_viewangles(),
+            bob: raised.clamp(LOWEST_BOB, HIGHEST_BOB),
             fov: self.camera.fov,
             view_entity: decoder.view_entity,
             spectating: frame.info_spectator() != 0,

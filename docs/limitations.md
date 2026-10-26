@@ -49,16 +49,14 @@ Other things:
 
 Not shown or played yet:
 
-- The flashlight and its HUD.
 - The big HALF-LIFE logo at the start of a new game. Chapter titles and other text from
   `titles.txt` do show.
 - Particles: the streaks of sparks, the flicker of explosions and the dust of bullet impacts.
 - Recorded voice chat, sentences (speech made of words, like the HEV suit's or soldiers') and
   room echoes.
-- The tripmine's and snark's own effects and the view kicking up when shooting.
-- The weapon's bob as you move. The weapon also sits a little higher and larger than in the
-  game.
-- Models: the glow shell and other render effects, textures recoloured by name (`remap`),
+- The tripmine's and snark's own effects.
+- The weapon in view sits a little higher and larger than in the game.
+- Models: render effects other than the glow shell, textures recoloured by name (`remap`),
   smooth blending between animations, and mouth movement.
 - Randomly tiled textures.
 
