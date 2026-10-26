@@ -30,7 +30,7 @@
 use std::collections::{BTreeMap, VecDeque};
 
 use lambda_slicer_core::analysis::context::{location, say_text};
-use lambda_slicer_core::protocol::messages::{Message, ParsedMessage};
+use lambda_slicer_core::protocol::messages::{Message, ParsedMessage, unpack_ping};
 use lambda_slicer_core::state::Decoder;
 
 use crate::announcements::{Announced, Announcements};
@@ -152,16 +152,6 @@ pub struct Hud {
     /// name
     pings: BTreeMap<u8, (u32, u32)>,
     server: String,
-}
-
-/// The slot, latency in milliseconds and packet loss in hundredths of one
-/// of `svc_pings`' entries, 5 bits of slot, 12 of latency and 7 of loss
-/// from the lowest (`SV_EmitPings`)
-fn unpack_ping(packed: u32) -> (u8, u32, u32) {
-    let slot = (packed & 0x1f) as u8;
-    let ping = (packed >> 5) & 0xfff;
-    let loss = (packed >> 17) & 0x7f;
-    (slot, ping, loss)
 }
 
 /// A string ending at its first nought, and what follows it

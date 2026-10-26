@@ -485,7 +485,9 @@ help-teams-column = Drużyny, w których jest co najmniej jeden gracz, liczone t
 filter-min-accuracy = Celność co najmniej (%)
 scores-accuracy = Cel.
 scores-kd = K/D
+scores-ping = Ping
 help-kd = Fragi na zgon, czyli fragi podzielone przez zgony. Gracz, który ani razu nie zginął, ma tu swoje fragi.
+help-ping-loss = Ping każdego gracza w milisekundach, a po nim loss, czyli utracone pakiety, tak jak serwer ostatnio je wysłał. Serwer wysyła je tylko wtedy, gdy nagrywający trzyma klawisz tabeli wyników, więc do tego czasu w ich miejscu widać kreskę.
 
 help-headshots = Zabójstwa trafieniem w głowę, rozpoznane po animacji śmierci ofiary. Wybuchy się nie liczą. Pokazywane są tylko zabójstwa nagrywającego, bo inni gracze często zabijają poza jego polem widzenia. W pojedynku pokazywane są też zabójstwa przeciwnika, bo wszystkie dotyczą nagrywającego.
 help-headshots-column = Zabójstwa nagrywającego trafieniem w głowę, rozpoznane po animacji śmierci ofiary. Wybuchy się nie liczą. Zabójstwa innych graczy nie są liczone, bo często dzieją się poza polem widzenia nagrania.

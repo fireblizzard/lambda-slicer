@@ -28,8 +28,8 @@ use crate::slice::range::GroupIndex;
 use crate::state::{DecodeOptions, DecodeStatus, PlayerIdentity, decode_demo};
 use accuracy::{PlayerAccuracy, ShotOutcome};
 use context::{
-    ChatMessage, Context, Coverage, Kill, ScoreUpdate, Scoreboard, SessionMap, TeamScoreUpdate,
-    WeaponSwitch, final_moment, standing_at,
+    ChatMessage, Context, Coverage, Kill, PingUpdate, ScoreUpdate, Scoreboard, SessionMap,
+    TeamScoreUpdate, WeaponSwitch, final_moment, standing_at,
 };
 use events::recorded_events;
 use highlights::{ActionWindow, action_windows, link_kills};
@@ -123,6 +123,9 @@ pub struct AnalysisReport {
     /// Every score and team change, for the scores at any moment
     pub score_updates: Vec<ScoreUpdate>,
     pub team_score_updates: Vec<TeamScoreUpdate>,
+    /// Every latency and loss the server sent, for the scores at any moment
+    #[serde(skip)]
+    pub pings: Vec<PingUpdate>,
     /// Whether each counted shot hit, and each player's accuracy
     /// ([`accuracy`])
     #[serde(skip)]
@@ -366,6 +369,7 @@ pub fn analyze_demo_with(
         scoreboard,
         score_updates,
         team_score_updates,
+        pings: std::mem::take(&mut context.pings),
         shot_outcomes,
         accuracy,
         recorder_accuracy,

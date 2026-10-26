@@ -452,7 +452,9 @@ help-teams-column = Teams with a player on them, counted as the players are. A g
 filter-min-accuracy = Accuracy at least (%)
 scores-accuracy = Acc.
 scores-kd = K/D
+scores-ping = Ping
 help-kd = Kills per death, the frags divided by the deaths. A player who never died shows their frags.
+help-ping-loss = Each player’s ping in milliseconds, then their packet loss, as the server last sent them. It sends them only while the recording player holds the scoreboard key, so they stay a dash until then.
 
 help-headshots = Kills by a hit to the head, read from the death animation the victim plays. Explosions don’t count. Only the recording player’s are shown, because other players often kill out of the recording’s view. In a duel the opponent’s are shown too, since all their kills are of the recording player.
 help-headshots-column = The recording player’s kills by a hit to the head, read from the death animation the victim plays. Explosions don’t count. Other players’ kills aren’t counted, because they often happen out of the recording’s view.

@@ -267,7 +267,9 @@ result because players often leave between the end of a game and the end of the 
 
 HS counts headshot kills and Acc. the share of shots that hit, for the recording player only, as
 other players' often happen out of the recording's view. In a duel the opponent's headshots show
-too ([analysis](analysis-profile.md)).
+too ([analysis](analysis-profile.md)). Ping shows each player's ping and packet loss, as
+`28/0`, as the server last sent them before that moment. It sends them only while the recording
+player holds the scoreboard key, so they are a dash until then.
 
 ## Clips
 

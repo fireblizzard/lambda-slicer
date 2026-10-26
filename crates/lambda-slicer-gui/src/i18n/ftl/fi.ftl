@@ -454,7 +454,9 @@ help-teams-column = Joukkueet, joissa on pelaaja, laskettuna samoin kuin pelaaja
 filter-min-accuracy = Tarkkuus vähintään (%)
 scores-accuracy = Tark.
 scores-kd = K/D
+scores-ping = Ping
 help-kd = Fragit kuolemaa kohden eli fragit jaettuna kuolemilla. Jos pelaaja ei kuollut kertaakaan, näytetään hänen fragiensa määrä.
+help-ping-loss = Jokaisen pelaajan ping millisekunteina ja sen jälkeen loss eli kadonneet paketit, sellaisina kuin palvelin ne viimeksi lähetti. Palvelin lähettää ne vain silloin, kun tallentaja pitää tulostaulun näppäintä pohjassa, joten siihen asti niiden kohdalla näkyy viiva.
 
 help-headshots = Tapot osumalla päähän, tunnistettu uhrin kuolinanimaatiosta. Räjähdykset eivät lasketa. Vain tallentajan tapot näytetään, koska muut pelaajat tappavat usein tallennuksen näkymän ulkopuolella. Kaksintaistelussa näytetään myös vastustajan tapot, koska ne kaikki kohdistuvat tallentajaan.
 help-headshots-column = Tallentajan tapot osumalla päähän, tunnistettu uhrin kuolinanimaatiosta. Räjähdykset eivät lasketa. Muiden pelaajien tappoja ei lasketa, koska ne tapahtuvat usein tallennuksen näkymän ulkopuolella.

@@ -475,7 +475,9 @@ help-teams-column = Equipos con al menos un jugador, contados igual que los juga
 filter-min-accuracy = Precisión mínima (%)
 scores-accuracy = Prec.
 scores-kd = K/D
+scores-ping = Ping
 help-kd = Bajas por muerte: las bajas divididas entre las muertes. Si un jugador nunca murió, se muestran sus bajas.
+help-ping-loss = El ping de cada jugador en milisegundos y luego su pérdida de paquetes, tal como los envió el servidor por última vez. Solo los envía mientras quien grabó mantiene la tecla de la tabla de puntajes, así que hasta entonces aparece un guion en su lugar.
 
 help-headshots = Bajas por headshot, según la animación de muerte de la víctima. Las explosiones no cuentan. Solo se muestran los headshots de quien grabó, porque los demás jugadores suelen matar fuera de la vista de la grabación. En un duelo también se muestran los del rival, ya que todas sus bajas son sobre quien grabó.
 help-headshots-column = Headshots de quien grabó, según la animación de muerte de la víctima. Las explosiones no cuentan. Los de los demás jugadores no se cuentan, porque suelen ocurrir fuera de la vista de la grabación.

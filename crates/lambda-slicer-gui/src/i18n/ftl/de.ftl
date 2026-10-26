@@ -454,7 +454,9 @@ help-teams-column = Teams mit mindestens einem Spieler, gezählt wie die Spieler
 filter-min-accuracy = Treffsicherheit mindestens (%)
 scores-accuracy = Treff.
 scores-kd = K/D
+scores-ping = Ping
 help-kd = Frags pro Tod, also die Frags geteilt durch die Tode. Wer nie gestorben ist, bekommt seine Frags angezeigt.
+help-ping-loss = Ping jedes Spielers in Millisekunden, danach sein Loss (verlorene Pakete), so wie der Server sie zuletzt geschickt hat. Er schickt sie nur, solange der aufnehmende Spieler die Scoreboard-Taste hält, deshalb steht bis dahin ein Strich da.
 
 help-headshots = Abschüsse durch einen Treffer am Kopf, erkannt an der Todesanimation des Opfers. Explosionen zählen nicht. Gezeigt werden nur die der aufnehmenden Person, weil andere Spieler oft außerhalb ihres Blickfelds abschießen. Im Duell auch die des Gegners, da alle seine Abschüsse die aufnehmende Person treffen.
 help-headshots-column = Abschüsse der aufnehmenden Person durch einen Treffer am Kopf, erkannt an der Todesanimation des Opfers. Explosionen zählen nicht. Abschüsse anderer Spieler zählen nicht, weil sie oft außerhalb des Blickfelds der Aufnahme geschehen.

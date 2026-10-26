@@ -25,7 +25,7 @@ use super::match_events::MatchEvents;
 use super::motion::{MapName, Motion, MotionState, Sample, gravity, state_at};
 use super::roster::Roster;
 use super::weapons::Weapon;
-use crate::protocol::messages::{Message, ParsedMessage};
+use crate::protocol::messages::{Message, ParsedMessage, unpack_ping};
 use crate::slice::range::GroupIndex;
 use crate::state::{Decoder, FrameLocation, PlayerIdentity};
 
@@ -387,6 +387,18 @@ pub struct ScoreUpdate {
     pub left: bool,
 }
 
+/// A player's latency in milliseconds and packet loss as the server sent
+/// them, which it does only while the recording player's scoreboard shows
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct PingUpdate {
+    pub segment: u32,
+    pub time: f32,
+    pub slot: u8,
+    pub incarnation: u32,
+    pub ping: u32,
+    pub loss: u32,
+}
+
 /// A team's frags as `TeamScore` set them, overriding its players' sum
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct TeamScoreUpdate {
@@ -745,6 +757,8 @@ pub struct Context {
     /// Every score and team change in order, for the scores at any moment
     pub score_updates: Vec<ScoreUpdate>,
     pub team_score_updates: Vec<TeamScoreUpdate>,
+    /// Every latency and loss the server sent, in order
+    pub pings: Vec<PingUpdate>,
     /// The chat in order, and each player's place by entity as `Location`
     /// last gave it
     pub chat: Vec<ChatMessage>,
@@ -885,6 +899,25 @@ impl Context {
             if self.maps.len() > 1 {
                 let map = short_map_name(&String::from_utf8_lossy(&info.map_name));
                 self.match_events.map_changed(d, loc.playback_time(), map);
+            }
+        }
+
+        // Each player's latency and loss, by the entity after their slot
+        if let Message::Pings(pings) = &m.message {
+            for &packed in pings {
+                let (slot, ping, loss) = unpack_ping(packed);
+                let entity = i64::from(slot) + 1;
+                let Some(player) = d.player_for_entity(entity) else {
+                    continue;
+                };
+                self.pings.push(PingUpdate {
+                    segment: d.segment,
+                    time: loc.playback_time(),
+                    slot: player.slot,
+                    incarnation: player.incarnation,
+                    ping,
+                    loss,
+                });
             }
         }
 

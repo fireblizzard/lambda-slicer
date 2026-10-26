@@ -485,7 +485,9 @@ help-teams-column = Komandos, kuriose yra bent vienas žaidėjas, suskaičiuotos
 filter-min-accuracy = Taiklumas bent (%)
 scores-accuracy = Taikl.
 scores-kd = K/D
+scores-ping = Pingas
 help-kd = Fragai vienai mirčiai: fragai, padalyti iš mirčių. Jei žaidėjas nė karto nemirė, rodomi jo fragai.
+help-ping-loss = Kiekvieno žaidėjo pingas milisekundėmis, o po jo loss, t. y. prarasti paketai, kokius serveris atsiuntė paskutinį kartą. Serveris juos siunčia tik tada, kai įrašantysis laiko rezultatų lentelės klavišą, todėl iki tol jų vietoje rodomas brūkšnys.
 
 help-headshots = Nužudymai pataikius į galvą, atpažinti iš aukos mirties animacijos. Sprogimai neskaičiuojami. Rodomi tik įrašančiojo nužudymai, nes kiti žaidėjai dažnai žudo už įrašo matomumo ribų. Dvikovoje rodomi ir priešininko, nes visi jo nužudymai yra įrašančiojo.
 help-headshots-column = Įrašančiojo nužudymai pataikius į galvą, atpažinti iš aukos mirties animacijos. Sprogimai neskaičiuojami. Kitų žaidėjų nužudymai neskaičiuojami, nes dažnai įvyksta už įrašo matomumo ribų.

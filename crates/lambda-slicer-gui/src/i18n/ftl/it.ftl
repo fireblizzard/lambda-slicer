@@ -471,7 +471,9 @@ help-teams-column = Le squadre con almeno un giocatore, contate come i giocatori
 filter-min-accuracy = Precisione minima (%)
 scores-accuracy = Prec.
 scores-kd = K/D
+scores-ping = Ping
 help-kd = Frag per morte, cioè i frag divisi per le morti. Per chi non è mai morto vengono mostrati i suoi frag.
+help-ping-loss = Il ping di ogni giocatore in millisecondi, poi la loss, cioè i pacchetti persi, come li ha inviati il server l’ultima volta. Il server li invia solo mentre chi registra tiene premuto il tasto della classifica, quindi fino ad allora al loro posto resta un trattino.
 
 help-headshots = Uccisioni con un colpo alla testa, riconosciute dall’animazione di morte della vittima. Le esplosioni non contano. Si mostrano solo quelle di chi registra, perché gli altri giocatori uccidono spesso fuori dalla sua vista. In un duello anche quelle dell’avversario, dato che colpiscono tutte chi registra.
 help-headshots-column = Uccisioni di chi registra con un colpo alla testa, riconosciute dall’animazione di morte della vittima. Le esplosioni non contano. Quelle degli altri giocatori non contano, perché avvengono spesso fuori dalla vista della registrazione.

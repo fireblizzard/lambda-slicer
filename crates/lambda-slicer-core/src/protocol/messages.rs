@@ -369,6 +369,16 @@ pub fn consistency_positions(list: &[(bool, u16)]) -> Vec<usize> {
         .collect()
 }
 
+/// The slot, latency in milliseconds and packet loss in hundredths of one
+/// of `svc_pings`' entries, 5 bits of slot, 12 of latency and 7 of loss
+/// from the lowest (`SV_EmitPings`)
+pub fn unpack_ping(packed: u32) -> (u8, u32, u32) {
+    let slot = (packed & 0x1f) as u8;
+    let ping = (packed >> 5) & 0xfff;
+    let loss = (packed >> 17) & 0x7f;
+    (slot, ping, loss)
+}
+
 pub mod resource_type {
     pub const SOUND: u8 = 0;
     pub const SKIN: u8 = 1;

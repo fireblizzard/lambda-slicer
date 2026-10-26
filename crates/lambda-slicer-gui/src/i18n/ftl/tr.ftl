@@ -436,7 +436,9 @@ help-teams-column = İçinde en az bir oyuncu olan takımlar, oyuncular gibi say
 filter-min-accuracy = En az isabet (%)
 scores-accuracy = İsabet
 scores-kd = K/D
+scores-ping = Ping
 help-kd = Ölüm başına frag, yani fraglar bölü ölümler. Hiç ölmeyen bir oyuncunun fragları gösterilir.
+help-ping-loss = Her oyuncunun milisaniye cinsinden pingi, ardından paket kaybı, sunucunun en son gönderdiği haliyle. Sunucu bunları yalnızca kaydeden kişi skor tablosu tuşunu basılı tutarken gönderir, bu yüzden o zamana kadar yerlerinde bir çizgi görünür.
 
 help-headshots = Kafaya isabetle yapılan öldürmeler; kurbanın ölüm animasyonundan anlaşılır. Patlamalar sayılmaz. Yalnızca kaydedenin öldürmeleri gösterilir, çünkü diğer oyuncular çoğu zaman kaydın göremediği yerlerde öldürür. Düelloda rakibinkiler de gösterilir, çünkü rakibin tüm öldürmeleri kaydedene karşıdır.
 help-headshots-column = Kaydedenin kafaya isabetle yaptığı öldürmeler; kurbanın ölüm animasyonundan anlaşılır. Patlamalar sayılmaz. Diğer oyuncuların öldürmeleri sayılmaz, çünkü çoğu zaman kaydın göremediği yerlerde olur.

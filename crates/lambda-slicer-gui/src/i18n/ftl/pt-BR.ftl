@@ -475,7 +475,9 @@ help-teams-column = Equipes com pelo menos um jogador, contadas como os jogadore
 filter-min-accuracy = Precisão mínima (%)
 scores-accuracy = Prec.
 scores-kd = K/D
+scores-ping = Ping
 help-kd = Abates por morte: os abates divididos pelas mortes. Se o jogador nunca morreu, aparecem os abates dele.
+help-ping-loss = O ping de cada jogador em milissegundos e, depois, a perda de pacotes, como o servidor enviou por último. Ele só envia esses dados enquanto quem gravou segura a tecla do placar, então até lá aparece um traço.
 
 help-headshots = Abates por headshot, lidos da animação de morte da vítima. Explosões não contam. Só aparecem os headshots de quem gravou, porque os outros jogadores costumam matar fora da visão da gravação. Num duelo aparecem também os do adversário, já que todos os abates dele são em quem gravou.
 help-headshots-column = Headshots de quem gravou, lidos da animação de morte da vítima. Explosões não contam. Os dos outros jogadores não contam, porque costumam acontecer fora da visão da gravação.

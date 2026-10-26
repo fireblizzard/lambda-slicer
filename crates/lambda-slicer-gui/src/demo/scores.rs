@@ -8,6 +8,10 @@
 //! the recording player's are shown, and in a duel the opponent's headshots
 //! too, since every kill there is of the recording player, whose death the
 //! recording always shows. Anything not shown is a dash, never a zero
+//!
+//! A player's latency and packet loss are the last the server sent before
+//! the moment shown, which it does only while the recording player holds
+//! the scoreboard key, so they are a dash until then
 
 use std::collections::{BTreeMap, HashMap};
 
@@ -27,13 +31,13 @@ use crate::timeline::{EventKind, LaneKey, Model};
 use crate::widgets::{self, Variant};
 
 /// How many number columns a table has, accuracy, headshots, kills per
-/// death, deaths and frags from the trailing end
-const COLUMNS: usize = 5;
+/// death, latency and loss, deaths and frags from the trailing end
+const COLUMNS: usize = 6;
 
 /// A table row's height, the least width of each number column from the
 /// trailing end, accuracy first, and the gap a column keeps before the next
 const ROW_HEIGHT: f32 = 24.;
-const NUMBER_COLUMNS: [f32; COLUMNS] = [52., 40., 52., 48., 48.];
+const NUMBER_COLUMNS: [f32; COLUMNS] = [52., 40., 52., 56., 48., 48.];
 const COLUMN_GAP: f32 = theme::GAP_S;
 
 /// The two sides' totals over their comparison strip, and the strip
@@ -59,6 +63,8 @@ struct PlayerRow {
     deaths: i32,
     headshots: Option<u32>,
     accuracy: Option<f64>,
+    /// Latency in milliseconds and packet loss
+    ping: Option<(u32, u32)>,
 }
 
 /// A team's or a duel player's table, or the one table of a game with
@@ -348,6 +354,15 @@ fn score_tables(
         }
     }
 
+    // The last latency and loss the server sent before the moment shown
+    let mut pings: HashMap<(u8, u32), (u32, u32)> = HashMap::new();
+    for ping in &model.pings {
+        if ping.segment != segment || ping.time > at {
+            continue;
+        }
+        pings.insert((ping.slot, ping.incarnation), (ping.ping, ping.loss));
+    }
+
     let row = |player: &PlayerScore| {
         let key = (player.slot, player.incarnation);
         let own = Some(key) == recorder;
@@ -364,6 +379,7 @@ fn score_tables(
             deaths: player.deaths,
             headshots,
             accuracy,
+            ping: pings.get(&key).copied(),
         }
     };
     let playing = |p: &&PlayerScore| !watching.contains_key(&(p.slot, p.incarnation));
@@ -480,6 +496,10 @@ fn side_table(
             Some(catalog.text("help-headshots")),
         ),
         (catalog.text("scores-kd"), Some(catalog.text("help-kd"))),
+        (
+            catalog.text("scores-ping"),
+            Some(catalog.text("help-ping-loss")),
+        ),
         (catalog.text("scores-deaths"), None),
         (catalog.text("scores-frags"), None),
     ];
@@ -530,11 +550,15 @@ fn side_table(
         let headshots = player
             .headshots
             .map_or_else(|| UNKNOWN.to_string(), |h| h.to_string());
+        let ping = player
+            .ping
+            .map_or_else(|| UNKNOWN.to_string(), |(ping, loss)| format!("{ping}/{loss}"));
         let kd = kills_per_death(player.frags, player.deaths);
         let numbers = [
             accuracy,
             headshots,
             catalog.number(kd, KD_DECIMALS),
+            ping,
             player.deaths.to_string(),
             player.frags.to_string(),
         ];
@@ -728,7 +752,7 @@ fn table_row(
 
 #[cfg(test)]
 mod tests {
-    use lambda_slicer_core::analysis::context::ScoreUpdate;
+    use lambda_slicer_core::analysis::context::{PingUpdate, ScoreUpdate};
     use lambda_slicer_core::state::PlayerIdentity;
 
     use super::*;
@@ -801,6 +825,44 @@ mod tests {
         assert_eq!(names(15.), ["watcher", "back", "gone"]);
         assert_eq!(names(40.), ["watcher"]);
         assert!(names(1.).is_empty());
+    }
+
+    #[test]
+    fn a_players_ping_is_the_last_the_server_sent_before_the_moment_shown() {
+        let score = ScoreUpdate {
+            segment: 1,
+            time: 5.,
+            player: PlayerIdentity {
+                segment: 1,
+                slot: 2,
+                user_id: 2,
+                incarnation: 0,
+                name: "pinged".into(),
+            },
+            team: String::new(),
+            frags: 1,
+            deaths: 0,
+            left: false,
+        };
+        let ping = |segment, time, ping| PingUpdate {
+            segment,
+            time,
+            slot: 2,
+            incarnation: 0,
+            ping,
+            loss: 1,
+        };
+        let model = Model {
+            score_updates: vec![score],
+            pings: vec![ping(0, 1., 999), ping(1, 10., 40), ping(1, 20., 60)],
+            ..Model::default()
+        };
+
+        // None yet in this part, the one sent at 10, then the one at 20
+        let shown = |at| score_tables(&model, 1, at, &BTreeMap::new())[0].players[0].ping;
+        assert_eq!(shown(6.), None);
+        assert_eq!(shown(15.), Some((40, 1)));
+        assert_eq!(shown(25.), Some((60, 1)));
     }
 
     #[test]

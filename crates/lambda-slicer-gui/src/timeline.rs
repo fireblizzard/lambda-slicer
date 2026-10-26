@@ -11,7 +11,7 @@ use std::collections::BTreeMap;
 use lambda_slicer_core::analysis::AnalysisReport;
 use lambda_slicer_core::analysis::accuracy::ShotOutcome;
 use lambda_slicer_core::analysis::context::{
-    Coverage, Kill, KillCause, ScoreUpdate, SessionMap, TeamScoreUpdate,
+    Coverage, Kill, KillCause, PingUpdate, ScoreUpdate, SessionMap, TeamScoreUpdate,
 };
 use lambda_slicer_core::analysis::match_events::{MatchChange, MatchEvent};
 use lambda_slicer_core::analysis::motion::{MotionEvidence, MotionState};
@@ -280,6 +280,8 @@ pub struct Model {
     /// Score and team changes, for the scores at any moment
     pub score_updates: Vec<ScoreUpdate>,
     pub team_score_updates: Vec<TeamScoreUpdate>,
+    /// Every latency and loss the server sent, for the scores at any moment
+    pub pings: Vec<PingUpdate>,
     /// Every counted shot's outcome, for accuracy at any moment
     pub shots: Vec<ShotOutcome>,
     /// The recording player's slot and incarnation
@@ -650,6 +652,7 @@ impl Model {
                 .collect(),
             score_updates: r.score_updates.clone(),
             team_score_updates: r.team_score_updates.clone(),
+            pings: r.pings.clone(),
             shots: r.shot_outcomes.clone(),
             recorder: r.recorder.as_ref().map(|p| (p.slot, p.incarnation)),
             groups: r.groups.clone(),
@@ -1012,6 +1015,7 @@ mod tests {
             scoreboard: Default::default(),
             score_updates: Vec::new(),
             team_score_updates: Vec::new(),
+            pings: Vec::new(),
             shot_outcomes: Vec::new(),
             accuracy: Vec::new(),
             recorder_accuracy: None,
