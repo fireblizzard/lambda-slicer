@@ -150,6 +150,28 @@ impl GroupIndex {
         Some(self.groups[first].segment)
     }
 
+    /// Whether going to `at` by time alone, which finds the earliest group
+    /// with the time, reaches session `part`. A session's first moments
+    /// share the group its setup arrived in, which still counts as the one
+    /// before, so a seek there reaches it as long as the clock ran on
+    pub fn seeks_into(&self, at: DemoTime, part: u32) -> bool {
+        let Some(found) = self.first_at(at, None) else {
+            return false;
+        };
+        let Some(began) = self
+            .groups
+            .iter()
+            .position(|g| g.segment == part && !g.demo_start)
+        else {
+            return false;
+        };
+        if found >= began {
+            return self.groups[found].segment == part;
+        }
+        let groups = &self.groups[found..=began];
+        !groups.windows(2).any(|w| starts_over(w[0].time, w[1].time))
+    }
+
     /// The session a start at `start` snaps to, for a clip of something in
     /// session `part`. A start before the session began falls in an earlier
     /// one, as long as the clock ran on from it, and in none when it
@@ -311,6 +333,26 @@ mod tests {
         assert_eq!(i.part_for(at("0.3"), 2), Some(2));
         assert_eq!(i.part_for(at("0.1"), 2), None);
         assert_eq!(i.part_for(at("0.2"), 1), Some(1));
+    }
+
+    #[test]
+    fn a_seek_reaches_a_session_unless_the_clock_started_over() {
+        // Session 2 from group 6, so its setup arrived in group 5 at 0.4
+        let mut i = index();
+        for g in &mut i.groups[6..] {
+            g.segment = 2;
+        }
+        assert!(i.seeks_into(at("0.4"), 2));
+        assert!(i.seeks_into(at("0.7"), 2));
+        assert!(i.seeks_into(at("0.2"), 1));
+        assert!(!i.seeks_into(at("0.7"), 1));
+
+        // Its clock going back, 0.4 also falls in session 1 before it
+        for g in &mut i.groups[6..] {
+            g.time -= 0.35;
+        }
+        assert!(!i.seeks_into(at("0.4"), 2));
+        assert!(i.seeks_into(at("0.4"), 1));
     }
 
     #[test]

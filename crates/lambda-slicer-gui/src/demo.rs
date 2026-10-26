@@ -1134,10 +1134,7 @@ impl DemoView {
         };
 
         // Past the last group there is no other session to mistake it for
-        match m.groups.segment_at(time) {
-            Some(segment) => segment == e.segment,
-            None => true,
-        }
+        m.groups.segment_at(time).is_none() || m.groups.seeks_into(time, e.segment)
     }
 
     /// Choose an event and bring it into view, moving the viewer's playhead
@@ -1265,7 +1262,7 @@ impl DemoView {
         let Some(m) = &self.model else {
             return false;
         };
-        DemoTime::from_f32(time).is_some_and(|t| m.groups.segment_at(t) == Some(segment))
+        DemoTime::from_f32(time).is_some_and(|t| m.groups.seeks_into(t, segment))
     }
 
     /// Whether the viewer can play a clip, which it cannot when an earlier
@@ -2709,6 +2706,24 @@ mod tests {
         // Selecting one event chooses it alone again
         view.select(2, true);
         assert_eq!(view.clip_it_range(), Some((26., 31., 0)));
+    }
+
+    #[test]
+    fn an_event_at_a_map_change_is_in_reach() {
+        // Session 1's setup arrives in the group at 10 s, which counts as
+        // session 0's, and the map change is told at that time
+        let group = |time: f32, segment: u32| GroupStart {
+            time,
+            segment,
+            demo_start: false,
+        };
+        let groups = GroupIndex {
+            groups: vec![group(0., 0), group(10., 0), group(20., 1), group(30., 1)],
+            ..Default::default()
+        };
+        let view = view_of(vec![kill(1, 10., None), kill(1, 25., None)], groups);
+        assert!(view.reachable(0));
+        assert!(view.reachable(1));
     }
 
     #[test]
