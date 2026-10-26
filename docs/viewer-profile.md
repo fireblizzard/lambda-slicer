@@ -332,9 +332,9 @@ items among them. `--viewer-see-through` turns it on for one run.
 
 | Part | How |
 |---|---|
-| Silhouettes | each chosen model, a player's weapon with it, drawn again after everything but the viewmodel in one colour at 0.6, only where something nearer was drawn (depth compared greater, nothing written) |
+| Silhouettes | each chosen model, a player's weapon with it, drawn again in one colour at 0.6 after the world, its brushes and decals and before any model, only where they are nearer (depth compared greater, nothing written). The models then cover them where seen, so only the world and its brushes hide a player into a silhouette, not another player |
 | Colours | a player's top colour as a hue, kept a little pale, which team games set by team. White for a player without one, and a pale yellow for other models |
-| A model in view | not tinted, as the faces turned away from the eye are left out. Only where a model hides part of itself, as an arm across the body, does the part behind show (9 of 8,000 pixels over a player in view in `ls_9e_stalkx`) |
+| A model in view | not tinted, as it is drawn over its own silhouette, its arms and weapon across its body too. The faces turned away from the eye are left out, so a model partly behind a wall is tinted only where the wall hides it |
 
 It can only show what the demo holds. The server sends the players in the recorder's potentially
 visible set, which often holds players still behind a corner, and a server that hides the players

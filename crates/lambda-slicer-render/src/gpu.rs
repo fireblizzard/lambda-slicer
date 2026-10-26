@@ -2142,6 +2142,20 @@ impl Scene {
                 }
             }
 
+            // Silhouettes where the world and its brushes hide a model, before
+            // any model is drawn. The models in view then cover their own, so
+            // one in sight shows as it is, not tinted where its arms or its
+            // weapon cross in front of it
+            if let Some(buffer) = &self.instances
+                && silhouette_starts.iter().any(Option::is_some)
+            {
+                pass.set_pipeline(&self.pipelines.silhouette);
+                pass.set_vertex_buffer(0, buffer.slice(..));
+                for (instance, start) in draw.silhouettes.iter().zip(silhouette_starts) {
+                    self.draw_instance(&mut pass, instance, *start, Part::All);
+                }
+            }
+
             if let Some(buffer) = &self.instances {
                 pass.set_pipeline(&self.pipelines.model);
                 pass.set_vertex_buffer(0, buffer.slice(..));
@@ -2253,41 +2267,6 @@ impl Scene {
             {
                 pass.set_vertex_buffer(0, buffer.slice(..));
                 self.draw_shells(&mut pass, &draw.shells, shell_ranges);
-            }
-        }
-
-        // Silhouettes over everything but the viewmodel, where hidden
-        if let Some(buffer) = &self.instances
-            && silhouette_starts.iter().any(Option::is_some)
-        {
-            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("silhouettes"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &targets.color_view,
-                    depth_slice: None,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Load,
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                    view: &targets.depth_view,
-                    depth_ops: Some(wgpu::Operations {
-                        load: wgpu::LoadOp::Load,
-                        store: wgpu::StoreOp::Store,
-                    }),
-                    stencil_ops: None,
-                }),
-                timestamp_writes: None,
-                occlusion_query_set: None,
-                multiview_mask: None,
-            });
-            pass.set_bind_group(0, &self.uniform_group, &[]);
-            pass.set_pipeline(&self.pipelines.silhouette);
-            pass.set_vertex_buffer(0, buffer.slice(..));
-            for (instance, start) in draw.silhouettes.iter().zip(silhouette_starts) {
-                self.draw_instance(&mut pass, instance, *start, Part::All);
             }
         }
 
