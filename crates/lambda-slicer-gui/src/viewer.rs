@@ -3814,49 +3814,20 @@ const MUZZLE_LIGHT: f64 = 0.1;
 const MUZZLE_RADIUS: f32 = 200.;
 const MUZZLE_AHEAD: f32 = 18.;
 
-/// Every dynamic light in `frame`, those messages made, those of the
-/// entities' effects (`CL_LinkPacketEntities`) and the muzzle flashes'. A
-/// muzzle flash lights the gun, 18 units ahead and 16 up, or ahead of the
-/// eye for the weapon in view, and a bright or dim light and an entity's
-/// own light shine from 16 up. The game varies their radius a little at
-/// random, which is left out. The recorder's own entity stands where their
-/// own frames say they are
+/// Every dynamic light in `frame`, those messages made and those of the
+/// entities' effects (`CL_LinkPacketEntities`). A muzzle flash the server
+/// flags lights 18 units ahead of its entity and 16 up, and a bright or dim
+/// light and an entity's own light shine from 16 up. The muzzle flashes a
+/// weapon's animation shows make no light, as the game only draws their
+/// sprite (`R_MuzzleFlash`). The game varies the radius a little at random,
+/// which is left out. The recorder's own entity stands where their own
+/// frames say they are
 fn dynamic_lights(frame: &PresentedFrame) -> Vec<DynamicLight> {
     let mut out = frame.lights.clone();
-    let flash = |origin| DynamicLight {
-        origin,
-        radius: MUZZLE_RADIUS,
-        color: [255; 3],
-        models_only: false,
-    };
     let ahead = |origin: [f32; 3], angles: [f32; 3]| {
         let (forward, _, _) = lambda_slicer_render::camera::angle_vectors(angles);
         [0, 1, 2].map(|k| origin[k] + forward[k] * MUZZLE_AHEAD)
     };
-
-    // The flashes events showed, a light each while it lasts, one for each
-    // gun however many flashes it shows
-    let mut flashed: Vec<Holder> = Vec::new();
-    for f in &frame.flashes {
-        let since = frame.at.0 - f.time.0;
-        if !(0. ..MUZZLE_LIGHT).contains(&since) || flashed.contains(&f.holder) {
-            continue;
-        }
-        flashed.push(f.holder);
-        match f.holder {
-            Holder::Viewmodel => {
-                let camera = &frame.recorder;
-                out.push(flash(ahead(camera.origin, camera.angles)));
-            }
-            Holder::Entity(id) => {
-                let Some(e) = frame.entities.iter().find(|e| e.id == id) else {
-                    continue;
-                };
-                let [x, y, z] = e.origin;
-                out.push(flash(ahead([x, y, z + 16.], [0., e.angles[1], 0.])));
-            }
-        }
-    }
 
     for e in frame.entities.iter() {
         let origin = if e.id.number == frame.local_entity {
@@ -3878,8 +3849,7 @@ fn dynamic_lights(frame: &PresentedFrame) -> Vec<DynamicLight> {
         // The flag stays on until the next update, which a flash outlasts
         // only for a moment
         let since = frame.client_time - f64::from(e.updated.0);
-        let gun_lit = flashed.contains(&Holder::Entity(e.id));
-        if e.effects & EF_MUZZLEFLASH != 0 && since < MUZZLE_LIGHT && !gun_lit {
+        if e.effects & EF_MUZZLEFLASH != 0 && since < MUZZLE_LIGHT {
             add(ahead(raised, [0., e.angles[1], 0.]), MUZZLE_RADIUS);
         }
         if e.effects & EF_BRIGHTLIGHT != 0 {
