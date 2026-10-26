@@ -397,9 +397,8 @@ impl<'a> ChromeAxes<'a> {
     fn uv(&mut self, bone: usize, normal: [f32; 3], scale: [f32; 2]) -> Option<[f32; 2]> {
         let m = self.bones.get(bone)?;
         let eye = self.eye;
-        let (right, up) = *self.made[bone].get_or_insert_with(|| {
-            chrome_axes([m[0][3], m[1][3], m[2][3]].map(|v| v as f32), eye)
-        });
+        let origin = [m[0][3], m[1][3], m[2][3]].map(|v| v as f32);
+        let (right, up) = *self.made[bone].get_or_insert_with(|| chrome_axes(origin, eye));
         let dot = |a: [f32; 3]| a[0] * normal[0] + a[1] * normal[1] + a[2] * normal[2];
         Some([(dot(right) + 1.) * scale[0], (dot(up) + 1.) * scale[1]])
     }
