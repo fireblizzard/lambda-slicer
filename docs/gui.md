@@ -293,15 +293,18 @@ dismissed.
   cut. An export starts at the first frame group at or after the start and ends before the first
   at or after the end, so 01:36 to 04:48 of `stalkx_5o5_asasasdgwgw.dem` cuts 00:01:36.009 to
   00:04:48.000. Ranges an export would refuse say why in orange: an end past the recording, a
-  range with nothing in it, a start on the very first frame or while a map loads, or a range with
-  a map change inside it. Refusals that need the whole demo read come from the export itself.
+  range with nothing in it, a start on the very first frame or while a map loads, or a range where
+  the demo's clock starts over. Refusals that need the whole demo read come from the export itself.
   When an export refuses a clip for the moment it starts, such as an effect the clip can't carry
   over still under way there, or for packets the game dropped a moment into it, it tries starts up
   to 5 seconds earlier and later, nearest first and earlier before later, a later one keeping at
   least half the clip. The card then offers the nearest that works, such as 0.3 s earlier, with
   Start there and export, which moves the clip's start there and exports it again.
 - **Parts.** A level or map change, or a reconnect, starts a new part of the demo. A clip can start
-  in any part once its map has loaded, and keeps which part it's in as well as its times. Where the
+  in any part once its map has loaded, and keeps which part it's in as well as its times. A clip
+  goes on across a map change or reconnect, and the game loads the next map partway through it as
+  it did playing the demo. Clip it on an event just after a map change starts before the change
+  when the padding reaches back that far. Where the
   demo's clock starts over, so a part's times repeat an earlier one's, the export still cuts the
   clip's own part. The viewer goes by time alone, so it can't play such a clip, and its Play and
   Loop buttons are off. Clips kept before parts were stored cut the earliest part with their times.

@@ -2,7 +2,8 @@
 //!
 //! Usage is `session_probe <demo> [START-END...]`. Prints the first session,
 //! the group from which each later session can be restarted, and the groups
-//! where sessions change, then snaps each range as an export would
+//! where sessions change with their times, then snaps each range as an
+//! export would
 
 use std::path::PathBuf;
 
@@ -19,9 +20,14 @@ fn main() {
     };
     let (r, _) = decode_demo(&path, &options, |_, _, _| {});
     let g = &r.groups;
+    let changes: Vec<(usize, f32)> = g
+        .session_changes
+        .iter()
+        .map(|&c| (c, g.groups[c].time))
+        .collect();
     println!(
-        "loading {:?} ready {:?} changes {:?}",
-        g.loading_segment, g.ready, g.session_changes
+        "loading {:?} ready {:?} changes (group, time) {changes:?} end {:?}",
+        g.loading_segment, g.ready, g.end
     );
     for pair in std::env::args().skip(2) {
         let (a, b) = pair.split_once('-').unwrap();

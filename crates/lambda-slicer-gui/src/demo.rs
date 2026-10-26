@@ -1193,9 +1193,9 @@ impl DemoView {
 
     /// The range clipping the selected event would take, or with several
     /// events chosen, the one from the first of them to the last, whatever
-    /// lies between, padded the same, and the session it is in. A start
-    /// there must fall in the first event's session, which the last must
-    /// share
+    /// lies between, padded the same, and the session it starts in. It
+    /// goes on across a map change, but not back past one where the
+    /// demo's clock started over
     fn proposal(&self) -> Option<(f32, f32, u32)> {
         let m = self.model.as_ref()?;
         let (first, last) = match self.chosen_span() {
@@ -1203,13 +1203,13 @@ impl DemoView {
             None => (self.selected?, self.selected?),
         };
         let (first, last) = (m.events.get(first)?, m.events.get(last)?);
-        if first.segment != last.segment {
+        let (from, to) = self.clamped(first.time - self.padding.0, last.time + self.padding.1);
+        if to <= from {
             return None;
         }
 
-        let (from, to) = self.clamped(first.time - self.padding.0, last.time + self.padding.1);
-        self.starts_in(from, first.segment)
-            .then_some((from, to, first.segment))
+        let part = self.part_for(from, first.segment)?;
+        Some((from, to, part))
     }
 
     /// The first and last of several chosen events that show, none with
@@ -1242,22 +1242,21 @@ impl DemoView {
     }
 
     /// The range clipping the chosen highlight would take, padded as an
-    /// event's is, and its session, when it starts in the highlight's own
-    /// session
+    /// event's is, and the session it starts in
     fn highlight_range(&self) -> Option<(f32, f32, u32)> {
         let m = self.model.as_ref()?;
         let w = m.windows.get(self.window?)?;
         let (from, to) = self.clamped(w.start - self.padding.0, w.end + self.padding.1);
-        self.starts_in(from, w.segment)
-            .then_some((from, to, w.segment))
+        let part = self.part_for(from, w.segment)?;
+        Some((from, to, part))
     }
 
-    /// Whether a clip starting at `time` in `segment` starts there
-    fn starts_in(&self, time: f32, segment: u32) -> bool {
-        let Some(m) = &self.model else {
-            return false;
-        };
-        DemoTime::from_f32(time).is_some_and(|t| m.groups.starts_in(t, segment))
+    /// The session a clip of something in `segment` starting at `time`
+    /// starts in, an earlier one when the start reaches back past a map
+    /// change, and none past one where the clock started over
+    fn part_for(&self, time: f32, segment: u32) -> Option<u32> {
+        let m = self.model.as_ref()?;
+        m.groups.part_for(DemoTime::from_f32(time)?, segment)
     }
 
     /// Whether the viewer goes to `time` in `segment`. It seeks by time

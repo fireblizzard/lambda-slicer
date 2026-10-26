@@ -84,7 +84,7 @@ pub const CODES: &[&str] = &[
     "decode-failed",
     "export-active-effect",
     "export-client-dropped-packets",
-    "export-cross-segment",
+    "export-clock-starts-over",
     "export-destination-exists",
     "export-empty-range",
     "export-io",

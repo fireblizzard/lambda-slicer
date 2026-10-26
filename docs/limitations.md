@@ -25,7 +25,8 @@ The [TODO list](../TODO.md) has what's planned.
 Some ranges can't be clipped:
 
 - A start on the very first moment of a demo, or while a map is still loading.
-- A range with a map change or a reconnect inside it.
+- A range where the demo's clock starts over after a map change or reconnect. No demo seen so far
+  does this.
 - A start while something the clip can't carry over is still going on, such as an effect from
   a weapon or mod the app doesn't know.
 - A range where the game threw away data that arrived late, or where the demo relies on data that

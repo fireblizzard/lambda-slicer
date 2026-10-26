@@ -27,7 +27,7 @@
 - [x] Check the stop button inside the export's own loop, so it stops the export within a moment
 - [x] Store which part a clip belongs to as well as its times, for demos with multiple server clock restarts (e.g. loads)
 - [ ] Fix gauss balls and glows
-- [ ] Support clips across changelevels or loads
+- [x] Support clips across changelevels or loads
 - [x] Add particles
 - [x] Add glow shell
 - [ ] Support `remap` textures
@@ -53,6 +53,7 @@
 - [ ] Add an option to change the HUD color (HP/AP, ammo, item pickups, weapon selection, timer, votes, server settings, custom hudmessages..., equivalent to `hud_color` game cvar) and another to change the text color (chat and kill feed, equivalent to `con_color` game cvar, i think it only applies to the kill feed when it's not teamplay, i'm not sure)
 - [x] When hovering the seek bar, show a small preview of that moment
 - [x] When the video player has paused due to reaching the end of the demo, left click on it should restart it (back to 00:00:00.000)
+- [ ] Add a setting for the in-player scoreboard to show it only if the recorder was playing and not spectating. This should be the new default
 
 # Ideas for later
 - [ ] Add a crosshair editor in settings that it's then used for the demo viewer

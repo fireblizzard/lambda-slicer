@@ -204,7 +204,7 @@ coverage-visible-only = Gra dostaje działania innych graczy tylko wtedy, gdy se
 decode-failed = Odczyt nagrania zatrzymał się w { $time } (klatka { $frame }): { $detail }
 export-active-effect = Na początku wciąż trwa { $effect } i klip nie potrafi go jeszcze przenieść.
 export-client-dropped-packets = W { $time } gra wyrzuciła dane, które przyszły za późno, a klip nie potrafi jeszcze tego skopiować.
-export-cross-segment = W { $time }, wewnątrz klipu, zmieniła się mapa albo gracz połączył się ponownie, a klip nie może przez to przechodzić.
+export-clock-starts-over = W { $time }, po zmianie mapy albo ponownym połączeniu wewnątrz klipu, zegar dema zaczął się od nowa, a klip nie może przez to przechodzić.
 export-destination-exists = { $path } już istnieje. Wybierz inną nazwę.
 export-empty-range = Klip nie zawiera niczego do eksportu.
 export-io = Nie można zapisać { $path }: { $detail }
@@ -504,7 +504,7 @@ help-bots-filter = „Niewiele” zostawia tylko dema i mecze, w których było 
 
 clips-new = Nowy klip
 clips-select-event = Najpierw wybierz zdarzenie na liście lub na osi czasu.
-clips-other-session = Klip nie może zacząć się tutaj, bo przechodziłby przez zmianę mapy albo ponowne połączenie.
+clips-other-session = Klip nie może zacząć się tutaj, bo zegar dema zaczął się od nowa przy zmianie mapy albo ponownym połączeniu tuż przed tym miejscem.
 clips-add-window = Klip tego gorącego momentu
 clip-default-name = Klip { $number }
 clip-name = Nazwa

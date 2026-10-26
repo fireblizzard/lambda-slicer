@@ -187,7 +187,7 @@ coverage-visible-only = Peli saa muiden pelaajien toiminnot vain silloin, kun pa
 decode-failed = Tallenteen lukeminen pysähtyi kohdassa { $time } (ruutu { $frame }): { $detail }
 export-active-effect = { $effect } on vielä käynnissä alussa, eikä klippi voi vielä ottaa sitä mukaan.
 export-client-dropped-packets = Kohdassa { $time } peli heitti pois liian myöhään saapuneita tietoja, mitä klippi ei vielä osaa kopioida.
-export-cross-segment = Kartta vaihtui tai pelaaja yhdisti uudelleen kohdassa { $time } klipin sisällä, eikä klippi voi jatkua sen yli.
+export-clock-starts-over = Demon kello alkoi alusta kohdassa { $time } kartanvaihdon tai uudelleenyhdistämisen jälkeen klipin sisällä, eikä klippi voi jatkua sen yli.
 export-destination-exists = { $path } on jo olemassa. Valitse toinen nimi.
 export-empty-range = Klipissä ei ole mitään vietävää.
 export-io = Kohdetta { $path } ei voi kirjoittaa: { $detail }
@@ -473,7 +473,7 @@ help-bots-filter = Vähän jättää jäljelle vain demot ja ottelut, joissa bot
 
 clips-new = Uusi klippi
 clips-select-event = Valitse ensin tapahtuma luettelosta tai aikajanalta.
-clips-other-session = Klippi ei voi alkaa tästä, koska se jatkuisi kartanvaihdon tai uudelleenyhdistämisen yli.
+clips-other-session = Klippi ei voi alkaa tästä, koska demon kello alkoi alusta kartanvaihdossa tai uudelleenyhdistämisessä juuri ennen tätä.
 clips-add-window = Klippi tästä kiivaasta hetkestä
 clip-default-name = Klippi { $number }
 clip-name = Nimi

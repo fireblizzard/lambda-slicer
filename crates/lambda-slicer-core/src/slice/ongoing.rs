@@ -11,7 +11,8 @@
 //!   (`cl_dll/ev_hldm.cpp`, `EV_SpinGauss`, `EV_EgonFire`)
 //! - Server sound loops (doors, platforms, chargers, a rocket's flight) play
 //!   until stopped. A sound started before the start whose stop arrives
-//!   after it was still playing, so it is started again
+//!   after it was still playing, so it is started again. A map change or
+//!   reconnect stops every sound, so one not stopped before it is not
 //! - Beams, lights and HUD text last for a set time. Those still alive are
 //!   sent again with their remaining life
 //! - Gibs and thrown models move under physics and cannot be restarted
@@ -26,7 +27,7 @@
 
 use crate::container::{Frame, FrameBody};
 use crate::protocol::delta::StructState;
-use crate::protocol::messages::{Message, ParsedMessage};
+use crate::protocol::messages::{Message, ParsedMessage, Resource};
 use crate::state::Decoder;
 
 /// Spin events come every frame while charging, so a charge whose latest
@@ -231,8 +232,19 @@ impl PendingSounds {
         }
     }
 
-    /// The confirmed loops, as messages and report lines
-    pub fn confirmed(&self, d: &Decoder) -> (Vec<u8>, Vec<String>) {
+    /// A map change or reconnect stops every sound, so those not stopped
+    /// before it are not confirmed, and the next session's are not followed
+    pub fn end_session(&mut self) {
+        for (_, state) in &mut self.candidates {
+            if state.is_none() {
+                *state = Some(false);
+            }
+        }
+    }
+
+    /// The confirmed loops, as messages and report lines, their sounds
+    /// named from the start's `resources`
+    pub fn confirmed(&self, resources: &[Resource]) -> (Vec<u8>, Vec<String>) {
         let mut bytes = Vec::new();
         let mut notes = Vec::new();
         for (c, state) in &self.candidates {
@@ -243,7 +255,7 @@ impl PendingSounds {
             bytes.extend_from_slice(&c.bytes);
             notes.push(format!(
                 "sound {} on entity {}",
-                sound_name(d, c.sample),
+                sound_name(resources, c.sample),
                 c.entity
             ));
         }
@@ -252,8 +264,8 @@ impl PendingSounds {
     }
 }
 
-fn sound_name(d: &Decoder, index: u16) -> String {
-    d.resources()
+fn sound_name(resources: &[Resource], index: u16) -> String {
+    resources
         .iter()
         .find(|r| r.kind == 0 && r.index == index)
         .map_or_else(

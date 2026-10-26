@@ -172,7 +172,7 @@ coverage-visible-only = Oyun, diğer oyuncuların eylemlerini yalnızca sunucu k
 decode-failed = Kaydın okunması { $time } anında durdu (kare { $frame }): { $detail }
 export-active-effect = Başlangıçta { $effect } hâlâ sürüyor ve bir klip bunu henüz aktaramıyor.
 export-client-dropped-packets = Oyun { $time } anında çok geç gelen verileri attı; bir klip bunu henüz kopyalayamıyor.
-export-cross-segment = { $time } anında, klibin içinde harita değişti ya da oyuncu yeniden bağlandı; bir klip bunun üzerinden geçemez.
+export-clock-starts-over = { $time } anında, klibin içindeki bir harita değişikliğinden ya da yeniden bağlanmadan sonra demonun saati baştan başladı; bir klip bunun üzerinden geçemez.
 export-destination-exists = { $path } zaten var. Başka bir ad seçin.
 export-empty-range = Klipte dışa aktarılacak bir şey yok.
 export-io = { $path } yazılamıyor: { $detail }
@@ -455,7 +455,7 @@ help-bots-filter = “Az”, yalnızca botların gerçek oyunculardan az olduğu
 
 clips-new = Yeni klip
 clips-select-event = Önce listeden ya da zaman çizelgesinden bir olay seçin.
-clips-other-session = Burada klip başlayamaz, çünkü bir harita değişikliğinin ya da yeniden bağlanmanın üzerinden geçerdi.
+clips-other-session = Burada klip başlayamaz, çünkü hemen önceki bir harita değişikliğinde ya da yeniden bağlanmada demonun saati baştan başladı.
 clips-add-window = Bu yoğun anın klibi
 clip-default-name = Klip { $number }
 clip-name = Ad

@@ -271,4 +271,6 @@ library listed them under the wrong map. Their header now names the session's ma
 0 (protocol profile, "Later sessions"), and the singleplayer cuts were generated once more with
 the hashes above. Only the header's map name changed, as `run_92.dem` already has checksum 0, and
 the game showed it does not check that name by playing the cuts with the wrong one. A multiplayer
-cut after a map change, whose source header has a real checksum, has not been played yet.
+cut after a map change, whose source header has a real checksum, has not been played yet. Nor
+has a cut that goes on across a map change, such as `[0:03, 0:10)` of `barnoo_102.dem`, which
+loads c1a2b partway through.

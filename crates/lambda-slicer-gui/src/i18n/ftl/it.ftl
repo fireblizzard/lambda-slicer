@@ -197,7 +197,7 @@ coverage-visible-only = Il gioco riceve le azioni degli altri giocatori solo fin
 decode-failed = La lettura della registrazione si è fermata a { $time } (fotogramma { $frame }): { $detail }
 export-active-effect = { $effect } è ancora in corso all’inizio, e una clip non può ancora portarlo con sé.
 export-client-dropped-packets = A { $time } il gioco ha scartato dati arrivati troppo tardi, cosa che una clip non sa ancora copiare.
-export-cross-segment = La mappa è cambiata o il giocatore si è riconnesso a { $time }, dentro la clip, e una clip non può andare oltre quel punto.
+export-clock-starts-over = L’orologio della demo è ripartito da zero a { $time }, dopo un cambio di mappa o una riconnessione dentro la clip, e una clip non può andare oltre quel punto.
 export-destination-exists = { $path } esiste già. Scegli un altro nome.
 export-empty-range = La clip non contiene nulla da esportare.
 export-io = Impossibile scrivere { $path }: { $detail }
@@ -490,7 +490,7 @@ help-bots-filter = Pochi tiene solo le demo e le partite con meno bot che giocat
 
 clips-new = Nuova clip
 clips-select-event = Scegli prima un evento nell’elenco o sulla linea del tempo.
-clips-other-session = Una clip non può iniziare qui, perché attraverserebbe un cambio di mappa o una riconnessione.
+clips-other-session = Una clip non può iniziare qui, perché l’orologio della demo è ripartito da zero con un cambio di mappa o una riconnessione subito prima.
 clips-add-window = Clip di questo momento intenso
 clip-default-name = Clip { $number }
 clip-name = Nome

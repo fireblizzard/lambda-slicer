@@ -204,7 +204,7 @@ coverage-visible-only = Žaidimas gauna kitų žaidėjų veiksmus tik tada, kai 
 decode-failed = Įrašo skaitymas sustojo ties { $time } (kadras { $frame }): { $detail }
 export-active-effect = Pradžioje dar vyksta { $effect }, o klipas to dar negali perkelti.
 export-client-dropped-packets = Ties { $time } žaidimas išmetė per vėlai atėjusius duomenis, o klipas to dar negali nukopijuoti.
-export-cross-segment = Ties { $time }, klipo viduje, pasikeitė žemėlapis arba žaidėjas prisijungė iš naujo, o klipas negali tęstis per tokią vietą.
+export-clock-starts-over = Ties { $time }, po žemėlapio pakeitimo ar prisijungimo iš naujo klipo viduje, įrašo laikrodis prasidėjo iš naujo, o klipas negali tęstis per tokią vietą.
 export-destination-exists = { $path } jau yra. Pasirinkite kitą pavadinimą.
 export-empty-range = Klipe nėra ką eksportuoti.
 export-io = Nepavyksta įrašyti { $path }: { $detail }
@@ -504,7 +504,7 @@ help-bots-filter = „Nedaug“ palieka tik įrašus ir rungtynes, kuriose botų
 
 clips-new = Naujas klipas
 clips-select-event = Pirmiausia pasirinkite įvykį sąraše arba laiko juostoje.
-clips-other-session = Klipas negali prasidėti čia, nes jis tęstųsi per žemėlapio pakeitimą ar prisijungimą iš naujo.
+clips-other-session = Klipas negali prasidėti čia, nes ties žemėlapio pakeitimu ar prisijungimu iš naujo prieš pat tai įrašo laikrodis prasidėjo iš naujo.
 clips-add-window = Šios intensyvios akimirkos klipas
 clip-default-name = Klipas { $number }
 clip-name = Pavadinimas

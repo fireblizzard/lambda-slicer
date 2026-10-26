@@ -4,7 +4,9 @@
 //! A restart starts at the first frame group at or after the requested
 //! start and stops before the first group at or after the requested end, so
 //! the effective range is the requested one snapped outwards to the group
-//! times, among one session's groups when the range names it. The rules and refusals here follow [`super::restart`]'s plan, so
+//! times, among one session's groups when the range names it. A range goes
+//! on across a map change or reconnect, unless the demo's clock starts over
+//! there. The rules and refusals here follow [`super::restart`]'s plan, so
 //! a clip can show its effective range and the cheap refusals before any
 //! export runs. Refusals that need the decoded state, such as unproven
 //! state or dropped packets, come only from the export itself
@@ -15,6 +17,12 @@ use serde::Serialize;
 
 use super::ExportError;
 use crate::timeline::time::DemoTime;
+
+/// Whether the demo's clock started over between a record at `before`
+/// seconds and one at `after`. It never steps back otherwise
+pub fn starts_over(before: f32, after: f32) -> bool {
+    after < before
+}
 
 /// The start of one frame group in the playback entry
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -119,15 +127,14 @@ impl GroupIndex {
             return Err(ExportError::EmptyRange);
         }
 
+        // Times go on across a map change, but where the clock starts over
+        // the clip's would step back
         let last = stop.unwrap_or(self.groups.len());
-        if let Some(&c) = self
-            .session_changes
-            .iter()
-            .find(|&&c| c >= first && c < last)
-        {
-            return Err(ExportError::CrossSegmentRange(
-                time(self.groups[c].time).to_string(),
-            ));
+        for k in first + 1..last {
+            let (before, after) = (self.groups[k - 1].time, self.groups[k].time);
+            if starts_over(before, after) {
+                return Err(ExportError::ClockStartsOver(time(after).to_string()));
+            }
         }
 
         Ok(Snapped {
@@ -143,14 +150,34 @@ impl GroupIndex {
         Some(self.groups[first].segment)
     }
 
-    /// Whether `start` falls within session `part`, from its first group to
-    /// its last, so a start there snaps to one of its groups
-    pub fn starts_in(&self, start: DemoTime, part: u32) -> bool {
-        let began = self
+    /// The session a start at `start` snaps to, for a clip of something in
+    /// session `part`. A start before the session began falls in an earlier
+    /// one, as long as the clock ran on from it, and in none when it
+    /// started over
+    pub fn part_for(&self, start: DemoTime, part: u32) -> Option<u32> {
+        let mut k = self
             .groups
             .iter()
-            .any(|g| g.segment == part && !g.demo_start && time(g.time) <= start);
-        began && self.first_at(start, Some(part)).is_some()
+            .position(|g| g.segment == part && !g.demo_start)?;
+        if time(self.groups[k].time) < start {
+            return Some(part);
+        }
+
+        // Back through earlier groups to the first at or after the start
+        while k > 0 {
+            let (before, here) = (&self.groups[k - 1], &self.groups[k]);
+            if before.demo_start {
+                break;
+            }
+            if starts_over(before.time, here.time) {
+                return None;
+            }
+            if time(before.time) < start {
+                break;
+            }
+            k -= 1;
+        }
+        Some(self.groups[k].segment)
     }
 
     /// How long each session was recorded for, in seconds, by the time its
@@ -279,10 +306,23 @@ mod tests {
         let err = i.snap(at("0.12"), None, Some(2)).unwrap_err();
         assert!(matches!(err, ExportError::StartDuringLoading), "{err}");
 
-        assert!(i.starts_in(at("0.3"), 1));
-        assert!(i.starts_in(at("0.3"), 2));
-        assert!(!i.starts_in(at("0.1"), 2));
-        assert!(!i.starts_in(at("0.6"), 2));
+        // A start before session 2 began can't reach back past where the
+        // clock started over
+        assert_eq!(i.part_for(at("0.3"), 2), Some(2));
+        assert_eq!(i.part_for(at("0.1"), 2), None);
+        assert_eq!(i.part_for(at("0.2"), 1), Some(1));
+    }
+
+    #[test]
+    fn a_start_before_a_session_began_falls_in_the_one_before() {
+        // Session 2 from group 6, its clock running on
+        let mut i = index();
+        for g in &mut i.groups[6..] {
+            g.segment = 2;
+        }
+        assert_eq!(i.part_for(at("0.7"), 2), Some(2));
+        assert_eq!(i.part_for(at("0.25"), 2), Some(1));
+        assert_eq!(i.part_for(at("0"), 2), Some(1));
     }
 
     #[test]
@@ -315,11 +355,20 @@ mod tests {
         assert_eq!(i.segment_at(at("0.65")), Some(2));
         assert_eq!(i.segment_at(at("0.25")), Some(1));
 
+        // A range goes on across a session change while the clock runs on,
+        // and stops where it starts over
         let mut i = index();
+        for g in &mut i.groups[7..] {
+            g.segment = 2;
+        }
         i.session_changes.push(7);
-        let err = i.snap(at("0.3"), Some(at("0.9")), None).unwrap_err();
-        assert!(matches!(err, ExportError::CrossSegmentRange(_)), "{err}");
-        assert!(i.snap(at("0.3"), Some(at("0.6")), None).is_ok());
+        assert!(i.snap(at("0.3"), Some(at("0.9")), None).is_ok());
+        for g in &mut i.groups[7..] {
+            g.time -= 0.6;
+        }
+        let err = i.snap(at("0.3"), None, None).unwrap_err();
+        assert!(matches!(err, ExportError::ClockStartsOver(_)), "{err}");
+        assert!(i.snap(at("0.3"), Some(at("0.5")), None).is_ok());
 
         let mut i = index();
         i.directory_types = vec![0, 1, 1];

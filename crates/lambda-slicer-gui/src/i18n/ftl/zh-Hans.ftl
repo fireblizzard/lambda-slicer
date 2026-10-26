@@ -166,7 +166,7 @@ coverage-visible-only = 只有在服务器认为录制者能看到其他玩家�
 decode-failed = 读取录像在 { $time } 停止（第 { $frame } 帧）：{ $detail }
 export-active-effect = { $effect } 在开始时仍在进行，片段暂时无法把它带过去。
 export-client-dropped-packets = 游戏在 { $time } 丢掉了来得太晚的数据，片段暂时无法照样复制。
-export-cross-segment = 在片段内的 { $time } 换了地图或玩家重新连接，片段不能跨过这一点。
+export-clock-starts-over = 片段内换地图或重新连接后，录像的时钟在 { $time } 重新开始，片段不能跨过这一点。
 export-destination-exists = { $path } 已存在。请换一个名称。
 export-empty-range = 片段里没有可导出的内容。
 export-io = 无法写入 { $path }：{ $detail }
@@ -443,7 +443,7 @@ help-bots-filter = “少量”只保留机器人比真人玩家少的录像和�
 
 clips-new = 新建片段
 clips-select-event = 请先在列表或时间轴上选择一个事件。
-clips-other-session = 片段不能从这里开始，因为它会跨过换地图或重新连接。
+clips-other-session = 片段不能从这里开始，因为就在此之前，录像的时钟在换地图或重新连接时重新开始了。
 clips-add-window = 为这个激烈时刻建片段
 clip-default-name = 片段 { $number }
 clip-name = 名称

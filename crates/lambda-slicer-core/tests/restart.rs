@@ -814,24 +814,14 @@ fn a_restart_starts_in_a_later_session_with_its_own_setup() {
     let (report, _) = decode_demo(&src, &DecodeOptions::default(), |_, _, _| {});
     assert_eq!(report.groups.ready.get(&2), Some(&32));
 
-    // A start at the setup's group is still in the old session, which then
-    // changes inside the range. The full update's group is still loading
-    let early = |g: i32| {
-        let path = dir.path().join(format!("early{g}.dem"));
-        let restart = run_restart(&src, &path, at(g), None, Limits::default()).unwrap_err();
-        (restart, report.groups.snap(at(g), None, None).unwrap_err())
-    };
-    let (restart, snap) = early(30);
-    assert!(
-        matches!(restart, ExportError::CrossSegmentRange(_)),
-        "{restart}"
-    );
-    assert!(matches!(snap, ExportError::CrossSegmentRange(_)), "{snap}");
-    let (restart, snap) = early(31);
+    // The full update's group is still loading
+    let path = dir.path().join("loading.dem");
+    let restart = run_restart(&src, &path, at(31), None, Limits::default()).unwrap_err();
     assert!(
         matches!(restart, ExportError::StartDuringLoading),
         "{restart}"
     );
+    let snap = report.groups.snap(at(31), None, None).unwrap_err();
     assert!(matches!(snap, ExportError::StartDuringLoading), "{snap}");
 
     let out = dir.path().join("later.dem");
@@ -936,4 +926,74 @@ fn a_restart_naming_a_later_session_starts_there_when_the_clock_started_over() {
     let snapped = report.groups.snap(at(20), Some(at(25)), Some(2)).unwrap();
     assert_eq!(snapped.start.to_string(), r.effective_start);
     assert_eq!(snapped.end.to_string(), r.effective_end);
+}
+
+/// A slice of `rec` from group `start` to `end`, checked against the
+/// group index, decoding as a whole
+fn crossing(rec: &Recording, start: i32, end: i32) -> (PathBuf, tempfile::TempDir) {
+    let dir = tempfile::tempdir().unwrap();
+    let src = write(dir.path(), "src.dem", &rec.bytes());
+    let (report, _) = decode_demo(&src, &DecodeOptions::default(), |_, _, _| {});
+    let out = dir.path().join("out.dem");
+    let r = run_restart(&src, &out, at(start), Some(at(end)), Limits::default()).unwrap();
+    assert_eq!(r.validation.other_differences, 0);
+    let snapped = report.groups.snap(at(start), Some(at(end)), None).unwrap();
+    assert_eq!(snapped.start.to_string(), r.effective_start);
+    assert_eq!(snapped.end.to_string(), r.effective_end);
+
+    let (out_report, _) = decode_demo(&out, &DecodeOptions::default(), |_, _, _| {});
+    assert_eq!(out_report.status, DecodeStatus::Complete);
+    assert_eq!(out_report.stats.segments, 2);
+    (out, dir)
+}
+
+#[test]
+fn a_restart_goes_on_across_a_map_change() {
+    // The new session sets up in group 30, so a clip from 25 to 40 loads
+    // the next map partway and ends on group 39's state
+    let mut rec = Recording::steady(60, 1);
+    rec.session_at = Some(30);
+    let (out, _dir) = crossing(&rec, 25, 40);
+    assert_eq!(last_model(&out), Some(Value::Int(39)));
+
+    // The setup's records are kept where they were, in the playback entry
+    let f = std::io::BufReader::new(std::fs::File::open(&out).unwrap());
+    let mut reader = DemoReader::new(f, Limits::default()).unwrap();
+    let numbers: Vec<i32> = reader
+        .frames(1)
+        .unwrap()
+        .map(|lf| lf.unwrap().frame.frame_number)
+        .collect();
+    assert!(numbers.windows(2).all(|w| w[0] <= w[1]), "{numbers:?}");
+}
+
+#[test]
+fn a_restart_goes_on_across_a_reconnect_that_numbers_packets_again() {
+    // From group 30 packets are numbered from 10 again, so only the first
+    // session's packets need a bootstrap
+    let mut rec = Recording::steady(60, 1);
+    rec.session_at = Some(30);
+    rec.sequence_reset = true;
+    let (out, _dir) = crossing(&rec, 25, 40);
+    assert_eq!(last_model(&out), Some(Value::Int(39)));
+}
+
+#[test]
+fn a_restart_stops_where_the_clock_starts_over() {
+    // From group 30 the clock goes back 20 groups
+    let mut rec = Recording::steady(60, 1);
+    rec.session_at = Some(30);
+    rec.clock_reset = true;
+    let dir = tempfile::tempdir().unwrap();
+    let src = write(dir.path(), "src.dem", &rec.bytes());
+    let (report, _) = decode_demo(&src, &DecodeOptions::default(), |_, _, _| {});
+
+    let out = dir.path().join("out.dem");
+    let err = run_restart(&src, &out, at(25), None, Limits::default()).unwrap_err();
+    assert!(matches!(err, ExportError::ClockStartsOver(_)), "{err}");
+    let err = report.groups.snap(at(25), None, None).unwrap_err();
+    assert!(matches!(err, ExportError::ClockStartsOver(_)), "{err}");
+
+    // Ending before it is fine
+    run_restart(&src, &out, at(25), Some(at(29)), Limits::default()).unwrap();
 }

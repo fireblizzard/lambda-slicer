@@ -20,6 +20,13 @@
 //! demo's clock starts over in a later session, two sessions can share a
 //! time, so a slice can name its session, and then starts among that
 //! session's groups only
+//!
+//! A slice goes on across a map change or reconnect, its records kept as
+//! they are, so the client loads the next map as it did playing the source.
+//! Only the start's session needs a bootstrap, as the next one begins with
+//! a full update of its own. A new session may count its frames again, so
+//! the slice's frame numbers go on from the last. Its times are kept, so a
+//! slice can't go on where the clock starts over
 
 use std::cell::RefCell;
 use std::collections::{BTreeSet, VecDeque};
@@ -34,6 +41,7 @@ use serde::Serialize;
 use super::ongoing::{Ongoing, PendingSounds};
 use super::output::{Counting, Published, io_err, publish_new, to_i32};
 use super::persistent::Persistent;
+use super::range::starts_over;
 use super::{ExportError, check_stop};
 use crate::container::{
     DemoReader, Frame, FrameBody, HEADER_DIR_OFFSET_FIELD, Limits, NetworkFrame, encode_directory,
@@ -45,7 +53,7 @@ use crate::protocol::encode::{
     Approximation, EncodeStats, Fit, FullEntity, Place, differing_fields, write_full_clientdata,
     write_full_entities, write_time,
 };
-use crate::protocol::messages::Message;
+use crate::protocol::messages::{Message, Resource};
 use crate::protocol::profile;
 use crate::state::{Decoder, FrameLocation, Snapshot};
 use crate::timeline::time::DemoTime;
@@ -244,6 +252,11 @@ fn plan(
     let mut pending: Option<PendingSounds> = None;
     let loading_session = d.segment;
 
+    // The start's session's resources, which name its sounds, and whether
+    // the slice went on into another session
+    let mut start_resources: Vec<Resource> = Vec::new();
+    let mut crossed = false;
+
     // A later session sets itself up inside the playback entry, from its
     // server info to `svc_signonnum`. Those records are kept for a LOADING
     // entry of its own. A start is possible once the setup is complete and a
@@ -340,6 +353,7 @@ fn plan(
 
             session = d.segment;
             dropped = d.stats.discarded_packets;
+            start_resources = d.resources().to_vec();
             kept = Some(Plan {
                 first_ordinal: lf.ordinal,
                 end_ordinal: 0,
@@ -377,6 +391,17 @@ fn plan(
             past_end = true;
         }
 
+        // Times are kept, so where the clock starts over the slice's would
+        // step back
+        if new_group
+            && !past_end
+            && let (Some(p), Some((_, before))) = (&kept, previous)
+            && p.first_ordinal != lf.ordinal
+            && starts_over(before, f.time())
+        {
+            return Err(ExportError::ClockStartsOver(at(f)));
+        }
+
         if new_group && kept.is_none() {
             prelude.clear();
         }
@@ -410,7 +435,9 @@ fn plan(
             if before {
                 persistent.observe(dec, m, &n.message, time);
                 ongoing.observe_message(dec, m, &n.message, time);
-            } else if let Some(s) = pending.as_mut() {
+            } else if let Some(s) = pending.as_mut()
+                && dec.segment == session
+            {
                 s.observe(m);
             }
             match &m.message {
@@ -454,6 +481,16 @@ fn plan(
             }
             continue;
         };
+
+        // The client plays a map change or reconnect as the source did,
+        // and every sound still playing ends there
+        if d.segment != session {
+            session = d.segment;
+            crossed = true;
+            if let Some(s) = pending.as_mut() {
+                s.end_session();
+            }
+        }
         if past_end {
             continue;
         }
@@ -464,9 +501,6 @@ fn plan(
         p.kept_records += 1;
         p.kept_network_records += 1;
 
-        if d.segment != session {
-            return Err(ExportError::CrossSegmentRange(at(f)));
-        }
         if d.stats.discarded_packets != dropped {
             return Err(ExportError::ClientDroppedPackets(at(f)));
         }
@@ -477,6 +511,10 @@ fn plan(
             return Err(ExportError::UnprovenState(at(f)));
         }
 
+        // A later session's packets rest on its own full update
+        if crossed {
+            continue;
+        }
         for from in froms {
             let base = named(sequence, from);
             if base < p.start_sequence {
@@ -500,7 +538,7 @@ fn plan(
 
     // Sound loops still playing at the start go with the other effects
     if let Some(s) = &pending {
-        let (bytes, notes) = s.confirmed(&d);
+        let (bytes, notes) = s.confirmed(&start_resources);
         p.late.extend_from_slice(&bytes);
         p.notes.extend(notes);
     }
@@ -788,6 +826,11 @@ fn write(
 
     let persistent_records = u64::from(!p.persistent.is_empty()) + hud_group as u64;
     let mut network_records = p.bootstrap.len() as u64 + persistent_records;
+
+    // Frame numbers count on from the bootstrap group, and on from the last
+    // where a new session counts them again
+    let mut shift = 1 + hud_group - p.first_frame_number;
+    let mut last_number: Option<(i32, i32)> = None;
     for item in reader.frames(1)? {
         check_stop(stop)?;
         let lf = item?;
@@ -803,7 +846,14 @@ fn write(
             network_records += 1;
         }
         f.time_bits = rebased(p, f.time());
-        f.frame_number = f.frame_number - p.first_frame_number + 1 + hud_group;
+        let source = f.frame_number;
+        if let Some((before, written)) = last_number
+            && source < before
+        {
+            shift = written + 1 - source;
+        }
+        f.frame_number = source + shift;
+        last_number = Some((source, f.frame_number));
         put(&mut w, &f)?;
     }
 

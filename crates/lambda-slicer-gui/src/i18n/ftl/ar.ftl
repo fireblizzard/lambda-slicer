@@ -231,7 +231,7 @@ coverage-visible-only = لا تصل أفعال اللاعبين الآخرين �
 decode-failed = توقفت قراءة التسجيل عند { $time } (الإطار { $frame }): { $detail }
 export-active-effect = { $effect } ما زال جاريًا عند البداية، ولا يستطيع المقطع نقله بعد.
 export-client-dropped-packets = عند { $time } تخلّصت اللعبة من بيانات وصلت متأخرة، وهذا ما لا يستطيع المقطع نسخه بعد.
-export-cross-segment = تغيّرت الخريطة أو أعاد اللاعب الاتصال عند { $time } داخل المقطع، ولا يمكن للمقطع أن يتخطى ذلك.
+export-clock-starts-over = بدأت ساعة التسجيل من جديد عند { $time }، بعد تغيير الخريطة أو إعادة الاتصال داخل المقطع، ولا يمكن للمقطع أن يتخطى ذلك.
 export-destination-exists = { $path } موجود بالفعل. اختر اسمًا آخر.
 export-empty-range = لا يحتوي المقطع على ما يُصدَّر.
 export-io = تعذّرت كتابة { $path }: { $detail }
@@ -545,7 +545,7 @@ help-bots-filter = «قليلة» يُبقي فقط التسجيلات والم�
 
 clips-new = مقطع جديد
 clips-select-event = اختر حدثًا من القائمة أو من الخط الزمني أولًا.
-clips-other-session = لا يمكن أن يبدأ مقطع هنا، لأنه سيتخطى تغيير الخريطة أو إعادة الاتصال.
+clips-other-session = لا يمكن أن يبدأ مقطع هنا، لأن ساعة التسجيل بدأت من جديد عند تغيير الخريطة أو إعادة الاتصال قبل ذلك مباشرة.
 clips-add-window = مقطع لهذه اللحظة الحماسية
 clip-default-name = مقطع { $number }
 clip-name = الاسم

@@ -59,8 +59,8 @@ pub enum ExportError {
     UnprovenState(String),
     #[error("the client dropped packets as too old at {0}, which a restart cannot reproduce yet")]
     ClientDroppedPackets(String),
-    #[error("a new session starts at {0} inside the range")]
-    CrossSegmentRange(String),
+    #[error("the demo's clock starts over at {0} inside the range")]
+    ClockStartsOver(String),
     #[error("the start is while the game is still loading a session, before its first full update")]
     StartDuringLoading,
     #[error("the start is at the first frame group, which an exact copy covers")]
@@ -123,7 +123,7 @@ impl Coded for ExportError {
             ExportError::SourceFailedCrossCheck => "export-source-failed-crosscheck",
             ExportError::UnprovenState(_) => "export-unproven-state",
             ExportError::ClientDroppedPackets(_) => "export-client-dropped-packets",
-            ExportError::CrossSegmentRange(_) => "export-cross-segment",
+            ExportError::ClockStartsOver(_) => "export-clock-starts-over",
             ExportError::StartDuringLoading => "export-start-during-loading",
             ExportError::StartAtFirstGroup => "export-start-first-group",
             ExportError::MissingDeltaBase(_) => "export-missing-delta-base",
@@ -156,7 +156,7 @@ impl Coded for ExportError {
             ],
             ExportError::UnprovenState(t)
             | ExportError::ClientDroppedPackets(t)
-            | ExportError::CrossSegmentRange(t) => vec![("time", t.clone().into())],
+            | ExportError::ClockStartsOver(t) => vec![("time", t.clone().into())],
             ExportError::MissingDeltaBase(sequence) => vec![("sequence", (*sequence).into())],
             ExportError::UnknownPersistentMessage(name) => vec![("name", name.clone().into())],
             ExportError::ActiveEffect(effect) => vec![("effect", effect.clone().into())],
