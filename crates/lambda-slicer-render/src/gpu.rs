@@ -11,7 +11,8 @@
 //! A frame draws the opaque world and brush entities, then studio models,
 //! then the sky wherever nothing was drawn, then translucent studio models,
 //! the additive textures of solid ones, brush entities and sprites together
-//! from the furthest in, and glow shells added over them. The viewmodel
+//! from the furthest in, particles, beams and tracers, and glow shells
+//! added over them. The viewmodel
 //! comes last, in a pass of its own with the depth cleared, so it never
 //! sinks into a wall. Each BSP model is drawn
 //! with its entity's transform and render mode, every lightmap weighed by
@@ -685,7 +686,9 @@ pub struct DrawList {
     /// The decals on the world and brush entities, uploaded again when
     /// their revision changes
     pub decals: Option<Arc<DecalMesh>>,
-    /// Beams, trails and tracers, added over everything else translucent
+    /// Particles, blended over everything else translucent
+    pub dots: Vec<Dot>,
+    /// Beams, trails and tracers, added over the particles
     pub streaks: Vec<Streak>,
     /// Glow shells, added over everything else, and the viewmodel's
     pub shells: Vec<Shell>,
@@ -701,6 +704,44 @@ pub struct Shell {
     pub color: [f32; 3],
     /// Three corners a triangle
     pub vertices: Vec<ShellVertex>,
+}
+
+/// A particle drawn this frame, a round dot facing the view
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Dot {
+    pub origin: [f32; 3],
+    /// 0 to 1, its opacity last
+    pub color: [f32; 4],
+}
+
+/// The quad of `dot` facing the view, a unit across near the eye and
+/// growing with its distance so it never shrinks away (`CL_DrawParticles`)
+fn dot_quad(dot: &Dot, view: &View) -> [SpriteVertex; 6] {
+    let (forward, right, up) = angle_vectors(view.angles);
+    let to = [0, 1, 2].map(|k| dot.origin[k] - view.eye[k]);
+    let depth = to[0] * forward[0] + to[1] * forward[1] + to[2] * forward[2];
+    let size = if depth < 20. { 1. } else { 1. + depth * 0.002 };
+
+    // The game's dot fills a quarter of its quad, so this one is half as
+    // wide
+    let half = size / 2.;
+    let corner = |r: f32, u: f32, uv: [f32; 2]| SpriteVertex {
+        position: [0, 1, 2].map(|k| dot.origin[k] + (right[k] * r + up[k] * u) * half),
+        uv,
+        color: dot.color,
+    };
+    let top_left = corner(-1., 1., [0., 0.]);
+    let top_right = corner(1., 1., [1., 0.]);
+    let bottom_right = corner(1., -1., [1., 1.]);
+    let bottom_left = corner(-1., -1., [0., 1.]);
+    [
+        top_left,
+        top_right,
+        bottom_right,
+        top_left,
+        bottom_right,
+        bottom_left,
+    ]
 }
 
 /// A beam, trail or tracer drawn this frame, a strip along its points
@@ -757,7 +798,7 @@ fn streak_quads(streak: &Streak, eye: [f32; 3]) -> Vec<SpriteVertex> {
     out
 }
 
-/// A soft white dot, clear at its edges, for tracers
+/// A soft white dot, clear at its edges, for tracers and particles
 fn dot() -> Rgba {
     const SIZE: u32 = 8;
     let mut pixels = Vec::with_capacity((SIZE * SIZE * 4) as usize);
@@ -1635,19 +1676,22 @@ impl Scene {
 
     /// Every sprite's corners in one buffer, each sprite's pipeline and
     /// place in it, the furthest first
-    /// Every sprite's quad from the furthest in, then every streak's, then
-    /// every shell's, and where each begins in the buffer
-    #[allow(clippy::type_complexity)]
+    /// Every sprite's quad from the furthest in, then every particle's, then
+    /// every streak's, then every shell's, and where each begins in the
+    /// buffer
+    #[allow(clippy::type_complexity, clippy::too_many_arguments)]
     fn upload_sprites(
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         view: &View,
         sprites: &[SpriteInstance],
+        dots: &[Dot],
         streaks: &[Streak],
         shells: &[&Shell],
     ) -> (
         Vec<(usize, SpritePass, u32)>,
+        (u32, u32),
         Vec<(usize, u32, u32)>,
         Vec<(u32, u32)>,
     ) {
@@ -1675,8 +1719,13 @@ impl Scene {
             bytes.extend_from_slice(bytemuck::cast_slice(quad));
             order.push((*i, *pass, k as u32 * 6));
         }
-        let mut strips = Vec::with_capacity(streaks.len());
         let mut first = quads.len() as u32 * 6;
+        for dot in dots {
+            bytes.extend_from_slice(bytemuck::cast_slice(&dot_quad(dot, view)));
+        }
+        let dot_range = (first, dots.len() as u32 * 6);
+        first += dot_range.1;
+        let mut strips = Vec::with_capacity(streaks.len());
         for (i, streak) in streaks.iter().enumerate() {
             let vertices = streak_quads(streak, view.eye);
             if vertices.is_empty() {
@@ -1703,7 +1752,7 @@ impl Scene {
             first += vertices.len() as u32;
         }
         if bytes.is_empty() {
-            return (order, strips, shell_ranges);
+            return (order, dot_range, strips, shell_ranges);
         }
         if bytes.len() as u64 > self.sprite_capacity {
             let capacity = (bytes.len() as u64).next_power_of_two();
@@ -1719,7 +1768,7 @@ impl Scene {
         if let Some(buffer) = &self.sprite_vertices {
             queue.write_buffer(buffer, 0, &bytes);
         }
-        (order, strips, shell_ranges)
+        (order, dot_range, strips, shell_ranges)
     }
 
     /// Glow shells, each the first or `ranges` in the sprite buffer, which
@@ -2108,12 +2157,20 @@ impl Scene {
         let (starts, rest) = starts.split_at(draw.instances.len());
         let (viewmodel_starts, silhouette_starts) = rest.split_at(draw.viewmodel.len());
         let instances = &draw.instances;
-        if self.dot.is_none() && draw.streaks.iter().any(|s| s.sprite.is_none()) {
+        let soft = draw.streaks.iter().any(|s| s.sprite.is_none());
+        if self.dot.is_none() && (soft || !draw.dots.is_empty()) {
             self.dot = Some(self.texture(device, queue, &dot(), false));
         }
         let shells: Vec<&Shell> = draw.shells.iter().chain(&draw.viewmodel_shells).collect();
-        let (sprites, streaks, shell_ranges) =
-            self.upload_sprites(device, queue, view, &draw.sprites, &draw.streaks, &shells);
+        let (sprites, dot_range, streaks, shell_ranges) = self.upload_sprites(
+            device,
+            queue,
+            view,
+            &draw.sprites,
+            &draw.dots,
+            &draw.streaks,
+            &shells,
+        );
         let (shell_ranges, viewmodel_shell_ranges) = shell_ranges.split_at(draw.shells.len());
         self.upload_objects(device, queue, brushes);
         self.upload_decals(device, queue, draw.decals.as_deref());
@@ -2335,6 +2392,15 @@ impl Scene {
                         pass.draw(first..first + 6, 0..1);
                     }
                 }
+            }
+            if let Some(buffer) = &self.sprite_vertices
+                && let Some(texture) = &self.dot
+                && dot_range.1 > 0
+            {
+                pass.set_vertex_buffer(0, buffer.slice(..));
+                pass.set_pipeline(&self.pipelines.sprite_blend);
+                pass.set_bind_group(1, texture, &[]);
+                pass.draw(dot_range.0..dot_range.0 + dot_range.1, 0..1);
             }
             if let Some(buffer) = &self.sprite_vertices
                 && !streaks.is_empty()
@@ -2584,6 +2650,22 @@ mod tests {
             color: [0.; 3],
             steady: false,
         }
+    }
+
+    #[test]
+    fn a_dot_faces_the_view_and_grows_with_its_distance() {
+        // Looking along x, so the quad stands across y and z
+        let size = |x: f32| {
+            let dot = Dot {
+                origin: [x, 0., 0.],
+                color: [1.; 4],
+            };
+            let quad = dot_quad(&dot, &view());
+            assert!(quad.iter().all(|v| v.position[0] == x));
+            quad[0].position[1].abs() * 2.
+        };
+        assert_eq!(size(10.), 1.);
+        assert_eq!(size(500.), 2.);
     }
 
     #[test]

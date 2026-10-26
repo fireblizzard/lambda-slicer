@@ -35,6 +35,7 @@ use crate::events::{ATTN_NORM, Action, ClientEvent, Events, PITCH_NORM, SoundCal
 use crate::gauss;
 use crate::hud::{ChatLine, Countdown, DeathNotice, Hud};
 use crate::hud_messages::{HudMessage, ShownMessage};
+use crate::particles::Particles;
 use crate::scene::{self, Camera, Entity, Movement, PlayerView, Scene, Viewmodel};
 use crate::scores::{Board, ScoreRow};
 use crate::source::{Cursor, Group, Source};
@@ -92,6 +93,8 @@ pub struct PresentedFrame {
     pub flashes: Vec<Flash>,
     /// The client's own sprites and models, shells among them
     pub temp_entities: Vec<TempEntity>,
+    /// The dots and sparks effects threw out
+    pub particles: Particles,
     /// The dynamic lights messages made that still shine, such as
     /// explosions' flashes. Those of entities' effects are left to whoever
     /// draws them
@@ -455,6 +458,9 @@ impl Playback {
                                 beams.clear();
                                 events.clear();
                             }
+                            protocol::Message::Particle(body) => {
+                                tempents.particle_message(body, time)
+                            }
                             protocol::Message::TempEntity { kind, body } => {
                                 let model = |index: i16| precached_model(d, index);
                                 let texture = |number: u16| server_decal(d, decal_index, number);
@@ -464,6 +470,7 @@ impl Playback {
                                     model: &model,
                                     frames,
                                     world: world.as_deref(),
+                                    eye: scene.camera.origin,
                                 };
                                 let view = view_entity(d);
                                 for call in tempents.message(*kind, body, time, &lookup) {
@@ -767,6 +774,7 @@ impl Playback {
                 .cloned()
                 .collect(),
             lights: state.tempents.lights(at),
+            particles: state.tempents.particles().clone(),
         }
     }
 }
@@ -917,6 +925,9 @@ fn dispatch(event: &ClientEvent, decoder: &Decoder, scene: &mut Scene, effects: 
                 for (start, end, seed) in impacts.tracers {
                     beams.tracer(start, end, event.time, seed);
                 }
+                for (at, seed) in impacts.dust {
+                    tempents.bullet_impact(at, scene.camera.origin, event.time, seed);
+                }
             }
             Action::Gauss(shot) => {
                 let max = decoder.max_clients;
@@ -928,6 +939,9 @@ fn dispatch(event: &ClientEvent, decoder: &Decoder, scene: &mut Scene, effects: 
                     if let Some(texture) = decal_index(name) {
                         decals.shoot(texture, entity, at, None, false, scene);
                     }
+                }
+                for (at, seed) in out.impacts.dust {
+                    tempents.bullet_impact(at, scene.camera.origin, event.time, seed);
                 }
                 for b in out.beams {
                     let gun = b.from_gun.then_some(event.entity);

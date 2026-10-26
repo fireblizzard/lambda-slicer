@@ -14,12 +14,13 @@
 //! the latest snapshot has them. The game traces players through their
 //! hitboxes where its prediction has them, so a shot past a player's box
 //! but clear of the model hits the wall behind here and the player there.
-//! The streaks of tracers and the dust of impacts are not drawn yet
+//! A bullet that leaves a decal also throws out dust and two sparks
+//! (`EV_HLDM_GunshotDecalTrace`), which [`crate::particles`] makes
 
 use std::sync::Arc;
 
 use crate::audio::CHAN_AUTO;
-use crate::events::{ATTN_NORM, CHAN_STATIC, PITCH_NORM, Random, SoundCall};
+use crate::events::{ATTN_NORM, CHAN_STATIC, PITCH_NORM, Random, SoundCall, mix};
 use crate::scene::Scene;
 use crate::trace::Hull;
 
@@ -64,6 +65,8 @@ pub(crate) struct Impacts {
     pub decals: Vec<(&'static str, u16, [f32; 3])>,
     /// A tracer's start and end, and its seed
     pub tracers: Vec<([f32; 3], [f32; 3], u64)>,
+    /// Where a bullet's dust flies out of a wall, and its seed
+    pub dust: Vec<([f32; 3], u64)>,
 }
 
 /// What a bullet hit
@@ -243,6 +246,8 @@ pub(crate) fn gunshot_decal(
     random: &mut Random,
     impacts: &mut Impacts,
 ) {
+    // The dust's seed leaves the handler's own choices as they were
+    impacts.dust.push((at, mix(random.0, 0xd5)));
     let decal = if render_mode != 0 {
         "{bproof1"
     } else {

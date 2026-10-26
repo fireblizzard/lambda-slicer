@@ -43,6 +43,7 @@ use lambda_slicer_playback::PresentedFrame;
 use lambda_slicer_playback::animation::{Flash, Holder};
 use lambda_slicer_playback::controller::{Command, Controller, LoopRange, Reply, Stamp};
 use lambda_slicer_playback::hud::{Countdown, WAITING};
+use lambda_slicer_playback::particles::{STREAK_COLOR, STREAK_WIDTH};
 use lambda_slicer_playback::scene::{
     self, Entity, EntityId, HIGHEST_BOB, LOWEST_BOB, PlayerView, view_model_for, weapon_model_for,
 };
@@ -53,7 +54,7 @@ use lambda_slicer_playback::worker::Worker;
 use lambda_slicer_render::Rgba;
 use lambda_slicer_render::camera::{Camera, Matrix};
 use lambda_slicer_render::gpu::{
-    Blit, Brush, DrawList, Instance, MOST_LIGHTS, ModelHandle, RenderMode, Scene, Shell,
+    Blit, Brush, Dot, DrawList, Instance, MOST_LIGHTS, ModelHandle, RenderMode, Scene, Shell,
     SpriteHandle, SpriteInstance, Streak, StreakPoint, View, WorldLight,
 };
 use lambda_slicer_render::light::{LightTree, ModelLight};
@@ -1598,6 +1599,7 @@ impl Viewer {
             viewmodel,
             silhouettes,
             decals: self.decals.mesh(),
+            dots: self.dots(frame),
             streaks: self.streaks(frame, &guns),
             shells,
             viewmodel_shells,
@@ -1696,7 +1698,26 @@ impl Viewer {
             });
     }
 
-    /// The frame's beams, trails and tracers as strips to draw
+    /// The frame's particles as dots in the palette's colours
+    fn dots(&self, frame: &PresentedFrame) -> Vec<Dot> {
+        let mut out = Vec::new();
+        if !self.settings.particles {
+            return out;
+        }
+        for p in &frame.particles.dots {
+            let Some(alpha) = p.alpha(frame.at) else {
+                continue;
+            };
+            let [r, g, b] = self.tint(Tint::Palette(p.color));
+            out.push(Dot {
+                origin: p.origin,
+                color: [r, g, b, alpha],
+            });
+        }
+        out
+    }
+
+    /// The frame's beams, trails, tracers and sparks as strips to draw
     fn streaks(&self, frame: &PresentedFrame, guns: &HashMap<Holder, [f32; 3]>) -> Vec<Streak> {
         let at = frame.at;
         let sprite =
@@ -1790,6 +1811,20 @@ impl Viewer {
                 sprite: None,
                 points: vec![point(tail, 0.), point(head, 1.)],
                 width: TRACER_WIDTH,
+            });
+        }
+        if !self.settings.particles {
+            return out;
+        }
+        let spark = STREAK_COLOR.map(|c| f32::from(c) / 255.);
+        for streak in &frame.particles.streaks {
+            let (tail, head) = streak.line(at);
+            let color = spark.map(|c| c * streak.alpha);
+            let point = |position, v| StreakPoint { position, v, color };
+            out.push(Streak {
+                sprite: None,
+                points: vec![point(tail, 0.), point(head, 1.)],
+                width: STREAK_WIDTH,
             });
         }
         out

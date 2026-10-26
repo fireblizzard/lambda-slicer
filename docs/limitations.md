@@ -50,7 +50,7 @@ Other things:
 
 Not shown or played yet:
 
-- Particles: the streaks of sparks, the flicker of explosions and the dust of bullet impacts.
+- Particles of effects the game rarely uses, like blood streams and teleports.
 - Recorded voice chat and room echoes.
 - In sentences (speech made of words, like the HEV suit's or soldiers'), a word's pitch is a
   little off when the whole sentence's pitch is changed too, and words sped up with `t` skip

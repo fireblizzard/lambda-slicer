@@ -17,11 +17,15 @@
 //! the game (docs/viewer-profile.md, "Temporary entities"). Each entity's
 //! random choices come from a seed of its own, so a seek finds the same
 //! ones in the same places
+//!
+//! The particles effects throw out, [`crate::particles`], are kept and
+//! moved here too, as the engine keeps them beside its temporary entities
 
 use std::sync::Arc;
 
 use crate::audio::CHAN_AUTO;
 use crate::events::{ATTN_NORM, PITCH_NORM, Random, SoundCall, mix};
+use crate::particles::Particles;
 use crate::time::SourceTime;
 use crate::trace::Hull;
 
@@ -196,6 +200,7 @@ struct TimedLight {
 pub struct TempEntities {
     entities: Vec<TempEntity>,
     lights: Vec<TimedLight>,
+    particles: Particles,
     next_id: u64,
     last: Option<SourceTime>,
 }
@@ -203,6 +208,10 @@ pub struct TempEntities {
 impl TempEntities {
     pub fn entities(&self) -> &[TempEntity] {
         &self.entities
+    }
+
+    pub fn particles(&self) -> &Particles {
+        &self.particles
     }
 
     /// The dynamic lights messages made that still shine at `at`, each as
@@ -262,6 +271,34 @@ impl TempEntities {
     /// Forget everything, as a new session does
     pub(crate) fn clear(&mut self) {
         self.entities.clear();
+        self.particles = Particles::default();
+    }
+
+    /// A bullet's dust and sparks where it hit a wall at `now`, seen from
+    /// the recorder's `eye` (`R_BulletImpactParticles`)
+    pub(crate) fn bullet_impact(
+        &mut self,
+        origin: [f32; 3],
+        eye: [f32; 3],
+        now: SourceTime,
+        seed: u64,
+    ) {
+        self.particles.bullet_impact(origin, eye, now, seed);
+    }
+
+    /// The server's `svc_particle`, dots drifting from a place (`R_RunParticleEffect`)
+    pub(crate) fn particle_message(&mut self, body: &[u8], now: SourceTime) {
+        let mut b = Body(body, 0);
+        let origin = b.vector();
+        let direction = [0; 3].map(|_| f32::from(b.byte() as i8) / 16.);
+        let count = match b.byte() {
+            255 => 1024,
+            n => u32::from(n),
+        };
+        let color = b.byte();
+        let seed = self.seed(now);
+        self.particles
+            .effect(origin, direction, color, count, now, seed);
     }
 
     /// A model thrown out at `origin`, turned `yaw` degrees and spinning,
@@ -457,6 +494,7 @@ impl TempEntities {
             return Vec::new();
         }
         self.lights.retain(|l| at < l.die);
+        self.particles.step(at, dt, gravity);
         let pull = -dt * gravity;
         let mut sounds = Vec::new();
         let mut glints = Vec::new();
@@ -552,11 +590,13 @@ impl TempEntities {
             }
             true
         });
-        // A spark shower's glints, `R_SparkEffect`'s sprite without its
-        // streaks
+        // A spark shower's glints and streaks (`R_SparkEffect`)
         for origin in glints {
-            let scale = Random(mix(at.0.to_bits(), self.next_id)).float(0.5, 1.);
+            let mut random = Random(mix(at.0.to_bits(), self.next_id));
+            let scale = random.float(0.5, 1.);
             self.ricochet_sprite(origin, scale, at);
+            self.particles
+                .sparks(origin, 8, -200., 200., at, random.next());
         }
         sounds
     }
@@ -564,6 +604,7 @@ impl TempEntities {
 
 /// `svc_temp_entity` kinds handled
 pub mod kind {
+    pub const GUNSHOT: u8 = 2;
     pub const EXPLOSION: u8 = 3;
     pub const SMOKE: u8 = 5;
     pub const SPARKS: u8 = 9;
@@ -582,6 +623,7 @@ pub mod kind {
 const NO_ADDITIVE: u8 = 1;
 const NO_LIGHTS: u8 = 2;
 const NO_SOUND: u8 = 4;
+const NO_PARTICLES: u8 = 8;
 
 /// An explosion's flash, its radius, colour, life and how fast it shrinks
 /// (`CL_ParseTEnt`)
@@ -619,6 +661,8 @@ pub(crate) struct Lookup<'a> {
     pub frames: &'a dyn Fn(&str) -> Option<u32>,
     /// The map, where gibs are not put inside solid
     pub world: Option<&'a Hull>,
+    /// Where the recorder sees from, as a bullet's dust depends on it
+    pub eye: [f32; 3],
 }
 
 impl TempEntities {
@@ -640,6 +684,12 @@ impl TempEntities {
             Some((model, frames))
         };
         match kind {
+            kind::GUNSHOT => {
+                let origin = b.vector();
+                sounds.push(ricochet_sound(origin, &mut random));
+                let seed = random.next();
+                self.particles.effect(origin, [0.; 3], 0, 20, now, seed);
+            }
             kind::EXPLOSION => {
                 let origin = b.vector();
                 let index = b.short();
@@ -659,6 +709,9 @@ impl TempEntities {
                     e.velocity[2] = 8.;
                     e.origin[2] += 10.;
                     e.scale = scale;
+                }
+                if scale != 0. && flags & NO_PARTICLES == 0 {
+                    self.particles.flicker(origin, now, random.next());
                 }
                 if flags & NO_LIGHTS == 0 {
                     let (radius, color, life, decay) = EXPLOSION_LIGHT;
@@ -785,9 +838,10 @@ impl TempEntities {
                 }
             }
             kind::GUNSHOT_DECAL => {
-                // The decal is laid with the others and the dust is not
-                // drawn yet. Half the shots ricochet
+                // The decal is laid with the others. Half the shots ricochet
                 let origin = b.vector();
+                let seed = random.next();
+                self.particles.bullet_impact(origin, lookup.eye, now, seed);
                 if random.long(0, 0x7fff) < 0x3fff {
                     sounds.push(ricochet_sound(origin, &mut random));
                 }
@@ -1116,6 +1170,7 @@ mod tests {
             model: &none,
             frames: &no_frames,
             world: None,
+            eye: [0.; 3],
         };
         let mut t = TempEntities::default();
         let now = SourceTime(10.);

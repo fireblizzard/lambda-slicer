@@ -28,7 +28,7 @@
 - [ ] Store which part a clip belongs to as well as its times, for demos with multiple server clock restarts (e.g. loads)
 - [ ] Fix gauss balls and glows
 - [ ] Support clips across changelevels or loads
-- [ ] Add particles
+- [x] Add particles
 - [x] Add glow shell
 - [ ] Support `remap` textures
 - [ ] Add blending between animations

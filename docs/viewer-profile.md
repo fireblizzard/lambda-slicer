@@ -670,14 +670,15 @@ SDK's `HUD_TempEntUpdate`, not yet compared with the game:
 | Kind | How |
 |---|---|
 | Movement | each group, on along the velocity, the sprite's frame on by its frame rate, turned by its spin, traced through the world when it collides, then pulled down by gravity or half of it. A sprite that plays once is gone after its last frame. One that fades out loses its brightness at its fade speed once its time is up. At most 500 at once |
-| Explosion | the sprite at its frame rate (10 for none) and scale, added at amount 180 or drawn solid, 10 units up and rising 8 a second, with one of `weapons/explode3.wav` to `5` unless the message says no sound |
+| Explosion | the sprite at its frame rate (10 for none) and scale, added at amount 180 or drawn solid, 10 units up and rising 8 a second, with one of `weapons/explode3.wav` to `5` unless the message says no sound, and 15 flickering sparks (Particles, below) unless it says none |
 | Smoke | the sprite alpha-tested in a dark grey of 20 to 35, 20 units up and rising 30 a second |
 | Sprite | the sprite played once, added at the message's brightness |
-| Sparks | an unseen shower flying out at up to 300 units a second under half gravity, bouncing off the world, glinting with `sprites/richo1.spr` every tenth of a second for 0.5 to 1.5 seconds. The glint fades out over an eighth of a second, a steady glow. The streaks the engine adds are not drawn |
+| Sparks | an unseen shower flying out at up to 300 units a second under half gravity, bouncing off the world, glinting with `sprites/richo1.spr` and throwing out 8 streaks every tenth of a second for 0.5 to 1.5 seconds. The glint fades out over an eighth of a second, a steady glow |
 | Blood sprite | a splash in the palette colour a little past the message's, playing through in a quarter of a second, and the message's size plus 2 to 16 drops flying out under half gravity in the colour before it, for 1 to 3 seconds |
 | Sprite spray | sprites flying along a direction with noise under half gravity, fading out in a third of a second |
 | Armour ricochet | the glint and one of `weapons/ric1.wav` to `5` |
-| Gunshot decal | one of the ricochets for half of them, and the decal (below). Its dust is not drawn yet |
+| Gunshot decal | a bullet's dust and streaks (Particles, below), one of the ricochets for half of them, and the decal (below) |
+| Gunshot | one of the ricochets and 20 dots of the palette's first eight colours |
 | Model | a studio model thrown out and bouncing as a shell does, for its given life, with a shell's or shotgun shell's sounds when the message names one |
 | Breakable | the message's count of pieces of its model, or when it gives none one for each 144 square units of the box's mean face, at most 100 (`TE_BREAKMODEL`). Each starts at a random spot in the box outside the world's solid, four tries, and flies out at the message's velocity plus up to its random speed sideways and upward, under half gravity, bouncing off the world, most of them spinning, fading after the message's life and up to a second more. Glass and see-through pieces are blended at amount 128. One bounce in six makes the material's sound (`debris/glass1.wav` and the rest), louder the faster it falls |
 
@@ -695,6 +696,27 @@ it makes, by model.
 
 Each piece of a breakable shows one of its model's bodies at random, as the engine chooses among
 them.
+
+### Particles
+
+**Implemented**, from the engine as Xash3D restates it (`R_FlickerParticles`,
+`R_BulletImpactParticles`, `R_SparkStreaks`, `R_RunParticleEffect`, `CL_ThinkParticle`,
+`CL_DrawParticles` and `CL_DrawTracers`), not yet compared with the game
+(`lambda-slicer-playback`'s `particles`). The settings' Show particles hides them all:
+
+| Kind | How |
+|---|---|
+| Dots | a round dot facing the view in a colour of the game's palette, blended over what is behind, a unit across up close and growing by 0.002 a unit of distance so it never shrinks away. It fades out over the last sixteenth of a second of its life |
+| Streaks | a line drawn back along a spark's velocity for half of up to a tenth of a second of its flight, half a unit either side, added in 255, 167, 17 and fading out over its last half second. It falls under the whole gravity, its sideways speed slowing by 0.9 of itself a second, for 0.1 to 0.5 seconds |
+| Explosion's flicker | 15 dots rising at 80 to 143 units a second and drifting up to 32 sideways, under a quarter of the gravity, slowing by half of themselves a second, cycling through the sparks' colours ten a second, and shown in one step in four, for 2 seconds |
+| Bullet's dust | where a bullet leaves a decal, from the client's handlers or `TE_GUNSHOTDECAL`, 2 streaks flying out at up to 200 units a second each way, and 4 dots for every 100 units the impact is nearer than 1000 to the recorder's view, at least 4, flying out at 50 to 100 under the whole gravity in one of the palette's first three colours, darker the more there are, for half a second |
+| Sparks' streaks | 8 at each glint of a spark shower, flying out at up to 200 units a second each way |
+| `svc_particle`, `TE_GUNSHOT` | dots in the message's colour and the seven after it, drifting along its direction at 15 times it under a twentieth of the gravity, for 0.1 to 0.4 seconds, spread up to 8 units each way. A count of 255 makes Quake's explosion instead, 1024 dots flying out through fiery colours |
+
+They move with the temporary entities, each group, and at most 2048 are kept at once, dots and
+streaks together. Particles of effects the surveyed demos never send (blood streams, teleports,
+lava and the rest) and the trails of models flagged for them are not made, as no Half-Life model
+is.
 
 ### Decals
 
@@ -744,8 +766,7 @@ leave 23 shot decals (`{SHOT1` to `{SHOT5`, 179 to 183 in `decals.wad`) and play
 
 Not yet: hitboxes, as the game traces players through their models' hitboxes where its prediction
 has them, so a shot past a model but inside its box meets the box here; brush entities turned by
-their angles; the crossbow's bolts; player sprays (`TE_PLAYERDECAL`); and particles (the sparks'
-streaks, the explosions' flicker and an impact's dust).
+their angles; the crossbow's bolts; and player sprays (`TE_PLAYERDECAL`).
 
 ### Dynamic lights
 

@@ -956,6 +956,10 @@ impl App {
             );
             widgets::help(ui, &catalog.text("settings-events-leave-free-hint"), rtl);
         });
+        layout::row(ui, rtl, |ui| {
+            ui.checkbox(&mut viewer.particles, t("settings-particles"));
+            widgets::help(ui, &catalog.text("settings-particles-hint"), rtl);
+        });
 
         // Bullet holes and other marks, the newest kept
         heading(
@@ -1318,6 +1322,7 @@ fn changed_settings(current: &Settings, restored: &Settings) -> Vec<&'static str
             view.events_leave_free != first.events_leave_free,
             "settings-events-leave-free",
         ),
+        (view.particles != first.particles, "settings-particles"),
         (view.decals != first.decals, "settings-section-decals"),
         (view.volume != first.volume, "viewer-volume"),
         (

@@ -285,6 +285,9 @@ pub struct ViewerSettings {
     /// Whether choosing an event leaves the free camera for the view it is
     /// best seen from, rather than keeping the camera where it is
     pub events_leave_free: bool,
+    /// Whether sparks, the bits flying out of explosions and the dust of
+    /// bullet hits show
+    pub particles: bool,
     /// The most decals left in play that are shown, the newest. The map's
     /// own are always shown
     pub decals: usize,
@@ -329,6 +332,7 @@ impl Default for ViewerSettings {
             speed_axes: SpeedAxes::Horizontal,
             recorder_fps: false,
             events_leave_free: false,
+            particles: true,
             decals: 100,
         }
     }
