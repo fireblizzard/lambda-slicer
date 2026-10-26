@@ -56,9 +56,10 @@ the choice is kept. Clicking a heading sorts by it. Rows load a page at a time.
 - **Intensity** is the demo's highest action score, with a bar against the highest in the library
   ([analysis](analysis-profile.md)).
 
-Filters opens the filter pane: file name and folder, player, map, weapon, point of view (playing
-or spectating), minimum length and kills, players and teams, bots, minimum accuracy, headshot kills,
-midair kills, multikills, killing sprees and recording dates. The `(?)` beside a filter explains
+Filters opens the filter pane, its filters in named groups: Find (file name and folder, player,
+map, weapon), Point of view (playing or spectating), Quality (minimum length, players and teams,
+bots), Kills (minimum kills, killing sprees, minimum accuracy, multikills, headshot kills, midair
+kills) and Recorded (dates). The `(?)` beside a filter explains
 how it's worked out. Multikill keeps demos with a double, triple, quadra or penta kill or more, by
 anyone, the one chosen clicked again turning it off, and opening a demo then turns on the same
 refinement in its events. Spree of at least keeps demos where a player killed that many in a row,

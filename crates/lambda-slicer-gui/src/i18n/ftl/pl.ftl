@@ -78,6 +78,7 @@ filters-title = Filtry
 filters-find = Szukaj
 filters-pov = Perspektywa
 filters-quality = Jakość
+filters-kills = Zabójstwa
 filters-recorded = Nagrane
 pov-playing = Gra
 pov-spectating = Obserwacja

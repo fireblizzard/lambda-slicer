@@ -716,6 +716,34 @@ impl Widget for PlayButton<'_> {
     }
 }
 
+/// The name of a group of controls in strong text, with a question mark
+/// explaining `hint` when there is one and a line after it to the edge
+pub fn group_title(ui: &mut Ui, title: &str, hint: Option<&str>, rtl: bool) {
+    crate::layout::row(ui, rtl, |ui| {
+        group_name(ui, title, hint, rtl);
+        rule(ui);
+    });
+}
+
+/// A group's name in strong text and the question mark explaining `hint`,
+/// for a row that goes on with more
+pub fn group_name(ui: &mut Ui, title: &str, hint: Option<&str>, rtl: bool) {
+    ui.label(text::widget_text(ui.ctx(), title, rtl, None, text::Look::Strong));
+    if let Some(hint) = hint {
+        help(ui, hint, rtl);
+    }
+}
+
+/// A faint line across what is left of a row, after a group's name
+pub fn rule(ui: &mut Ui) {
+    let rest = ui.available_rect_before_wrap();
+    if rest.width() > theme::GAP_S {
+        let line = rest.shrink2(Vec2::new(theme::GAP_XS, 0.));
+        let stroke = Stroke::new(1., theme::HOVER);
+        ui.painter().hline(line.x_range(), line.center().y, stroke);
+    }
+}
+
 /// A small heading over a group of controls
 pub fn section_title(ui: &mut Ui, title: &str, rtl: bool) -> Response {
     let look = text::Look::Color(theme::MUTED);

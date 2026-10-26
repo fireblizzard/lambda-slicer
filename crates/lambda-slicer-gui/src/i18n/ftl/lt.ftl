@@ -78,6 +78,7 @@ filters-title = Filtrai
 filters-find = Paieška
 filters-pov = Požiūris
 filters-quality = Kokybė
+filters-kills = Nužudymai
 filters-recorded = Įrašyta
 pov-playing = Žaidžiant
 pov-spectating = Stebint

@@ -68,6 +68,7 @@ filters-title = Suodattimet
 filters-find = Etsi
 filters-pov = Näkökulma
 filters-quality = Laatu
+filters-kills = Tapot
 filters-recorded = Tallennettu
 pov-playing = Pelaten
 pov-spectating = Katsojana

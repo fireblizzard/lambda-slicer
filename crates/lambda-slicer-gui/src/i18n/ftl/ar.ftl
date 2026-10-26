@@ -88,6 +88,7 @@ filters-title = المرشحات
 filters-find = البحث
 filters-pov = زاوية الرؤية
 filters-quality = الجودة
+filters-kills = القتلات
 filters-recorded = تاريخ التسجيل
 pov-playing = لعب
 pov-spectating = مشاهدة

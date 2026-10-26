@@ -73,6 +73,7 @@ filters-title = Filtros
 filters-find = Buscar
 filters-pov = Ponto de vista
 filters-quality = Qualidade
+filters-kills = Abates
 filters-recorded = Gravada
 pov-playing = Jogando
 pov-spectating = Espectando

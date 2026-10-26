@@ -69,6 +69,7 @@ filters-title = Filters
 filters-find = Find
 filters-pov = Point of view
 filters-quality = Quality
+filters-kills = Kills
 filters-recorded = Recorded
 pov-playing = Playing
 pov-spectating = Spectating

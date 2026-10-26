@@ -59,6 +59,7 @@ filters-title = Filtreler
 filters-find = Bul
 filters-pov = Bakış açısı
 filters-quality = Kalite
+filters-kills = Öldürmeler
 filters-recorded = Kayıt tarihi
 pov-playing = Oynayan
 pov-spectating = İzleyici

@@ -2237,23 +2237,12 @@ fn changed_settings(current: &Settings, restored: &Settings) -> Vec<&'static str
     names
 }
 
-/// The name of a few settings within a section, in strong text with a
-/// line after it to the section's edge, and a question mark explaining
-/// `hint` when there is one
+/// The name of a few settings within a section, with a line after it to
+/// the section's edge, and a question mark explaining `hint` when there is
+/// one
 fn subheading(ui: &mut egui::Ui, catalog: &Catalog, id: &str, hint: Option<&str>, rtl: bool) {
-    layout::row(ui, rtl, |ui| {
-        let label = text::widget_text(ui.ctx(), &catalog.text(id), rtl, None, Look::Strong);
-        ui.label(label);
-        if let Some(hint) = hint {
-            widgets::help(ui, &catalog.text(hint), rtl);
-        }
-        let rest = ui.available_rect_before_wrap();
-        if rest.width() > theme::GAP_S {
-            let line = rest.shrink2(Vec2::new(theme::GAP_XS, 0.));
-            let stroke = egui::Stroke::new(1., theme::HOVER);
-            ui.painter().hline(line.x_range(), line.center().y, stroke);
-        }
-    });
+    let hint = hint.map(|h| catalog.text(h));
+    widgets::group_title(ui, &catalog.text(id), hint.as_deref(), rtl);
 }
 
 /// A folder or file the settings name, or what stands in for one

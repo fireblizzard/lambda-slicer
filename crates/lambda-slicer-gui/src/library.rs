@@ -164,6 +164,9 @@ const SEARCH_MIN_WIDTH: f32 = 60.;
 /// The room a slider leaves beside it for its value
 const SLIDER_VALUE_ROOM: f32 = 56.;
 
+/// The room above each group of filters after the first
+const GROUP_GAP: f32 = theme::GAP_M + theme::GAP_XS;
+
 /// The longest a demo can be asked to be at least, in minutes, and the
 /// step that number takes as it is dragged
 pub const MAX_MINUTES: f32 = 120.;
@@ -279,6 +282,14 @@ fn toggled(now: Spectating, toggle: Spectating) -> Spectating {
         n if n == other => Spectating::Any,
         n => n,
     }
+}
+
+/// One of a row of filter choices `width` wide, framed even when off so
+/// the row reads as buttons, and lit when on
+fn choice<'a>(on: bool, text: impl Into<WidgetText>, width: f32) -> egui::Button<'a> {
+    egui::Button::selectable(on, text.into())
+        .frame_when_inactive(true)
+        .min_size(Vec2::new(width, 0.))
 }
 
 /// A field for a count of `value` within `within`, inclusive
@@ -1148,19 +1159,20 @@ impl LibraryView {
         let ctx = ui.ctx().clone();
         let t = |id: &str| text::widget_text(&ctx, &catalog.text(id), rtl, None, Look::Plain);
 
-        // Find, with the reset of every filter beside its title
+        // Find, with the reset of every filter at the end of its line
         let active = self.active(tab);
         layout::row(ui, rtl, |ui| {
-            widgets::section_title(ui, &catalog.text("filters-find"), rtl);
-            if active > 0 {
-                layout::trailing(ui, rtl, |ui| {
+            widgets::group_name(ui, &catalog.text("filters-find"), None, rtl);
+            layout::trailing(ui, rtl, |ui| {
+                if active > 0 {
                     let reset = widgets::Button::new(None, t("filter-clear"), Variant::Ghost, rtl);
                     if ui.add(reset).clicked() {
                         self.filters = Filters::default();
                         self.matches.hidden.clear();
                     }
-                });
-            }
+                }
+                widgets::rule(ui);
+            });
         });
 
         let search = egui::TextEdit::singleline(&mut self.filters.text)
@@ -1186,13 +1198,11 @@ impl LibraryView {
                     ui.selectable_value(&mut self.filters.weapon, Some(w), w.name());
                 }
             });
-        ui.add_space(theme::GAP_M);
+        ui.add_space(GROUP_GAP);
 
         // Point of view, by the share of the recording spent spectating
-        layout::row(ui, rtl, |ui| {
-            widgets::section_title(ui, &catalog.text("filters-pov"), rtl);
-            widgets::help(ui, &catalog.text("help-pov"), rtl);
-        });
+        let help = catalog.text("help-pov");
+        widgets::group_title(ui, &catalog.text("filters-pov"), Some(&help), rtl);
 
         // Two toggles, both on for every demo
         let spectating = self.filters.spectating;
@@ -1205,26 +1215,24 @@ impl LibraryView {
             let width = (ui.available_width() - spacing) / 2.;
             for (toggle, id) in toggles {
                 let on = spectating == Spectating::Any || spectating == toggle;
-                let button = egui::Button::selectable(on, t(id)).min_size(Vec2::new(width, 0.));
+                let button = choice(on, t(id), width);
                 if ui.add(button).clicked() {
                     self.filters.spectating = toggled(spectating, toggle);
                 }
             }
         });
-        ui.add_space(theme::GAP_M);
+        ui.add_space(GROUP_GAP);
 
         // How much of each match was recorded, for the matches alone
         if tab == Tab::Matches {
-            layout::row(ui, rtl, |ui| {
-                widgets::section_title(ui, &catalog.text("filter-status"), rtl);
-                widgets::help(ui, &catalog.text("help-status-column"), rtl);
-            });
+            let help = catalog.text("help-status-column");
+            widgets::group_title(ui, &catalog.text("filter-status"), Some(&help), rtl);
             self.status_filter(ui, catalog, rtl);
-            ui.add_space(theme::GAP_M);
+            ui.add_space(GROUP_GAP);
         }
 
-        // Quality
-        widgets::section_title(ui, &catalog.text("filters-quality"), rtl);
+        // Quality, how long the demos are and who played in them
+        widgets::group_title(ui, &catalog.text("filters-quality"), None, rtl);
 
         let minutes = &mut self.filters.min_minutes;
         layout::row(ui, rtl, |ui| {
@@ -1235,20 +1243,6 @@ impl LibraryView {
                         .range(0.0..=MAX_MINUTES)
                         .speed(MINUTES_STEP)
                         .custom_formatter(|v, _| catalog.number(v, 1))
-                        .custom_parser(parse_number),
-                );
-            });
-        });
-
-        let kills = &mut self.filters.min_kills;
-        layout::row(ui, rtl, |ui| {
-            ui.label(t("filter-min-kills"));
-            layout::trailing(ui, rtl, |ui| {
-                ui.add(
-                    egui::DragValue::new(kills)
-                        .range(0..=MAX_KILLS)
-                        .speed(KILLS_STEP)
-                        .custom_formatter(|v, _| catalog.number(v, 0))
                         .custom_parser(parse_number),
                 );
             });
@@ -1287,51 +1281,29 @@ impl LibraryView {
             let width = (ui.available_width() - 2. * spacing) / 3.;
             for (bots, id) in choices {
                 let on = self.filters.bots == bots;
-                let button = egui::Button::selectable(on, t(id)).min_size(Vec2::new(width, 0.));
+                let button = choice(on, t(id), width);
                 if ui.add(button).clicked() {
                     self.filters.bots = bots;
                 }
             }
         });
+        ui.add_space(GROUP_GAP);
 
-        let accuracy_help = catalog.text("help-accuracy-filter");
-        let min_accuracy = &mut self.filters.min_accuracy;
-        layout::row(ui, rtl, |ui| {
-            ui.label(t("filter-min-accuracy"));
-            widgets::help(ui, &accuracy_help, rtl);
-        });
-        ui.spacing_mut().slider_width = ui.available_width() - SLIDER_VALUE_ROOM;
-        ui.add(
-            egui::Slider::new(min_accuracy, 0.0..=100.0)
-                .step_by(1.)
-                .custom_formatter(|v, _| catalog.number(v, 0))
-                .custom_parser(parse_number),
-        );
+        // Kills, how many and what kind
+        widgets::group_title(ui, &catalog.text("filters-kills"), None, rtl);
 
+        let kills = &mut self.filters.min_kills;
         layout::row(ui, rtl, |ui| {
-            ui.checkbox(&mut self.filters.headshot, t("filter-headshots"));
-            widgets::help(ui, &catalog.text("help-headshot-filter"), rtl);
-        });
-        layout::row(ui, rtl, |ui| {
-            ui.checkbox(&mut self.filters.midair, t("filter-midair"));
-            widgets::help(ui, &catalog.text("help-midair-filter"), rtl);
-        });
-
-        // A multikill from a double kill up, the one chosen clicked again
-        // turning it off
-        layout::row(ui, rtl, |ui| {
-            ui.label(t("refine-multikill"));
-            widgets::help(ui, &catalog.text("help-multikill"), rtl);
-        });
-        layout::wrapping_row(ui, rtl, |ui| {
-            for count in MULTIKILLS {
-                let on = self.filters.multikill == Some(count);
-                let name = multikill_name(catalog, count);
-                let name = text::widget_text(ui.ctx(), &name, rtl, None, Look::Plain);
-                if ui.add(egui::Button::selectable(on, name)).clicked() {
-                    self.filters.multikill = if on { None } else { Some(count) };
-                }
-            }
+            ui.label(t("filter-min-kills"));
+            layout::trailing(ui, rtl, |ui| {
+                ui.add(
+                    egui::DragValue::new(kills)
+                        .range(0..=MAX_KILLS)
+                        .speed(KILLS_STEP)
+                        .custom_formatter(|v, _| catalog.number(v, 0))
+                        .custom_parser(parse_number),
+                );
+            });
         });
 
         let spree = &mut self.filters.min_spree;
@@ -1348,10 +1320,56 @@ impl LibraryView {
                 );
             });
         });
-        ui.add_space(theme::GAP_M);
+
+        let accuracy_help = catalog.text("help-accuracy-filter");
+        let min_accuracy = &mut self.filters.min_accuracy;
+        layout::row(ui, rtl, |ui| {
+            ui.label(t("filter-min-accuracy"));
+            widgets::help(ui, &accuracy_help, rtl);
+        });
+        ui.spacing_mut().slider_width = ui.available_width() - SLIDER_VALUE_ROOM;
+        ui.add(
+            egui::Slider::new(min_accuracy, 0.0..=100.0)
+                .step_by(1.)
+                .custom_formatter(|v, _| catalog.number(v, 0))
+                .custom_parser(parse_number),
+        );
+
+
+        // A multikill from a double kill up, two to a row in buttons of one
+        // width, the one chosen clicked again turning it off
+        layout::row(ui, rtl, |ui| {
+            ui.label(t("refine-multikill"));
+            widgets::help(ui, &catalog.text("help-multikill"), rtl);
+        });
+        for pair in MULTIKILLS.chunks(2) {
+            layout::row(ui, rtl, |ui| {
+                let spacing = ui.spacing().item_spacing.x;
+                let width = (ui.available_width() - spacing) / 2.;
+                for &count in pair {
+                    let on = self.filters.multikill == Some(count);
+                    let name = multikill_name(catalog, count);
+                    let name = text::widget_text(ui.ctx(), &name, rtl, None, Look::Plain);
+                    let button = choice(on, name, width);
+                    if ui.add(button).clicked() {
+                        self.filters.multikill = if on { None } else { Some(count) };
+                    }
+                }
+            });
+        }
+
+        layout::row(ui, rtl, |ui| {
+            ui.checkbox(&mut self.filters.headshot, t("filter-headshots"));
+            widgets::help(ui, &catalog.text("help-headshot-filter"), rtl);
+        });
+        layout::row(ui, rtl, |ui| {
+            ui.checkbox(&mut self.filters.midair, t("filter-midair"));
+            widgets::help(ui, &catalog.text("help-midair-filter"), rtl);
+        });
+        ui.add_space(GROUP_GAP);
 
         // Recorded, both bounds inclusive
-        widgets::section_title(ui, &catalog.text("filters-recorded"), rtl);
+        widgets::group_title(ui, &catalog.text("filters-recorded"), None, rtl);
 
         layout::wrapping_row(ui, rtl, |ui| {
             date_filter(

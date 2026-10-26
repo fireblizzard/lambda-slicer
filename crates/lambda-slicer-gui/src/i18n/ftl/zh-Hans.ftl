@@ -57,6 +57,7 @@ filters-title = 筛选
 filters-find = 查找
 filters-pov = 视角
 filters-quality = 质量
+filters-kills = 击杀
 filters-recorded = 录制日期
 pov-playing = 游戏
 pov-spectating = 观战

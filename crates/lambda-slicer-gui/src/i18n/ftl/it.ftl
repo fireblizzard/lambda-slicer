@@ -73,6 +73,7 @@ filters-title = Filtri
 filters-find = Cerca
 filters-pov = Punto di vista
 filters-quality = Qualità
+filters-kills = Uccisioni
 filters-recorded = Registrata
 pov-playing = In gioco
 pov-spectating = Spettatore

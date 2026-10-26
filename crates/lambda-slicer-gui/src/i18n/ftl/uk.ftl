@@ -78,6 +78,7 @@ filters-title = Фільтри
 filters-find = Пошук
 filters-pov = Вигляд
 filters-quality = Якість
+filters-kills = Вбивства
 filters-recorded = Дата запису
 pov-playing = Гра
 pov-spectating = Спостереження
