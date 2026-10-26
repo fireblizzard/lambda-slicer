@@ -1,9 +1,11 @@
 //! Clips marked in demos, kept between runs as JSON beside the settings
 //!
-//! A clip is a named, requested range `[start, end)` in a demo's first
-//! session, the one an export can start in. The range an export really cuts
-//! snaps to the recording's frames and is worked out when shown, never
-//! stored. Clips are keyed by the demo's path as the library shows it.
+//! A clip is a named, requested range `[start, end)` and the part of the
+//! demo it is in. The demo's clock can start over after a map change, so two
+//! parts can share times, and the part says which one the clip cuts. The
+//! range an export really cuts snaps to the recording's frames and is worked
+//! out when shown, never stored. Clips are keyed by the demo's path as the
+//! library shows it.
 //!
 //! A clips file that cannot be used is never written over. One that reads
 //! but is not valid is kept under another name and the clips start empty,
@@ -15,14 +17,26 @@ use std::path::{Path, PathBuf};
 use lambda_slicer_core::timeline::time::DemoTime;
 use serde::{Deserialize, Serialize};
 
+use crate::export::ClipKey;
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Clip {
     pub name: String,
     pub start: DemoTime,
     pub end: DemoTime,
+    /// The session it is in, the decoder's count of them. Clips kept before
+    /// parts were stored have none, and cut the earliest part with their
+    /// times
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub part: Option<u32>,
 }
 
 impl Clip {
+    /// What its export depends on, its range and its part
+    pub fn key(&self) -> ClipKey {
+        (self.start, self.end, self.part)
+    }
+
     /// The requested length, zero when the end is not after the start
     pub fn length(&self) -> DemoTime {
         DemoTime::from_micros((self.end.micros() - self.start.micros()).max(0))
@@ -158,7 +172,22 @@ mod tests {
             name: name.into(),
             start: start.parse().unwrap(),
             end: end.parse().unwrap(),
+            part: None,
         }
+    }
+
+    #[test]
+    fn a_clip_keeps_its_part_and_one_kept_without_has_none() {
+        let mut later = clip("Later", "10", "20");
+        later.part = Some(2);
+        let text = serde_json::to_string(&later).unwrap();
+        assert_eq!(serde_json::from_str::<Clip>(&text).unwrap(), later);
+
+        // A clip with no part is kept as clips were before parts
+        let earlier = clip("Earlier", "10", "20");
+        let text = serde_json::to_string(&earlier).unwrap();
+        assert!(!text.contains("part"), "{text}");
+        assert_eq!(serde_json::from_str::<Clip>(&text).unwrap(), earlier);
     }
 
     #[test]

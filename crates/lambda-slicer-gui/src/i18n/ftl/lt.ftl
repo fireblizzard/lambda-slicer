@@ -504,7 +504,7 @@ help-bots-filter = „Nedaug“ palieka tik įrašus ir rungtynes, kuriose botų
 
 clips-new = Naujas klipas
 clips-select-event = Pirmiausia pasirinkite įvykį sąraše arba laiko juostoje.
-clips-other-session = Klipas negali prasidėti čia, nes po žemėlapio pakeitimo ar prisijungimo iš naujo įrašo laikrodis prasidėjo iš naujo, o ankstesnė dalis turi tuos pačius laikus.
+clips-other-session = Klipas negali prasidėti čia, nes jis tęstųsi per žemėlapio pakeitimą ar prisijungimą iš naujo.
 clips-add-window = Šios intensyvios akimirkos klipas
 clip-default-name = Klipas { $number }
 clip-name = Pavadinimas
@@ -520,6 +520,7 @@ clip-set-in = Pradėti klipą nuo dabartinės akimirkos
 clip-set-out = Baigti klipą ties dabartine akimirka
 clip-no-playhead = Peržiūra nepasiekiama, todėl nėra dabartinės akimirkos, kurią būtų galima naudoti.
 clip-play = Leisti klipą vieną kartą
+clip-unplayable = Šis klipas yra po žemėlapio pakeitimo ar prisijungimo iš naujo, kai įrašo laikrodis prasidėjo iš naujo, todėl peržiūra negali jo paleisti. Eksportuojant vis tiek iškerpama tinkama akimirka.
 clip-show-on-timeline = Rodyti laiko juostoje
 export-destination = Keisti eksporto aplanką
 export-skipped = Praleista. { $reason }

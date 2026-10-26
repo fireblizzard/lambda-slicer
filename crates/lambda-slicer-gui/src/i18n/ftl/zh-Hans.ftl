@@ -443,7 +443,7 @@ help-bots-filter = “少量”只保留机器人比真人玩家少的录像和�
 
 clips-new = 新建片段
 clips-select-event = 请先在列表或时间轴上选择一个事件。
-clips-other-session = 片段不能从这里开始，因为换地图或重新连接后录像的时钟重新开始，较早的部分有相同的时间。
+clips-other-session = 片段不能从这里开始，因为它会跨过换地图或重新连接。
 clips-add-window = 为这个激烈时刻建片段
 clip-default-name = 片段 { $number }
 clip-name = 名称
@@ -459,6 +459,7 @@ clip-set-in = 从当前时刻开始片段
 clip-set-out = 在当前时刻结束片段
 clip-no-playhead = 查看器不可用，因此没有可用的当前时刻。
 clip-play = 播放片段一次
+clip-unplayable = 此片段位于换地图或重新连接之后，录像的时钟在那里重新开始，因此查看器无法播放它。导出时仍会剪出正确的时刻。
 clip-show-on-timeline = 在时间线上显示
 export-destination = 更改导出位置
 export-skipped = 已跳过。{ $reason }

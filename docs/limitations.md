@@ -43,8 +43,9 @@ Other things:
 - Each frame of a demo carries a little data from the game's client, which
   a clip copies as it is. AG's plays correctly, but another client's might not.
 - After a map change or reconnect, a demo's clock can start over, so two parts
-  share the same times. Clips can't tell them apart, so the app offers no clip in a later part
-  whose times repeat an earlier one's.
+  share the same times. A clip keeps its part, so it exports the right one, but the demo player
+  can't play a clip, or go to an event, in a later part whose times repeat an earlier one's. No
+  demo seen so far does this, so it's only been tested with made-up demos.
 
 ## Demo player
 

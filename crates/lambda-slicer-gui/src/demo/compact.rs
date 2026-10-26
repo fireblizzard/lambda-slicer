@@ -739,7 +739,7 @@ impl DemoView {
             }
         }
 
-        let Some((from, to)) = self.proposal() else {
+        let Some((from, to, _)) = self.proposal() else {
             return;
         };
         for time in [from, to] {

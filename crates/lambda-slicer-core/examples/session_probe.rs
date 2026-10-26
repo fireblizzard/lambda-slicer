@@ -26,7 +26,7 @@ fn main() {
     for pair in std::env::args().skip(2) {
         let (a, b) = pair.split_once('-').unwrap();
         let (a, b): (DemoTime, DemoTime) = (a.parse().unwrap(), b.parse().unwrap());
-        match g.snap(a, Some(b)) {
+        match g.snap(a, Some(b), None) {
             Ok(s) => println!(
                 "{a}..{b}: {}..{} segment {:?}",
                 s.start,

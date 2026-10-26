@@ -764,7 +764,7 @@ pub struct DemoView {
     /// settings' each frame
     pub spree_least: u32,
     /// What an export of each requested range would cut, worked out once
-    snapped: HashMap<(DemoTime, DemoTime), Result<Snapped, Message>>,
+    snapped: HashMap<ClipKey, Result<Snapped, Message>>,
     /// Where exports go, the demo's own folder when none is set
     pub export_folder: Option<PathBuf>,
     /// How exported clips are named
@@ -888,7 +888,7 @@ impl DemoView {
         let (Some(clip), Some(&id)) = (self.clips.get(i), self.clip_ids.get(i)) else {
             return;
         };
-        self.exports.insert(id, ((clip.start, clip.end), state));
+        self.exports.insert(id, (clip.key(), state));
     }
 
     /// Export these clips one after another with their ranges as they are
@@ -904,7 +904,7 @@ impl DemoView {
             let (Some(clip), Some(&id)) = (self.clips.get(i), self.clip_ids.get(i)) else {
                 continue;
             };
-            let range = (clip.start, clip.end);
+            let range = clip.key();
             self.exports.insert(id, (range, ExportState::Waiting));
             let file_name = self.file_naming.file_name(&self.path, clip);
             items.push(ExportItem {
@@ -1193,10 +1193,10 @@ impl DemoView {
 
     /// The range clipping the selected event would take, or with several
     /// events chosen, the one from the first of them to the last, whatever
-    /// lies between, padded the same. A start there must fall in the first
-    /// event's session, which the last must share. Times restart with some
-    /// sessions, and an export starts at the first group with the time
-    fn proposal(&self) -> Option<(f32, f32)> {
+    /// lies between, padded the same, and the session it is in. A start
+    /// there must fall in the first event's session, which the last must
+    /// share
+    fn proposal(&self) -> Option<(f32, f32, u32)> {
         let m = self.model.as_ref()?;
         let (first, last) = match self.chosen_span() {
             Some(span) => span,
@@ -1207,8 +1207,9 @@ impl DemoView {
             return None;
         }
 
-        let range = self.clamped(first.time - self.padding.0, last.time + self.padding.1);
-        self.starts_in(range.0, first.segment).then_some(range)
+        let (from, to) = self.clamped(first.time - self.padding.0, last.time + self.padding.1);
+        self.starts_in(from, first.segment)
+            .then_some((from, to, first.segment))
     }
 
     /// The first and last of several chosen events that show, none with
@@ -1226,8 +1227,9 @@ impl DemoView {
     }
 
     /// What Clip it clips, the highlight when it was chosen after the event
-    /// and otherwise the event, none when that cannot start where it should
-    pub(super) fn clip_it_range(&self) -> Option<(f32, f32)> {
+    /// and otherwise the event, with its session, none when that cannot
+    /// start where it should
+    pub(super) fn clip_it_range(&self) -> Option<(f32, f32, u32)> {
         if self.highlight_last && self.window.is_some() {
             return self.highlight_range();
         }
@@ -1240,20 +1242,46 @@ impl DemoView {
     }
 
     /// The range clipping the chosen highlight would take, padded as an
-    /// event's is, when it starts in the highlight's own session
-    fn highlight_range(&self) -> Option<(f32, f32)> {
+    /// event's is, and its session, when it starts in the highlight's own
+    /// session
+    fn highlight_range(&self) -> Option<(f32, f32, u32)> {
         let m = self.model.as_ref()?;
         let w = m.windows.get(self.window?)?;
-        let range = self.clamped(w.start - self.padding.0, w.end + self.padding.1);
-        self.starts_in(range.0, w.segment).then_some(range)
+        let (from, to) = self.clamped(w.start - self.padding.0, w.end + self.padding.1);
+        self.starts_in(from, w.segment)
+            .then_some((from, to, w.segment))
     }
 
-    /// Whether a clip starting at `time` starts in `segment`
+    /// Whether a clip starting at `time` in `segment` starts there
     fn starts_in(&self, time: f32, segment: u32) -> bool {
         let Some(m) = &self.model else {
             return false;
         };
+        DemoTime::from_f32(time).is_some_and(|t| m.groups.starts_in(t, segment))
+    }
+
+    /// Whether the viewer goes to `time` in `segment`. It seeks by time
+    /// alone, which finds the earliest session with the time
+    fn seeks_to(&self, time: f32, segment: u32) -> bool {
+        let Some(m) = &self.model else {
+            return false;
+        };
         DemoTime::from_f32(time).is_some_and(|t| m.groups.segment_at(t) == Some(segment))
+    }
+
+    /// Whether the viewer can play a clip, which it cannot when an earlier
+    /// session has the clip's times
+    pub(super) fn plays(&self, clip: &Clip) -> bool {
+        match clip.part {
+            Some(part) => self.seeks_to(clip.start.secs_f64() as f32, part),
+            None => true,
+        }
+    }
+
+    /// The session the viewer is in at `time`, the earliest with the time
+    pub(super) fn part_at(&self, time: f32) -> Option<u32> {
+        let m = self.model.as_ref()?;
+        m.groups.segment_at(DemoTime::from_f32(time)?)
     }
 
     /// A range kept within the recording
@@ -1267,7 +1295,7 @@ impl DemoView {
     }
 
     /// Add a clip, named after the next free number, and choose it
-    fn add_clip(&mut self, catalog: &Catalog, (from, to): (f32, f32)) {
+    fn add_clip(&mut self, catalog: &Catalog, (from, to): (f32, f32), part: Option<u32>) {
         let (Some(start), Some(end)) = (DemoTime::from_f32(from), DemoTime::from_f32(to)) else {
             return;
         };
@@ -1278,7 +1306,12 @@ impl DemoView {
             name.replace(['\u{2068}', '\u{2069}'], "")
         });
         self.identify_clips();
-        self.clips.push(Clip { name, start, end });
+        self.clips.push(Clip {
+            name,
+            start,
+            end,
+            part,
+        });
         self.identify_clips();
         self.chosen_clip = Some(self.clips.len() - 1);
         self.clips_changed = true;
@@ -1290,10 +1323,10 @@ impl DemoView {
             return Err(Message::new("export-empty-range", String::new()));
         };
         self.snapped
-            .entry((clip.start, clip.end))
+            .entry(clip.key())
             .or_insert_with(|| {
                 m.groups
-                    .snap(clip.start, Some(clip.end))
+                    .snap(clip.start, Some(clip.end), clip.part)
                     .map_err(|e| e.message())
             })
             .clone()
@@ -1619,7 +1652,7 @@ impl DemoView {
                 self.scroll_to_window = 3;
 
                 // To its start, unless an earlier session has the same time
-                if self.starts_in(start, segment)
+                if self.seeks_to(start, segment)
                     && let Some(viewer) = &mut self.viewer
                 {
                     viewer.seek(start);
@@ -1635,18 +1668,19 @@ impl DemoView {
                     None => self.view.0,
                 };
                 let range = self.clamped(from, from + NEW_CLIP_SECONDS);
-                self.add_clip(catalog, range);
+                let part = self.part_at(range.0);
+                self.add_clip(catalog, range, part);
                 self.wanted_tab = Some(InspectorTab::Clips);
             }
             DemoAction::ClipEvent => {
-                if let Some(range) = self.clip_it_range() {
-                    self.add_clip(catalog, range);
+                if let Some((from, to, part)) = self.clip_it_range() {
+                    self.add_clip(catalog, (from, to), Some(part));
                     self.wanted_tab = Some(InspectorTab::Clips);
                 }
             }
             DemoAction::ClipHighlight => {
-                if let Some(range) = self.highlight_range() {
-                    self.add_clip(catalog, range);
+                if let Some((from, to, part)) = self.highlight_range() {
+                    self.add_clip(catalog, (from, to), Some(part));
                     self.wanted_tab = Some(InspectorTab::Clips);
                 }
             }
@@ -2374,6 +2408,7 @@ mod tests {
             name: "Clip 1".into(),
             start: DemoTime::from_micros(1_000_000),
             end: DemoTime::from_micros(2_000_000),
+            part: None,
         });
         view.typing = Some((0, Edge::Start, typed.into()));
         view
@@ -2639,11 +2674,11 @@ mod tests {
 
         // The event, then the highlight chosen after it, then the event again
         view.select(0, true);
-        assert_eq!(view.clip_it_range(), Some((26., 31.)));
+        assert_eq!(view.clip_it_range(), Some((26., 31., 0)));
         view.apply(DemoAction::ChooseHighlight(0), &catalog);
-        assert_eq!(view.clip_it_range(), Some((36., 71.)));
+        assert_eq!(view.clip_it_range(), Some((36., 71., 0)));
         view.select(0, true);
-        assert_eq!(view.clip_it_range(), Some((26., 31.)));
+        assert_eq!(view.clip_it_range(), Some((26., 31., 0)));
     }
 
     #[test]
@@ -2670,11 +2705,11 @@ mod tests {
         // The kill at 30 s between the two chosen is in the clip anyway
         view.select(0, true);
         view.marked = BTreeSet::from([1, 3]);
-        assert_eq!(view.clip_it_range(), Some((16., 41.)));
+        assert_eq!(view.clip_it_range(), Some((16., 41., 0)));
 
         // Selecting one event chooses it alone again
         view.select(2, true);
-        assert_eq!(view.clip_it_range(), Some((26., 31.)));
+        assert_eq!(view.clip_it_range(), Some((26., 31., 0)));
     }
 
     #[test]
@@ -2697,6 +2732,19 @@ mod tests {
         // It can still be selected and read, without being played
         view.select(1, true);
         assert_eq!(view.selected, Some(1));
+
+        // and clipped, the clip keeping its session to cut the right one
+        view.padding = (4., 1.);
+        assert_eq!(view.clip_it_range(), Some((1., 6., 1)));
+        let clip = |part| Clip {
+            name: String::new(),
+            start: DemoTime::from_micros(1_000_000),
+            end: DemoTime::from_micros(6_000_000),
+            part,
+        };
+        assert!(view.plays(&clip(Some(0))));
+        assert!(!view.plays(&clip(Some(1))));
+        assert!(view.plays(&clip(None)));
     }
 
     #[test]
@@ -2737,7 +2785,13 @@ mod tests {
             let start = DemoTime::from_micros((1 + 2 * k) * 1_000_000);
             let end = DemoTime::from_micros((2 + 2 * k) * 1_000_000);
             let name = format!("Clip {k}");
-            view.clips.push(Clip { name, start, end });
+            let part = None;
+            view.clips.push(Clip {
+                name,
+                start,
+                end,
+                part,
+            });
         }
         view.identify_clips();
         view
@@ -2763,7 +2817,8 @@ mod tests {
             range,
             (
                 DemoTime::from_micros(5_000_000),
-                DemoTime::from_micros(6_000_000)
+                DemoTime::from_micros(6_000_000),
+                None
             )
         );
 

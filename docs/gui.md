@@ -301,8 +301,11 @@ dismissed.
   least half the clip. The card then offers the nearest that works, such as 0.3 s earlier, with
   Start there and export, which moves the clip's start there and exports it again.
 - **Parts.** A level or map change, or a reconnect, starts a new part of the demo. A clip can start
-  in any part once its map has loaded. Where a part's times repeat an earlier one's, a clip's start
-  would land in the earlier part, so the app offers no clip there.
+  in any part once its map has loaded, and keeps which part it's in as well as its times. Where the
+  demo's clock starts over, so a part's times repeat an earlier one's, the export still cuts the
+  clip's own part. The viewer goes by time alone, so it can't play such a clip, and its Play and
+  Loop buttons are off. Clips kept before parts were stored cut the earliest part with their times.
+  Setting a clip's start or end to the current moment moves it to the part the viewer is in.
 
 ## Export
 

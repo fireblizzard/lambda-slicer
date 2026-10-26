@@ -455,7 +455,7 @@ help-bots-filter = “Az”, yalnızca botların gerçek oyunculardan az olduğu
 
 clips-new = Yeni klip
 clips-select-event = Önce listeden ya da zaman çizelgesinden bir olay seçin.
-clips-other-session = Burada klip başlayamaz, çünkü bir harita değişikliğinden ya da yeniden bağlanmadan sonra demonun saati baştan başladı ve daha önceki bir bölüm aynı zamanlara sahip.
+clips-other-session = Burada klip başlayamaz, çünkü bir harita değişikliğinin ya da yeniden bağlanmanın üzerinden geçerdi.
 clips-add-window = Bu yoğun anın klibi
 clip-default-name = Klip { $number }
 clip-name = Ad
@@ -471,6 +471,7 @@ clip-set-in = Klibi şu anki andan başlat
 clip-set-out = Klibi şu anki anda bitir
 clip-no-playhead = Görüntüleyici kullanılamıyor, bu yüzden şu anki an alınamıyor.
 clip-play = Klibi bir kez oynat
+clip-unplayable = Bu klip, demonun saatinin baştan başladığı bir harita değişikliğinden ya da yeniden bağlanmadan sonra geliyor, bu yüzden görüntüleyici onu oynatamaz. Dışa aktarınca yine de doğru an kesilir.
 clip-show-on-timeline = Zaman çizelgesinde göster
 export-destination = Dışa aktarma klasörünü değiştir
 export-skipped = Atlandı. { $reason }

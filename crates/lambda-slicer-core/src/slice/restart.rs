@@ -15,6 +15,11 @@
 //! Persistent state that changed after LOADING (user info, light styles,
 //! HUD messages) is replayed at the start of the bootstrap group, see
 //! [`super::persistent`]
+//!
+//! A slice starts at the first frame group at or after its start. When the
+//! demo's clock starts over in a later session, two sessions can share a
+//! time, so a slice can name its session, and then starts among that
+//! session's groups only
 
 use std::cell::RefCell;
 use std::collections::{BTreeSet, VecDeque};
@@ -218,6 +223,7 @@ fn plan(
     path: &Path,
     start: DemoTime,
     end: Option<DemoTime>,
+    part: Option<u32>,
     limits: Limits,
     stop: &AtomicBool,
 ) -> Result<Plan, ExportError> {
@@ -286,7 +292,13 @@ fn plan(
             break;
         }
 
-        if new_group && kept.is_none() && t >= start && !matches!(f.body, FrameBody::DemoStart) {
+        let in_part = part.is_none_or(|p| d.segment == p);
+        if new_group
+            && kept.is_none()
+            && t >= start
+            && in_part
+            && !matches!(f.body, FrameBody::DemoStart)
+        {
             if !(signed_on && full_update) {
                 return Err(ExportError::StartDuringLoading);
             }
@@ -1102,21 +1114,23 @@ pub fn check_restart(
     limits: Limits,
 ) -> Result<(), ExportError> {
     let never = AtomicBool::new(false);
-    check(source, scratch, start, end, limits, &never)?;
+    check(source, scratch, start, end, None, limits, &never)?;
     Ok(())
 }
 
 /// [`check_restart`] that gives up once `stop` is set, returning the time
-/// the clip would start at, the first frame group's at or after `start`
+/// the clip would start at, the first frame group's at or after `start`,
+/// in session `part` when one is given
 fn check(
     source: &Path,
     scratch: &Path,
     start: DemoTime,
     end: Option<DemoTime>,
+    part: Option<u32>,
     limits: Limits,
     stop: &AtomicBool,
 ) -> Result<f32, ExportError> {
-    let p = plan(source, start, end, limits, stop)?;
+    let p = plan(source, start, end, part, limits, stop)?;
     let mut out = tempfile::tempfile_in(scratch).map_err(io_err(scratch))?;
     write(source, &mut out, &p, "", limits, stop)?;
     Ok(p.first_time)
@@ -1129,13 +1143,16 @@ fn check_all(
     scratch: &Path,
     starts: &[DemoTime],
     end: DemoTime,
+    part: Option<u32>,
     limits: Limits,
     stop: &AtomicBool,
 ) -> Result<Vec<Option<f32>>, ExportError> {
     let results: Vec<Result<f32, ExportError>> = std::thread::scope(|s| {
         let mut checks = Vec::new();
         for &start in starts {
-            checks.push(s.spawn(move || check(source, scratch, start, Some(end), limits, stop)));
+            checks.push(
+                s.spawn(move || check(source, scratch, start, Some(end), part, limits, stop)),
+            );
         }
         let mut results = Vec::new();
         for c in checks {
@@ -1165,12 +1182,14 @@ fn check_all(
 /// `start` and the nearest that works is narrowed. Returns the time that
 /// start begins at, none when no start within 5 seconds works. Gives up
 /// once `stop` is set. A start found passes the same check as
-/// [`check_restart`], so its export can still fail its validation
+/// [`check_restart`], so its export can still fail its validation. Starts
+/// are looked for in session `part` when one is given
 pub fn nearest_start(
     source: &Path,
     scratch: &Path,
     start: DemoTime,
     end: DemoTime,
+    part: Option<u32>,
     limits: Limits,
     stop: &AtomicBool,
 ) -> Result<Option<DemoTime>, ExportError> {
@@ -1192,7 +1211,7 @@ pub fn nearest_start(
     let mut found = None;
     for batch in offsets.chunks(CHECKS_AT_ONCE) {
         let starts: Vec<DemoTime> = batch.iter().map(|&o| at(o)).collect();
-        let checked = check_all(source, scratch, &starts, end, limits, stop)?;
+        let checked = check_all(source, scratch, &starts, end, part, limits, stop)?;
         if let Some(i) = checked.iter().position(Option::is_some) {
             found = Some((batch[i], checked[i]));
             break;
@@ -1210,7 +1229,7 @@ pub fn nearest_start(
             .map(|k| refused + (works - refused) * f64::from(k) / 4.)
             .collect();
         let starts: Vec<DemoTime> = points.iter().map(|&o| at(o)).collect();
-        let checked = check_all(source, scratch, &starts, end, limits, stop)?;
+        let checked = check_all(source, scratch, &starts, end, part, limits, stop)?;
         match checked.iter().position(Option::is_some) {
             Some(i) => {
                 if i > 0 {
@@ -1233,17 +1252,27 @@ pub fn run_restart(
     end: Option<DemoTime>,
     limits: Limits,
 ) -> Result<RestartReport, ExportError> {
-    run_restart_until(source, dest, start, end, limits, &AtomicBool::new(false))
+    run_restart_until(
+        source,
+        dest,
+        start,
+        end,
+        None,
+        limits,
+        &AtomicBool::new(false),
+    )
 }
 
 /// [`run_restart`] that gives up with [`ExportError::Stopped`] within a
 /// moment of `stop` being set, as every pass checks it between records.
-/// Nothing is left behind, as with any other failure
+/// Nothing is left behind, as with any other failure. The slice starts in
+/// session `part` when one is given
 pub fn run_restart_until(
     source: &Path,
     dest: &Path,
     start: DemoTime,
     end: Option<DemoTime>,
+    part: Option<u32>,
     limits: Limits,
     stop: &AtomicBool,
 ) -> Result<RestartReport, ExportError> {
@@ -1267,7 +1296,7 @@ pub fn run_restart_until(
                 return Err(ExportError::SourceFailedCrossCheck);
             }
 
-            let p = plan(snapshot, start, end, limits, stop)?;
+            let p = plan(snapshot, start, end, part, limits, stop)?;
             let written = write(snapshot, out, &p, &origin, limits, stop)?;
             *planned.borrow_mut() = Some((snapshot.to_path_buf(), p, written));
             Ok(())

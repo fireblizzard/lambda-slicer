@@ -490,7 +490,7 @@ help-bots-filter = Pochi tiene solo le demo e le partite con meno bot che giocat
 
 clips-new = Nuova clip
 clips-select-event = Scegli prima un evento nell’elenco o sulla linea del tempo.
-clips-other-session = Una clip non può iniziare qui, perché l’orologio della demo è ripartito da zero dopo un cambio di mappa o una riconnessione, e una parte precedente ha gli stessi tempi.
+clips-other-session = Una clip non può iniziare qui, perché attraverserebbe un cambio di mappa o una riconnessione.
 clips-add-window = Clip di questo momento intenso
 clip-default-name = Clip { $number }
 clip-name = Nome
@@ -506,6 +506,7 @@ clip-set-in = Inizia la clip dal momento attuale
 clip-set-out = Finisci la clip al momento attuale
 clip-no-playhead = Il visore non è disponibile, quindi non c’è un momento attuale da usare.
 clip-play = Riproduci la clip una volta
+clip-unplayable = Questa clip viene dopo un cambio di mappa o una riconnessione, dove l’orologio della demo è ripartito da zero, quindi il visore non può riprodurla. Esportandola si taglia comunque il momento giusto.
 clip-show-on-timeline = Mostra sulla timeline
 export-destination = Cambia la cartella di esportazione
 export-skipped = Saltata. { $reason }

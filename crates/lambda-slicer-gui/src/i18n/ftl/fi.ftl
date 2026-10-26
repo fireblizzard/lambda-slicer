@@ -473,7 +473,7 @@ help-bots-filter = Vähän jättää jäljelle vain demot ja ottelut, joissa bot
 
 clips-new = Uusi klippi
 clips-select-event = Valitse ensin tapahtuma luettelosta tai aikajanalta.
-clips-other-session = Klippi ei voi alkaa tästä, koska demon kello alkoi alusta kartanvaihdon tai uudelleenyhdistämisen jälkeen, ja aiemmalla osalla on samat ajat.
+clips-other-session = Klippi ei voi alkaa tästä, koska se jatkuisi kartanvaihdon tai uudelleenyhdistämisen yli.
 clips-add-window = Klippi tästä kiivaasta hetkestä
 clip-default-name = Klippi { $number }
 clip-name = Nimi
@@ -489,6 +489,7 @@ clip-set-in = Aloita klippi nykyisestä hetkestä
 clip-set-out = Lopeta klippi nykyiseen hetkeen
 clip-no-playhead = Katselin ei ole käytettävissä, joten nykyistä hetkeä ei voi käyttää.
 clip-play = Toista klippi kerran
+clip-unplayable = Tämä klippi tulee kartanvaihdon tai uudelleenyhdistämisen jälkeen, kun demon kello alkoi alusta, joten katselin ei voi toistaa sitä. Vienti leikkaa silti oikean hetken.
 clip-show-on-timeline = Näytä aikajanalla
 export-destination = Vaihda vientikansio
 export-skipped = Ohitettu. { $reason }

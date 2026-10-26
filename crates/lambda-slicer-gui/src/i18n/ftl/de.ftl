@@ -473,7 +473,7 @@ help-bots-filter = Wenige behält nur Demos und Matches, in denen weniger Bots a
 
 clips-new = Neuer Clip
 clips-select-event = Wähle zuerst ein Ereignis in der Liste oder auf der Zeitleiste.
-clips-other-session = Hier kann kein Clip beginnen, weil die Uhr der Demo nach einem Mapwechsel oder Reconnect wieder bei null angefangen hat und ein früherer Teil dieselben Zeiten hat.
+clips-other-session = Hier kann kein Clip beginnen, weil er über einen Mapwechsel oder Reconnect hinweggehen würde.
 clips-add-window = Clip von diesem intensiven Moment
 clip-default-name = Clip { $number }
 clip-name = Name
@@ -489,6 +489,7 @@ clip-set-in = Clip ab dem aktuellen Moment starten
 clip-set-out = Clip beim aktuellen Moment beenden
 clip-no-playhead = Die Demo-Ansicht ist nicht verfügbar, daher gibt es keinen aktuellen Moment, den du nehmen kannst.
 clip-play = Clip einmal abspielen
+clip-unplayable = Dieser Clip kommt nach einem Mapwechsel oder Reconnect, bei dem die Uhr der Demo wieder bei null angefangen hat, daher kann die Demo-Ansicht ihn nicht abspielen. Beim Exportieren wird trotzdem der richtige Moment ausgeschnitten.
 clip-show-on-timeline = Auf der Zeitleiste zeigen
 export-destination = Exportordner ändern
 export-skipped = Übersprungen. { $reason }

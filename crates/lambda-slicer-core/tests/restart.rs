@@ -123,7 +123,13 @@ struct Recording {
     /// The new session numbers its packets from [`FIRST`] again, as after a
     /// reconnect, reusing sequences the previous session sent
     sequence_reset: bool,
+    /// The new session's clock starts over, so its groups have the times of
+    /// the groups [`CLOCK_BACK`] before them
+    clock_reset: bool,
 }
+
+/// How many groups back a clock that starts over takes its times from
+const CLOCK_BACK: i32 = 20;
 
 impl Recording {
     /// `count` groups, each referencing the packet `lag` sequences back
@@ -139,6 +145,7 @@ impl Recording {
             animtimes: Vec::new(),
             session_at: None,
             sequence_reset: false,
+            clock_reset: false,
         }
     }
 
@@ -158,6 +165,11 @@ impl Recording {
         let sequence = |n: i32| match session {
             Some(s) if n >= s => FIRST + n - s,
             _ => FIRST + n,
+        };
+        let clock = self.session_at.filter(|_| self.clock_reset);
+        let time_of = |n: i32| match clock {
+            Some(s) if n >= s => (n - CLOCK_BACK) as f32 * STEP,
+            _ => n as f32 * STEP,
         };
         let mut group = |t: f32, n: i32, payload: Vec<u8>| {
             playback.push(frame(
@@ -180,7 +192,7 @@ impl Recording {
         group(0., 0, full_packet(FIRST));
         for (k, (from, extra)) in self.groups.iter().enumerate() {
             let n = k as i32 + 1;
-            let t = n as f32 * STEP;
+            let t = time_of(n);
             let animtime = self
                 .animtimes
                 .iter()
@@ -203,7 +215,7 @@ impl Recording {
             group(t, n, payload);
         }
 
-        let end = (self.groups.len() + 1) as f32 * STEP;
+        let end = time_of(self.groups.len() as i32 + 1);
         playback.push(frame(
             tag::NEXT_SECTION,
             end,
@@ -296,7 +308,8 @@ fn a_stopped_export_leaves_nothing_behind() {
     let out = dir.path().join("out.dem");
 
     let stop = AtomicBool::new(true);
-    let stopped = run_restart_until(&src, &out, at(30), Some(at(50)), Limits::default(), &stop);
+    let limits = Limits::default();
+    let stopped = run_restart_until(&src, &out, at(30), Some(at(50)), None, limits, &stop);
     assert!(matches!(stopped, Err(ExportError::Stopped)));
 
     // Neither the clip nor the copies it was made from are left
@@ -692,7 +705,8 @@ fn a_start_refused_for_an_effect_just_before_it_finds_the_nearest_that_works() {
     let dir = tempfile::tempdir().unwrap();
     let src = write(dir.path(), "src.dem", &rec.bytes());
     let never = AtomicBool::new(false);
-    let nearest = nearest_start(&src, dir.path(), at(30), at(40), Limits::default(), &never);
+    let limits = Limits::default();
+    let nearest = nearest_start(&src, dir.path(), at(30), at(40), None, limits, &never);
     assert_eq!(nearest.unwrap(), Some(at(28)));
     slice(&rec, 28, Some(40)).unwrap();
 }
@@ -778,7 +792,7 @@ fn the_group_index_snaps_ranges_as_the_restart_does() {
         (at(0), Some(at(5))),
     ];
     for (k, (start, end)) in ranges.into_iter().enumerate() {
-        let snapped = report.groups.snap(start, end).unwrap();
+        let snapped = report.groups.snap(start, end, None).unwrap();
         let out = dir.path().join(format!("out{k}.dem"));
         let r = run_restart(&src, &out, start, end, Limits::default()).unwrap();
         assert_eq!(snapped.start.to_string(), r.effective_start, "{start}");
@@ -786,7 +800,7 @@ fn the_group_index_snaps_ranges_as_the_restart_does() {
     }
 
     // The same refusals
-    let err = report.groups.snap(at(25), Some(at(80))).unwrap_err();
+    let err = report.groups.snap(at(25), Some(at(80)), None).unwrap_err();
     assert!(matches!(err, ExportError::RangeBeyondEnd { .. }), "{err}");
 }
 
@@ -805,7 +819,7 @@ fn a_restart_starts_in_a_later_session_with_its_own_setup() {
     let early = |g: i32| {
         let path = dir.path().join(format!("early{g}.dem"));
         let restart = run_restart(&src, &path, at(g), None, Limits::default()).unwrap_err();
-        (restart, report.groups.snap(at(g), None).unwrap_err())
+        (restart, report.groups.snap(at(g), None, None).unwrap_err())
     };
     let (restart, snap) = early(30);
     assert!(
@@ -824,7 +838,7 @@ fn a_restart_starts_in_a_later_session_with_its_own_setup() {
     let r = run_restart(&src, &out, at(40), Some(at(50)), Limits::default()).unwrap();
     assert_eq!(r.validation.other_differences, 0);
     assert_eq!(r.kept_network_records, 10);
-    let snapped = report.groups.snap(at(40), Some(at(50))).unwrap();
+    let snapped = report.groups.snap(at(40), Some(at(50)), None).unwrap();
     assert_eq!(snapped.start.to_string(), r.effective_start);
     assert_eq!(snapped.end.to_string(), r.effective_end);
 
@@ -896,4 +910,30 @@ fn a_later_session_that_reuses_sequences_bootstraps_from_its_own_records() {
         .unwrap();
     let time = f32::from_le_bytes(bootstrap.demo_info[..4].try_into().unwrap());
     assert_eq!(DemoTime::from_f32(time), Some(at(34)));
+}
+
+#[test]
+fn a_restart_naming_a_later_session_starts_there_when_the_clock_started_over() {
+    // The new session from group 30 takes its times from 20 groups back, so
+    // group 40 has group 20's time
+    let mut rec = Recording::steady(60, 1);
+    rec.session_at = Some(30);
+    rec.clock_reset = true;
+    let dir = tempfile::tempdir().unwrap();
+    let src = write(dir.path(), "src.dem", &rec.bytes());
+    let (report, _) = decode_demo(&src, &DecodeOptions::default(), |_, _, _| {});
+
+    // Without a session the clip is the earliest with those times
+    let first = dir.path().join("first.dem");
+    run_restart(&src, &first, at(20), Some(at(25)), Limits::default()).unwrap();
+    assert_eq!(last_model(&first), Some(Value::Int(24)));
+
+    let later = dir.path().join("later.dem");
+    let (limits, never) = (Limits::default(), AtomicBool::new(false));
+    let r = run_restart_until(&src, &later, at(20), Some(at(25)), Some(2), limits, &never).unwrap();
+    assert_eq!(r.validation.other_differences, 0);
+    assert_eq!(last_model(&later), Some(Value::Int(44)));
+    let snapped = report.groups.snap(at(20), Some(at(25)), Some(2)).unwrap();
+    assert_eq!(snapped.start.to_string(), r.effective_start);
+    assert_eq!(snapped.end.to_string(), r.effective_end);
 }

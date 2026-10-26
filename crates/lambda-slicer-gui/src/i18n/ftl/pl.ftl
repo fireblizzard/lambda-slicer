@@ -504,7 +504,7 @@ help-bots-filter = „Niewiele” zostawia tylko dema i mecze, w których było 
 
 clips-new = Nowy klip
 clips-select-event = Najpierw wybierz zdarzenie na liście lub na osi czasu.
-clips-other-session = Klip nie może zacząć się tutaj, bo po zmianie mapy albo ponownym połączeniu zegar dema zaczął się od nowa, a wcześniejsza część ma te same czasy.
+clips-other-session = Klip nie może zacząć się tutaj, bo przechodziłby przez zmianę mapy albo ponowne połączenie.
 clips-add-window = Klip tego gorącego momentu
 clip-default-name = Klip { $number }
 clip-name = Nazwa
@@ -520,6 +520,7 @@ clip-set-in = Zacznij klip od bieżącego momentu
 clip-set-out = Zakończ klip na bieżącym momencie
 clip-no-playhead = Podgląd jest niedostępny, więc nie ma bieżącego momentu do użycia.
 clip-play = Odtwórz klip raz
+clip-unplayable = Ten klip jest po zmianie mapy albo ponownym połączeniu, gdzie zegar dema zaczął się od nowa, więc podgląd nie może go odtworzyć. Eksport i tak wytnie właściwy moment.
 clip-show-on-timeline = Pokaż na osi czasu
 export-destination = Zmień folder eksportu
 export-skipped = Pominięto. { $reason }

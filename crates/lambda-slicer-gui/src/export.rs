@@ -34,8 +34,9 @@ use lambda_slicer_core::timeline::time::DemoTime;
 
 use crate::clips::Clip;
 
-/// A clip by its requested range, which is what its export depends on
-pub type ClipKey = (DemoTime, DemoTime);
+/// A clip by its requested range and its part, which is what its export
+/// depends on
+pub type ClipKey = (DemoTime, DemoTime, Option<u32>);
 
 /// A clip to export, by the demo view's identity for it, and the range and
 /// file name it had when the export was asked for
@@ -137,7 +138,7 @@ impl ExportJob {
             .name("clip export".into())
             .spawn(move || {
                 for item in clips {
-                    let (start, end) = item.range;
+                    let (start, end, part) = item.range;
                     if thread_cancel.load(Ordering::Relaxed) {
                         let _ = tx.send(Event::Cancelled(item.id));
                         ctx.request_repaint();
@@ -149,7 +150,8 @@ impl ExportJob {
                     // A panic fails this clip, not the job
                     let limits = Limits::default();
                     let stop = &*thread_cancel;
-                    let run = || run_restart_until(&source, &dest, start, Some(end), limits, stop);
+                    let run =
+                        || run_restart_until(&source, &dest, start, Some(end), part, limits, stop);
                     let result = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(run)) {
                         Ok(Err(ExportError::Stopped)) => {
                             let _ = tx.send(Event::Cancelled(item.id));
@@ -166,7 +168,7 @@ impl ExportJob {
                             ctx.request_repaint();
                             let scratch = std::env::temp_dir();
                             let search =
-                                || nearest_start(&source, &scratch, start, end, limits, stop);
+                                || nearest_start(&source, &scratch, start, end, part, limits, stop);
                             let nearest = match std::panic::catch_unwind(
                                 std::panic::AssertUnwindSafe(search),
                             ) {

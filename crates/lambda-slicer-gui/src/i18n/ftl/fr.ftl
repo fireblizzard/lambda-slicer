@@ -494,7 +494,7 @@ help-bots-filter = Peu ne garde que les démos et les parties avec moins de bots
 
 clips-new = Nouveau clip
 clips-select-event = Choisis d’abord un événement dans la liste ou sur la frise.
-clips-other-session = Un clip ne peut pas commencer ici, car l’horloge de la démo est repartie de zéro après un changement de carte ou une reconnexion, et une partie précédente a les mêmes temps.
+clips-other-session = Un clip ne peut pas commencer ici, car il passerait par-dessus un changement de carte ou une reconnexion.
 clips-add-window = Clip de ce moment intense
 clip-default-name = Clip { $number }
 clip-name = Nom
@@ -510,6 +510,7 @@ clip-set-in = Commencer le clip au moment actuel
 clip-set-out = Finir le clip au moment actuel
 clip-no-playhead = Le lecteur n’est pas disponible, il n’y a donc pas de moment actuel à utiliser.
 clip-play = Lire le clip une fois
+clip-unplayable = Ce clip vient après un changement de carte ou une reconnexion, où l’horloge de la démo est repartie de zéro, le lecteur ne peut donc pas le lire. L’exporter coupe quand même le bon moment.
 clip-show-on-timeline = Montrer sur la frise
 export-destination = Changer le dossier d’export
 export-skipped = Ignoré. { $reason }

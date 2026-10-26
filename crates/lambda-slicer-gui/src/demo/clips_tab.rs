@@ -303,16 +303,21 @@ impl DemoView {
         let Some(time) = self.viewer.as_ref().map(|v| v.time()) else {
             return;
         };
+
+        // Whole milliseconds, as the fields show them. The clip moves to the
+        // part the playhead is in
+        let ms = (f64::from(time.max(0.)) * 1000.).round() as i64;
+        let part = self.part_at(time);
         let Some(clip) = self.clips.get_mut(i) else {
             return;
         };
-
-        // Whole milliseconds, as the fields show them
-        let ms = (f64::from(time.max(0.)) * 1000.).round() as i64;
         let time = DemoTime::from_micros(ms * 1000);
         match edge {
             Edge::Start => clip.start = time,
             Edge::End => clip.end = time,
+        }
+        if part.is_some() {
+            clip.part = part;
         }
         self.chosen_clip = Some(i);
         self.typing = None;
@@ -333,17 +338,25 @@ impl DemoView {
         let can_export = snapped.is_ok() && self.export.is_none();
         let mut action = None;
 
+        let plays = self.plays(&clip);
         layout::row(ui, rtl, |ui| {
             if self.viewer.is_some() {
+                let unplayable = catalog.text("clip-unplayable");
                 let play = catalog.text("clip-play");
-                if ui.add(IconButton::new(Icon::Play, &play)).clicked() {
+                let button = ui
+                    .add_enabled(plays, IconButton::new(Icon::Play, &play))
+                    .on_disabled_hover_text(&unplayable);
+                if button.clicked() {
                     action = Some(CardAction::Play);
                 }
 
                 let looping = self.looping == Some(i);
                 let label = catalog.text("clip-loop");
                 let toggle = IconButton::new(Icon::Repeat, &label).selected(looping);
-                if ui.add(toggle).clicked() {
+                let button = ui
+                    .add_enabled(plays, toggle)
+                    .on_disabled_hover_text(&unplayable);
+                if button.clicked() {
                     action = Some(CardAction::Loop(!looping));
                 }
             }
@@ -409,7 +422,7 @@ impl DemoView {
         let (range, state) = self.exports.get(id).cloned()?;
 
         // A file of the range the clip had before it was edited says so
-        let edited = range != (clip.start, clip.end);
+        let edited = range != clip.key();
         if edited {
             let args = [
                 ("start", FluentValue::from(range.0.to_string())),
@@ -482,7 +495,10 @@ impl DemoView {
                 Edge::End => self.clips[i].end = t,
             }
             self.clips_changed = true;
-            if let Some(viewer) = &mut self.viewer {
+            let plays = self.plays(&self.clips[i]);
+            if let Some(viewer) = &mut self.viewer
+                && plays
+            {
                 viewer.preview(secs(t));
             }
         }
@@ -713,6 +729,7 @@ mod tests {
             name: "Clip 1".into(),
             start: DemoTime::from_micros(1_000_000),
             end: DemoTime::from_micros(2_000_000),
+            part: None,
         });
         view
     }

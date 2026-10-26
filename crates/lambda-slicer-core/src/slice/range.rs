@@ -4,7 +4,7 @@
 //! A restart starts at the first frame group at or after the requested
 //! start and stops before the first group at or after the requested end, so
 //! the effective range is the requested one snapped outwards to the group
-//! times. The rules and refusals here follow [`super::restart`]'s plan, so
+//! times, among one session's groups when the range names it. The rules and refusals here follow [`super::restart`]'s plan, so
 //! a clip can show its effective range and the cheap refusals before any
 //! export runs. Refusals that need the decoded state, such as unproven
 //! state or dropped packets, come only from the export itself
@@ -57,9 +57,23 @@ fn time(t: f32) -> DemoTime {
 }
 
 impl GroupIndex {
-    /// The effective range of a restart of `[start, end)`, or the reason a
-    /// restart refuses it. No `end` means the end of the recording
-    pub fn snap(&self, start: DemoTime, end: Option<DemoTime>) -> Result<Snapped, ExportError> {
+    /// The first group a start at `start` would snap to, among session
+    /// `part`'s groups when one is given
+    fn first_at(&self, start: DemoTime, part: Option<u32>) -> Option<usize> {
+        self.groups.iter().position(|g| {
+            time(g.time) >= start && !g.demo_start && part.is_none_or(|p| g.segment == p)
+        })
+    }
+
+    /// The effective range of a restart of `[start, end)`, starting in
+    /// session `part` when one is given, or the reason a restart refuses it.
+    /// No `end` means the end of the recording
+    pub fn snap(
+        &self,
+        start: DemoTime,
+        end: Option<DemoTime>,
+        part: Option<u32>,
+    ) -> Result<Snapped, ExportError> {
         if self.directory_types != [0, 1] {
             return Err(ExportError::Unsupported(format!(
                 "a restart needs exactly LOADING(0) and Playback(1) entries, found types {:?}",
@@ -68,11 +82,7 @@ impl GroupIndex {
         }
         let terminal = self.end.map(time);
 
-        let Some(first) = self
-            .groups
-            .iter()
-            .position(|g| time(g.time) >= start && !g.demo_start)
-        else {
+        let Some(first) = self.first_at(start, part) else {
             return Err(ExportError::RangeBeyondEnd {
                 end: start,
                 segment_end: terminal.unwrap_or(DemoTime::ZERO),
@@ -126,12 +136,21 @@ impl GroupIndex {
         })
     }
 
-    /// The session of the group a start at `start` would snap to
+    /// The session of the group a start at `start` would snap to, the
+    /// earliest one with that time
     pub fn segment_at(&self, start: DemoTime) -> Option<u32> {
-        self.groups
+        let first = self.first_at(start, None)?;
+        Some(self.groups[first].segment)
+    }
+
+    /// Whether `start` falls within session `part`, from its first group to
+    /// its last, so a start there snaps to one of its groups
+    pub fn starts_in(&self, start: DemoTime, part: u32) -> bool {
+        let began = self
+            .groups
             .iter()
-            .find(|g| time(g.time) >= start && !g.demo_start)
-            .map(|g| g.segment)
+            .any(|g| g.segment == part && !g.demo_start && time(g.time) <= start);
+        began && self.first_at(start, Some(part)).is_some()
     }
 
     /// How long each session was recorded for, in seconds, by the time its
@@ -219,22 +238,51 @@ mod tests {
 
     #[test]
     fn snaps_outwards_to_group_starts() {
-        let s = index().snap(at("0.25"), Some(at("0.75"))).unwrap();
+        let s = index().snap(at("0.25"), Some(at("0.75")), None).unwrap();
         assert_eq!(s.start, at("0.3"));
         assert_eq!(s.end, at("0.8"));
         // Exact group times stay
-        let s = index().snap(at("0.3"), Some(at("0.8"))).unwrap();
+        let s = index().snap(at("0.3"), Some(at("0.8")), None).unwrap();
         assert_eq!((s.start, s.end), (at("0.3"), at("0.8")));
     }
 
     #[test]
     fn an_end_past_the_last_group_stops_at_the_terminal_record() {
-        let s = index().snap(at("0.5"), Some(at("1.05"))).unwrap();
+        let s = index().snap(at("0.5"), Some(at("1.05")), None).unwrap();
         assert_eq!(s.end, at("1.1"));
-        let s = index().snap(at("0.5"), None).unwrap();
+        let s = index().snap(at("0.5"), None, None).unwrap();
         assert_eq!(s.end, at("1.1"));
-        let err = index().snap(at("0.5"), Some(at("2"))).unwrap_err();
+        let err = index().snap(at("0.5"), Some(at("2")), None).unwrap_err();
         assert!(matches!(err, ExportError::RangeBeyondEnd { .. }), "{err}");
+    }
+
+    #[test]
+    fn a_range_naming_its_session_starts_among_its_groups() {
+        // A later session from group 6 whose clock starts over, its groups
+        // at 0.15 to 0.55, ready to start at group 7
+        let mut i = index();
+        for g in &mut i.groups[6..] {
+            g.segment = 2;
+            g.time -= 0.35;
+        }
+        i.session_changes.push(6);
+        i.ready.insert(2, 7);
+        i.end = Some(0.65);
+
+        // Without a session, the earliest with the time
+        let s = i.snap(at("0.2"), Some(at("0.35")), None).unwrap();
+        assert_eq!((s.start, s.end), (at("0.2"), at("0.4")));
+        assert_eq!(i.segment_at(at("0.2")), Some(1));
+
+        let s = i.snap(at("0.2"), Some(at("0.35")), Some(2)).unwrap();
+        assert_eq!((s.start, s.end), (at("0.25"), at("0.35")));
+        let err = i.snap(at("0.12"), None, Some(2)).unwrap_err();
+        assert!(matches!(err, ExportError::StartDuringLoading), "{err}");
+
+        assert!(i.starts_in(at("0.3"), 1));
+        assert!(i.starts_in(at("0.3"), 2));
+        assert!(!i.starts_in(at("0.1"), 2));
+        assert!(!i.starts_in(at("0.6"), 2));
     }
 
     #[test]
@@ -242,13 +290,15 @@ mod tests {
         // The first playable group is the first group after DemoStart
         let mut i = index();
         i.groups.remove(0);
-        let err = i.snap(at("0"), None).unwrap_err();
+        let err = i.snap(at("0"), None, None).unwrap_err();
         assert!(matches!(err, ExportError::StartAtFirstGroup), "{err}");
 
-        let err = index().snap(at("0.33"), Some(at("0.36"))).unwrap_err();
+        let err = index()
+            .snap(at("0.33"), Some(at("0.36")), None)
+            .unwrap_err();
         assert!(matches!(err, ExportError::EmptyRange), "{err}");
 
-        let err = index().snap(at("1.5"), None).unwrap_err();
+        let err = index().snap(at("1.5"), None, None).unwrap_err();
         assert!(matches!(err, ExportError::RangeBeyondEnd { .. }), "{err}");
 
         // A later session from group 6, ready to start at group 8
@@ -256,25 +306,25 @@ mod tests {
         for g in &mut i.groups[6..] {
             g.segment = 2;
         }
-        let err = i.snap(at("0.55"), None).unwrap_err();
+        let err = i.snap(at("0.55"), None, None).unwrap_err();
         assert!(matches!(err, ExportError::StartDuringLoading), "{err}");
         i.ready.insert(2, 8);
-        let err = i.snap(at("0.55"), None).unwrap_err();
+        let err = i.snap(at("0.55"), None, None).unwrap_err();
         assert!(matches!(err, ExportError::StartDuringLoading), "{err}");
-        assert_eq!(i.snap(at("0.65"), None).unwrap().start, at("0.7"));
+        assert_eq!(i.snap(at("0.65"), None, None).unwrap().start, at("0.7"));
         assert_eq!(i.segment_at(at("0.65")), Some(2));
         assert_eq!(i.segment_at(at("0.25")), Some(1));
 
         let mut i = index();
         i.session_changes.push(7);
-        let err = i.snap(at("0.3"), Some(at("0.9"))).unwrap_err();
+        let err = i.snap(at("0.3"), Some(at("0.9")), None).unwrap_err();
         assert!(matches!(err, ExportError::CrossSegmentRange(_)), "{err}");
-        assert!(i.snap(at("0.3"), Some(at("0.6"))).is_ok());
+        assert!(i.snap(at("0.3"), Some(at("0.6")), None).is_ok());
 
         let mut i = index();
         i.directory_types = vec![0, 1, 1];
         assert!(matches!(
-            i.snap(at("0.3"), None),
+            i.snap(at("0.3"), None, None),
             Err(ExportError::Unsupported(_))
         ));
     }
