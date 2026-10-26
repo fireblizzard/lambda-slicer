@@ -348,17 +348,29 @@ would refuse are left out and their buttons are off.
 ## Settings
 
 The settings window can be moved anywhere in the app's window, and keeps its place for the next
-run. Every change applies at once. A setting that needs explaining has a `(?)` beside it.
+run. Every change applies at once. A setting that needs explaining has a `(?)` beside it. Each tab
+groups its settings in sections, each in a frame with its name on the top edge, in two columns
+when the window is wide enough and one under the other when it isn't.
 
-- **General.** The Half-Life folder, more Half-Life folders the player looks in, in
-  order, for maps, models and sounds the first one lacks, the game content the player uses (HD
+The search box above the tabs looks through every tab's settings by their names and
+explanations, in the language shown. While it has text, the page shows each section with a
+setting it finds, named after its tab, such as HUD › Chat, with only the settings found, or all of
+a section or tab whose name is found. Shortcuts are found by their action or their keys. Clicking
+a tab clears the search and goes back to that tab.
+
+- **General.** Half-Life (the Half-Life folder, more Half-Life folders the player looks in, in
+  order, for maps, models and sounds the first one lacks, and the game content the player uses: HD
   models, custom addon content and localized content, as the game has them until changed here),
   the language, and how many demos are analysed at once.
-- **Library.** The library folders, the tab at start, the order at start, the filters at start,
-  leaving out short maps with no kills, where the library is kept and Clear library.
-- **Demo viewer.** The picture (the game's gamma settings), the view (field of view, zoomed field
-  of view, the weapon in view and its bob), each part of the HUD, seeing players through walls, how many
-  decals stay, and the sound.
+- **Library.** The library folders, where the library is kept and Clear library, the library list
+  (the tab at start, the order at start, the filters at start, and leaving out short maps with no
+  kills), and the events' killing spree badges.
+- **Demo viewer.** The picture (the game's gamma settings), the sound, the view (field of view,
+  zoomed field of view, the weapon in view and its bob, the crosshair, seeing players through
+  walls, names, the position and leaving the free camera for an event), and effects (particles and
+  how many decals stay).
+- **HUD.** Health and ammo, the scores and the scoreboard, speed and fps, the chat, the colours and
+  text size, and what the server sends to show.
 - **Clips.** The export folder, how files are named, and the clip padding.
 - **Shortcuts.** Up to two keys for each action, under Anywhere, Demo, Playback, View, POVs and
   Free camera. Click a key, then press the new one, with Ctrl, Shift or Alt if wanted, or mouse 3,

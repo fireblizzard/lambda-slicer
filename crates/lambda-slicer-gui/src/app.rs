@@ -120,8 +120,10 @@ pub struct Launch {
     /// The inspector tab shown at start, and how its panes share it
     pub tab: InspectorTab,
     pub split: PaneSplit,
-    /// The settings window's section shown at start
+    /// The settings window's tab shown at start, and what its search box
+    /// asks for
     pub section: SettingsTab,
+    pub search: String,
 }
 
 /// A demo opened, by its library row with the match opened in it, or else
@@ -139,8 +141,10 @@ pub struct App {
     catalog: Catalog,
     title: Option<Locale>,
     show_settings: bool,
-    /// The section the settings window shows, the last one visited this run
+    /// The tab the settings window shows, the last one visited this run,
+    /// and what its search box asks for
     settings_tab: SettingsTab,
+    settings_search: String,
     /// The settings window has the keys, so playback leaves them alone
     settings_keyboard: bool,
     /// The shortcut being chosen in the settings, which takes the next key
@@ -378,6 +382,7 @@ impl App {
             title: None,
             show_settings: launch.show_settings,
             settings_tab: launch.section,
+            settings_search: launch.search.clone(),
             settings_keyboard: false,
             choosing: None,
             shortcut_moved: None,

@@ -76,15 +76,6 @@ pub enum Group {
 }
 
 impl Group {
-    pub const ALL: [Group; 6] = [
-        Group::Anywhere,
-        Group::Demo,
-        Group::Playback,
-        Group::View,
-        Group::Players,
-        Group::FreeCamera,
-    ];
-
     pub fn text_id(self) -> &'static str {
         match self {
             Group::Anywhere => "shortcuts-anywhere",

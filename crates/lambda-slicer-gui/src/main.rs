@@ -24,7 +24,8 @@
 //! with `TEXT` in their name with `--player`. `--tab` shows the inspector's
 //! `events` or `clips` tab, the scoreboard alone with `scoreboard`, and `--export` exports its clips
 //! into `DIR`. `--settings` opens the settings window, on its `general`,
-//! `library`, `viewer` or `clips` section with `--section` and asking
+//! `library`, `viewer`, `hud`, `clips` or `shortcuts` tab with `--section`,
+//! searching for `TEXT` with `--search` and asking
 //! whether to restore the defaults with `--restore` or to clear the
 //! library with `--clear`, `--timeline` opens
 //! the player lanes under the timeline, `--dates` turns on both date
@@ -148,6 +149,7 @@ fn main() -> eframe::Result {
     let mut tab = InspectorTab::default();
     let mut split = PaneSplit::default();
     let mut section = SettingsTab::default();
+    let mut search = String::new();
     let mut size = [1280., 800.];
     let mut dates = false;
     let mut matches = false;
@@ -199,10 +201,12 @@ fn main() -> eframe::Result {
             }
             "--player" => player = args.next().unwrap_or_default(),
             "--show" => show = args.next(),
+            "--search" => search = args.next().unwrap_or_default(),
             "--section" => {
                 section = match args.next().as_deref() {
                     Some("library") => SettingsTab::Library,
                     Some("viewer") => SettingsTab::Viewer,
+                    Some("hud") => SettingsTab::Hud,
                     Some("clips") => SettingsTab::Clips,
                     Some("shortcuts") => SettingsTab::Shortcuts,
                     _ => SettingsTab::General,
@@ -397,6 +401,7 @@ fn main() -> eframe::Result {
                     tab,
                     split,
                     section,
+                    search,
                     viewer_capture: capture_times.map(|(times, folder)| viewer::Capture {
                         times,
                         folder,
