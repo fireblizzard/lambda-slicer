@@ -58,7 +58,9 @@ use lambda_slicer_render::gpu::{
     SpriteHandle, SpriteInstance, Streak, StreakPoint, View, WorldLight,
 };
 use lambda_slicer_render::light::{LightTree, ModelLight};
-use lambda_slicer_render::load::{self, EntityPose, GaitPose, LoadError, LoadedModel};
+use lambda_slicer_render::load::{
+    self, EntityPose, GaitPose, LoadError, LoadedModel, PreviousPose,
+};
 use lambda_slicer_render::model::{Eye, ModelMesh, ModelVertex, shell_distance};
 use lambda_slicer_render::world::{self, WorldMesh};
 
@@ -1534,6 +1536,7 @@ impl Viewer {
                 angles: m.angles,
                 player: false,
                 gait: None,
+                previous: None,
             };
             if let Some(bones) = model.pose(&pose) {
                 instances.push(Instance {
@@ -3566,6 +3569,15 @@ fn drawn(frame: &PresentedFrame, models: &HashMap<ModelRef, Slot>, eyes: Eyes) -
             .or(own)
             .filter(|w| is_player && w.ends_with(".mdl"))
             .map(|w| ModelRef::File(w.to_owned()));
+        // The sequence it changed from, unless the change came at no time
+        let previous = e.change.filter(|c| c.at != 0.).map(|c| PreviousPose {
+            sequence: c.sequence.max(0) as usize,
+            cycle: f64::from(c.frame),
+            elapsed: c.held_at - f64::from(c.animtime),
+            framerate: f64::from(c.framerate),
+            blending: c.blending.map(f64::from),
+            since: client_time - f64::from(c.at),
+        });
         let mode = RenderMode::from_game(e.render_mode);
         // A translucent one at amount 0 is not drawn, as the game skips it
         if mode != RenderMode::Normal && e.render_amount <= 0 {
@@ -3601,6 +3613,7 @@ fn drawn(frame: &PresentedFrame, models: &HashMap<ModelRef, Slot>, eyes: Eyes) -
                 angles: e.angles,
                 player: is_player,
                 gait,
+                previous,
             },
         });
     }
@@ -4097,6 +4110,7 @@ fn viewmodel_pose(
         angles: [-angles[0], angles[1], angles[2]],
         player: false,
         gait: None,
+        previous: None,
     };
     Some((path.to_owned(), pose))
 }

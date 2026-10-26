@@ -188,8 +188,26 @@ pub struct Entity {
     pub use_hull: i64,
     /// A player's legs, in presented entities whose gait sequence is set
     pub gait: Option<Gait>,
+    /// The sequence it last changed from, while it keeps its life
+    pub change: Option<SequenceChange>,
     /// Server time of the snapshot it was last taken from
     pub updated: ServerTime,
+}
+
+/// The sequence an entity left for its current one, which the game's
+/// renderer fades from for a moment, as the client latches it
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct SequenceChange {
+    pub sequence: i64,
+    pub frame: f32,
+    pub framerate: f32,
+    pub animtime: f32,
+    pub blending: [f32; 2],
+    /// The client's time when the change arrived, the last the old
+    /// sequence was drawn at, where its frame then stays
+    pub held_at: f64,
+    /// The new sequence's `animtime`, when the fade begins
+    pub at: f32,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -799,6 +817,25 @@ impl Scene {
                 model: model_index,
             });
 
+            // The sequence before is kept from a change on, as the client
+            // keeps it to fade from
+            let sequence = v[7] as i64;
+            let change = match previous {
+                Some((old, _)) if old.id.life == life && old.sequence != sequence => {
+                    Some(SequenceChange {
+                        sequence: old.sequence,
+                        frame: old.frame,
+                        framerate: old.framerate,
+                        animtime: old.animtime,
+                        blending: old.blending,
+                        held_at: f64::from(updated.0),
+                        at: v[11] as f32,
+                    })
+                }
+                Some((old, _)) if old.id.life == life => old.change,
+                _ => None,
+            };
+
             out.push(Entity {
                 beam: e.custom,
                 id: EntityId {
@@ -810,7 +847,7 @@ impl Scene {
                 model: self.model_name(decoder, model_index),
                 origin: [v[1] as f32, v[2] as f32, v[3] as f32],
                 angles: [v[4] as f32, v[5] as f32, v[6] as f32],
-                sequence: v[7] as i64,
+                sequence,
                 gait_sequence: v[8] as i64,
                 frame: v[9] as f32,
                 framerate: v[10] as f32,
@@ -833,6 +870,7 @@ impl Scene {
                 weapon: self.model_name(decoder, v[32] as i64),
                 use_hull: v[33] as i64,
                 gait: None,
+                change,
                 updated,
             });
             sources.push(e.clone());
@@ -1210,6 +1248,7 @@ mod tests {
             weapon: None,
             use_hull: 0,
             gait: None,
+            change: None,
             updated: ServerTime(0.),
         }
     }

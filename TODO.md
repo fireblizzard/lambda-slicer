@@ -10,7 +10,7 @@
 - [ ] Fix walls starting clean on a clip that you play in the game, replay decals at that point
 - [ ] Fix gauss balls and glows
 - [ ] Support `remap` textures
-- [ ] Add blending between animations
+- [x] Add blending between animations
 - [ ] Add voice chat audio to hear what players were saying in the demo
 - [ ] Support room echoes
 - [ ] Add tripmine's and snark's effects

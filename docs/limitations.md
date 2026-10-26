@@ -59,8 +59,10 @@ Not shown or played yet:
   evenly rather than as the game does.
 - The tripmine's and snark's own effects.
 - The weapon in view sits a little higher and larger than in the game.
-- Models: render effects other than the glow shell, textures recoloured by name (`remap`),
-  smooth blending between animations, and mouth movement.
+- Models: render effects other than the glow shell, textures recoloured by name (`remap`), and
+  mouth movement.
+- The weapon in view snaps from one animation to the next. The game's own viewmodel may fade
+  between them as models in the world do, which hasn't been checked.
 - Randomly tiled textures.
 
 Known differences from the game:

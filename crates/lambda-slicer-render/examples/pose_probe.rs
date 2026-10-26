@@ -68,6 +68,7 @@ fn main() {
             distance: 0.,
             elapsed: 0.93,
         }),
+        previous: None,
     };
     let started = Instant::now();
     let bones = holder.pose(&pose).expect("player pose");

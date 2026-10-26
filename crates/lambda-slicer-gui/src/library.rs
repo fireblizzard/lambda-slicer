@@ -1335,7 +1335,6 @@ impl LibraryView {
                 .custom_parser(parse_number),
         );
 
-
         // A multikill from a double kill up, two to a row in buttons of one
         // width, the one chosen clicked again turning it off
         layout::row(ui, rtl, |ui| {

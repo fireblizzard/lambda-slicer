@@ -14,8 +14,8 @@ use lambda_slicer_assets::xenoxide::bsp30::BspDocument;
 use lambda_slicer_assets::xenoxide::studio::StudioSequence;
 use lambda_slicer_assets::xenoxide::studio::{StudioModel, StudioRenderAsset};
 use lambda_slicer_assets::xenoxide::studio_pose::{
-    BoneTransform, GaitState, Placement, PoseInputs, SequenceState, estimate_frame, evaluate_pose,
-    player_blend,
+    BoneTransform, GaitState, Placement, PoseInputs, SequenceState, Transition, estimate_frame,
+    evaluate_pose, player_blend,
 };
 use lambda_slicer_assets::{AssetError, Limits};
 
@@ -91,6 +91,25 @@ pub struct GaitPose {
     pub elapsed: f64,
 }
 
+/// How long the game's renderer fades from a sequence an entity changed
+/// from, in seconds
+pub const SEQUENCE_FADE: f64 = 0.2;
+
+/// The sequence an entity changed from, which its pose fades from
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PreviousPose {
+    pub sequence: usize,
+    /// Its `frame`, the seconds from its `animtime` to the last time it was
+    /// drawn, where it stays, and its framerate
+    pub cycle: f64,
+    pub elapsed: f64,
+    pub framerate: f64,
+    /// In byte units, 0 to 255
+    pub blending: [f64; 2],
+    /// Seconds from the change to the client's time
+    pub since: f64,
+}
+
 /// What an entity gives a studio model's pose
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct EntityPose {
@@ -108,6 +127,9 @@ pub struct EntityPose {
     /// A player, posed as `StudioDrawPlayer` poses one
     pub player: bool,
     pub gait: Option<GaitPose>,
+    /// The sequence it changed from, faded from for [`SEQUENCE_FADE`]
+    /// seconds after
+    pub previous: Option<PreviousPose>,
 }
 
 /// An angle wrapped into -180 to 180
@@ -187,7 +209,8 @@ impl LoadedModel {
     /// The pose inputs and placement for an entity. A player with a gait
     /// sequence aims through its first blend, faces the way its legs do with
     /// its torso turned to its view, and walks its legs. One without keeps
-    /// its controllers centred
+    /// its controllers centred. Soon after a change of sequence, the one
+    /// before shows through, less and less
     fn inputs(&self, entity: &EntityPose) -> Option<(PoseInputs, Placement)> {
         let sequences = self.model.sequences();
         let sequence = if entity.sequence < sequences.len() {
@@ -220,6 +243,28 @@ impl LoadedModel {
             }
         }
 
+        // The sequence before stays at the frame it had reached, and a
+        // player walking aims it as the current one (StudioSetupBones)
+        let transition = entity.previous.and_then(|p| {
+            let from = sequences.get(p.sequence)?;
+            if p.since >= SEQUENCE_FADE {
+                return None;
+            }
+            let advance = p.elapsed.max(0.) * p.framerate * f64::from(from.fps);
+            let mut from_blend = p.blending;
+            if entity.player && entity.gait.is_some() {
+                from_blend[0] = blend[0];
+            }
+            Some(Transition {
+                from: SequenceState {
+                    sequence: p.sequence,
+                    frame: estimate_frame(from, p.cycle, advance),
+                    blend: from_blend,
+                },
+                weight: 1. - p.since / SEQUENCE_FADE,
+            })
+        });
+
         let inputs = PoseInputs {
             current: SequenceState {
                 sequence,
@@ -228,7 +273,7 @@ impl LoadedModel {
             },
             controllers,
             mouth: 0.,
-            transition: None,
+            transition,
             gait,
         };
         let placement = Placement {
@@ -254,6 +299,7 @@ impl LoadedModel {
         let own = EntityPose {
             player: false,
             gait: None,
+            previous: None,
             angles: placement.angles.map(|a| a as f32),
             ..*entity
         };
@@ -458,6 +504,62 @@ mod tests {
     }
 
     #[test]
+    fn a_change_of_sequence_fades_from_the_one_before() {
+        let model = loaded(|_| {}, 10.);
+        let idle = EntityPose {
+            sequence: 0,
+            cycle: 64.,
+            elapsed: 0.05,
+            framerate: 1.,
+            controllers: [127.5; 4],
+            blending: [0.; 2],
+            origin: [0.; 3],
+            angles: [0.; 3],
+            player: false,
+            gait: None,
+            previous: None,
+        };
+        let aim = EntityPose {
+            sequence: 1,
+            cycle: 0.,
+            elapsed: 0.,
+            blending: [255., 0.],
+            ..idle
+        };
+        let after = |since: f64| EntityPose {
+            previous: Some(PreviousPose {
+                sequence: 0,
+                cycle: 64.,
+                elapsed: 0.05,
+                framerate: 1.,
+                blending: [0.; 2],
+                since,
+            }),
+            ..aim
+        };
+        let (from, to) = (model.pose(&idle).unwrap(), model.pose(&aim).unwrap());
+        assert_ne!(from, to);
+
+        // At the change the sequence before shows whole, a fifth of a
+        // second on not at all, and between them both show
+        assert_eq!(model.pose(&after(0.)).unwrap(), from);
+        assert_eq!(model.pose(&after(SEQUENCE_FADE)).unwrap(), to);
+        let halfway = model.pose(&after(SEQUENCE_FADE / 2.)).unwrap();
+        assert_ne!(halfway, from);
+        assert_ne!(halfway, to);
+
+        // A sequence the model lacks is not faded from
+        let missing = EntityPose {
+            previous: Some(PreviousPose {
+                sequence: 9,
+                ..after(0.).previous.unwrap()
+            }),
+            ..aim
+        };
+        assert_eq!(model.pose(&missing).unwrap(), to);
+    }
+
+    #[test]
     fn a_held_models_own_bones_follow_its_holders_matching_bones() {
         // The holder's spine stands 40 units above its root, the weapon's
         // 10, and the weapon names its spine in capitals and has a mesh bone
@@ -481,6 +583,7 @@ mod tests {
             angles: [0.; 3],
             player: false,
             gait: None,
+            previous: None,
         };
         let holder_bones = holder.pose(&entity).unwrap();
         let own = weapon.pose(&entity).unwrap();

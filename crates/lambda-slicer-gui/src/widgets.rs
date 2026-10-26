@@ -728,7 +728,13 @@ pub fn group_title(ui: &mut Ui, title: &str, hint: Option<&str>, rtl: bool) {
 /// A group's name in strong text and the question mark explaining `hint`,
 /// for a row that goes on with more
 pub fn group_name(ui: &mut Ui, title: &str, hint: Option<&str>, rtl: bool) {
-    ui.label(text::widget_text(ui.ctx(), title, rtl, None, text::Look::Strong));
+    ui.label(text::widget_text(
+        ui.ctx(),
+        title,
+        rtl,
+        None,
+        text::Look::Strong,
+    ));
     if let Some(hint) = hint {
         help(ui, hint, rtl);
     }
