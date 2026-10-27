@@ -248,16 +248,14 @@ pub struct Camera {
     /// The recorder's frames a second, their frame times averaged over
     /// each [`FPS_SPAN`] of them, none before their first
     pub fps: Option<f32>,
-    /// Whether the recorder holds the key that shows the scoreboard
+    /// Whether the recorder holds the key that shows the scoreboard, as the
+    /// commands the demo recorded say
     pub scores_held: bool,
 }
 
 /// The lowest and highest the game's bob goes (`V_CalcBob`)
 pub const LOWEST_BOB: f32 = -7.;
 pub const HIGHEST_BOB: f32 = 4.;
-
-/// The button bit of the key that shows the scoreboard (`IN_SCORE`)
-const IN_SCORE: u16 = 1 << 15;
 
 /// How much of the recorder's frame time each fps reading averages, so it
 /// holds still long enough to read, as the game's own counter does
@@ -653,7 +651,7 @@ impl Scene {
             on_ground,
             last_jump,
             fps,
-            scores_held: frame.info_buttons() & IN_SCORE != 0,
+            scores_held: self.camera.scores_held,
         };
         if camera != self.camera {
             self.camera = camera;
@@ -706,6 +704,21 @@ impl Scene {
                 self.changed();
             }
             _ => {}
+        }
+    }
+
+    /// A command the recorder's game ran, which the game runs again in
+    /// playback. The scoreboard shows while `+showscores` holds, as the
+    /// buttons a frame records can say it is held all the time
+    pub(crate) fn on_command(&mut self, command: &str) {
+        let held = match command.split_whitespace().next() {
+            Some("+showscores") => true,
+            Some("-showscores") => false,
+            _ => return,
+        };
+        if held != self.camera.scores_held {
+            self.camera.scores_held = held;
+            self.changed();
         }
     }
 

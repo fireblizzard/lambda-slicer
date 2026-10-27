@@ -503,6 +503,7 @@ impl Playback {
                         .unwrap_or(command.len());
                     let command = String::from_utf8_lossy(&command[..end]);
 
+                    scene.on_command(command.trim());
                     if let Some(sample) = hud.on_command(command.trim(), &scene.camera) {
                         let call = hud_sound(decoder, sample, scene.camera.origin);
                         effects
