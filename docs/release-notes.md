@@ -3,6 +3,64 @@
 Downloads are on the [Releases page](https://github.com/fireblizzard/lambda-slicer/releases). What
 doesn't work yet is in [known limitations](limitations.md).
 
+## v0.5.0, 2026-10-27
+
+The first start after updating analyses your library again, which takes a while for a big
+collection.
+
+### Demo player
+
+- Added particles for explosions, sparks and bullet hits.
+- Added dynamic lights, such as muzzle flashes and the gauss's light.
+- Added the flashlight.
+- Added weapon bob.
+- Added the speedometer and the last jump speed.
+- Added the recorder's fps.
+- Added the sentences NPCs and the HEV suit speak.
+- Added scrolling textures, such as conveyors.
+- Added the HALF-LIFE logo at the start of a new game.
+- Added a preview of the moment when pointing at the seek bar.
+- Added more playback speeds, from 0.01× to 100×.
+- Added holding left click on the picture to play twice as fast.
+- Added going back and forward through the demos and matches you opened, with mouse 4 and 5.
+- Tweaked animations to fade into each other as in the game.
+- Tweaked the scoreboard over the view to show only while the recorder held Tab, and never while
+  they spectate.
+- Fixed the view kick moving the weapon.
+- Fixed muzzle flashes lighting up the whole room.
+- Fixed players in plain sight being tinted when seeing through walls is on.
+- Clicking the picture at the end of a demo now starts it again.
+
+### Settings
+
+- Added changing every keyboard shortcut, with a second key, mouse buttons or the mouse wheel.
+- Added a setting for the HUD's colour.
+- Added a setting for the colour of the chat and the position and view angles.
+- Added a setting for the size of the chat, kill feed and server settings.
+- Added settings to hide messages that give a location or say "got LJ" or "no LJ".
+- Tweaked the settings into framed sections, with a HUD tab and a search box.
+
+### Beside the player
+
+- Added killing sprees and multikills to the events.
+- Added ping and loss to the scoreboard.
+- Added going to a map change from the events.
+- Added hiding the kill details in the events.
+
+### Clips
+
+- Added clips across a map change or a reconnect.
+- Added the nearest start that works when a clip can't start where you asked.
+- Added the marks on the walls at a clip's start, such as blood, scorches and bullet holes.
+- Fixed Stop not stopping the clip being exported.
+
+### Library
+
+- Added a Chat tab to find messages across all your demos.
+- Added multikill, killing spree and bots filters.
+- Added finding a player under any name they used, told apart by their SteamID.
+- Tweaked the filters into groups under clear headings.
+
 ## v0.4.0, 2026-10-25
 
 The first start after updating analyses your library again, which takes a while for a big

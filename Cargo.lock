@@ -2179,7 +2179,7 @@ dependencies = [
 
 [[package]]
 name = "lambda-slicer-assets"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "lambda-slicer-core",
  "libm",
@@ -2190,7 +2190,7 @@ dependencies = [
 
 [[package]]
 name = "lambda-slicer-audio"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "cpal",
  "lambda-slicer-assets",
@@ -2200,7 +2200,7 @@ dependencies = [
 
 [[package]]
 name = "lambda-slicer-cli"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -2213,7 +2213,7 @@ dependencies = [
 
 [[package]]
 name = "lambda-slicer-core"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "blake3",
  "chrono",
@@ -2228,7 +2228,7 @@ dependencies = [
 
 [[package]]
 name = "lambda-slicer-gui"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "chrono",
  "eframe",
@@ -2257,7 +2257,7 @@ dependencies = [
 
 [[package]]
 name = "lambda-slicer-playback"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "lambda-slicer-core",
  "tempfile",
@@ -2265,7 +2265,7 @@ dependencies = [
 
 [[package]]
 name = "lambda-slicer-render"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "bytemuck",
  "image",

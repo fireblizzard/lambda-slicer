@@ -49,6 +49,8 @@ Keys in the demo player
     Left / Right        5 seconds back / forward
     Shift+Left / Right  10 seconds back / forward
     Comma / Period      One frame back / forward
+    Minus / Plus        Slower / faster, from 0.01x to 100x
+    Hold left click     Twice as fast while held, over the picture
     Z                   Zoom in or out
     C                   Free camera: fly with W, A, S, D, Space up, Ctrl
                         down, Shift faster, right mouse button to look
@@ -61,7 +63,10 @@ Keys in the demo player
     F11                 Full screen (or double-click the picture)
     Ctrl+Left / Right   Previous / next event
     I / O               Set the clip's start / end to now
+    Mouse 4 / 5         Back / forward through the demos you opened
     Escape              Leave full screen, or close the demo
+
+All of these but Escape can be changed in Settings, under Shortcuts.
 
 
 Which demos work
