@@ -679,6 +679,37 @@ help-match-joined-late = كانت المباراة جارية حين بدأ ال
 help-match-interrupted = بدأت مباراة أخرى، أو أُلغيت المباراة، أو تغيرت الخريطة قبل أن تنتهي المباراة.
 help-match-cut-off = انتهى التسجيل قبل أن تنتهي المباراة.
 help-match-free-play = خمس دقائق أو أكثر من اللعب من دون مباراة جارية.
+tab-chat = الدردشة
+library-chat-lines = { $count ->
+    [zero] لا توجد رسائل
+    [one] رسالة واحدة
+    [two] رسالتان
+    [few] { $count } رسائل
+    [many] { $count } رسالةً
+   *[other] { $count } رسالة
+}
+library-no-chat = لا يحتوي أي تسجيل على دردشة.
+library-counting = جارٍ العدّ…
+library-no-chat-filtered = لا توجد رسائل تطابق هذه المرشحات.
+filters-chat = الدردشة
+filter-chat-text = كلمات في الرسالة
+filter-chat-sender = اسم المرسِل
+filter-chat-to = أُرسلت إلى
+filter-chat-from = أرسلها
+chat-to-everyone = الجميع
+chat-to-team = الفريق
+chat-from-players = اللاعبون
+chat-from-spectators = المشاهدون
+filter-chat-mine = رسائل المسجِّل فقط
+filter-chat-hide-server = إخفاء رسائل السيرفر
+column-time = الوقت
+column-sender = المرسِل
+column-message = الرسالة
+help-chat-time = متى أُرسلت الرسالة في التسجيل. فتح رسالة يبدأ التسجيل قبلها بثانية.
+chat-tag-team = فريق
+chat-tag-spectator = مشاهد
+chat-tag-spectators = للمشاهدين
+chat-server = السيرفر
 list-hide = إخفاء قائمة التسجيلات
 list-show = إظهار قائمة التسجيلات
 demo-details = التفاصيل
@@ -776,9 +807,9 @@ settings-weapon-bob-recorded = تمايل السلاح كما سُجّل
 settings-crosshair = إظهار علامة التصويب
 settings-chat = إظهار الدردشة
 settings-chat-places = إظهار الرسائل التي تذكر مكانًا
-settings-chat-places-hint = رسائل الفريق المرسلة من أوامر bind التي تذكر مكان المرسِل على الخريطة عبر %l أو %L. عند إطفاء هذا الخيار تُستبعد من الدردشة كأنها لم تُرسل أبدًا.
+settings-chat-places-hint = رسائل الفريق المرسلة من أوامر bind التي تذكر مكان المرسِل على الخريطة عبر %l أو %L. عند إطفاء هذا الخيار تُستبعد من الدردشة كأنها لم تُرسل أبدًا، ومن تبويب الدردشة في المكتبة أيضًا.
 settings-chat-long-jump = إظهار الرسائل التي تقول "got LJ" أو "no LJ"
-settings-chat-long-jump-hint = رسائل الفريق المرسلة من أوامر bind التي تقول إن كان المرسِل يملك وحدة long jump. عند إطفاء هذا الخيار تُستبعد من الدردشة كأنها لم تُرسل أبدًا.
+settings-chat-long-jump-hint = رسائل الفريق المرسلة من أوامر bind التي تقول إن كان المرسِل يملك وحدة long jump. عند إطفاء هذا الخيار تُستبعد من الدردشة كأنها لم تُرسل أبدًا، ومن تبويب الدردشة في المكتبة أيضًا.
 settings-vitals = إظهار الصحة والدرع والذخيرة والأغراض الملتقطة
 settings-vitals-size = حجم الصحة والدرع والذخيرة والأغراض الملتقطة
 settings-free-vitals = إظهار الصحة والدرع والذخيرة والأغراض الملتقطة مع الكاميرا الحرة أيضًا

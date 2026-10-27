@@ -8,7 +8,7 @@
 //! the recording began for a match already on. The narrow list beside the
 //! open demo then lists the matches too, two lines a match
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use eframe::egui::{
     self, Pos2, Rect, Response, RichText, Role, Sense, TextStyle, TextWrapMode, Ui, Vec2,
@@ -17,8 +17,8 @@ use eframe::egui::{
 use egui_extras::{Column, TableBuilder};
 use lambda_slicer_core::analysis::parts::PartStatus;
 use lambda_slicer_core::library::cache::{FileQuery, FileRow, MatchQuery, MatchRow, MatchSort};
-use lambda_slicer_core::message::Coded;
 
+use super::worker::PageOf;
 use super::{
     LIST_LINES, LIST_ROW, LibraryView, PAGE, SORT_MENU_WIDTH, TABLE_ROW, clock, day_cell,
     direction_button, display_name, named_cell, number_cell, score_cell, score_of, sort_heading,
@@ -28,23 +28,25 @@ use crate::i18n::{Catalog, Ymd};
 use crate::text::{self, Look};
 use crate::theme;
 
-/// Whether the full table lists demos or their matches
+/// Whether the full table lists demos, their matches or their chat
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Tab {
     #[default]
     Demos,
     Matches,
+    Chat,
 }
 
 impl Tab {
     /// Every tab, in the order they are shown
-    pub const ALL: [Tab; 2] = [Tab::Demos, Tab::Matches];
+    pub const ALL: [Tab; 3] = [Tab::Demos, Tab::Matches, Tab::Chat];
 
     /// The name kept in settings
     pub fn key(self) -> &'static str {
         match self {
             Tab::Demos => "demos",
             Tab::Matches => "matches",
+            Tab::Chat => "chat",
         }
     }
 
@@ -62,6 +64,7 @@ impl Tab {
         match self {
             Tab::Demos => "tab-demos",
             Tab::Matches => "tab-matches",
+            Tab::Chat => "tab-chat",
         }
     }
 }
@@ -76,6 +79,8 @@ pub struct MatchList {
     /// Matches the filters find
     pub total: u64,
     pub pages: HashMap<usize, Vec<MatchRow>>,
+    /// The pages asked of the library's thread
+    pub asked: HashSet<usize>,
     /// The match last opened, by its demo and its place in it
     pub selected: Option<(i64, i64)>,
     /// The match whose menu was open as the rows were last drawn, kept lit
@@ -94,6 +99,7 @@ impl Default for MatchList {
             hidden: Vec::new(),
             total: 0,
             pages: HashMap::new(),
+            asked: HashSet::new(),
             selected: None,
             menu_row: None,
             menu_open: None,
@@ -288,17 +294,10 @@ impl LibraryView {
 
     fn match_row(&mut self, index: usize) -> Option<MatchRow> {
         let page = index / PAGE;
-        if !self.matches.pages.contains_key(&page) {
+        if self.matches.asked.insert(page) {
             let mut query = self.match_query();
             query.files.offset = page * PAGE;
-            let rows = self.cache().map(|c| c.query_matches(&query));
-            match rows {
-                Some(Ok(rows)) => {
-                    self.matches.pages.insert(page, rows);
-                }
-                Some(Err(e)) => self.error = Some(e.message()),
-                None => return None,
-            }
+            self.ask_page(page, PageOf::Matches(query));
         }
         self.matches.pages.get(&page)?.get(index % PAGE).cloned()
     }

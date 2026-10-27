@@ -4,11 +4,14 @@
 //! Both show the same query of the cache in the same order. Rows come from
 //! the cache a page at a time as they scroll into view, so a library of any
 //! size costs only the visible pages. Changing a filter or the order counts
-//! the matches again and drops the loaded pages. While a scan stores files
+//! the matches again, and once the new count comes the pages in view are
+//! read again, the rows loaded showing until theirs come. Counts and pages
+//! are read on a [thread](worker) of their own, so the window never waits
+//! for them, and a row whose page never loaded is blank until it comes. While a scan stores files
 //! the list refreshes at most once a second. The full table can list the
-//! demos' [matches] instead, one a row
+//! demos' [matches] instead, one a row, or their [chat], a line a row
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
@@ -22,7 +25,8 @@ use lambda_slicer_core::analysis::context::Scoreboard;
 use lambda_slicer_core::analysis::parts::PartStatus;
 use lambda_slicer_core::analysis::weapons::Weapon;
 use lambda_slicer_core::library::cache::{
-    Bots, Cache, FileQuery, FileRow, KillQuery, LibraryStats, MatchSort, PersonRow, Sort,
+    Bots, Cache, ChatSort, FileQuery, FileRow, KillQuery, LeftOut, LibraryStats, MatchSort,
+    PersonRow, Sort,
 };
 use lambda_slicer_core::message::{Coded, Message};
 use lambda_slicer_core::timeline::time::DemoTime;
@@ -34,12 +38,16 @@ use crate::text::{self, Look};
 use crate::theme;
 use crate::widgets::{self, AnalysisState, Icon, IconButton, Variant};
 
+mod chat;
 mod matches;
 mod players;
+mod worker;
 
+use chat::{ChatFilters, ChatList};
 use matches::MatchList;
 pub use matches::Tab;
 use players::Chosen;
+use worker::{Answer, Counts, PageOf, Rows, Worker};
 
 /// A date bound with a checkbox to use it, its fields in the locale's order.
 /// The checkbox and the fields wrap together as one group
@@ -140,6 +148,10 @@ const PAGE: usize = 100;
 
 /// Shortest time between refreshes while a scan stores files
 const REFRESH: Duration = Duration::from_secs(1);
+
+/// How long a count may take before the list shows it is counting, so a
+/// quick one doesn't flicker
+const SLOW_COUNT: Duration = Duration::from_millis(300);
 
 /// The filter pane's width at first, and the narrowest and widest it can be
 /// dragged to
@@ -710,6 +722,9 @@ struct Applied {
     sort: Sort,
     descending: bool,
     matches: (MatchSort, bool, Vec<PartStatus>),
+    /// The chat's filters and order while the Chat tab is open, as only it
+    /// counts its lines, a library's chat being far longer than its demos
+    chat: Option<(ChatFilters, LeftOut, ChatSort, bool)>,
     /// The demos kept to, the favourites or the hidden ones while they
     /// alone are listed, and those left out
     only: Option<Vec<String>>,
@@ -723,11 +738,13 @@ pub struct LibraryView {
     applied: Option<Applied>,
     sort: Sort,
     descending: bool,
-    /// Whether the full table lists demos or their matches, and the
-    /// matches' own order and count
+    /// Whether the full table lists demos, their matches or their chat, and
+    /// the matches' and the chat's own order and count
     tab: Tab,
     matches: MatchList,
-    /// Where to start watching the selected demo, as a match's row asked
+    chat: ChatList,
+    /// Where to start watching the selected demo, as a match's or a line's
+    /// row asked
     pub open_at: Option<f32>,
     /// The demo player is playing, so files a scan stores wait to be
     /// listed rather than hold up its frames
@@ -782,6 +799,16 @@ pub struct LibraryView {
     /// the field was last drawn
     highlighted: usize,
     offering: bool,
+    /// The thread reading counts and pages, started as the list is first
+    /// drawn
+    worker: Option<Worker>,
+    /// The newest count asked for and when, and the count whose figures
+    /// and pages show, none before the first comes
+    number: u64,
+    asked_at: Instant,
+    shown: Option<u64>,
+    /// The demos' pages asked of the thread
+    asked: HashSet<usize>,
 }
 
 impl LibraryView {
@@ -805,6 +832,7 @@ impl LibraryView {
             descending: true,
             tab: Tab::Demos,
             matches: MatchList::default(),
+            chat: ChatList::default(),
             open_at: None,
             hold: false,
             total: 0,
@@ -826,6 +854,11 @@ impl LibraryView {
             people: None,
             highlighted: 0,
             offering: false,
+            worker: None,
+            number: 0,
+            asked_at: Instant::now(),
+            shown: None,
+            asked: HashSet::new(),
         }
     }
 
@@ -885,10 +918,23 @@ impl LibraryView {
         self.stats.files
     }
 
-    /// Whether the files have been counted yet, which happens as the list
-    /// is first drawn
+    /// Whether the files have been counted yet, which happens soon after
+    /// the list is first drawn
     pub fn counted(&self) -> bool {
-        self.applied.is_some()
+        self.shown.is_some()
+    }
+
+    /// Whether a count asked for has taken long enough to show, waking for
+    /// when it will have
+    fn slow_count(&self, ctx: &egui::Context) -> bool {
+        if self.shown == Some(self.number) {
+            return false;
+        }
+        let waited = self.asked_at.elapsed();
+        if waited < SLOW_COUNT {
+            ctx.request_repaint_after(SLOW_COUNT - waited);
+        }
+        waited >= SLOW_COUNT
     }
 
     fn query(&self) -> FileQuery {
@@ -986,6 +1032,12 @@ impl LibraryView {
         }
     }
 
+    /// Leave the lines from binds `left_out` out of the Chat tab, as the
+    /// settings leave them out of the demo player's chat
+    pub fn set_chat_left_out(&mut self, left_out: LeftOut) {
+        self.chat.left_out = left_out;
+    }
+
     fn cache(&mut self) -> Option<&Cache> {
         if self.cache.is_none() && self.cache_path.exists() {
             match Cache::open(&self.cache_path) {
@@ -996,25 +1048,33 @@ impl LibraryView {
         self.cache.as_ref()
     }
 
-    /// Count again and drop loaded pages when the filters, the order or the
-    /// stored files changed. Stored files refresh at most once per
-    /// [`REFRESH`], and a refresh held back is woken for when it is due, as
-    /// nothing else may draw a frame once a scan has finished. While the
-    /// demo player plays they wait for it to stop, as a big library takes
-    /// long enough to count that its frames would stall
+    /// Take in what the library's thread answered, and ask it to count again
+    /// when the filters, the order or the stored files changed. Stored files
+    /// refresh at most once per [`REFRESH`], and a refresh held back is woken
+    /// for when it is due, as nothing else may draw a frame once a scan has
+    /// finished. While the demo player plays they wait for it to stop, as
+    /// the cache is busy enough storing files
     fn refresh(&mut self, ctx: &egui::Context) {
+        self.take_answers();
+
         let wanted = Applied {
             filters: self.filters.clone(),
             sort: self.sort,
             descending: self.descending,
             matches: self.matches.order(),
+            chat: (self.tab == Tab::Chat).then(|| self.chat.order()),
             only: self.only(),
             except: self.except(),
         };
         let changed = self.applied.as_ref() != Some(&wanted);
+
+        // Stored files wait for the count under way, as one that takes longer
+        // than a refresh would never come otherwise. Its answer wakes the
+        // window
+        let counting = self.shown != Some(self.number);
         let waited = self.last_refresh.elapsed();
-        let due = self.stale && waited >= REFRESH && !self.hold;
-        if self.stale && !due && !self.hold {
+        let due = self.stale && waited >= REFRESH && !self.hold && !counting;
+        if self.stale && waited < REFRESH && !self.hold {
             ctx.request_repaint_after(REFRESH - waited);
         }
         if !changed && !due {
@@ -1024,58 +1084,98 @@ impl LibraryView {
             self.people = None;
         }
 
-        let query = self.query();
-        let count = self.cache().map(|c| c.count(&query));
-        match count {
-            Some(Ok(n)) => {
-                self.total = n;
-                self.error = None;
-            }
-            Some(Err(e)) => self.error = Some(e.message()),
-            None => self.total = 0,
-        }
-
-        let query = self.match_query();
-        let count = self.cache().map(|c| c.count_matches(&query));
-        match count {
-            Some(Ok(n)) => self.matches.total = n,
-            Some(Err(e)) => self.error = Some(e.message()),
-            None => self.matches.total = 0,
-        }
-
-        let stats = self.cache().map(Cache::library_stats);
-        match stats {
-            Some(Ok(stats)) => self.stats = stats,
-            Some(Err(e)) => self.error = Some(e.message()),
-            None => self.stats = LibraryStats::default(),
-        }
-
         // A row the keyboard reached means another file in another list
         if changed {
             self.cursor = None;
         }
-        self.pages.clear();
-        self.matches.pages.clear();
+
+        // The chat is counted only while its tab is open, as a library's
+        // chat is far longer than its demos
+        let (demos, matches) = (self.query(), self.match_query());
+        let chat = (self.tab == Tab::Chat).then(|| self.chat_query());
+        self.number += 1;
+        let path = self.cache_path.clone();
+        let worker = self
+            .worker
+            .get_or_insert_with(|| Worker::start(path, ctx.clone()));
+        worker.count(self.number, demos, matches, chat, changed);
+
+        self.asked_at = Instant::now();
         self.applied = Some(wanted);
         self.stale = false;
         self.last_refresh = Instant::now();
     }
 
+    /// Take in the counts asked for last, asking for the pages in view
+    /// again, and the pages of the counts shown
+    fn take_answers(&mut self) {
+        let Some(worker) = &self.worker else {
+            return;
+        };
+        for answer in worker.answers() {
+            match answer {
+                Answer::Counted { number, counts } if number == self.number => {
+                    self.take_counts(number, counts);
+                }
+                Answer::Page { number, page, rows } if Some(number) == self.shown => {
+                    self.take_page(page, rows);
+                }
+                _ => {}
+            }
+        }
+    }
+
+    fn take_counts(&mut self, number: u64, counts: Result<Counts, Message>) {
+        match counts {
+            Ok(counts) => {
+                self.total = counts.demos;
+                self.matches.total = counts.matches;
+                if let Some(lines) = counts.chat {
+                    self.chat.total = lines;
+                }
+                self.stats = counts.stats;
+                self.error = None;
+            }
+            Err(e) => self.error = Some(e),
+        }
+        self.asked.clear();
+        self.matches.asked.clear();
+        self.chat.clear();
+        self.shown = Some(number);
+    }
+
+    fn take_page(&mut self, page: usize, rows: Result<Rows, Message>) {
+        match rows {
+            Ok(Rows::Demos(rows)) => {
+                self.pages.insert(page, rows);
+            }
+            Ok(Rows::Matches(rows)) => {
+                self.matches.pages.insert(page, rows);
+            }
+            Ok(Rows::Chat(rows)) => {
+                self.chat.pages.insert(page, rows);
+            }
+            Err(e) => self.error = Some(e),
+        }
+    }
+
+    /// Ask the library's thread for `page` of a list as the counts shown
+    /// have it. Before the first count there is nothing to ask for, and the
+    /// pages are asked for again once it comes
+    fn ask_page(&self, page: usize, of: PageOf) {
+        if let (Some(worker), Some(number)) = (&self.worker, self.shown) {
+            worker.page(number, page, of);
+        }
+    }
+
     fn row(&mut self, index: usize) -> Option<FileRow> {
         let page = index / PAGE;
-        if !self.pages.contains_key(&page) {
+        if self.asked.insert(page) {
             let query = FileQuery {
                 offset: page * PAGE,
                 ..self.query()
             };
-            let rows = self.cache().map(|c| c.query(&query));
-            match rows {
-                Some(Ok(rows)) => {
-                    self.pages.insert(page, rows);
-                }
-                Some(Err(e)) => self.error = Some(e.message()),
-                None => return None,
-            }
+            self.ask_page(page, PageOf::Demos(query));
         }
         self.pages.get(&page)?.get(index % PAGE).cloned()
     }
@@ -1090,10 +1190,16 @@ impl LibraryView {
         }
     }
 
-    /// How many filters are on, with the matches' own on their `tab`
+    /// How many filters are on, with the matches' and the chat's own on
+    /// their `tab`
     fn active(&self, tab: Tab) -> usize {
         let statuses = tab == Tab::Matches && !self.matches.hidden.is_empty();
-        self.filters.active() + usize::from(statuses)
+        let chat = if tab == Tab::Chat {
+            self.chat.filters.active()
+        } else {
+            0
+        };
+        self.filters.active() + usize::from(statuses) + chat
     }
 
     /// How many rows `tab` lists
@@ -1101,11 +1207,12 @@ impl LibraryView {
         match tab {
             Tab::Demos => self.total,
             Tab::Matches => self.matches.total,
+            Tab::Chat => self.chat.total,
         }
     }
 
-    /// How many demos or matches `tab` lists, and of how many when the
-    /// filters leave some out
+    /// How many demos, matches or lines `tab` lists, and of how many when
+    /// the filters leave some out
     fn count_line(&self, tab: Tab, catalog: &Catalog) -> String {
         let (shown, total, ids) = match tab {
             Tab::Demos => (
@@ -1118,6 +1225,13 @@ impl LibraryView {
                 self.stats.matches,
                 ("library-matches", "library-matches-of"),
             ),
+
+            // Lines are counted only as the filters find them, as a
+            // library's chat is far longer than its demos
+            Tab::Chat => {
+                let count = self.chat.total as i64;
+                return catalog.text_with("library-chat-lines", &[("count", count.into())]);
+            }
         };
         let (shown, total) = (shown as i64, total as i64);
         let narrowed = self.active(tab) > 0 || self.scope != Scope::All;
@@ -1126,6 +1240,19 @@ impl LibraryView {
         }
 
         catalog.text_with(ids.1, &[("shown", shown.into()), ("total", total.into())])
+    }
+
+    /// The count of rows once one came, with a spinner beside it while a
+    /// count is taking a while
+    fn count_label(&self, ui: &mut Ui, count: &str, catalog: &Catalog, rtl: bool) {
+        if self.shown.is_some() {
+            ui.label(text::widget_text(ui.ctx(), count, rtl, None, Look::Weak));
+        }
+        if self.slow_count(ui.ctx()) {
+            let spinner = egui::Spinner::new().size(theme::TEXT_BODY);
+            ui.add(spinner)
+                .on_hover_text(catalog.text("library-counting"));
+        }
     }
 
     /// Why nothing is listed, or the cache's error
@@ -1147,6 +1274,9 @@ impl LibraryView {
                     (Tab::Matches, _) if self.stats.files == 0 => "library-empty",
                     (Tab::Matches, false) => "library-no-games",
                     (Tab::Matches, true) => "library-no-games-filtered",
+                    (Tab::Chat, _) if self.stats.files == 0 => "library-empty",
+                    (Tab::Chat, false) => "library-no-chat",
+                    (Tab::Chat, true) => "library-no-chat-filtered",
                 };
                 text::label(ui, &catalog.text(id), rtl);
             }
@@ -1159,21 +1289,34 @@ impl LibraryView {
         let ctx = ui.ctx().clone();
         let t = |id: &str| text::widget_text(&ctx, &catalog.text(id), rtl, None, Look::Plain);
 
-        // Find, with the reset of every filter at the end of its line
+        // The first group's title, Chat on its tab and Find on the others,
+        // with the reset of every filter at the end of its line
         let active = self.active(tab);
+        let first = if tab == Tab::Chat {
+            "filters-chat"
+        } else {
+            "filters-find"
+        };
         layout::row(ui, rtl, |ui| {
-            widgets::group_name(ui, &catalog.text("filters-find"), None, rtl);
+            widgets::group_name(ui, &catalog.text(first), None, rtl);
             layout::trailing(ui, rtl, |ui| {
                 if active > 0 {
                     let reset = widgets::Button::new(None, t("filter-clear"), Variant::Ghost, rtl);
                     if ui.add(reset).clicked() {
                         self.filters = Filters::default();
                         self.matches.hidden.clear();
+                        self.chat.filters = ChatFilters::default();
                     }
                 }
                 widgets::rule(ui);
             });
         });
+
+        // On the Chat tab its own filters come first, then the demos'
+        if tab == Tab::Chat {
+            self.chat_filters(ui, catalog, rtl);
+            widgets::group_title(ui, &catalog.text("filters-find"), None, rtl);
+        }
 
         let search = egui::TextEdit::singleline(&mut self.filters.text)
             .hint_text(t("filter-search"))
@@ -1407,6 +1550,10 @@ impl LibraryView {
         self.table_header(ui, catalog, rtl);
         ui.separator();
 
+        // Nothing to say before the first count comes
+        if self.shown.is_none() {
+            return;
+        }
         if self.error.is_some() || self.shown_rows(self.tab) == 0 {
             self.empty_ui(ui, self.tab, catalog, rtl);
             return;
@@ -1414,6 +1561,7 @@ impl LibraryView {
         match self.tab {
             Tab::Demos => self.table(ui, catalog, rtl),
             Tab::Matches => self.match_table(ui, catalog, rtl),
+            Tab::Chat => self.chat_table(ui, catalog, rtl),
         }
     }
 
@@ -1468,8 +1616,8 @@ impl LibraryView {
                 }
             }
 
-            ui.label(text::widget_text(&ctx, &count, rtl, None, Look::Weak));
-            if self.tab == Tab::Matches {
+            self.count_label(ui, &count, catalog, rtl);
+            if self.tab != Tab::Demos {
                 return;
             }
 
@@ -1833,12 +1981,20 @@ impl LibraryView {
         self.list_search(ui, catalog, rtl);
         ui.separator();
 
+        // Nothing to say before the first count comes
+        if self.shown.is_none() {
+            return action;
+        }
         if self.error.is_some() || self.shown_rows(self.tab) == 0 {
             self.empty_ui(ui, self.tab, catalog, rtl);
             return action;
         }
         if self.tab == Tab::Matches {
             self.match_list(ui, catalog, rtl);
+            return action;
+        }
+        if self.tab == Tab::Chat {
+            self.chat_list(ui, catalog, rtl);
             return action;
         }
 
@@ -1878,7 +2034,6 @@ impl LibraryView {
     /// Back to the table, the count, the filters with how many are on, and
     /// hiding the list. Returns what was asked for
     fn list_header(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool) -> Option<ListAction> {
-        let ctx = ui.ctx().clone();
         let active = self.active(self.tab);
         let count = self.count_line(self.tab, catalog);
 
@@ -1888,7 +2043,7 @@ impl LibraryView {
             if ui.add(IconButton::new(Icon::Table, &back_label)).clicked() {
                 action = Some(ListAction::Back);
             }
-            ui.label(text::widget_text(&ctx, &count, rtl, None, Look::Weak));
+            self.count_label(ui, &count, catalog, rtl);
 
             layout::trailing(ui, rtl, |ui| {
                 let hide_label = catalog.text("list-hide");
@@ -1911,22 +2066,33 @@ impl LibraryView {
         })
     }
 
-    /// The path search and the order, the same as the table's
+    /// The path search and the order, the same as the table's. On the Chat
+    /// tab the search is of what was said
     fn list_search(&mut self, ui: &mut Ui, catalog: &Catalog, rtl: bool) {
         let ctx = ui.ctx().clone();
         let t = |id: &str| text::widget_text(&ctx, &catalog.text(id), rtl, None, Look::Plain);
+        let chat = self.tab == Tab::Chat;
 
         layout::row(ui, rtl, |ui| {
             let spacing = ui.spacing().item_spacing.x;
             let search_width =
                 ui.available_width() - SORT_MENU_WIDTH - theme::CONTROL_HEIGHT - spacing * 2.;
-            let search = egui::TextEdit::singleline(&mut self.filters.text)
-                .hint_text(t("filter-search"))
+            let (field, hint) = if chat {
+                (&mut self.chat.filters.text, "filter-chat-text")
+            } else {
+                (&mut self.filters.text, "filter-search")
+            };
+            let search = egui::TextEdit::singleline(field)
+                .hint_text(t(hint))
                 .desired_width(search_width.max(SEARCH_MIN_WIDTH));
             ui.add(search);
 
             if self.tab == Tab::Matches {
                 self.match_sort_menu(ui, catalog, rtl);
+                return;
+            }
+            if chat {
+                self.chat_sort_menu(ui, catalog, rtl);
                 return;
             }
 

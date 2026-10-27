@@ -638,6 +638,35 @@ help-match-joined-late = Mecz już trwał, gdy zaczęło się nagranie, i zosta�
 help-match-interrupted = Zaczął się inny mecz, mecz został odwołany albo zmieniła się mapa, zanim mecz się skończył.
 help-match-cut-off = Nagranie skończyło się przed końcem meczu.
 help-match-free-play = Pięć minut gry lub więcej bez trwającego meczu.
+tab-chat = Czat
+library-chat-lines = { $count ->
+    [one] { $count } wiadomość
+    [few] { $count } wiadomości
+    [many] { $count } wiadomości
+   *[other] { $count } wiadomości
+}
+library-no-chat = Żadne demo nie zawiera czatu.
+library-counting = Liczenie…
+library-no-chat-filtered = Żadna wiadomość nie pasuje do tych filtrów.
+filters-chat = Czat
+filter-chat-text = Słowa w wiadomości
+filter-chat-sender = Nazwa nadawcy
+filter-chat-to = Odbiorcy
+filter-chat-from = Nadawcy
+chat-to-everyone = Wszyscy
+chat-to-team = Drużyna
+chat-from-players = Gracze
+chat-from-spectators = Obserwatorzy
+filter-chat-mine = Tylko wiadomości nagrywającego
+filter-chat-hide-server = Ukryj wiadomości serwera
+column-time = Czas
+column-sender = Nadawca
+column-message = Wiadomość
+help-chat-time = Kiedy wiadomość została wysłana w demie. Otwarcie wiadomości uruchamia demo sekundę przed nią.
+chat-tag-team = Drużyna
+chat-tag-spectator = Spec
+chat-tag-spectators = Do speców
+chat-server = Serwer
 list-hide = Ukryj listę dem
 list-show = Pokaż listę dem
 demo-details = Szczegóły
@@ -735,9 +764,9 @@ settings-weapon-bob-recorded = Bujanie broni jak w nagraniu
 settings-crosshair = Pokazuj celownik
 settings-chat = Pokazuj czat
 settings-chat-places = Pokazuj wiadomości podające miejsce
-settings-chat-places-hint = Wiadomości do drużyny z bindów, które przez %l lub %L podają, gdzie na mapie jest nadawca. Gdy to jest wyłączone, nie ma ich na czacie, jakby nigdy nie zostały wysłane.
+settings-chat-places-hint = Wiadomości do drużyny z bindów, które przez %l lub %L podają, gdzie na mapie jest nadawca. Gdy to jest wyłączone, nie ma ich na czacie, jakby nigdy nie zostały wysłane, ani w karcie Czat w bibliotece.
 settings-chat-long-jump = Pokazuj wiadomości mówiące „got LJ” lub „no LJ”
-settings-chat-long-jump-hint = Wiadomości do drużyny z bindów, które podają, czy nadawca ma moduł long jump. Gdy to jest wyłączone, nie ma ich na czacie, jakby nigdy nie zostały wysłane.
+settings-chat-long-jump-hint = Wiadomości do drużyny z bindów, które podają, czy nadawca ma moduł long jump. Gdy to jest wyłączone, nie ma ich na czacie, jakby nigdy nie zostały wysłane, ani w karcie Czat w bibliotece.
 settings-vitals = Pokazuj życie, pancerz, amunicję i podniesione przedmioty
 settings-vitals-size = Rozmiar życia, pancerza, amunicji i podniesionych przedmiotów
 settings-free-vitals = Pokazuj życie, pancerz, amunicję i podniesione przedmioty także w wolnej kamerze

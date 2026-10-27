@@ -638,6 +638,35 @@ help-match-joined-late = Rungtynės jau vyko, kai prasidėjo įrašas, ir buvo �
 help-match-interrupted = Prasidėjo kitos rungtynės, rungtynės buvo atšauktos arba pasikeitė žemėlapis, kol rungtynės dar nesibaigė.
 help-match-cut-off = Įrašas baigėsi anksčiau nei rungtynės.
 help-match-free-play = Penkios ar daugiau minučių žaidimo, kai nevyksta rungtynės.
+tab-chat = Čatas
+library-chat-lines = { $count ->
+    [one] { $count } žinutė
+    [few] { $count } žinutės
+    [many] { $count } žinutės
+   *[other] { $count } žinučių
+}
+library-no-chat = Nė viename įraše nėra čato.
+library-counting = Skaičiuojama…
+library-no-chat-filtered = Šių filtrų neatitinka jokia žinutė.
+filters-chat = Čatas
+filter-chat-text = Žodžiai žinutėje
+filter-chat-sender = Siuntėjo vardas
+filter-chat-to = Kam
+filter-chat-from = Kas siuntė
+chat-to-everyone = Visiems
+chat-to-team = Komandai
+chat-from-players = Žaidėjai
+chat-from-spectators = Stebėtojai
+filter-chat-mine = Tik įrašančiojo žinutės
+filter-chat-hide-server = Slėpti serverio žinutes
+column-time = Laikas
+column-sender = Siuntėjas
+column-message = Žinutė
+help-chat-time = Kada žinutė išsiųsta įraše. Atidarius žinutę, įrašas pradedamas sekunde anksčiau.
+chat-tag-team = Komanda
+chat-tag-spectator = Spec
+chat-tag-spectators = Spec komanda
+chat-server = Serveris
 list-hide = Slėpti įrašų sąrašą
 list-show = Rodyti įrašų sąrašą
 demo-details = Išsami informacija
@@ -735,9 +764,9 @@ settings-weapon-bob-recorded = Ginklo siūbavimas kaip įrašyta
 settings-crosshair = Rodyti taikiklį
 settings-chat = Rodyti čatą
 settings-chat-places = Rodyti žinutes, kuriose nurodoma vieta
-settings-chat-places-hint = Komandos žinutės iš bindų, kuriose %l arba %L nurodo siuntėjo vietą žemėlapyje. Kai tai išjungta, jų čate nėra, lyg jos niekada nebūtų išsiųstos.
+settings-chat-places-hint = Komandos žinutės iš bindų, kuriose %l arba %L nurodo siuntėjo vietą žemėlapyje. Kai tai išjungta, jų čate nėra, lyg jos niekada nebūtų išsiųstos, taip pat jų nėra bibliotekos skirtuke „Čatas“.
 settings-chat-long-jump = Rodyti žinutes, kuriose parašyta „got LJ“ arba „no LJ“
-settings-chat-long-jump-hint = Komandos žinutės iš bindų, kuriose nurodoma, ar siuntėjas turi long jump modulį. Kai tai išjungta, jų čate nėra, lyg jos niekada nebūtų išsiųstos.
+settings-chat-long-jump-hint = Komandos žinutės iš bindų, kuriose nurodoma, ar siuntėjas turi long jump modulį. Kai tai išjungta, jų čate nėra, lyg jos niekada nebūtų išsiųstos, taip pat jų nėra bibliotekos skirtuke „Čatas“.
 settings-vitals = Rodyti gyvybes, šarvus, šovinius ir paimtus daiktus
 settings-vitals-size = Gyvybių, šarvų, šovinių ir paimtų daiktų dydis
 settings-free-vitals = Rodyti gyvybes, šarvus, šovinius ir paimtus daiktus ir su laisva kamera

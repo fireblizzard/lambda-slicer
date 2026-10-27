@@ -105,6 +105,24 @@ Clicking a match opens its demo at the start of the countdown, or where the reco
 a match already on. The list beside the open demo then lists matches too, and picking another
 match of the same demo jumps to it.
 
+The **Chat** tab lists every chat message of the demos, one a row, newest demos first. Its columns
+are the date, map, time in the demo, sender, message and demo. The sender shows in their team's
+colour, or as Server for the server's own messages, and a message to the team alone, or from a
+spectator, has a small Team, Spec or Spec team mark before it. Colour codes are left out, and a
+code for the sender's place shows as `…`, as the library reads no map to name it. Its own
+filters come first, under Chat: words in a message, ignoring case and colour codes, with what
+they find lit in each message, the sender's name, Sent to (Everyone and Team) and Sent by
+(Players and Spectators), two toggles each that are both on at first, Only the recorder's
+messages, and Hide server messages. The messages giving a location or saying "got LJ" or "no LJ"
+are left out when the settings leave them out of the demo player's chat. The demos' filters
+follow, with the map the one the message was sent on. A big library has millions of messages, so the Chat tab counts them only while it
+is open. Counting and reading the rows happen away from the window, so it never stops while a
+search is slow, and a new letter typed stops the search before it. The count and the rows found
+before stay until the new ones come, with a spinner beside the count while it takes a while.
+Pointing at a message shows the few messages sent before and after it, and clicking it opens its
+demo a second before it was sent. The list beside the open demo then
+lists messages too, its search box searching what was said.
+
 ## Demo view
 
 Clicking a demo analyses it again on its own thread, since shots aren't kept in the library, and
@@ -169,7 +187,8 @@ game. Untick Show messages that give a location to leave out of the chat every m
 `%L`, `%d` or `%D` in it, the codes players' binds use to tell their team where they are. The chat
 then shows as if those were never sent, so they take none of its five lines. Untick Show messages
 that say "got LJ" or "no LJ" to do the same with the messages saying whether a player has the long
-jump module, which AG's server writes in for a bind's code. Both still show in the event list. Show scoreboard shows the
+jump module, which AG's server writes in for a bind's code. The library's Chat tab leaves the same
+messages out, also from the messages shown around one. Both still show in the event list. Show scoreboard shows the
 game's scoreboard over the middle of the view while the recorder holds its key, and at intermission
 whoever's view is shown, always by default, only in fullscreen, or never. Only while the recorder is
 playing, on by default, leaves it out while the recorder spectates. It's the game's size,

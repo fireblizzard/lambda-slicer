@@ -38,6 +38,7 @@
 use std::collections::{BTreeMap, VecDeque};
 
 use lambda_slicer_core::analysis::context::{location, say_text};
+use lambda_slicer_core::library::chat;
 use lambda_slicer_core::protocol::messages::{Message, ParsedMessage, unpack_ping};
 use lambda_slicer_core::state::Decoder;
 
@@ -62,13 +63,7 @@ const NOTICE_SHOWN: f64 = 6.;
 const CHAT_LINES: usize = 5;
 const CHAT_SHOWN: f64 = 5.;
 
-/// The codes a line of chat names its sender's place with, which the
-/// client fills in
-pub const PLACE_CODES: [&str; 4] = ["%l", "%L", "%d", "%D"];
-
-/// What AG's server writes in a line for whether its sender has the long
-/// jump module
-const LONG_JUMP: [&str; 2] = ["got LJ", "no LJ"];
+pub use lambda_slicer_core::library::chat::PLACE_CODES;
 
 /// The seconds that mean the match waits for its players
 pub const WAITING: i8 = 50;
@@ -140,30 +135,15 @@ impl ChatLine {
     /// Whether the line names its sender's place, as players' binds for
     /// telling their team where they are do
     pub fn names_place(&self) -> bool {
-        PLACE_CODES.iter().any(|code| self.text.contains(code))
+        chat::names_place(&self.text)
     }
 
     /// Whether the line says if its sender has the long jump module, as
     /// players' binds for telling their team do. Colour codes may come
     /// between the words
     pub fn says_long_jump(&self) -> bool {
-        let plain = without_colours(&self.text);
-        LONG_JUMP.iter().any(|words| plain.contains(words))
+        chat::says_long_jump(&self.text)
     }
-}
-
-/// `text` without AG's colour codes, a `^` and a digit
-fn without_colours(text: &str) -> String {
-    let mut out = String::with_capacity(text.len());
-    let mut chars = text.chars().peekable();
-    while let Some(c) = chars.next() {
-        if c == '^' && chars.peek().is_some_and(char::is_ascii_digit) {
-            chars.next();
-            continue;
-        }
-        out.push(c);
-    }
-    out
 }
 
 /// Which lines the chat leaves out, as if they were never sent

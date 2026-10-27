@@ -8,7 +8,7 @@ use eframe::egui::{self, RichText, WidgetText};
 use fluent_bundle::FluentValue;
 use lambda_slicer_core::analysis::motion::Floors;
 use lambda_slicer_core::container::Limits;
-use lambda_slicer_core::library::cache::{FileRow, default_path};
+use lambda_slicer_core::library::cache::{FileRow, LeftOut, default_path};
 use lambda_slicer_core::library::scan::{ScanFloors, ScanOptions};
 
 mod settings_window;
@@ -1432,9 +1432,13 @@ impl App {
         let ctx = ui.ctx().clone();
         let rtl = self.rtl();
 
-        // Without a scan, how many demos the library holds
+        // Without a scan, how many demos the library holds, once counted
         let Some(job) = &self.scan else {
-            let files = self.library.as_ref().map_or(0, LibraryView::library_files);
+            let library = self.library.as_ref();
+            if library.is_some_and(|l| !l.counted()) {
+                return;
+            }
+            let files = library.map_or(0, LibraryView::library_files);
             let count = FluentValue::from(files as i64);
             let line = self.catalog.text_with("library-total", &[("count", count)]);
             layout::row(ui, rtl, |ui| {
@@ -1786,6 +1790,15 @@ impl eframe::App for App {
             l.hidden_changed = false;
             self.settings.hidden_demos = l.hidden_demos.clone();
             self.save_settings();
+        }
+
+        // The Chat tab leaves out the lines the demo player's chat does
+        if let Some(l) = &mut self.library {
+            let viewer = &self.settings.viewer;
+            l.set_chat_left_out(LeftOut {
+                places: !viewer.chat_places,
+                long_jump: !viewer.chat_long_jump,
+            });
         }
         if self.demo.is_some() {
             self.workspace_ui(ui, rtl);

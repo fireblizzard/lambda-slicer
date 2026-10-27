@@ -628,6 +628,34 @@ help-match-joined-late = La partie était déjà en cours au début de l’enreg
 help-match-interrupted = Une autre partie a commencé, la partie a été annulée ou la carte a changé avant la fin de la partie.
 help-match-cut-off = L’enregistrement s’est arrêté avant la fin de la partie.
 help-match-free-play = Cinq minutes de jeu ou plus sans aucune partie en cours.
+tab-chat = Chat
+library-chat-lines = { $count ->
+    [one] { $count } message
+    [many] { $count } de messages
+   *[other] { $count } messages
+}
+library-no-chat = Aucune des démos ne contient de chat.
+library-counting = Comptage…
+library-no-chat-filtered = Aucun message ne correspond à ces filtres.
+filters-chat = Chat
+filter-chat-text = Mots dans un message
+filter-chat-sender = Nom de l’expéditeur
+filter-chat-to = Envoyé à
+filter-chat-from = Envoyé par
+chat-to-everyone = Tout le monde
+chat-to-team = Équipe
+chat-from-players = Joueurs
+chat-from-spectators = Spectateurs
+filter-chat-mine = Seulement les messages de la personne qui enregistrait
+filter-chat-hide-server = Masquer les messages du serveur
+column-time = Temps
+column-sender = Expéditeur
+column-message = Message
+help-chat-time = Quand le message a été envoyé dans la démo. Ouvrir un message lance la démo une seconde avant.
+chat-tag-team = Équipe
+chat-tag-spectator = Spec
+chat-tag-spectators = Équipe spec
+chat-server = Serveur
 list-hide = Masquer la liste des démos
 list-show = Afficher la liste des démos
 demo-details = Détails
@@ -725,9 +753,9 @@ settings-weapon-bob-recorded = Balancement de l’arme tel qu’enregistré
 settings-crosshair = Afficher le viseur
 settings-chat = Afficher le chat
 settings-chat-places = Afficher les messages qui donnent un emplacement
-settings-chat-places-hint = Messages d’équipe envoyés par des binds qui donnent l’emplacement de l’expéditeur avec %l ou %L. Si c’est désactivé, ils sont retirés du chat comme s’ils n’avaient jamais été envoyés.
+settings-chat-places-hint = Messages d’équipe envoyés par des binds qui donnent l’emplacement de l’expéditeur avec %l ou %L. Si c’est désactivé, ils sont retirés du chat comme s’ils n’avaient jamais été envoyés, et aussi de l’onglet Chat de la bibliothèque.
 settings-chat-long-jump = Afficher les messages qui disent « got LJ » ou « no LJ »
-settings-chat-long-jump-hint = Messages d’équipe envoyés par des binds qui disent si l’expéditeur a le module long jump. Si c’est désactivé, ils sont retirés du chat comme s’ils n’avaient jamais été envoyés.
+settings-chat-long-jump-hint = Messages d’équipe envoyés par des binds qui disent si l’expéditeur a le module long jump. Si c’est désactivé, ils sont retirés du chat comme s’ils n’avaient jamais été envoyés, et aussi de l’onglet Chat de la bibliothèque.
 settings-vitals = Afficher la vie, l'armure, les munitions et les objets ramassés
 settings-vitals-size = Taille de la vie, de l'armure, des munitions et des objets ramassés
 settings-free-vitals = Afficher aussi la vie, l'armure, les munitions et les objets ramassés en caméra libre

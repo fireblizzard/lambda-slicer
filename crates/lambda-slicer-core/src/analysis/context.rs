@@ -697,6 +697,9 @@ pub struct ChatMessage {
     pub text: String,
     /// Where the sender was, as AG's `Location` last gave it
     pub place: Option<[f32; 3]>,
+    /// The sender's team as the line was sent, none for the server's own
+    /// or a player in none
+    pub team: Option<String>,
 }
 
 /// The byte a chat line starts with when it names its sender
@@ -1031,10 +1034,12 @@ impl Context {
                 let player = named
                     .then(|| d.player_for_entity(i64::from(sender)))
                     .flatten();
+                let team = self.teams.get(&sender).filter(|t| !t.is_empty());
                 self.chat.push(ChatMessage {
                     segment: d.segment,
                     time: loc.playback_time(),
                     place: player.as_ref().and(self.places.get(&sender).copied()),
+                    team: player.as_ref().and(team.cloned()),
                     sender: player,
                     text,
                 });

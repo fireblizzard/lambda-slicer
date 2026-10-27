@@ -21,7 +21,7 @@
 - [x] Add a setting for the in-player scoreboard to show it only if the recorder was playing and not spectating. This should be the new default
 - [ ] Add an easy way to clip a demo by map, so if a demo has 3 maps in it, make 3 clips from the beginning of each map until the end of it
 - [ ] Add a button to export the demo info to a text file, with the map, date, player names at the top, then the scoreboard and then the filtered event list
-- [ ] Find chat messages across the whole library, like words or parts of a message, with filters like sender and map
+- [x] Find chat messages across the whole library, like words or parts of a message, with filters like sender and map
 - [ ] Improve the match highlights (top moments), accounting for things that require skill like complicated kills, headshots, flicks, stunts, trickshots, etc.
 
 # Ideas for later

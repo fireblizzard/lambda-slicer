@@ -2,7 +2,7 @@
 //!
 //! One row per demo holds its fingerprint, the versions it was analysed with,
 //! its status and summary columns. Players, weapon totals, kills with their
-//! context, action windows and matches sit in child tables. Weapon occurrences are
+//! context, action windows, matches and the chat sit in child tables. Weapon occurrences are
 //! not stored, since a selected file is analysed again on demand. A cache
 //! whose schema differs is rebuilt, and an entry analysed with other versions
 //! is stale
@@ -15,6 +15,7 @@ use rusqlite::types::ToSql;
 use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};
 use serde::Serialize;
 
+use super::chat::{Said, names_place, says_long_jump, split};
 use super::date::recorded;
 use crate::analysis::context::{
     MapScore, Scoreboard, every_map, map_list, map_scores, short_map_name,
@@ -24,10 +25,10 @@ use crate::analysis::streaks::{kills_at_once, spree_ends};
 use crate::analysis::weapons::{Actor, PROFILE};
 use crate::analysis::{ANALYSIS_SCHEMA, AnalysisReport};
 use crate::message::Message;
-use crate::state::{DECODE_REPORT_SCHEMA, DecodeStatus};
+use crate::state::{DECODE_REPORT_SCHEMA, DecodeStatus, PlayerIdentity};
 
 /// Layout of the tables below. A different value rebuilds the cache
-pub const CACHE_SCHEMA: i64 = 14;
+pub const CACHE_SCHEMA: i64 = 16;
 
 #[derive(Debug, thiserror::Error)]
 pub enum CacheError {
@@ -37,6 +38,27 @@ pub enum CacheError {
     Io(#[from] std::io::Error),
     #[error("a cancelled analysis is not stored")]
     Cancelled,
+}
+
+impl CacheError {
+    /// Whether a query failed because an [`Interrupter`] stopped it
+    pub fn interrupted(&self) -> bool {
+        let CacheError::Sql(rusqlite::Error::SqliteFailure(e, _)) = self else {
+            return false;
+        };
+        e.code == rusqlite::ErrorCode::OperationInterrupted
+    }
+}
+
+/// Stops the query a cache is running, from another thread. The query
+/// fails as [`CacheError::interrupted`], and one started later runs as
+/// usual
+pub struct Interrupter(rusqlite::InterruptHandle);
+
+impl Interrupter {
+    pub fn interrupt(&self) {
+        self.0.interrupt();
+    }
 }
 
 impl crate::message::Coded for CacheError {
@@ -119,6 +141,7 @@ pub fn path_from_native(bytes: &[u8]) -> Option<PathBuf> {
 
 /// Every table, the ones that refer to files first
 const DROP_TABLES: &str = "
+DROP TABLE IF EXISTS chat;
 DROP TABLE IF EXISTS matches;
 DROP TABLE IF EXISTS windows;
 DROP TABLE IF EXISTS kills;
@@ -252,6 +275,23 @@ CREATE TABLE matches(
     score_json TEXT
 );
 CREATE INDEX matches_file ON matches(file_id);
+CREATE TABLE chat(
+    file_id INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+    ordinal INTEGER NOT NULL,
+    segment INTEGER NOT NULL,
+    time REAL NOT NULL,
+    map TEXT,
+    sender TEXT,
+    team TEXT,
+    team_only INTEGER NOT NULL,
+    spectator INTEGER NOT NULL,
+    mine INTEGER NOT NULL,
+    place INTEGER NOT NULL,
+    long_jump INTEGER NOT NULL,
+    message TEXT NOT NULL,
+    search TEXT NOT NULL
+);
+CREATE INDEX chat_file ON chat(file_id, ordinal);
 ";
 
 /// Indexes for the library's usual list and its figures, which leave out
@@ -733,6 +773,158 @@ impl FileRow {
     }
 }
 
+/// Chat list order. Lines of one demo are always in the order sent
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum ChatSort {
+    /// By the demo's date
+    #[default]
+    Date,
+    Path,
+    Map,
+    Sender,
+    Message,
+}
+
+impl ChatSort {
+    fn column(self) -> &'static str {
+        match self {
+            ChatSort::Date => "f.recorded_at",
+            ChatSort::Path => "f.path",
+            ChatSort::Map => "c.map",
+            ChatSort::Sender => "c.sender COLLATE NOCASE",
+            ChatSort::Message => "c.search",
+        }
+    }
+}
+
+/// Whom lines of chat went to, or who sent them, both of two at first
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Either {
+    #[default]
+    Both,
+    /// To everyone, or from a player
+    First,
+    /// To the team alone, or from a spectator
+    Second,
+}
+
+impl Either {
+    /// The condition on `column` being true for the second, none for both
+    fn condition(self, column: &str) -> Option<String> {
+        match self {
+            Either::Both => None,
+            Either::First => Some(format!("NOT {column}")),
+            Either::Second => Some(column.to_string()),
+        }
+    }
+}
+
+/// The lines of chat from players' binds left out, as the settings leave
+/// them out of the demo player's chat
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct LeftOut {
+    /// The lines naming their sender's place
+    pub places: bool,
+    /// The lines saying whether their sender has the long jump module
+    pub long_jump: bool,
+}
+
+impl LeftOut {
+    /// The conditions keeping the other lines
+    fn conditions(self) -> Vec<String> {
+        let mut out = Vec::new();
+        if self.places {
+            out.push("NOT c.place".to_string());
+        }
+        if self.long_jump {
+            out.push("NOT c.long_jump".to_string());
+        }
+        out
+    }
+}
+
+/// Which lines of chat to list, and how
+#[derive(Clone, Debug, Default)]
+pub struct ChatQuery {
+    /// The demos' conditions. Its map is each line's own, and its paging
+    /// and order are the lines'
+    pub files: FileQuery,
+    /// Text in what was said, ignoring case and colour codes
+    pub text: Option<String>,
+    /// Text in the sender's name, ignoring case and colour codes
+    pub sender: Option<String>,
+    /// To everyone or to the team alone
+    pub to: Either,
+    /// From players or from spectators
+    pub from: Either,
+    /// The recording player's own lines alone
+    pub mine: bool,
+    /// The server's own lines left out
+    pub hide_server: bool,
+    pub left_out: LeftOut,
+    pub sort: ChatSort,
+}
+
+/// A line of chat, with its demo
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct ChatRow {
+    pub file_id: i64,
+    pub path: String,
+    pub recorded_at: Option<String>,
+    pub date_source: Option<String>,
+    /// Its place among the demo's lines, from nought
+    pub ordinal: i64,
+    pub segment: u32,
+    /// When it was sent, in the demo's playback
+    pub time: f32,
+    pub map: Option<String>,
+    /// Its sender's name and team, none for the server's own
+    pub sender: Option<String>,
+    pub team: Option<String>,
+    /// Only to the sender's team, or the other spectators
+    pub team_only: bool,
+    pub spectator: bool,
+    /// Sent by the recording player
+    pub mine: bool,
+    /// What was said, after the sender's name, with colour codes
+    pub message: String,
+    /// The path's own bytes, as for [`FileRow::native`]
+    #[serde(skip)]
+    pub native: Vec<u8>,
+}
+
+impl ChatRow {
+    /// The demo this line was sent in
+    pub fn source(&self) -> PathBuf {
+        path_from_native(&self.native).unwrap_or_else(|| PathBuf::from(&self.path))
+    }
+}
+
+/// The columns a [`ChatRow`] is read from, in its order
+const CHAT_COLUMNS: &str = "f.id, f.path, f.path_blob, f.recorded_at, f.date_source, c.ordinal,
+    c.segment, c.time, c.map, c.sender, c.team, c.team_only, c.spectator, c.mine, c.message";
+
+/// A line of chat from a row of [`CHAT_COLUMNS`]
+fn chat_row(r: &rusqlite::Row) -> rusqlite::Result<ChatRow> {
+    Ok(ChatRow {
+        file_id: r.get(0)?,
+        path: r.get(1)?,
+        native: r.get(2)?,
+        recorded_at: r.get(3)?,
+        date_source: r.get(4)?,
+        ordinal: r.get(5)?,
+        segment: r.get(6)?,
+        time: r.get(7)?,
+        map: r.get(8)?,
+        sender: r.get(9)?,
+        team: r.get(10)?,
+        team_only: r.get(11)?,
+        spectator: r.get(12)?,
+        mine: r.get(13)?,
+        message: r.get(14)?,
+    })
+}
+
 #[derive(Clone, Debug, Serialize)]
 pub struct WindowRow {
     pub path: String,
@@ -762,6 +954,11 @@ impl Cache {
     /// An empty cache in memory, for tests
     pub fn in_memory() -> Result<Self, CacheError> {
         Self::setup(Connection::open_in_memory()?)
+    }
+
+    /// What stops this cache's query under way from another thread
+    pub fn interrupter(&self) -> Interrupter {
+        Interrupter(self.conn.get_interrupt_handle())
     }
 
     fn setup(mut conn: Connection) -> Result<Self, CacheError> {
@@ -1128,6 +1325,47 @@ impl Cache {
                     p.counted.bots,
                 ])?;
             }
+
+            // The recording player is told apart by their SteamID, or by
+            // their name without one
+            let steam_of = |p: &PlayerIdentity| {
+                let seat = (p.segment, p.slot, p.incarnation);
+                people.get(&seat).and_then(|(steam_id, _)| *steam_id)
+            };
+            let recorder = r.recorder.as_ref().map(|p| (steam_of(p), p.name.as_str()));
+            let mut chat = tx.prepare(
+                "INSERT INTO chat(file_id, ordinal, segment, time, map, sender, team, team_only,
+                    spectator, mine, place, long_jump, message, search)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+            )?;
+            for (n, line) in r.chat.iter().enumerate() {
+                let map = r.maps.iter().find(|m| m.segment == line.segment);
+                let (said, message) = match &line.sender {
+                    Some(p) => split(&line.text, &p.name),
+                    None => (Said::default(), line.text.clone()),
+                };
+                let mine = match (&line.sender, recorder) {
+                    (Some(p), Some((Some(steam_id), _))) => steam_of(p) == Some(steam_id),
+                    (Some(p), Some((None, name))) => p.name == name,
+                    _ => false,
+                };
+                chat.execute(params![
+                    id,
+                    n as i64,
+                    line.segment,
+                    line.time,
+                    map.map(|m| m.name.clone()),
+                    line.sender.as_ref().map(|p| p.name.clone()),
+                    line.team,
+                    said.team,
+                    said.spectator,
+                    mine,
+                    names_place(&line.text),
+                    says_long_jump(&line.text),
+                    message,
+                    fold_name(&message),
+                ])?;
+            }
         }
         tx.commit()?;
 
@@ -1475,6 +1713,118 @@ impl Cache {
             c.push(format!("m.status != ?{}", args.len()));
         }
         (c.join(" AND "), args)
+    }
+
+    /// The WHERE clause for `q` over `chat` aliased `c` joined to their
+    /// `files` aliased `f`, with its arguments
+    fn chat_conditions(q: &ChatQuery) -> (String, Vec<Box<dyn ToSql>>) {
+        // The demos' own conditions, leaving the map to each line
+        let mut files = q.files.clone();
+        files.map = None;
+        let (conditions, mut args) = Self::conditions(&files);
+        let mut c = vec![conditions];
+
+        if let Some(m) = q.files.map.as_deref().filter(|m| !m.is_empty()) {
+            args.push(Box::new(fold(m)));
+            c.push(format!("instr(fold(c.map), ?{}) > 0", args.len()));
+        }
+        if let Some(t) = q.text.as_deref().filter(|t| !t.is_empty()) {
+            args.push(Box::new(fold_name(t)));
+            c.push(format!("instr(c.search, ?{}) > 0", args.len()));
+        }
+        if let Some(s) = q.sender.as_deref().filter(|s| !s.is_empty()) {
+            args.push(Box::new(fold_name(s)));
+            c.push(format!("instr(fold_name(c.sender), ?{}) > 0", args.len()));
+        }
+        let said = [
+            q.to.condition("c.team_only"),
+            q.from.condition("c.spectator"),
+        ];
+        c.extend(said.into_iter().flatten());
+        if q.mine {
+            c.push("c.mine".to_string());
+        }
+        if q.hide_server {
+            c.push("c.sender IS NOT NULL".to_string());
+        }
+        c.extend(q.left_out.conditions());
+        (c.join(" AND "), args)
+    }
+
+    /// How many lines of chat in current files match `q`, ignoring its
+    /// paging
+    pub fn count_chat(&self, q: &ChatQuery) -> Result<u64, CacheError> {
+        let (conditions, args) = Self::chat_conditions(q);
+        let sql = format!(
+            "SELECT COUNT(*) FROM chat c JOIN files f ON f.id = c.file_id WHERE {conditions}"
+        );
+        let refs: Vec<&dyn ToSql> = args.iter().map(|a| a.as_ref()).collect();
+        Ok(self
+            .conn
+            .query_row(&sql, refs.as_slice(), |r| r.get::<_, i64>(0))? as u64)
+    }
+
+    /// One page of lines of chat meeting every condition, in `q`'s order
+    /// with the demo and the order sent breaking ties
+    pub fn query_chat(&self, q: &ChatQuery) -> Result<Vec<ChatRow>, CacheError> {
+        let (conditions, mut args) = Self::chat_conditions(q);
+        args.push(Box::new(q.files.limit.max(1) as i64));
+        let limit = args.len();
+        args.push(Box::new(q.files.offset as i64));
+        let offset = args.len();
+        let direction = if q.files.descending { "DESC" } else { "ASC" };
+        let order = q.sort.column();
+
+        let sql = format!(
+            "SELECT {CHAT_COLUMNS} FROM chat c JOIN files f ON f.id = c.file_id
+             WHERE {conditions}
+             ORDER BY {order} {direction} NULLS LAST, f.path, c.ordinal
+             LIMIT ?{limit} OFFSET ?{offset}"
+        );
+        let mut stmt = self.conn.prepare(&sql)?;
+        let refs: Vec<&dyn ToSql> = args.iter().map(|a| a.as_ref()).collect();
+        let rows = stmt.query_map(refs.as_slice(), chat_row)?;
+
+        let mut out = Vec::new();
+        for row in rows {
+            out.push(row?);
+        }
+        Ok(out)
+    }
+
+    /// The lines of chat of the demo `file_id`, `span` sent before the one
+    /// at `ordinal` and it with `span` after, in the order sent. The lines
+    /// `left_out` are skipped, and whatever any other filter leaves out
+    /// is kept
+    pub fn chat_around(
+        &self,
+        file_id: i64,
+        ordinal: i64,
+        span: i64,
+        left_out: LeftOut,
+    ) -> Result<Vec<ChatRow>, CacheError> {
+        let mut kept = left_out.conditions();
+        kept.push("c.file_id = ?1".to_string());
+        let kept = kept.join(" AND ");
+        let lines = |side: &str, order: &str, count: i64| -> Result<Vec<ChatRow>, CacheError> {
+            let sql = format!(
+                "SELECT {CHAT_COLUMNS} FROM chat c JOIN files f ON f.id = c.file_id
+                 WHERE {kept} AND c.ordinal {side} ?2
+                 ORDER BY c.ordinal {order} LIMIT ?3"
+            );
+            let mut stmt = self.conn.prepare(&sql)?;
+            let rows = stmt.query_map(params![file_id, ordinal, count], chat_row)?;
+            let mut out = Vec::new();
+            for row in rows {
+                out.push(row?);
+            }
+            Ok(out)
+        };
+
+        let mut out = lines("<", "DESC", span)?;
+        out.reverse();
+        out.extend(lines(">=", "ASC", span + 1)?);
+        Ok(out)
     }
 
     /// How many matches of current files match `q`, ignoring its paging
@@ -2310,6 +2660,152 @@ mod tests {
                 params![path, segment, name, steam_id, played],
             )
             .unwrap();
+    }
+
+    /// A line of chat in the demo at `path`, sent by `sender` or the server
+    fn say(c: &Cache, path: &str, ordinal: i64, sender: Option<&str>, message: &str) {
+        c.conn
+            .execute(
+                "INSERT INTO chat(file_id, ordinal, segment, time, map, sender, team, team_only,
+                    spectator, mine, place, long_jump, message, search)
+                 SELECT id, ?2, 1, ?2, 'crossfire', ?3, NULL, ?2 = 1, 0, ifnull(?3 = 'me', 0), ?6,
+                    ?7, ?4, ?5
+                 FROM files WHERE path = ?1",
+                params![
+                    path,
+                    ordinal,
+                    sender,
+                    message,
+                    fold_name(message),
+                    names_place(message),
+                    says_long_jump(message),
+                ],
+            )
+            .unwrap();
+    }
+
+    #[test]
+    fn an_interrupted_query_fails_as_such_and_the_next_runs() {
+        let c = Cache::in_memory().unwrap();
+        let interrupter = c.interrupter();
+        let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+
+        // Interrupting until the long query gives up
+        let stopping = stop.clone();
+        let thread = std::thread::spawn(move || {
+            while !stopping.load(std::sync::atomic::Ordering::Relaxed) {
+                interrupter.interrupt();
+                std::thread::sleep(std::time::Duration::from_millis(1));
+            }
+        });
+        let long = "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n)
+                    SELECT COUNT(*) FROM n";
+        let failed = c.conn.query_row(long, [], |r| r.get::<_, i64>(0));
+        stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        thread.join().unwrap();
+        assert!(CacheError::from(failed.unwrap_err()).interrupted());
+
+        // Nothing stops a query started once it is over
+        assert_eq!(c.count(&FileQuery::default()).unwrap(), 0);
+        let other = CacheError::Io(std::io::Error::other("disk"));
+        assert!(!other.interrupted());
+    }
+
+    #[test]
+    fn chat_is_found_by_what_was_said_and_who_said_it() {
+        let c = cache(&[("a.dem", None, None), ("b.dem", None, None)]);
+        say(&c, "a.dem", 0, Some("^1Bob"), "^2GG wp");
+        say(&c, "a.dem", 1, Some("me"), "at bridge");
+        say(&c, "a.dem", 2, None, "- bob has left the game");
+        say(&c, "b.dem", 0, Some("me"), "gg");
+        say(&c, "b.dem", 1, Some("me"), "^1got ^2LJ");
+        say(&c, "b.dem", 2, Some("me"), "at %l");
+        let page = |q: ChatQuery| ChatQuery {
+            files: FileQuery {
+                limit: 50,
+                ..q.files
+            },
+            ..q
+        };
+        let said = |q: ChatQuery| {
+            let rows = c.query_chat(&page(q.clone())).unwrap();
+            assert_eq!(c.count_chat(&q).unwrap(), rows.len() as u64);
+            let mut out = Vec::new();
+            for r in rows {
+                out.push(format!("{} {}", r.path, r.message));
+            }
+            out
+        };
+
+        // Text without its case or colour codes, in every demo
+        let gg = ChatQuery {
+            text: Some("gg W".into()),
+            ..Default::default()
+        };
+        assert_eq!(said(gg), ["a.dem ^2GG wp"]);
+        let gg = ChatQuery {
+            text: Some("gg".into()),
+            sort: ChatSort::Path,
+            ..Default::default()
+        };
+        assert_eq!(said(gg), ["a.dem ^2GG wp", "b.dem gg"]);
+
+        // By the sender, the recorder's own, to the team, and no server
+        let bob = ChatQuery {
+            sender: Some("bob".into()),
+            ..Default::default()
+        };
+        assert_eq!(said(bob), ["a.dem ^2GG wp"]);
+        let mine = ChatQuery {
+            mine: true,
+            sort: ChatSort::Path,
+            ..Default::default()
+        };
+        assert_eq!(
+            said(mine),
+            [
+                "a.dem at bridge",
+                "b.dem gg",
+                "b.dem ^1got ^2LJ",
+                "b.dem at %l"
+            ]
+        );
+        let team = ChatQuery {
+            to: Either::Second,
+            ..Default::default()
+        };
+        assert_eq!(said(team), ["a.dem at bridge", "b.dem ^1got ^2LJ"]);
+        let players = ChatQuery {
+            hide_server: true,
+            ..Default::default()
+        };
+        assert_eq!(said(players).len(), 5);
+
+        // The lines from binds the settings leave out
+        let no_binds = LeftOut {
+            places: true,
+            long_jump: true,
+        };
+        let kept = ChatQuery {
+            files: FileQuery {
+                text: Some("b.dem".into()),
+                ..Default::default()
+            },
+            left_out: no_binds,
+            ..Default::default()
+        };
+        assert_eq!(said(kept.clone()), ["b.dem gg"]);
+
+        // The lines around one, skipping only those left out
+        let file = c.query_chat(&page(ChatQuery::default())).unwrap()[0].file_id;
+        let around = c.chat_around(file, 0, 1, LeftOut::default()).unwrap();
+        assert_eq!(around.len(), 2);
+        assert_eq!(around[1].message, "at bridge");
+        let b = c.query_chat(&page(kept)).unwrap()[0].file_id;
+        let around = c.chat_around(b, 0, 2, no_binds).unwrap();
+        assert_eq!(around.len(), 1);
+        let around = c.chat_around(b, 1, 1, LeftOut::default()).unwrap();
+        assert_eq!(around.len(), 3);
     }
 
     #[test]

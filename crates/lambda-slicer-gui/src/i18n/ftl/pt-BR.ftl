@@ -628,6 +628,34 @@ help-match-joined-late = A partida já estava em andamento quando a gravação c
 help-match-interrupted = Outra partida começou, a partida foi cancelada ou o mapa mudou antes de a partida acabar.
 help-match-cut-off = A gravação acabou antes da partida.
 help-match-free-play = Cinco minutos ou mais de jogo sem nenhuma partida em andamento.
+tab-chat = Chat
+library-chat-lines = { $count ->
+    [one] { $count } mensagem
+    [many] { $count } de mensagens
+   *[other] { $count } mensagens
+}
+library-no-chat = Nenhuma das demos tem chat.
+library-counting = Contando…
+library-no-chat-filtered = Nenhuma mensagem corresponde a estes filtros.
+filters-chat = Chat
+filter-chat-text = Palavras em uma mensagem
+filter-chat-sender = Nome de quem enviou
+filter-chat-to = Enviada para
+filter-chat-from = Enviada por
+chat-to-everyone = Todos
+chat-to-team = Equipe
+chat-from-players = Jogadores
+chat-from-spectators = Espectadores
+filter-chat-mine = Só as mensagens de quem gravou
+filter-chat-hide-server = Ocultar mensagens do servidor
+column-time = Tempo
+column-sender = Remetente
+column-message = Mensagem
+help-chat-time = Quando a mensagem foi enviada na demo. Abrir uma mensagem começa a demo um segundo antes dela.
+chat-tag-team = Equipe
+chat-tag-spectator = Spec
+chat-tag-spectators = Equipe spec
+chat-server = Servidor
 list-hide = Esconder a lista de demos
 list-show = Mostrar a lista de demos
 demo-details = Detalhes
@@ -725,9 +753,9 @@ settings-weapon-bob-recorded = Balanço da arma como gravado
 settings-crosshair = Mostrar a mira
 settings-chat = Mostrar o chat
 settings-chat-places = Mostrar mensagens que dizem um local
-settings-chat-places-hint = Mensagens de equipe vindas de binds que dizem o local de quem enviou com %l ou %L. Com isto desligado, elas ficam de fora do chat como se nunca tivessem sido enviadas.
+settings-chat-places-hint = Mensagens de equipe vindas de binds que dizem o local de quem enviou com %l ou %L. Com isto desligado, elas ficam de fora do chat como se nunca tivessem sido enviadas, e também da aba Chat da biblioteca.
 settings-chat-long-jump = Mostrar mensagens que dizem "got LJ" ou "no LJ"
-settings-chat-long-jump-hint = Mensagens de equipe vindas de binds que dizem se quem enviou tem o long jump. Com isto desligado, elas ficam de fora do chat como se nunca tivessem sido enviadas.
+settings-chat-long-jump-hint = Mensagens de equipe vindas de binds que dizem se quem enviou tem o long jump. Com isto desligado, elas ficam de fora do chat como se nunca tivessem sido enviadas, e também da aba Chat da biblioteca.
 settings-vitals = Mostrar vida, armadura, munição e itens coletados
 settings-vitals-size = Tamanho da vida, armadura, munição e itens coletados
 settings-free-vitals = Mostrar vida, armadura, munição e itens coletados também na câmera livre

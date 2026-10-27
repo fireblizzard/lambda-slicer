@@ -40,6 +40,7 @@ file. It uses WAL so workers read while the writer stores.
 | `kills` | each kill with its weapon string, profile weapon, linked shot weapon, cause, names, airborne flags, horizontal speeds, distance and flight time |
 | `windows` | the best action windows with their sides and weapons |
 | `matches` | each match and stretch of free play with its session, status, times, length, map, players, teams, kills and score ([analysis](analysis-profile.md#matches)) |
+| `chat` | each line of chat with its session, time, map, sender and their team, whether it went to the team alone, came from a spectator or from the recorder, whether it gives the sender's location or says "got LJ" or "no LJ", what was said after the sender's name with its colour codes, and the same folded for searching. AG's `(A)`, `(T)`, `(S)` and `(ST)` and the game's `(TEAM)` say whom a line went to |
 
 **Invalidation.** Every entry records the cache schema, analysis schema, profile, decode report
 schema and parser version it was made with. An entry with any other version is stale. It is
